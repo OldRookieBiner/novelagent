@@ -1,15 +1,18 @@
 # config.py
 """API 配置和模型选择"""
 
+import os
+
 MODEL_CONFIGS = {
     "deepseek": {
-        "api_base": "https://api.deepseek.com/v1",
-        "api_key": "",  # 用户需要填入自己的 API Key
-        "model": "deepseek-chat"
+        # 火山方舟 API (OpenAI 兼容接口)
+        "api_base": "https://ark.cn-beijing.volces.com/api/coding/v3",
+        "api_key": os.environ.get("DEEPSEEK_API_KEY", ""),
+        "model": "deepseek-v3-241227"  # DeepSeek V3.2
     },
     "openai": {
         "api_base": "https://api.openai.com/v1",
-        "api_key": "",
+        "api_key": os.environ.get("OPENAI_API_KEY", ""),
         "model": "gpt-4"
     },
 }
