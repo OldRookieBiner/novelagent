@@ -46,6 +46,18 @@ novelagent/
 - DeepSeek（初版），config.py 配置多模型切换
 - JSON 文件持久化
 
+## Configuration
+
+```bash
+export DEEPSEEK_API_KEY="your-api-key"  # 火山方舟 DeepSeek
+export OPENAI_API_KEY="your-api-key"    # OpenAI
+```
+
+## Known Issues
+
+- **编码问题**：CLI 已处理 UTF-8 编码，支持中文和全角符号
+- **API 超时**：默认 600 秒，火山方舟 API 响应较慢
+
 ## Implementation Phases
 
 | 阶段 | 目标 |
