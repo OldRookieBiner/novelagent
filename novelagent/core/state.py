@@ -21,11 +21,18 @@ class ProjectState:
         """加载现有状态或创建新状态"""
         if os.path.exists(self.file_path):
             try:
-                with open(self.file_path, 'r', encoding='utf-8') as f:
-                    self.data = json.load(f)
-            except (json.JSONDecodeError, UnicodeDecodeError) as e:
-                # 文件损坏，重新创建
+                with open(self.file_path, 'r', encoding='utf-8', errors='replace') as f:
+                    content = f.read()
+                self.data = json.loads(content)
+            except (json.JSONDecodeError, UnicodeDecodeError, Exception) as e:
+                # 文件损坏，备份后重新创建
                 print(f"[警告] 状态文件损坏，将重新创建: {e}")
+                # 备份损坏的文件
+                backup_path = self.file_path + '.bak'
+                try:
+                    os.rename(self.file_path, backup_path)
+                except:
+                    pass
                 self.data = {}
                 self._create_new_state()
         else:
@@ -49,8 +56,26 @@ class ProjectState:
         """保存状态到文件"""
         self.data["updated_at"] = datetime.now().isoformat()
         os.makedirs(os.path.dirname(self.file_path), exist_ok=True)
-        with open(self.file_path, 'w', encoding='utf-8') as f:
-            json.dump(self.data, f, ensure_ascii=False, indent=2)
+        try:
+            with open(self.file_path, 'w', encoding='utf-8') as f:
+                json.dump(self.data, f, ensure_ascii=False, indent=2)
+        except UnicodeEncodeError:
+            # 如果编码失败，尝试清理数据中的非法字符
+            clean_data = self._clean_unicode(self.data)
+            with open(self.file_path, 'w', encoding='utf-8') as f:
+                json.dump(clean_data, f, ensure_ascii=False, indent=2)
+
+    def _clean_unicode(self, data):
+        """递归清理数据中的非法 Unicode 字符"""
+        if isinstance(data, dict):
+            return {k: self._clean_unicode(v) for k, v in data.items()}
+        elif isinstance(data, list):
+            return [self._clean_unicode(item) for item in data]
+        elif isinstance(data, str):
+            # 移除非法的 UTF-8 字符
+            return data.encode('utf-8', errors='replace').decode('utf-8')
+        else:
+            return data
 
     def get_stage(self) -> str:
         """获取当前阶段"""

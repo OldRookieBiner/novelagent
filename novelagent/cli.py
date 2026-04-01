@@ -4,12 +4,19 @@
 import argparse
 import sys
 import io
+import os
+
+# 设置环境编码
+os.environ['PYTHONIOENCODING'] = 'utf-8'
 
 # 确保 stdin/stdout 使用 UTF-8 编码
-if sys.stdout.encoding != 'utf-8':
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-if sys.stdin.encoding != 'utf-8':
-    sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
+try:
+    if hasattr(sys.stdout, 'buffer'):
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    if hasattr(sys.stdin, 'buffer'):
+        sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8', errors='replace')
+except:
+    pass
 
 from core.state import ProjectState, list_projects, project_exists
 from agents.outline_agent import OutlineAgent
