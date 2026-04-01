@@ -116,3 +116,12 @@ brainstorming  writing   executing   verification  code       commit    finishin
 - 初版代码丑没关系，能跑就行
 - 不要预留架构，不要过度抽象
 - 从实践中自然抽象框架，不要先写框架再填内容
+
+---
+
+## Version Status
+
+| 版本 | Tag | 状态 | 说明 |
+|------|-----|------|------|
+| v0.1.0 | `v0.1.0` | 已发布 | 初始版本 |
+| v0.1.1 | `v0.1.1` | 已发布 | 修复编码和超时问题 |
