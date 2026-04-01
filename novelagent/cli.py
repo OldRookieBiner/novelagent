@@ -3,6 +3,14 @@
 
 import argparse
 import sys
+import io
+
+# 确保 stdin/stdout 使用 UTF-8 编码
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+if sys.stdin.encoding != 'utf-8':
+    sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
+
 from core.state import ProjectState, list_projects, project_exists
 from agents.outline_agent import OutlineAgent
 from agents.writing_agent import WritingAgent

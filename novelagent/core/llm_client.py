@@ -45,10 +45,15 @@ class LLMClient:
         if response.status_code != 200:
             raise Exception(f"API 请求失败: {response.status_code} - {response.text}")
 
+        # 确保使用 UTF-8 解码
+        response.encoding = 'utf-8'
+
         try:
             data = response.json()
         except Exception as e:
-            raise Exception(f"API 返回数据解析失败: {e}")
+            # 如果 JSON 解析失败，尝试获取原始文本
+            raw_text = response.text
+            raise Exception(f"API 返回数据解析失败: {e}, 原始响应: {raw_text[:200]}")
 
         if "choices" not in data or len(data["choices"]) == 0:
             raise Exception(f"API 返回数据格式异常: {data}")
