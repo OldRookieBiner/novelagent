@@ -40,13 +40,21 @@ class LLMClient:
             "temperature": temperature
         }
 
-        response = requests.post(url, headers=headers, json=payload, timeout=60)
+        response = requests.post(url, headers=headers, json=payload, timeout=120)
 
         if response.status_code != 200:
             raise Exception(f"API 请求失败: {response.status_code} - {response.text}")
 
-        data = response.json()
-        return data["choices"][0]["message"]["content"]
+        try:
+            data = response.json()
+        except Exception as e:
+            raise Exception(f"API 返回数据解析失败: {e}")
+
+        if "choices" not in data or len(data["choices"]) == 0:
+            raise Exception(f"API 返回数据格式异常: {data}")
+
+        content = data["choices"][0]["message"]["content"]
+        return content
 
     def chat_with_system(self, system_prompt: str, messages: List[Dict[str, str]], temperature: float = 0.7) -> str:
         """

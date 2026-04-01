@@ -20,20 +20,30 @@ class ProjectState:
     def _load_or_create(self) -> None:
         """加载现有状态或创建新状态"""
         if os.path.exists(self.file_path):
-            with open(self.file_path, 'r', encoding='utf-8') as f:
-                self.data = json.load(f)
+            try:
+                with open(self.file_path, 'r', encoding='utf-8') as f:
+                    self.data = json.load(f)
+            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                # 文件损坏，重新创建
+                print(f"[警告] 状态文件损坏，将重新创建: {e}")
+                self.data = {}
+                self._create_new_state()
         else:
-            self.data = {
-                "project_name": self.project_name,
-                "created_at": datetime.now().isoformat(),
-                "updated_at": datetime.now().isoformat(),
-                "stage": "collecting_info",  # collecting_info, generating_outline, outline_confirming, completed
-                "conversation_history": [],
-                "collected_info": {},
-                "outline": None,
-                "outline_confirmed": False
-            }
-            self._save()
+            self._create_new_state()
+
+    def _create_new_state(self) -> None:
+        """创建新的状态"""
+        self.data = {
+            "project_name": self.project_name,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+            "stage": "collecting_info",
+            "conversation_history": [],
+            "collected_info": {},
+            "outline": None,
+            "outline_confirmed": False
+        }
+        self._save()
 
     def _save(self) -> None:
         """保存状态到文件"""
