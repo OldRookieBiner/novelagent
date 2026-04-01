@@ -87,6 +87,106 @@ class ProjectState:
         self.data["outline_confirmed"] = True
         self._save()
 
+    # === 卷纲管理 ===
+    def get_volumes(self) -> List[Dict[str, Any]]:
+        """获取所有卷纲"""
+        return self.data.get("volumes", [])
+
+    def set_volumes(self, volumes: List[Dict[str, Any]]) -> None:
+        """设置所有卷纲"""
+        self.data["volumes"] = volumes
+        self._save()
+
+    def get_current_volume_index(self) -> int:
+        """获取当前卷索引（0-based）"""
+        return self.data.get("current_progress", {}).get("current_volume", 0)
+
+    def set_current_volume(self, index: int) -> None:
+        """设置当前卷"""
+        if "current_progress" not in self.data:
+            self.data["current_progress"] = {}
+        self.data["current_progress"]["current_volume"] = index
+        self._save()
+
+    def update_volume(self, volume_index: int, volume_data: Dict[str, Any]) -> None:
+        """更新指定卷的数据"""
+        if "volumes" not in self.data:
+            self.data["volumes"] = []
+        while len(self.data["volumes"]) <= volume_index:
+            self.data["volumes"].append({})
+        self.data["volumes"][volume_index] = volume_data
+        self._save()
+
+    # === 单元纲管理 ===
+    def get_current_unit_index(self) -> int:
+        """获取当前单元索引（0-based）"""
+        return self.data.get("current_progress", {}).get("current_unit", 0)
+
+    def set_current_unit(self, index: int) -> None:
+        """设置当前单元"""
+        if "current_progress" not in self.data:
+            self.data["current_progress"] = {}
+        self.data["current_progress"]["current_unit"] = index
+        self._save()
+
+    # === 章节管理 ===
+    def get_current_chapter_index(self) -> int:
+        """获取当前章节索引（0-based）"""
+        return self.data.get("current_progress", {}).get("current_chapter", 0)
+
+    def set_current_chapter(self, index: int) -> None:
+        """设置当前章节"""
+        if "current_progress" not in self.data:
+            self.data["current_progress"] = {}
+        self.data["current_progress"]["current_chapter"] = index
+        self._save()
+
+    def get_chapter(self, volume_index: int, unit_index: int, chapter_index: int) -> Optional[Dict[str, Any]]:
+        """获取指定章节"""
+        try:
+            return self.data["volumes"][volume_index]["units"][unit_index]["chapters"][chapter_index]
+        except (KeyError, IndexError, TypeError):
+            return None
+
+    def update_chapter(self, volume_index: int, unit_index: int, chapter_index: int, chapter_data: Dict[str, Any]) -> None:
+        """更新指定章节"""
+        if "volumes" not in self.data:
+            self.data["volumes"] = []
+        while len(self.data["volumes"]) <= volume_index:
+            self.data["volumes"].append({"units": []})
+        if "units" not in self.data["volumes"][volume_index]:
+            self.data["volumes"][volume_index]["units"] = []
+        while len(self.data["volumes"][volume_index]["units"]) <= unit_index:
+            self.data["volumes"][volume_index]["units"].append({"chapters": []})
+        if "chapters" not in self.data["volumes"][volume_index]["units"][unit_index]:
+            self.data["volumes"][volume_index]["units"][unit_index]["chapters"] = []
+        while len(self.data["volumes"][volume_index]["units"][unit_index]["chapters"]) <= chapter_index:
+            self.data["volumes"][volume_index]["units"][unit_index]["chapters"].append({})
+        self.data["volumes"][volume_index]["units"][unit_index]["chapters"][chapter_index] = chapter_data
+        self._save()
+
+    # === 进度统计 ===
+    def get_total_words(self) -> int:
+        """获取总字数"""
+        return self.data.get("current_progress", {}).get("total_words", 0)
+
+    def add_words(self, count: int) -> None:
+        """增加字数"""
+        if "current_progress" not in self.data:
+            self.data["current_progress"] = {}
+        self.data["current_progress"]["total_words"] = self.get_total_words() + count
+        self._save()
+
+    def get_progress_summary(self) -> Dict[str, Any]:
+        """获取进度摘要"""
+        return {
+            "stage": self.get_stage(),
+            "current_volume": self.get_current_volume_index() + 1,
+            "current_unit": self.get_current_unit_index() + 1,
+            "current_chapter": self.get_current_chapter_index() + 1,
+            "total_words": self.get_total_words()
+        }
+
     def get_summary(self) -> Dict[str, Any]:
         """获取项目摘要（用于列表显示）"""
         return {
