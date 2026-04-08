@@ -1,0 +1,30 @@
+"""Project model"""
+
+from datetime import datetime
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy.orm import relationship
+
+from app.database import Base
+
+
+class Project(Base):
+    """Project model"""
+
+    __tablename__ = "projects"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(100), nullable=False)
+    stage = Column(String(50), default="collecting_info")  # collecting_info, outlining, writing, completed, paused
+    target_words = Column(Integer, default=100000)
+    total_words = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", back_populates="projects")
+    outline = relationship("Outline", back_populates="project", uselist=False, cascade="all, delete-orphan")
+    chapter_outlines = relationship("ChapterOutline", back_populates="project", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<Project {self.name}>"
