@@ -4,11 +4,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**NovelAgent** - AI 小说创作 Agent 系统。三 Agent 协作：大纲Agent → 写作Agent → 审核Agent。
+**NovelAgent** - AI 小说创作 Agent 系统。
 
-采用"先 Agent 后框架"策略，初版专注跑通流程。
+- **v0.1.x（当前）**：CLI 应用，三 Agent 协作（大纲Agent → 写作Agent → 审核Agent）
+- **v0.2.0（开发中）**：Web 应用，简化流程，LangGraph 重构
 
-## Development Commands
+## Version Status
+
+| 版本 | 状态 | 说明 |
+|------|------|------|
+| v0.1.x | 已发布 | CLI 版本，完整流程 |
+| v0.2.0 | 设计中 | Web 应用，React + FastAPI + PostgreSQL |
+
+---
+
+## v0.1.x CLI 版本
+
+### Development Commands
 
 ```bash
 # 启动 CLI
@@ -18,7 +30,7 @@ python cli.py list               # 查看项目列表
 python cli.py status "项目名称"   # 查看项目状态
 ```
 
-## Architecture
+### Architecture
 
 ```
 novelagent/
@@ -30,46 +42,82 @@ novelagent/
 │   └── state.py         # JSON 状态持久化
 ├── agents/
 │   ├── base.py          # Agent 基类
-│   ├── outline_agent.py # 大纲 Agent（阶段1）
-│   ├── writing_agent.py # 写作 Agent（阶段3）
-│   └── review_agent.py  # 审核 Agent（阶段3）
+│   ├── outline_agent.py # 大纲 Agent
+│   ├── writing_agent.py # 写作 Agent
+│   └── review_agent.py  # 审核 Agent
 ├── prompts/
 │   ├── outline.py       # 大纲相关 prompt
-│   ├── writing.py       # 写作 prompt（阶段3）
-│   └── review.py        # 审核 prompt（阶段3）
+│   ├── writing.py       # 写作 prompt
+│   └── review.py        # 审核 prompt
 └── data/projects/       # JSON 状态存储
 ```
 
-## Tech Stack
-
-- Python 3 + 直接 LLM API 调用（无框架依赖）
-- DeepSeek（初版），config.py 配置多模型切换
-- JSON 文件持久化
-
-## Configuration
+### Configuration
 
 ```bash
 export DEEPSEEK_API_KEY="your-api-key"  # 火山方舟 DeepSeek
 export OPENAI_API_KEY="your-api-key"    # OpenAI
 ```
 
-## Known Issues
+### 信息收集标准
 
-- **编码问题**：CLI 已处理 UTF-8 编码，支持中文和全角符号
-- **API 超时**：默认 600 秒，火山方舟 API 响应较慢
-
-## Implementation Phases
-
-| 阶段 | 目标 |
+| 字段 | 说明 |
 |------|------|
-| 阶段1 | 大纲Agent：对话收集想法 → 生成大纲 → 确认 |
-| 阶段2 | 大纲Agent：加入卷纲、单元纲 |
-| 阶段3 | 写作Agent + 审核Agent |
-| 阶段4 | 单元衔接、多章节循环 |
+| `genre` | 题材类型 |
+| `theme` | 核心主题 |
+| `main_characters` | 主角设定 |
+| `world_setting` | 世界设定 |
+| `style_preference` | 风格偏好或目标篇幅 |
 
-## Language Preference
+---
 
-**请使用中文回答问题和交流。**
+## v0.2.0 Web 版本（设计阶段）
+
+### 创作流程
+
+```
+信息收集 → 大纲 → Agent建议章节数 → 用户确认 → 章节纲(一次性) → 正文 → 审核(可选)
+```
+
+**简化点**：去掉卷纲、单元纲，直接大纲→章节纲
+
+### 技术栈
+
+#### 前端
+| 技术 | 说明 |
+|------|------|
+| React 18 + Vite | 前端框架 |
+| shadcn/ui + Tailwind | UI 组件 |
+| Zustand | 状态管理 |
+| React Router v6 | 路由 |
+| TipTap | 富文本编辑 |
+| fetch + SSE | HTTP/流式请求 |
+
+#### 后端
+| 技术 | 说明 |
+|------|------|
+| FastAPI | 后端框架 |
+| SQLAlchemy + Alembic | ORM + 迁移 |
+| PostgreSQL | 数据库 |
+| Session + Cookie | 认证 |
+| LangGraph | Agent 框架 |
+
+#### 部署
+- Docker + Docker Compose
+
+### 页面结构
+
+```
+/                   → 首页（项目卡片列表）
+/project/:id        → 项目详情
+/project/:id/write  → 写作页面
+/project/:id/read/:chapterId → 阅读/审核
+/settings           → 设置
+```
+
+### 详细设计文档
+
+见 `docs/superpowers/specs/2026-04-08-novelagent-v0.2.0-design.md`
 
 ---
 
@@ -90,9 +138,8 @@ brainstorming  writing   executing   verification  code       commit    finishin
 1. **禁止跳过设计阶段直接编写代码** - 新功能必须先 `superpowers:brainstorming`
 2. **设计文档提交到 `docs/superpowers/specs/`**
 3. **实现计划提交到 `docs/superpowers/plans/`**
-4. **Bug 修复使用 `superpowers:systematic-debugging`** - 不得盲目修改
-5. **完成前使用 `superpowers:verification-before-completion`** - 运行验证命令
-6. **避免过度设计** - 初版专注跑通流程，代码丑一点没关系
+4. **Bug 修复使用 `superpowers:systematic-debugging`**
+5. **完成前使用 `superpowers:verification-before-completion`**
 
 ### 常用 Skills
 
@@ -108,20 +155,22 @@ brainstorming  writing   executing   verification  code       commit    finishin
 
 ---
 
-## 项目教训
+## 核心原则
 
-本项目前身 inkworkflow 因"想得太复杂"导致开发陷入泥潭。
-
-**核心原则：先跑通再优化**
+**先跑通再优化**
 - 初版代码丑没关系，能跑就行
 - 不要预留架构，不要过度抽象
 - 从实践中自然抽象框架，不要先写框架再填内容
 
 ---
 
-## Version Status
+## Language Preference
 
-| 版本 | Tag | 状态 | 说明 |
-|------|-----|------|------|
-| v0.1.0 | `v0.1.0` | 已发布 | 初始版本 |
-| v0.1.1 | `v0.1.1` | 已发布 | 修复编码和超时问题 |
+**请使用中文回答问题和交流。**
+
+---
+
+## Known Issues (v0.1.x)
+
+- **编码问题**：CLI 已处理 UTF-8 编码，支持中文和全角符号
+- **API 超时**：默认 600 秒，火山方舟 API 响应较慢
