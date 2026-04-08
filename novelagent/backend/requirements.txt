@@ -1,0 +1,27 @@
+# Web Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+
+# Database
+sqlalchemy==2.0.25
+alembic==1.13.1
+asyncpg==0.29.0
+psycopg2-binary==2.9.9
+
+# Authentication
+passlib[bcrypt]==1.7.4
+itsdangerous==2.1.2
+
+# LLM & Agent
+langgraph==0.0.40
+langchain==0.1.6
+langchain-openai==0.0.5
+openai==1.10.0
+
+# Utilities
+pydantic==2.5.3
+pydantic-settings==2.1.0
+python-dotenv==1.0.0
+cryptography==42.0.0
+httpx==0.26.0
