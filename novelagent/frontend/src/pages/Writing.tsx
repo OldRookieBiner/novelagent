@@ -105,16 +105,19 @@ export default function Writing() {
       const decoder = new TextDecoder()
       let accumulated = ''
 
-      // Helper function to convert plain text to HTML
+      // Helper: convert plain text to HTML with proper paragraph formatting
       const textToHtml = (text: string): string => {
-        // Split by double newlines (paragraph breaks)
-        const paragraphs = text.split(/\n\n+/)
-        // Wrap each paragraph in <p> tags, filter empty paragraphs
-        return paragraphs
-          .map(p => p.trim())
-          .filter(p => p.length > 0)
-          .map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`)
-          .join('')
+        // Handle chapter title (starts with #)
+        let processed = text.replace(/^#\s*(.+?)(\n|$)/gm, '<h2>$1</h2>')
+        // Replace double newlines with paragraph breaks
+        processed = processed.replace(/\n\n+/g, '</p><p>')
+        // Replace single newlines with <br>
+        processed = processed.replace(/\n/g, '<br>')
+        // Wrap in paragraphs (avoid double wrapping)
+        if (!processed.startsWith('<h2>') && !processed.startsWith('<p>')) {
+          processed = `<p>${processed}</p>`
+        }
+        return processed
       }
 
       while (true) {
