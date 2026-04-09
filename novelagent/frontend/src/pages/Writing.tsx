@@ -1,6 +1,7 @@
 // frontend/src/pages/Writing.tsx
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import DOMPurify from 'dompurify'
 import { Button } from '@/components/ui/button'
 import TipTapEditor from '@/components/common/TipTapEditor'
 import ErrorMessage from '@/components/common/ErrorMessage'
@@ -296,25 +297,28 @@ export default function Writing() {
               />
             ) : (
               <div className="prose max-w-none">
-                {content ? (
-                  // Check if content is HTML (contains tags)
-                  content.includes('<') && content.includes('>') ? (
-                    // Render HTML content - use dangerouslySetInnerHTML with prose styling
-                    <div
-                      className="prose-content"
-                      dangerouslySetInnerHTML={{ __html: content }}
-                    />
+                {(() => {
+                  // Use regex to detect actual HTML tags (avoids false positives like "a < b")
+                  const hasHtmlTags = /<[a-zA-Z][^>]*>/.test(content)
+                  const sanitizedContent = hasHtmlTags ? DOMPurify.sanitize(content) : content
+
+                  return sanitizedContent ? (
+                    hasHtmlTags ? (
+                      <div
+                        className="prose-content"
+                        dangerouslySetInnerHTML={{ __html: sanitizedContent }}
+                      />
+                    ) : (
+                      sanitizedContent.split('\n').filter(p => p.trim()).map((paragraph, i) => (
+                        <p key={i} className="mb-4 leading-relaxed" style={{ textIndent: '2em' }}>
+                          {paragraph}
+                        </p>
+                      ))
+                    )
                   ) : (
-                    // Plain text - split by newlines and render as paragraphs
-                    content.split('\n').filter(p => p.trim()).map((paragraph, i) => (
-                      <p key={i} className="mb-4 leading-relaxed" style={{ textIndent: '2em' }}>
-                        {paragraph}
-                      </p>
-                    ))
+                    <p className="text-muted-foreground">点击下方按钮生成内容</p>
                   )
-                ) : (
-                  <p className="text-muted-foreground">点击下方按钮生成内容</p>
-                )}
+                })()}
               </div>
             )}
           </div>
