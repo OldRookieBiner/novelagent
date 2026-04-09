@@ -14,7 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | 版本 | 状态 | 说明 |
 |------|------|------|
 | v0.1.x | 已发布 | CLI 版本，完整流程 |
-| v0.2.0 | 开发中 | Web 应用，React + FastAPI + PostgreSQL |
+| v0.2.0 | 已发布 | Web 应用，React + FastAPI + PostgreSQL |
 
 ---
 
@@ -95,7 +95,8 @@ docker exec novelagent-backend-1 pytest -v
 
 # 前端（需在 frontend 目录，有 node 环境）
 cd frontend && npm run build
-cd frontend && npm run test
+cd frontend && npm run test:run      # 运行测试
+cd frontend && npm run test:coverage # 测试覆盖率
 ```
 
 ### Architecture
@@ -216,6 +217,26 @@ brainstorming  writing   executing   verification  code       commit    finishin
 | `commit-commands:clean_gone` | 清理已删除的远程分支 | 分支维护时 |
 
 ## Gotchas (v0.2.0)
+
+### SSE 流式传输换行符
+
+SSE 格式中，`data:` 行包含换行符时会破坏格式。后端需 JSON 编码：
+```python
+yield f"data: {json.dumps(chunk)}\n\n"
+```
+前端解码：
+```typescript
+const decoded = JSON.parse(data)
+```
+
+### TipTap 纯文本内容转换
+
+TipTap 的 `setContent()` 不会自动将 `\n` 转换为 `<p>` 标签。
+传入纯文本前需手动转换：
+```typescript
+const html = text.split('\n').filter(p => p.trim()).map(p => `<p>${p}</p>`).join('')
+editor.commands.setContent(html)
+```
 
 ### shadcn/ui Button + Link 嵌套问题
 
