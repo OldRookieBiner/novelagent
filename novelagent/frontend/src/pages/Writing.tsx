@@ -134,7 +134,13 @@ export default function Writing() {
           if (line.startsWith('data:')) {
             const data = line.slice(5).trim()
             if (data && data !== '[DONE]') {
-              accumulated += data
+              // Decode JSON to preserve newlines from backend
+              try {
+                const decoded = JSON.parse(data)
+                accumulated += decoded
+              } catch {
+                accumulated += data
+              }
               // Store as plain text for preview
               setContent(accumulated)
               setWordCount(accumulated.length)
