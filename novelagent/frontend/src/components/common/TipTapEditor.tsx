@@ -1,4 +1,5 @@
 // frontend/src/components/common/TipTapEditor.tsx
+import { useEffect, useRef } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -18,6 +19,9 @@ export default function TipTapEditor({
   placeholder = '开始写作...',
   readOnly = false,
 }: TipTapEditorProps) {
+  // Track if update is from external source (not user input)
+  const isExternalUpdate = useRef(false)
+
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -28,9 +32,33 @@ export default function TipTapEditor({
     content,
     editable: !readOnly,
     onUpdate: ({ editor }) => {
-      onChange(editor.getText())
+      // Skip if this update was triggered by external content change
+      if (isExternalUpdate.current) {
+        isExternalUpdate.current = false
+        return
+      }
+      // Use getHTML() to preserve formatting (bold, italic, etc.)
+      onChange(editor.getHTML())
     },
   })
+
+  // Sync external content changes to editor
+  useEffect(() => {
+    if (editor && content !== editor.getHTML()) {
+      isExternalUpdate.current = true
+      // Store current cursor position
+      const { from, to } = editor.state.selection
+      // Update content
+      editor.commands.setContent(content, false)
+      // Restore cursor position if possible
+      try {
+        editor.commands.setTextSelection({ from, to })
+      } catch {
+        // If cursor position is invalid, move to end
+        editor.commands.focus('end')
+      }
+    }
+  }, [content, editor])
 
   if (!editor) {
     return null
