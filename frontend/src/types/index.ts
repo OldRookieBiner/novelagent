@@ -179,3 +179,43 @@ export interface ChatResponse {
 export interface ApiError {
   detail: string;
 }
+
+// ==================== Agent Prompt Types ====================
+
+export interface AgentPrompt {
+  agent_type: string;
+  agent_name: string;
+  description: string;
+  prompt_content: string;
+  variables: string[];
+  is_default: boolean;
+  updated_at?: string;
+}
+
+export interface AgentPromptListResponse {
+  prompts: AgentPrompt[];
+}
+
+export interface AgentPromptUpdate {
+  prompt_content: string;
+}
+
+export interface ProjectAgentPromptItem {
+  agent_type: string;
+  agent_name: string;
+  description: string;
+  use_custom: boolean;
+  custom_content?: string;
+  variables: string[];
+}
+
+export interface ProjectAgentPromptsResponse {
+  project_id: number;
+  project_name: string;
+  agents: ProjectAgentPromptItem[];
+}
+
+export interface EffectivePromptResponse {
+  source: string;
+  prompt_content: string;
+}
