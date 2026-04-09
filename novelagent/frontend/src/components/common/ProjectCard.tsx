@@ -47,11 +47,11 @@ export default function ProjectCard({ project, onDelete }: ProjectCardProps) {
         </div>
 
         <div className="flex gap-2">
-          <Link to={`/project/${project.id}`} className="flex-1">
-            <Button className="w-full" size="sm">
+          <Button asChild className="flex-1" size="sm">
+            <Link to={`/project/${project.id}`}>
               {project.stage === 'completed' ? '查看' : '继续'}
-            </Button>
-          </Link>
+            </Link>
+          </Button>
           <Button
             variant="outline"
             size="sm"

@@ -58,3 +58,12 @@ class ChatResponse(BaseModel):
     response: str
     collected_info: Optional[CollectedInfo] = None
     is_info_sufficient: bool = False
+
+
+class CollectedInfoUpdate(BaseModel):
+    """Update collected info directly"""
+    genre: Optional[str] = None
+    theme: Optional[str] = None
+    main_characters: Optional[str] = None
+    world_setting: Optional[str] = None
+    style_preference: Optional[str] = None

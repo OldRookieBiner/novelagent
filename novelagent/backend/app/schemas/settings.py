@@ -13,7 +13,7 @@ class SettingsBase(BaseModel):
 
 
 class SettingsUpdate(SettingsBase):
-    pass
+    clear_api_key: Optional[bool] = None  # Set to True to delete existing API key
 
 
 class SettingsResponse(BaseModel):

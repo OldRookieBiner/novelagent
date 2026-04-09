@@ -18,15 +18,20 @@ router = APIRouter()
 
 
 def get_project_detail(project: Project, db: Session) -> ProjectDetail:
-    """Build project detail with additional info"""
-    chapter_outlines = db.query(ChapterOutline).filter(
+    """Build project detail with additional info (optimized query)"""
+    from sqlalchemy.orm import joinedload
+
+    # Single query with joins to avoid N+1
+    chapter_outlines = db.query(ChapterOutline).options(
+        joinedload(ChapterOutline.chapter)
+    ).filter(
         ChapterOutline.project_id == project.id
-    ).all()
+    ).order_by(ChapterOutline.chapter_number).all()
 
     chapter_count = len(chapter_outlines)
     completed_chapters = sum(
         1 for co in chapter_outlines
-        if db.query(Chapter).filter(Chapter.chapter_outline_id == co.id, Chapter.review_passed == True).first()
+        if co.chapter and co.chapter.review_passed
     )
 
     progress_percentage = (completed_chapters / chapter_count * 100) if chapter_count > 0 else 0
@@ -66,21 +71,29 @@ async def create_project(
     current_user: User = Depends(get_current_user)
 ):
     """Create a new project"""
-    project = Project(
-        user_id=current_user.id,
-        name=request.name,
-        target_words=request.target_words
-    )
-    db.add(project)
-    db.commit()
-    db.refresh(project)
+    try:
+        project = Project(
+            user_id=current_user.id,
+            name=request.name,
+            target_words=request.target_words
+        )
+        db.add(project)
+        db.flush()  # Get the ID without committing
 
-    # Create empty outline
-    outline = Outline(project_id=project.id)
-    db.add(outline)
-    db.commit()
+        # Create empty outline
+        outline = Outline(project_id=project.id)
+        db.add(outline)
 
-    return ProjectResponse.model_validate(project)
+        db.commit()
+        db.refresh(project)
+
+        return ProjectResponse.model_validate(project)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create project"
+        )
 
 
 @router.get("/{project_id}", response_model=ProjectDetail)

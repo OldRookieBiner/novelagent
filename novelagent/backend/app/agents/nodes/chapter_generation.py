@@ -16,7 +16,7 @@ def parse_chapter_outlines(response: str) -> list[dict]:
     """Parse chapter outlines from response"""
     chapters = []
 
-    # Split by chapter markers
+    # Split by chapter markers - capture chapter number and title from header
     pattern = r"第(\d+)章[：:]\s*(.+?)(?=第\d+章|$)"
     matches = re.findall(pattern, response, re.DOTALL)
 
@@ -32,7 +32,12 @@ def parse_chapter_outlines(response: str) -> list[dict]:
             "target_words": 3000
         }
 
-        # Extract fields
+        # Extract title from first line if present (e.g., "初入仙门\n场景：...")
+        first_line = content.split('\n')[0].strip() if content else ""
+        if first_line and not first_line.startswith(('场景', '人物', '情节', '冲突', '结局', '预计字数', '章节名')):
+            chapter["title"] = first_line
+
+        # Also check for explicit 章节名 field
         title_match = re.search(r"章节名[：:]\s*(.+)", content)
         if title_match:
             chapter["title"] = title_match.group(1).strip()

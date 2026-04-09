@@ -157,6 +157,7 @@ export interface SettingsUpdate {
   model_provider?: string;
   model_name?: string;
   api_key?: string;
+  clear_api_key?: boolean;
   review_enabled?: boolean;
   review_strictness?: string;
 }

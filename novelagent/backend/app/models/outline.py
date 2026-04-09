@@ -18,6 +18,7 @@ class Outline(Base):
     summary = Column(Text, nullable=True)
     plot_points = Column(JSON, default=list)  # List of plot points
     collected_info = Column(JSON, default=dict)  # Collected information from user
+    messages = Column(JSON, default=list)  # Chat messages for info collection
     chapter_count_suggested = Column(Integer, default=0)
     chapter_count_confirmed = Column(Boolean, default=False)
     confirmed = Column(Boolean, default=False)

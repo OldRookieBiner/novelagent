@@ -29,7 +29,8 @@ import type {
 
 // ==================== Configuration ====================
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+// Use empty string for relative path (proxied through nginx) or explicit URL
+const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 
 // ==================== Session Token Management ====================
 
@@ -286,9 +287,28 @@ export const settingsApi = {
 
 export const chatApi = {
   async sendMessage(projectId: number, message: ChatMessage): Promise<ChatResponse> {
-    return request<ChatResponse>(`/api/projects/${projectId}/chat`, {
+    return request<ChatResponse>(`/api/projects/${projectId}/outline/chat`, {
       method: "POST",
       body: message,
+    });
+  },
+};
+
+// ==================== Collected Info API ====================
+
+export interface CollectedInfoUpdate {
+  genre?: string;
+  theme?: string;
+  main_characters?: string;
+  world_setting?: string;
+  style_preference?: string;
+}
+
+export const collectedInfoApi = {
+  async update(projectId: number, data: CollectedInfoUpdate): Promise<Outline> {
+    return request<Outline>(`/api/projects/${projectId}/outline/collected-info`, {
+      method: "PUT",
+      body: data,
     });
   },
 };

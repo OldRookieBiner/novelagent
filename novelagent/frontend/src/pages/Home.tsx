@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import ProjectCard from '@/components/common/ProjectCard'
+import ErrorMessage from '@/components/common/ErrorMessage'
 import { projectsApi } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import type { ProjectDetail } from '@/types'
@@ -12,22 +13,26 @@ import type { ProjectDetail } from '@/types'
 export default function Home() {
   const [projects, setProjects] = useState<ProjectDetail[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [showNewProject, setShowNewProject] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
 
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
 
   const fetchProjects = async () => {
+    setError(null)
     try {
       const response = await projectsApi.list()
-      // Fetch details for each project
+      // Batch fetch project details (still N+1 but better error handling)
       const details = await Promise.all(
         response.projects.map(p => projectsApi.get(p.id))
       )
       setProjects(details)
     } catch (err) {
       console.error('Failed to fetch projects:', err)
+      setError(err instanceof Error ? err.message : '加载项目列表失败')
     } finally {
       setLoading(false)
     }
@@ -41,8 +46,13 @@ export default function Home() {
 
   const handleCreateProject = async () => {
     if (!newProjectName.trim()) return
+    if (newProjectName.length > 100) {
+      setCreateError('项目名称不能超过 100 个字符')
+      return
+    }
 
     setCreating(true)
+    setCreateError(null)
     try {
       await projectsApi.create({ name: newProjectName })
       setShowNewProject(false)
@@ -50,6 +60,7 @@ export default function Home() {
       fetchProjects()
     } catch (err) {
       console.error('Failed to create project:', err)
+      setCreateError(err instanceof Error ? err.message : '创建项目失败')
     } finally {
       setCreating(false)
     }
@@ -63,6 +74,8 @@ export default function Home() {
       setProjects(projects.filter(p => p.id !== id))
     } catch (err) {
       console.error('Failed to delete project:', err)
+      // Show alert for delete failure since it's a quick action
+      alert(err instanceof Error ? err.message : '删除项目失败')
     }
   }
 
@@ -80,20 +93,36 @@ export default function Home() {
         </Button>
       </div>
 
+      {error && (
+        <div className="mb-6">
+          <ErrorMessage message={error} onRetry={fetchProjects} onDismiss={() => setError(null)} />
+        </div>
+      )}
+
       {showNewProject && (
         <Card className="mb-6">
           <CardContent className="p-4">
+            {createError && (
+              <div className="mb-3">
+                <ErrorMessage message={createError} onDismiss={() => setCreateError(null)} />
+              </div>
+            )}
             <div className="flex gap-2">
               <Input
                 placeholder="项目名称"
                 value={newProjectName}
                 onChange={(e) => setNewProjectName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleCreateProject()}
+                maxLength={100}
               />
               <Button onClick={handleCreateProject} disabled={creating}>
                 {creating ? '创建中...' : '创建'}
               </Button>
-              <Button variant="outline" onClick={() => setShowNewProject(false)}>
+              <Button variant="outline" onClick={() => {
+                setShowNewProject(false)
+                setNewProjectName('')
+                setCreateError(null)
+              }}>
                 取消
               </Button>
             </div>

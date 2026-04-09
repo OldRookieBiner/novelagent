@@ -19,19 +19,44 @@ def parse_outline(response: str) -> Dict[str, Any]:
         "plot_points": []
     }
 
-    # Extract title
-    title_match = re.search(r"标题[：:]\s*(.+)", response)
+    # Extract title - support multiple formats:
+    # - "标题：xxx"
+    # - "## 标题：xxx"
+    # - "# 小说大纲：xxx"
+    # - "# 《xxx》" (AI directly returns title in 《》)
+    title_match = re.search(r"(?:##\s*)?标题[：:]\s*(.+?)(?:\n|$)", response)
+    if not title_match:
+        # Try format: "# 小说大纲：xxx"
+        title_match = re.search(r"#\s*小说大纲[：:]\s*(.+?)(?:\n|$)", response)
+    if not title_match:
+        # Try format: "# 《xxx》" (title directly in brackets)
+        title_match = re.search(r"#\s*《(.+?)》", response)
     if title_match:
-        outline["title"] = title_match.group(1).strip()
+        # Clean up the title - remove surrounding brackets if present
+        title = title_match.group(1).strip()
+        if title.startswith("《") and title.endswith("》"):
+            title = title[1:-1]
+        outline["title"] = title
 
-    # Extract summary
-    summary_match = re.search(r"概述[：:]\s*(.+?)(?=主要情节节点|情节节点|$)", response, re.DOTALL)
+    # Extract summary - support both formats, capture until next heading or plot points
+    # Match "概述：" or "## 概述" followed by content (possibly on next line)
+    summary_match = re.search(r"(?:##\s*)?概述[：:]?\s*\n(.+?)(?=(?:##\s*)?主要情节节点|(?:##\s*)?情节节点|---|\n\d+\.)", response, re.DOTALL)
     if summary_match:
         outline["summary"] = summary_match.group(1).strip()
+    else:
+        # Alternative: try to capture summary between 标题 and 主要情节节点
+        summary_match = re.search(r"(?:##\s*)?概述\s*\n(.+?)(?=\n\s*(?:##\s*)?(?:主要情节节点|情节节点|\d+\.))", response, re.DOTALL)
+        if summary_match:
+            outline["summary"] = summary_match.group(1).strip()
 
-    # Extract plot points
-    plot_matches = re.findall(r"\d+\.\s*(.+?)(?=\d+\.|$)", response, re.DOTALL)
-    outline["plot_points"] = [p.strip() for p in plot_matches]
+    # Extract plot points - support numbered list format (1. **xxx** or 1. xxx)
+    plot_matches = re.findall(r"\d+\.\s*(?:\*\*)?(.+?)(?:\*\*)?\s*\n", response, re.DOTALL)
+    if plot_matches:
+        outline["plot_points"] = [p.strip() for p in plot_matches]
+    else:
+        # Fallback: try to find all numbered items
+        plot_matches = re.findall(r"\d+\.\s*(.+?)(?=\n\d+\.|$)", response, re.DOTALL)
+        outline["plot_points"] = [p.strip() for p in plot_matches]
 
     return outline
 
