@@ -89,23 +89,29 @@ novelagent/
 
 使用 **Superpowers skills** 主导开发：
 
-1. 新功能必须先 `superpowers:brainstorming`，禁止跳过设计阶段
-2. 设计文档 → `docs/superpowers/specs/`
-3. 实现计划 → `docs/superpowers/plans/`
-4. Bug 修复 → `superpowers:systematic-debugging`
-5. 完成前 → `superpowers:verification-before-completion`
+| 阶段 | 核心技能/命令 | 强制要求 |
+|------|--------------|----------|
+| 需求/设计 | `superpowers:brainstorming` | 新功能必须先设计讨论，**不得跳过** |
+| 计划编写 | `superpowers:writing-plans` | 设计确认后编写详细实现计划 |
+| 计划执行 | `superpowers:executing-plans` | 按计划逐步执行 |
+| 并行开发 | `superpowers:subagent-driven-development` | 并行执行独立任务 |
+| 测试驱动 | `superpowers:test-driven-development` | TDD：先写测试再写实现 |
+| 完成验证 | `superpowers:verification-before-completion` | 完成前运行验证命令 |
+| 请求审查 | `superpowers:requesting-code-review` | 审查通过后再提交 |
+| 接收审查 | `superpowers:receiving-code-review` | 处理审查反馈，修改代码 |
+| 提交代码 | `commit-commands:commit` | 审查通过后提交 |
+| 提交并推送 | `commit-commands:commit-push-pr` | 提交 + 推送 + 创建 PR（一条龙） |
+| Bug 修复 | `superpowers:systematic-debugging` | 系统排查，**不得盲目修改** |
+| 完成分支 | `superpowers:finishing-a-development-branch` | 合并/PR/清理分支 |
 
-### 常用 Skills
+### 辅助工具
 
-| 场景 | Skill |
-|------|-------|
-| 新功能设计 | `superpowers:brainstorming` |
-| 编写计划 | `superpowers:writing-plans` |
-| 执行计划 | `superpowers:executing-plans` |
-| Bug 修复 | `superpowers:systematic-debugging` |
-| 代码审查 | `superpowers:requesting-code-review` |
-| 提交代码 | `commit-commands:commit` |
-| 完成分支 | `superpowers:finishing-a-development-branch` |
+| Skill | 用途 | 触发场景 |
+|-------|------|----------|
+| `superpowers:using-git-worktrees` | 隔离开发环境 | 需要独立开发分支时 |
+| `ui-ux-pro-max:ui-ux-pro-max` | UI/UX 设计建议 | 界面设计讨论时 |
+| `agent-browser-skill:agent-browser` | 浏览器自动化 | E2E 测试、页面抓取 |
+| `commit-commands:clean_gone` | 清理已删除的远程分支 | 分支维护时 |
 
 ---
 
