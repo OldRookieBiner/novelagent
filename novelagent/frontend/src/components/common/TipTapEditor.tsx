@@ -48,8 +48,21 @@ export default function TipTapEditor({
       isExternalUpdate.current = true
       // Store current cursor position
       const { from, to } = editor.state.selection
+
+      // Check if content is plain text (no HTML tags)
+      // Use regex to detect actual HTML tags (avoids false positives like "a < b")
+      const hasHtmlTags = /<[a-zA-Z][^>]*>/.test(content)
+      // Convert plain text to HTML paragraphs if needed
+      const htmlContent = hasHtmlTags
+        ? content
+        : content
+            .split('\n')
+            .filter(p => p.trim())
+            .map(p => `<p>${p}</p>`)
+            .join('')
+
       // Update content
-      editor.commands.setContent(content, false)
+      editor.commands.setContent(htmlContent, false)
       // Restore cursor position if possible
       try {
         editor.commands.setTextSelection({ from, to })
