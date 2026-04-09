@@ -1,10 +1,11 @@
-// frontend/src/pages/Settings.tsx
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { settingsApi } from '@/lib/api'
+import { settingsApi, agentPromptsApi, projectsApi } from '@/lib/api'
 import { useSettingsStore } from '@/stores/settingsStore'
-import type { UserSettings, SettingsUpdate } from '@/types'
+import { AgentPromptEditor } from '@/components/settings/AgentPromptEditor'
+import { ProjectPromptConfig } from '@/components/settings/ProjectPromptConfig'
+import type { UserSettings, SettingsUpdate, AgentPrompt, Project } from '@/types'
 
 const MODEL_PROVIDERS = [
   { value: 'deepseek', label: 'DeepSeek (火山方舟)' },
@@ -23,6 +24,7 @@ type ReviewStrictnessValue = typeof REVIEW_STRICTNESS[number]['value']
 const SETTINGS_TABS = [
   { id: 'model', label: '模型配置' },
   { id: 'review', label: '审核设置' },
+  { id: 'agents', label: '智能体管理' },
 ] as const
 
 type SettingsTab = typeof SETTINGS_TABS[number]['id']
@@ -41,6 +43,12 @@ export default function Settings() {
   const [reviewEnabled, setReviewEnabled] = useState(true)
   const [reviewStrictness, setReviewStrictness] = useState<ReviewStrictnessValue>('standard')
 
+  // Agent prompts state
+  const [globalPrompts, setGlobalPrompts] = useState<AgentPrompt[]>([])
+  const [promptsLoading, setPromptsLoading] = useState(false)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null)
+
   useEffect(() => {
     const fetchSettings = async () => {
       try {
@@ -58,6 +66,54 @@ export default function Settings() {
     }
     fetchSettings()
   }, [])
+
+  // Load agent prompts when tab is switched to agents
+  useEffect(() => {
+    if (activeTab === 'agents') {
+      loadAgentPrompts()
+      loadProjects()
+    }
+  }, [activeTab])
+
+  const loadAgentPrompts = async () => {
+    setPromptsLoading(true)
+    try {
+      const data = await agentPromptsApi.getGlobal()
+      setGlobalPrompts(data.prompts)
+    } catch (err) {
+      console.error('Failed to load agent prompts:', err)
+    } finally {
+      setPromptsLoading(false)
+    }
+  }
+
+  const loadProjects = async () => {
+    try {
+      const data = await projectsApi.list()
+      setProjects(data.projects)
+    } catch (err) {
+      console.error('Failed to load projects:', err)
+    }
+  }
+
+  const handleSavePrompt = async (agentType: string, content: string) => {
+    await agentPromptsApi.updateGlobal(agentType, { prompt_content: content })
+    // Update local state
+    setGlobalPrompts((prev) =>
+      prev.map((p) =>
+        p.agent_type === agentType
+          ? { ...p, prompt_content: content, is_default: false }
+          : p
+      )
+    )
+  }
+
+  const handleResetPrompt = async (agentType: string) => {
+    const updated = await agentPromptsApi.resetGlobal(agentType)
+    setGlobalPrompts((prev) =>
+      prev.map((p) => (p.agent_type === agentType ? updated : p))
+    )
+  }
 
   const handleSave = async () => {
     setSaving(true)
@@ -229,19 +285,100 @@ export default function Settings() {
               </div>
             </div>
           )}
+
+          {activeTab === 'agents' && (
+            <div
+              id="agents-panel"
+              role="tabpanel"
+              className="max-w-3xl"
+            >
+              <h3 className="text-lg font-semibold mb-1">智能体管理</h3>
+              <p className="text-muted-foreground text-sm mb-6">管理全局 Prompt 模板和项目级自定义</p>
+
+              {selectedProject ? (
+                <div className="mb-4">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedProject(null)}
+                    className="mb-4"
+                  >
+                    &larr; 返回项目列表
+                  </Button>
+                  <ProjectPromptConfig
+                    projectId={selectedProject.id}
+                    projectName={selectedProject.name}
+                    onClose={() => setSelectedProject(null)}
+                  />
+                </div>
+              ) : (
+                <>
+                  {/* Global Prompts Section */}
+                  <div className="mb-8">
+                    <h4 className="font-medium mb-3">全局 Prompt 模板</h4>
+                    {promptsLoading ? (
+                      <div className="text-muted-foreground">加载中...</div>
+                    ) : (
+                      globalPrompts.map((prompt) => (
+                        <AgentPromptEditor
+                          key={prompt.agent_type}
+                          prompt={prompt}
+                          onSave={(content) => handleSavePrompt(prompt.agent_type, content)}
+                          onReset={() => handleResetPrompt(prompt.agent_type)}
+                        />
+                      ))
+                    )}
+                  </div>
+
+                  {/* Projects Section */}
+                  <div>
+                    <h4 className="font-medium mb-3">项目级自定义</h4>
+                    {projects.length === 0 ? (
+                      <div className="text-muted-foreground text-sm">暂无项目</div>
+                    ) : (
+                      <div className="border rounded-lg divide-y">
+                        {projects.map((project) => (
+                          <div
+                            key={project.id}
+                            className="p-3 flex items-center justify-between hover:bg-gray-50"
+                          >
+                            <div>
+                              <div className="font-medium">{project.name}</div>
+                              <div className="text-sm text-muted-foreground">
+                                {project.total_words} 字 / {project.stage}
+                              </div>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setSelectedProject(project)}
+                            >
+                              管理
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Save button section - shared between tabs */}
-        <div className="max-w-xl mt-6 pt-4 border-t">
-          <div className="flex items-center gap-4">
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? '保存中...' : '保存设置'}
-            </Button>
-            {saved && (
-              <span className="text-sm text-green-600">已保存</span>
-            )}
+        {/* Save button section - shared between tabs (except agents tab) */}
+        {activeTab !== 'agents' && (
+          <div className="max-w-xl mt-6 pt-4 border-t">
+            <div className="flex items-center gap-4">
+              <Button onClick={handleSave} disabled={saving}>
+                {saving ? '保存中...' : '保存设置'}
+              </Button>
+              {saved && (
+                <span className="text-sm text-green-600">已保存</span>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   )
