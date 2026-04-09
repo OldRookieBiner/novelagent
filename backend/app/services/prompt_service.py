@@ -1,7 +1,6 @@
 # backend/app/services/prompt_service.py
 """Service for managing and retrieving agent prompts"""
 
-from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.models.agent_prompt import AgentPrompt, ProjectAgentPrompt
