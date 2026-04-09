@@ -105,6 +105,18 @@ export default function Writing() {
       const decoder = new TextDecoder()
       let accumulated = ''
 
+      // Helper function to convert plain text to HTML
+      const textToHtml = (text: string): string => {
+        // Split by double newlines (paragraph breaks)
+        const paragraphs = text.split(/\n\n+/)
+        // Wrap each paragraph in <p> tags, filter empty paragraphs
+        return paragraphs
+          .map(p => p.trim())
+          .filter(p => p.length > 0)
+          .map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`)
+          .join('')
+      }
+
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
@@ -118,7 +130,8 @@ export default function Writing() {
             const data = line.slice(5).trim()
             if (data && data !== '[DONE]') {
               accumulated += data
-              setContent(accumulated)
+              // Convert to HTML for TipTap editor
+              setContent(textToHtml(accumulated))
               setWordCount(accumulated.length)
             }
           } else if (line.startsWith('event:')) {
@@ -130,7 +143,7 @@ export default function Writing() {
           } else if (!line.startsWith(':') && line.trim()) {
             // Plain text chunk (fallback for non-SSE format)
             accumulated += line
-            setContent(accumulated)
+            setContent(textToHtml(accumulated))
             setWordCount(accumulated.length)
           }
         }
