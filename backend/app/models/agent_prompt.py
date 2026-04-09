@@ -20,7 +20,10 @@ class AgentPrompt(Base):
     prompt_content = Column(Text, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    user = relationship("User", backref="agent_prompts")
+    user = relationship("User", back_populates="agent_prompts")
+
+    def __repr__(self):
+        return f"<AgentPrompt user_id={self.user_id} type={self.agent_type}>"
 
 
 class ProjectAgentPrompt(Base):
@@ -36,4 +39,7 @@ class ProjectAgentPrompt(Base):
     prompt_content = Column(Text, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    project = relationship("Project", backref="agent_prompts")
+    project = relationship("Project", back_populates="agent_prompts")
+
+    def __repr__(self):
+        return f"<ProjectAgentPrompt project_id={self.project_id} type={self.agent_type}>"

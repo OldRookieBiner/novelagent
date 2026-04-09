@@ -25,6 +25,7 @@ class Project(Base):
     user = relationship("User", back_populates="projects")
     outline = relationship("Outline", back_populates="project", uselist=False, cascade="all, delete-orphan")
     chapter_outlines = relationship("ChapterOutline", back_populates="project", cascade="all, delete-orphan")
+    agent_prompts = relationship("ProjectAgentPrompt", back_populates="project", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Project {self.name}>"
