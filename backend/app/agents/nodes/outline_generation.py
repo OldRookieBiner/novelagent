@@ -39,15 +39,10 @@ def parse_outline(response: str) -> Dict[str, Any]:
         outline["title"] = title
 
     # Extract summary - support both formats, capture until next heading or plot points
-    # Match "概述：" or "## 概述" followed by content (possibly on next line)
-    summary_match = re.search(r"(?:##\s*)?概述[：:]?\s*\n(.+?)(?=(?:##\s*)?主要情节节点|(?:##\s*)?情节节点|---|\n\d+\.)", response, re.DOTALL)
+    # Match "概述：" or "## 概述" followed by content (possibly on same line or next line)
+    summary_match = re.search(r"(?:##\s*)?概述[：:]\s*(.+?)(?=(?:##\s*)?(?:主要情节节点|情节节点|---|\n\d+\.)|$)", response, re.DOTALL)
     if summary_match:
         outline["summary"] = summary_match.group(1).strip()
-    else:
-        # Alternative: try to capture summary between 标题 and 主要情节节点
-        summary_match = re.search(r"(?:##\s*)?概述\s*\n(.+?)(?=\n\s*(?:##\s*)?(?:主要情节节点|情节节点|\d+\.))", response, re.DOTALL)
-        if summary_match:
-            outline["summary"] = summary_match.group(1).strip()
 
     # Extract plot points - support numbered list format (1. **xxx** or 1. xxx)
     plot_matches = re.findall(r"\d+\.\s*(?:\*\*)?(.+?)(?:\*\*)?\s*\n", response, re.DOTALL)
