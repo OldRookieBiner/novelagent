@@ -16,7 +16,9 @@ const REVIEW_STRICTNESS = [
   { value: 'loose', label: '宽松' },
   { value: 'standard', label: '标准' },
   { value: 'strict', label: '严格' },
-]
+] as const
+
+type ReviewStrictnessValue = typeof REVIEW_STRICTNESS[number]['value']
 
 const SETTINGS_TABS = [
   { id: 'model', label: '模型配置' },
@@ -37,26 +39,25 @@ export default function Settings() {
   const [modelProvider, setModelProvider] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [reviewEnabled, setReviewEnabled] = useState(true)
-  const [reviewStrictness, setReviewStrictness] = useState('standard')
+  const [reviewStrictness, setReviewStrictness] = useState<ReviewStrictnessValue>('standard')
 
   useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const data = await settingsApi.get()
+        setSettings(data)
+        setModelProvider(data.model_provider)
+        setReviewEnabled(data.review_enabled)
+        setReviewStrictness(data.review_strictness as ReviewStrictnessValue)
+        useSettingsStore.getState().setSettings(data)
+      } catch (err) {
+        console.error('Failed to fetch settings:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
     fetchSettings()
   }, [])
-
-  const fetchSettings = async () => {
-    try {
-      const data = await settingsApi.get()
-      setSettings(data)
-      setModelProvider(data.model_provider)
-      setReviewEnabled(data.review_enabled)
-      setReviewStrictness(data.review_strictness)
-      useSettingsStore.getState().setSettings(data)
-    } catch (err) {
-      console.error('Failed to fetch settings:', err)
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const handleSave = async () => {
     setSaving(true)
@@ -107,16 +108,19 @@ export default function Settings() {
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-80px)]">
+    <div className="flex flex-1">
       {/* 左侧导航栏 */}
       <nav className="w-[220px] border-r bg-background">
         <div className="p-4 border-b">
           <h2 className="font-semibold">设置</h2>
         </div>
-        <div className="p-3 space-y-1">
+        <div className="p-3 space-y-1" role="tablist">
           {SETTINGS_TABS.map((tab) => (
             <button
               key={tab.id}
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              aria-controls={`${tab.id}-panel`}
               onClick={() => setActiveTab(tab.id)}
               className={`w-full px-3 py-2 text-sm rounded-md transition-colors ${
                 activeTab === tab.id
@@ -131,113 +135,113 @@ export default function Settings() {
       </nav>
 
       {/* 右侧内容区 */}
-      <div className="flex-1 p-6">
-        {activeTab === 'model' && (
-          <div className="max-w-xl">
-            <h3 className="text-lg font-semibold mb-1">模型配置</h3>
-            <p className="text-muted-foreground text-sm mb-6">配置 AI 模型和 API Key</p>
+      <div className="flex-1 p-6 flex flex-col">
+        <div className="flex-1">
+          {activeTab === 'model' && (
+            <div
+              id="model-panel"
+              role="tabpanel"
+              className="max-w-xl"
+            >
+              <h3 className="text-lg font-semibold mb-1">模型配置</h3>
+              <p className="text-muted-foreground text-sm mb-6">配置 AI 模型和 API Key</p>
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">模型提供商</label>
-                <select
-                  className="w-full h-10 px-3 rounded-md border border-input bg-background"
-                  value={modelProvider}
-                  onChange={(e) => setModelProvider(e.target.value)}
-                >
-                  {MODEL_PROVIDERS.map((p) => (
-                    <option key={p.value} value={p.value}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">模型提供商</label>
+                  <select
+                    className="w-full h-10 px-3 rounded-md border border-input bg-background"
+                    value={modelProvider}
+                    onChange={(e) => setModelProvider(e.target.value)}
+                  >
+                    {MODEL_PROVIDERS.map((p) => (
+                      <option key={p.value} value={p.value}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  API Key {settings?.has_api_key && <span className="text-green-600">(已设置)</span>}
-                </label>
-                <Input
-                  type="password"
-                  placeholder={settings?.has_api_key ? '输入新的 API Key 以更新' : '输入 API Key'}
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  API Key 会被加密存储
-                </p>
-              </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    API Key {settings?.has_api_key && <span className="text-green-600">(已设置)</span>}
+                  </label>
+                  <Input
+                    type="password"
+                    placeholder={settings?.has_api_key ? '输入新的 API Key 以更新' : '输入 API Key'}
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    API Key 会被加密存储
+                  </p>
+                </div>
 
-              {settings?.has_api_key && (
-                <Button
-                  variant="outline"
-                  onClick={handleClearApiKey}
-                  disabled={clearingKey}
-                  className="text-red-600 hover:text-red-700"
-                >
-                  {clearingKey ? '删除中...' : '删除 API Key'}
-                </Button>
-              )}
-            </div>
-
-            <div className="mt-6 pt-4 border-t">
-              <div className="flex items-center gap-4">
-                <Button onClick={handleSave} disabled={saving}>
-                  {saving ? '保存中...' : '保存设置'}
-                </Button>
-                {saved && (
-                  <span className="text-sm text-green-600">已保存</span>
+                {settings?.has_api_key && (
+                  <Button
+                    variant="outline"
+                    onClick={handleClearApiKey}
+                    disabled={clearingKey}
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    {clearingKey ? '删除中...' : '删除 API Key'}
+                  </Button>
                 )}
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {activeTab === 'review' && (
-          <div className="max-w-xl">
-            <h3 className="text-lg font-semibold mb-1">审核设置</h3>
-            <p className="text-muted-foreground text-sm mb-6">配置章节审核行为</p>
+          {activeTab === 'review' && (
+            <div
+              id="review-panel"
+              role="tabpanel"
+              className="max-w-xl"
+            >
+              <h3 className="text-lg font-semibold mb-1">审核设置</h3>
+              <p className="text-muted-foreground text-sm mb-6">配置章节审核行为</p>
 
-            <div className="space-y-4">
-              <div className="flex items-center justify-between py-2">
-                <label className="text-sm font-medium">启用审核</label>
-                <input
-                  type="checkbox"
-                  checked={reviewEnabled}
-                  onChange={(e) => setReviewEnabled(e.target.checked)}
-                  className="h-4 w-4"
-                />
-              </div>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between py-2">
+                  <label className="text-sm font-medium">启用审核</label>
+                  <input
+                    type="checkbox"
+                    checked={reviewEnabled}
+                    onChange={(e) => setReviewEnabled(e.target.checked)}
+                    className="h-4 w-4"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-2">审核严格度</label>
-                <select
-                  className="w-full h-10 px-3 rounded-md border border-input bg-background"
-                  value={reviewStrictness}
-                  onChange={(e) => setReviewStrictness(e.target.value)}
-                  disabled={!reviewEnabled}
-                >
-                  {REVIEW_STRICTNESS.map((s) => (
-                    <option key={s.value} value={s.value}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="mt-6 pt-4 border-t">
-              <div className="flex items-center gap-4">
-                <Button onClick={handleSave} disabled={saving}>
-                  {saving ? '保存中...' : '保存设置'}
-                </Button>
-                {saved && (
-                  <span className="text-sm text-green-600">已保存</span>
-                )}
+                <div>
+                  <label className="block text-sm font-medium mb-2">审核严格度</label>
+                  <select
+                    className="w-full h-10 px-3 rounded-md border border-input bg-background"
+                    value={reviewStrictness}
+                    onChange={(e) => setReviewStrictness(e.target.value as ReviewStrictnessValue)}
+                    disabled={!reviewEnabled}
+                  >
+                    {REVIEW_STRICTNESS.map((s) => (
+                      <option key={s.value} value={s.value}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
+          )}
+        </div>
+
+        {/* Save button section - shared between tabs */}
+        <div className="max-w-xl mt-6 pt-4 border-t">
+          <div className="flex items-center gap-4">
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? '保存中...' : '保存设置'}
+            </Button>
+            {saved && (
+              <span className="text-sm text-green-600">已保存</span>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   )
