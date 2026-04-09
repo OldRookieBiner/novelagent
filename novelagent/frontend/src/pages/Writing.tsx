@@ -297,11 +297,21 @@ export default function Writing() {
             ) : (
               <div className="prose max-w-none">
                 {content ? (
-                  content.split('\n').filter(p => p.trim()).map((paragraph, i) => (
-                    <p key={i} className="mb-4 leading-relaxed" style={{ textIndent: '2em' }}>
-                      {paragraph}
-                    </p>
-                  ))
+                  // Check if content is HTML (contains tags)
+                  content.includes('<') && content.includes('>') ? (
+                    // Render HTML content - use dangerouslySetInnerHTML with prose styling
+                    <div
+                      className="prose-content"
+                      dangerouslySetInnerHTML={{ __html: content }}
+                    />
+                  ) : (
+                    // Plain text - split by newlines and render as paragraphs
+                    content.split('\n').filter(p => p.trim()).map((paragraph, i) => (
+                      <p key={i} className="mb-4 leading-relaxed" style={{ textIndent: '2em' }}>
+                        {paragraph}
+                      </p>
+                    ))
+                  )
                 ) : (
                   <p className="text-muted-foreground">点击下方按钮生成内容</p>
                 )}
