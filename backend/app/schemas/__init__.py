@@ -14,7 +14,8 @@ from app.schemas.chapter import (
 )
 from app.schemas.settings import SettingsBase, SettingsUpdate, SettingsResponse
 from app.schemas.agent_prompt import (
-    AGENT_TYPES, AgentPromptResponse, AgentPromptListResponse, AgentPromptUpdate,
+    AGENT_TYPES, AgentTypeKey, AgentTypeMeta,
+    AgentPromptResponse, AgentPromptListResponse, AgentPromptUpdate,
     ProjectAgentPromptItem, ProjectAgentPromptsResponse, EffectivePromptResponse
 )
 
@@ -26,6 +27,7 @@ __all__ = [
     "ChapterOutlineBase", "ChapterOutlineUpdate", "ChapterOutlineResponse",
     "ChapterContentUpdate", "ChapterResponse", "ReviewRequest", "ReviewResponse",
     "SettingsBase", "SettingsUpdate", "SettingsResponse",
-    "AGENT_TYPES", "AgentPromptResponse", "AgentPromptListResponse", "AgentPromptUpdate",
+    "AGENT_TYPES", "AgentTypeKey", "AgentTypeMeta",
+    "AgentPromptResponse", "AgentPromptListResponse", "AgentPromptUpdate",
     "ProjectAgentPromptItem", "ProjectAgentPromptsResponse", "EffectivePromptResponse",
 ]

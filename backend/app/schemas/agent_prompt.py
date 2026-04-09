@@ -1,12 +1,31 @@
 """Pydantic schemas for agent prompts"""
 
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Literal, TypedDict
 from pydantic import BaseModel
 
 
+# Type-safe agent type definitions
+class AgentTypeMeta(TypedDict):
+    """Metadata for an agent type"""
+    name: str
+    description: str
+    variables: list[str]
+
+
+AgentTypeKey = Literal[
+    "info_collection",
+    "outline_generation",
+    "chapter_count_suggestion",
+    "chapter_outline_generation",
+    "chapter_content_generation",
+    "review",
+    "rewrite"
+]
+
+
 # Agent type metadata
-AGENT_TYPES = {
+AGENT_TYPES: dict[AgentTypeKey, AgentTypeMeta] = {
     "info_collection": {
         "name": "信息收集智能体",
         "description": "对话式收集小说创作信息",
@@ -55,6 +74,9 @@ class AgentPromptResponse(BaseModel):
     is_default: bool  # True if using system default (not customized)
     updated_at: Optional[datetime] = None
 
+    class Config:
+        from_attributes = True
+
 
 class AgentPromptListResponse(BaseModel):
     """Response for list of agent prompts"""
@@ -75,6 +97,9 @@ class ProjectAgentPromptItem(BaseModel):
     custom_content: Optional[str] = None
     variables: list[str]
 
+    class Config:
+        from_attributes = True
+
 
 class ProjectAgentPromptsResponse(BaseModel):
     """Response for project's agent prompts configuration"""
@@ -85,5 +110,5 @@ class ProjectAgentPromptsResponse(BaseModel):
 
 class EffectivePromptResponse(BaseModel):
     """Response for effective prompt (used internally)"""
-    source: str  # "custom", "global", "system_default"
+    source: Literal["custom", "global", "system_default"]
     prompt_content: str
