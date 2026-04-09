@@ -265,7 +265,7 @@ AI 返回多种标题格式，`parse_outline` 需支持：
 
 ## Visual Companion
 
-Brainstorming 时使用端口 **61175**：
+Brainstorming 时使用端口 **53734**（固定端口，不更改）：
 
 注意：服务器会在空闲 30 分钟后自动停止，如页面显示 "Waiting for agent" 需重新启动
 
