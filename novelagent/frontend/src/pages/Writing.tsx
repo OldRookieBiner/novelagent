@@ -4,7 +4,9 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import TipTapEditor from '@/components/common/TipTapEditor'
+import ErrorMessage from '@/components/common/ErrorMessage'
 import { projectsApi, chapterOutlinesApi, chaptersApi } from '@/lib/api'
+import { getSessionToken } from '@/lib/api'
 import type { ProjectDetail, ChapterOutline } from '@/types'
 
 export default function Writing() {
@@ -12,12 +14,14 @@ export default function Writing() {
   const navigate = useNavigate()
 
   const [project, setProject] = useState<ProjectDetail | null>(null)
-  const [chapterOutlines, setChapterOutlines] = useState<ChapterOutline[]>([])
+  const [_chapterOutlines, setChapterOutlines] = useState<ChapterOutline[]>([])
   const [currentChapter, setCurrentChapter] = useState<ChapterOutline | null>(null)
   const [content, setContent] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [wordCount, setWordCount] = useState(0)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
 
   const abortControllerRef = useRef<AbortController | null>(null)
 
@@ -31,6 +35,8 @@ export default function Writing() {
 
   const fetchData = async () => {
     if (!id) return
+    setLoading(true)
+    setError(null)
 
     try {
       const projectData = await projectsApi.get(parseInt(id))
@@ -55,6 +61,9 @@ export default function Writing() {
       }
     } catch (err) {
       console.error('Failed to fetch data:', err)
+      setError(err instanceof Error ? err.message : '加载数据失败')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -64,23 +73,34 @@ export default function Writing() {
     setIsGenerating(true)
     setContent('')
     setWordCount(0)
+    setError(null)
 
     // Create abort controller for streaming
     abortControllerRef.current = new AbortController()
 
     try {
+      const token = getSessionToken()
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      }
+      if (token) {
+        const credentials = btoa(`${token}:`)
+        headers['Authorization'] = `Basic ${credentials}`
+      }
+
       const response = await fetch(`/api/projects/${id}/chapters/${currentChapter.chapter_number}/generate`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         signal: abortControllerRef.current.signal,
       })
 
-      if (!response.ok) throw new Error('Failed to generate')
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: '生成失败' }))
+        throw new Error(errorData.detail || `HTTP ${response.status}`)
+      }
 
       const reader = response.body?.getReader()
-      if (!reader) throw new Error('No reader')
+      if (!reader) throw new Error('无法获取数据流')
 
       const decoder = new TextDecoder()
       let accumulated = ''
@@ -90,13 +110,35 @@ export default function Writing() {
         if (done) break
 
         const chunk = decoder.decode(value)
-        accumulated += chunk
-        setContent(accumulated)
-        setWordCount(accumulated.length)
+
+        // Parse SSE events properly
+        const lines = chunk.split('\n')
+        for (const line of lines) {
+          if (line.startsWith('data:')) {
+            const data = line.slice(5).trim()
+            if (data && data !== '[DONE]') {
+              accumulated += data
+              setContent(accumulated)
+              setWordCount(accumulated.length)
+            }
+          } else if (line.startsWith('event:')) {
+            // Handle event type (done, error, etc.)
+            const eventType = line.slice(6).trim()
+            if (eventType === 'done') {
+              // Generation complete
+            }
+          } else if (!line.startsWith(':') && line.trim()) {
+            // Plain text chunk (fallback for non-SSE format)
+            accumulated += line
+            setContent(accumulated)
+            setWordCount(accumulated.length)
+          }
+        }
       }
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
         console.error('Failed to generate:', err)
+        setError(err instanceof Error ? err.message : '生成失败')
       }
     } finally {
       setIsGenerating(false)
@@ -112,10 +154,12 @@ export default function Writing() {
     if (!id || !currentChapter) return
 
     setIsSaving(true)
+    setError(null)
     try {
       await chaptersApi.update(parseInt(id), currentChapter.chapter_number, { content })
     } catch (err) {
       console.error('Failed to save:', err)
+      setError(err instanceof Error ? err.message : '保存失败')
     } finally {
       setIsSaving(false)
     }
@@ -123,11 +167,21 @@ export default function Writing() {
 
   const handleContentChange = (newContent: string) => {
     setContent(newContent)
-    setWordCount(newContent.length)
+    // Calculate word count from HTML content (strip tags for count)
+    const textContent = newContent.replace(/<[^>]*>/g, '')
+    setWordCount(textContent.length)
+  }
+
+  if (loading) {
+    return <div className="text-center py-10">加载中...</div>
   }
 
   if (!project || !currentChapter) {
-    return <div className="text-center py-10">加载中...</div>
+    return (
+      <div className="max-w-4xl mx-auto">
+        <ErrorMessage message="项目或章节不存在" />
+      </div>
+    )
   }
 
   return (
@@ -142,6 +196,13 @@ export default function Writing() {
           <span>已写 {wordCount} 字</span>
         </div>
       </div>
+
+      {/* Error message */}
+      {error && (
+        <div className="mb-4">
+          <ErrorMessage message={error} onDismiss={() => setError(null)} />
+        </div>
+      )}
 
       {/* Chapter Outline Summary */}
       <Card className="mb-6">
