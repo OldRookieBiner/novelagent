@@ -12,6 +12,29 @@ from app.agents.prompts import (
 from app.services.llm import LLMService
 
 
+def _clean_chapter_title(title: str) -> str:
+    """Clean chapter title by removing chapter number prefix and book title marks.
+
+    Examples:
+    - "主动嵌入" -> "主动嵌入"
+    - "第3章《被迫入局》" -> "被迫入局"
+    - "第六章：《残响与追猎》" -> "残响与追猎"
+    - "第十二章 破茧" -> "破茧"
+    """
+    title = title.strip()
+
+    # Remove chapter number prefix patterns:
+    # - "第N章" (Arabic numerals: 第1章, 第12章)
+    # - "第X章" (Chinese numerals: 第一章, 第十二章)
+    # - Optional colon after 章节名: or ： separators
+    title = re.sub(r'^第[一二三四五六七八九十百千万\d]+章[：:]*\s*', '', title)
+
+    # Remove book title marks 《》 if present
+    title = re.sub(r'^《(.+)》$', r'\1', title)
+
+    return title.strip()
+
+
 def parse_single_chapter_outline(response: str, chapter_number: int) -> dict:
     """Parse a single chapter outline from response"""
     chapter = {
@@ -28,7 +51,8 @@ def parse_single_chapter_outline(response: str, chapter_number: int) -> dict:
     # Extract title
     title_match = re.search(r"章节名[：:]\s*(.+)", response)
     if title_match:
-        chapter["title"] = title_match.group(1).strip()
+        raw_title = title_match.group(1).strip()
+        chapter["title"] = _clean_chapter_title(raw_title)
 
     # Extract scene
     scene_match = re.search(r"场景[：:]\s*(.+)", response)
@@ -86,12 +110,13 @@ def parse_chapter_outlines(response: str) -> list[dict]:
         # Extract title from first line if present (e.g., "初入仙门\n场景：...")
         first_line = content.split('\n')[0].strip() if content else ""
         if first_line and not first_line.startswith(('场景', '人物', '情节', '冲突', '结局', '预计字数', '章节名')):
-            chapter["title"] = first_line
+            chapter["title"] = _clean_chapter_title(first_line)
 
         # Also check for explicit 章节名 field
         title_match = re.search(r"章节名[：:]\s*(.+)", content)
         if title_match:
-            chapter["title"] = title_match.group(1).strip()
+            raw_title = title_match.group(1).strip()
+            chapter["title"] = _clean_chapter_title(raw_title)
 
         scene_match = re.search(r"场景[：:]\s*(.+)", content)
         if scene_match:
