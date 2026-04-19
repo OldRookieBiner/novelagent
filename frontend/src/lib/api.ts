@@ -323,15 +323,125 @@ export const outlineApi = {
 
 // ==================== Chapter Outlines API ====================
 
+// Streaming callback types for chapter outlines
+export interface ChapterOutlineStreamCallbacks {
+  onProgress: (chapterNumber: number, total: number, chapter: { id: number; chapter_number: number; title: string }) => void;
+  onDone: (total: number, stage: string) => void;
+  onError: (error: string) => void;
+}
+
 export const chapterOutlinesApi = {
   async list(projectId: number): Promise<ChapterOutline[]> {
     return request<ChapterOutline[]>(`/api/projects/${projectId}/chapter-outlines`);
   },
 
-  async create(projectId: number): Promise<ChapterOutline[]> {
-    return request<ChapterOutline[]>(`/api/projects/${projectId}/chapter-outlines`, {
+  /**
+   * Generate chapter outlines with SSE streaming - one by one
+   */
+  async createStream(
+    projectId: number,
+    callbacks: ChapterOutlineStreamCallbacks
+  ): Promise<void> {
+    const token = getSessionToken();
+    const headers: HeadersInit = {};
+
+    if (token) {
+      const credentials = btoa(`${token}:`);
+      headers["Authorization"] = `Basic ${credentials}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/chapter-outlines`, {
       method: "POST",
+      headers,
     });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ detail: '生成失败' }));
+      callbacks.onError(errorData.detail || `HTTP ${response.status}`);
+      return;
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      callbacks.onError('无法获取数据流');
+      return;
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    // Process SSE buffer - returns remaining unprocessed buffer
+    const processBuffer = (buf: string): string => {
+      let remaining = buf;
+
+      // Process all complete SSE events (ending with \n\n)
+      while (true) {
+        const eventEndIndex = remaining.indexOf('\n\n');
+        if (eventEndIndex === -1) {
+          // No complete event, keep in buffer
+          break;
+        }
+
+        const eventBlock = remaining.slice(0, eventEndIndex);
+        remaining = remaining.slice(eventEndIndex + 2);
+
+        // Parse event lines
+        const lines = eventBlock.split('\n');
+        let eventType = 'message';
+        let eventData = '';
+
+        for (const line of lines) {
+          if (line.startsWith('event:')) {
+            eventType = line.slice(6).trim();
+          } else if (line.startsWith('data:')) {
+            eventData += line.slice(5);
+          }
+        }
+
+        if (eventData) {
+          if (eventType === 'progress') {
+            // Progress event
+            try {
+              const result = JSON.parse(eventData);
+              callbacks.onProgress(result.chapter_number, result.total, result.chapter);
+            } catch {
+              console.error('Failed to parse progress event');
+            }
+          } else if (eventType === 'done') {
+            // Completion event
+            try {
+              const result = JSON.parse(eventData);
+              callbacks.onDone(result.total, result.stage);
+            } catch {
+              callbacks.onError('解析完成数据失败');
+            }
+          } else if (eventType === 'error') {
+            callbacks.onError(eventData);
+          }
+        }
+      }
+
+      return remaining;
+    };
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) {
+          // Process any remaining buffer
+          if (buffer.trim()) {
+            processBuffer(buffer);
+          }
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        buffer = processBuffer(buffer);
+      }
+    } catch (err) {
+      callbacks.onError(err instanceof Error ? err.message : '未知错误');
+    }
   },
 
   async update(

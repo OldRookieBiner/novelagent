@@ -8,6 +8,7 @@ from app.agents.nodes.outline_generation import (
 )
 from app.agents.nodes.chapter_generation import (
     generate_chapter_outlines_node,
+    generate_chapter_outlines_stream,
     generate_chapter_content_stream,
     review_chapter_node
 )
@@ -18,6 +19,7 @@ __all__ = [
     "generate_outline_stream",
     "parse_outline",
     "generate_chapter_outlines_node",
+    "generate_chapter_outlines_stream",
     "generate_chapter_content_stream",
     "review_chapter_node",
 ]

@@ -28,6 +28,7 @@ from app.agents.state import (
 )
 from app.agents.nodes.chapter_generation import (
     generate_chapter_outlines_node,
+    generate_chapter_outlines_stream,
     generate_chapter_content_stream,
     review_chapter_node
 )
@@ -116,13 +117,13 @@ async def list_chapter_outlines(
     return response
 
 
-@router.post("/{project_id}/chapter-outlines", response_model=List[ChapterOutlineResponse])
+@router.post("/{project_id}/chapter-outlines")
 async def create_chapter_outlines(
     project_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Generate all chapter outlines using AI."""
+    """Generate all chapter outlines using AI with SSE streaming."""
     project = get_project_for_user(project_id, current_user.id, db)
     outline = get_outline_for_project(project_id, db)
 
@@ -161,82 +162,87 @@ async def create_chapter_outlines(
             detail="User settings not found"
         )
 
-    try:
-        # Update project stage
-        project.stage = STAGE_CHAPTER_OUTLINES_GENERATING
-        db.commit()
+    # Update project stage
+    project.stage = STAGE_CHAPTER_OUTLINES_GENERATING
+    db.commit()
 
-        # Get LLM service
-        llm = get_llm_service(user_settings)
+    # Get LLM service
+    llm = get_llm_service(user_settings)
 
-        # Prepare state for chapter outline generation
-        state = {
-            "project_id": project_id,
-            "outline_title": outline.title,
-            "outline_summary": outline.summary,
-            "outline_plot_points": outline.plot_points or [],
-            "chapter_count_suggested": outline.chapter_count_suggested,
-            "collected_info": outline.collected_info or {},
-        }
+    # Prepare state for chapter outline generation
+    state = {
+        "project_id": project_id,
+        "outline_title": outline.title,
+        "outline_summary": outline.summary,
+        "outline_plot_points": outline.plot_points or [],
+        "chapter_count_suggested": outline.chapter_count_suggested,
+        "collected_info": outline.collected_info or {},
+    }
 
-        # Generate chapter outlines using the agent node
-        new_state = await generate_chapter_outlines_node(state, llm)
-
-        # Save generated chapter outlines to database
-        chapter_outlines_data = new_state.get("chapter_outlines", [])
+    # Create async generator for SSE streaming
+    async def stream_generator():
+        """Generate chapter outlines one by one and stream via SSE."""
         created_outlines = []
 
-        for co_data in chapter_outlines_data:
-            chapter_outline = ChapterOutline(
-                project_id=project_id,
-                chapter_number=co_data.get("chapter_number", 1),
-                title=co_data.get("title"),
-                scene=co_data.get("scene"),
-                characters=co_data.get("characters"),
-                plot=co_data.get("plot"),
-                conflict=co_data.get("conflict"),
-                ending=co_data.get("ending"),
-                target_words=co_data.get("target_words", 3000),
-                confirmed=False
-            )
-            db.add(chapter_outline)
-            created_outlines.append(chapter_outline)
+        try:
+            async for event in generate_chapter_outlines_stream(state, llm):
+                if event["type"] == "progress":
+                    # Save chapter to database
+                    chapter_data = event["chapter"]
+                    chapter_outline = ChapterOutline(
+                        project_id=project_id,
+                        chapter_number=chapter_data.get("chapter_number", 1),
+                        title=chapter_data.get("title"),
+                        scene=chapter_data.get("scene"),
+                        characters=chapter_data.get("characters"),
+                        plot=chapter_data.get("plot"),
+                        conflict=chapter_data.get("conflict"),
+                        ending=chapter_data.get("ending"),
+                        target_words=chapter_data.get("target_words", 3000),
+                        confirmed=False
+                    )
+                    db.add(chapter_outline)
+                    db.commit()
+                    db.refresh(chapter_outline)
+                    created_outlines.append(chapter_outline)
 
-        # Update project stage to confirming
-        project.stage = STAGE_CHAPTER_OUTLINES_CONFIRMING
+                    # Send progress event
+                    progress_data = {
+                        "chapter_number": event["chapter_number"],
+                        "total": event["total"],
+                        "chapter": {
+                            "id": chapter_outline.id,
+                            "chapter_number": chapter_outline.chapter_number,
+                            "title": chapter_outline.title,
+                        }
+                    }
+                    yield f"event: progress\ndata: {json.dumps(progress_data)}\n\n"
 
-        db.commit()
+                elif event["type"] == "done":
+                    # Update project stage to confirming
+                    project.stage = STAGE_CHAPTER_OUTLINES_CONFIRMING
+                    db.commit()
 
-        # Refresh and build response
-        response = []
-        for co in created_outlines:
-            db.refresh(co)
-            response.append(ChapterOutlineResponse(
-                id=co.id,
-                project_id=co.project_id,
-                chapter_number=co.chapter_number,
-                title=co.title,
-                scene=co.scene,
-                characters=co.characters,
-                plot=co.plot,
-                conflict=co.conflict,
-                ending=co.ending,
-                target_words=co.target_words,
-                confirmed=co.confirmed,
-                created_at=co.created_at,
-                has_content=False
-            ))
+                    # Send completion event
+                    completion_data = {
+                        "total": len(created_outlines),
+                        "stage": STAGE_CHAPTER_OUTLINES_CONFIRMING
+                    }
+                    yield f"event: done\ndata: {json.dumps(completion_data)}\n\n"
 
-        return response
+        except Exception as e:
+            # Send error event
+            yield f"event: error\ndata: {json.dumps(str(e))}\n\n"
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate chapter outlines: {str(e)}"
-        )
+    return StreamingResponse(
+        stream_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
 
 @router.put("/{project_id}/chapter-outlines/{chapter_num}", response_model=ChapterOutlineResponse)

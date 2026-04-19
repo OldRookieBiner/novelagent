@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { outlineApi, chapterOutlinesApi } from '@/lib/api'
-import type { Outline } from '@/types'
+import type { Outline, ChapterOutline } from '@/types'
 
 interface OutlineWorkflowProps {
   projectId: number
@@ -64,9 +64,13 @@ export default function OutlineWorkflow({
   const [loading, setLoading] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editContent, setEditContent] = useState('')
-  // Streaming state
+  // Streaming state for outline
   const [streamingContent, setStreamingContent] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
+  // Streaming state for chapter outlines
+  const [isGeneratingChapters, setIsGeneratingChapters] = useState(false)
+  const [chapterProgress, setChapterProgress] = useState({ current: 0, total: 0 })
+  const [generatedChapters, setGeneratedChapters] = useState<ChapterOutline[]>([])
 
   // Sync edit content when outline changes
   useEffect(() => {
@@ -143,18 +147,33 @@ export default function OutlineWorkflow({
   }
 
   const handleGenerateChapterOutlines = async () => {
-    setLoading(true)
+    setIsGeneratingChapters(true)
+    setChapterProgress({ current: 0, total: outline.chapter_count_suggested })
+    setGeneratedChapters([])
+
     try {
-      await chapterOutlinesApi.create(projectId)
-      onStageChange('chapter_outlines_confirming')
+      await chapterOutlinesApi.createStream(projectId, {
+        onProgress: (chapterNumber, total, chapter) => {
+          setChapterProgress({ current: chapterNumber, total })
+          // Add to generated chapters list
+          setGeneratedChapters(prev => [...prev, chapter as ChapterOutline])
+        },
+        onDone: (_total, stage) => {
+          setIsGeneratingChapters(false)
+          onStageChange(stage)
+        },
+        onError: (error) => {
+          setIsGeneratingChapters(false)
+          alert(`生成章节大纲失败: ${error}`)
+        },
+      })
     } catch (err) {
+      setIsGeneratingChapters(false)
       alert('生成章节大纲失败，请检查 API Key 配置')
-    } finally {
-      setLoading(false)
     }
   }
 
-  // Streaming view
+  // Streaming view for outline generation
   if (isStreaming) {
     return (
       <Card className="flex-1">
@@ -168,6 +187,55 @@ export default function OutlineWorkflow({
           <div className="mt-4 flex items-center gap-2">
             <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full" />
             <span className="text-sm text-muted-foreground">AI 正在创作大纲...</span>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // Streaming view for chapter outline generation
+  if (isGeneratingChapters) {
+    const progressPercent = chapterProgress.total > 0
+      ? Math.round((chapterProgress.current / chapterProgress.total) * 100)
+      : 0
+
+    return (
+      <Card className="flex-1">
+        <CardHeader>
+          <CardTitle className="text-lg">正在生成章节大纲...</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {/* Progress bar */}
+          <div className="mb-4">
+            <div className="flex justify-between text-sm mb-1">
+              <span>进度：{chapterProgress.current} / {chapterProgress.total} 章</span>
+              <span>{progressPercent}%</span>
+            </div>
+            <div className="w-full bg-muted rounded-full h-2">
+              <div
+                className="bg-primary h-2 rounded-full transition-all duration-300"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Generated chapters list */}
+          {generatedChapters.length > 0 && (
+            <div className="max-h-[300px] overflow-y-auto border rounded-md p-2">
+              {generatedChapters.map((chapter) => (
+                <div key={chapter.id} className="flex items-center gap-2 py-1 text-sm">
+                  <span className="text-green-500">✓</span>
+                  <span>第{chapter.chapter_number}章：{chapter.title || '生成中...'}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-4 flex items-center gap-2">
+            <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full" />
+            <span className="text-sm text-muted-foreground">
+              正在生成第 {chapterProgress.current + 1} 章...
+            </span>
           </div>
         </CardContent>
       </Card>
@@ -280,6 +348,9 @@ export default function OutlineWorkflow({
       <CardContent>
         <p className="text-muted-foreground mb-4">
           已设置 {outline.chapter_count_suggested} 章，可以开始生成章节大纲。
+        </p>
+        <p className="text-xs text-muted-foreground mb-4">
+          每个章节将逐一生成，预计耗时较长，请耐心等待。
         </p>
         <Button onClick={handleGenerateChapterOutlines} disabled={loading}>
           {loading ? '生成中...' : '生成章节大纲'}

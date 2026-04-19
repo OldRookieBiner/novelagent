@@ -5,15 +5,66 @@ from typing import Dict, Any, AsyncIterator
 
 from app.agents.state import NovelState, STAGE_CHAPTER_OUTLINES_CONFIRMING, STAGE_CHAPTER_WRITING
 from app.agents.prompts import (
-    GENERATE_CHAPTER_OUTLINES_PROMPT,
+    GENERATE_SINGLE_CHAPTER_OUTLINE_PROMPT,
     GENERATE_CHAPTER_CONTENT_PROMPT,
     REVIEW_CHAPTER_PROMPT
 )
 from app.services.llm import LLMService
 
 
+def parse_single_chapter_outline(response: str, chapter_number: int) -> dict:
+    """Parse a single chapter outline from response"""
+    chapter = {
+        "chapter_number": chapter_number,
+        "title": "",
+        "scene": "",
+        "characters": "",
+        "plot": "",
+        "conflict": "",
+        "ending": "",
+        "target_words": 3000
+    }
+
+    # Extract title
+    title_match = re.search(r"章节名[：:]\s*(.+)", response)
+    if title_match:
+        chapter["title"] = title_match.group(1).strip()
+
+    # Extract scene
+    scene_match = re.search(r"场景[：:]\s*(.+)", response)
+    if scene_match:
+        chapter["scene"] = scene_match.group(1).strip()
+
+    # Extract characters
+    characters_match = re.search(r"人物[：:]\s*(.+)", response)
+    if characters_match:
+        chapter["characters"] = characters_match.group(1).strip()
+
+    # Extract plot
+    plot_match = re.search(r"情节[：:]\s*(.+?)(?=冲突|结局|预计字数|$)", response, re.DOTALL)
+    if plot_match:
+        chapter["plot"] = plot_match.group(1).strip()
+
+    # Extract conflict
+    conflict_match = re.search(r"冲突[：:]\s*(.+?)(?=结局|预计字数|$)", response, re.DOTALL)
+    if conflict_match:
+        chapter["conflict"] = conflict_match.group(1).strip()
+
+    # Extract ending
+    ending_match = re.search(r"结局[：:]\s*(.+?)(?=预计字数|$)", response, re.DOTALL)
+    if ending_match:
+        chapter["ending"] = ending_match.group(1).strip()
+
+    # Extract target words
+    words_match = re.search(r"预计字数[：:]\s*(\d+)", response)
+    if words_match:
+        chapter["target_words"] = int(words_match.group(1))
+
+    return chapter
+
+
 def parse_chapter_outlines(response: str) -> list[dict]:
-    """Parse chapter outlines from response"""
+    """Parse chapter outlines from response (legacy, for batch parsing)"""
     chapters = []
 
     # Split by chapter markers - capture chapter number and title from header
@@ -71,30 +122,95 @@ def parse_chapter_outlines(response: str) -> list[dict]:
     return chapters
 
 
-async def generate_chapter_outlines_node(state: NovelState, llm: LLMService) -> NovelState:
-    """Generate all chapter outlines"""
+async def generate_single_chapter_outline(
+    state: NovelState,
+    chapter_number: int,
+    llm: LLMService,
+    previous_chapters: list[dict] = None
+) -> dict:
+    """Generate a single chapter outline"""
 
     outline = f"标题：{state.get('outline_title', '')}\n概述：{state.get('outline_summary', '')}"
     plot_points = state.get("outline_plot_points", [])
-    if plot_points:
-        outline += "\n主要情节节点：\n" + "\n".join([f"{i+1}. {p}" for i, p in enumerate(plot_points)])
+    plot_points_str = "\n".join([f"{i+1}. {p}" for i, p in enumerate(plot_points)]) if plot_points else "无"
 
     chapter_count = state.get("chapter_count_suggested", 10)
 
-    prompt = GENERATE_CHAPTER_OUTLINES_PROMPT.format(
+    # Build previous chapters info for context
+    previous_info = ""
+    if previous_chapters and len(previous_chapters) > 0:
+        # Only show last 3 chapters for context
+        recent = previous_chapters[-3:]
+        previous_info = "前几章概要：\n" + "\n".join([
+            f"- 第{c['chapter_number']}章《{c.get('title', '')}》：{c.get('plot', '')[:50]}..."
+            for c in recent
+        ])
+
+    prompt = GENERATE_SINGLE_CHAPTER_OUTLINE_PROMPT.format(
         outline=outline,
-        chapter_count=chapter_count
+        plot_points=plot_points_str,
+        chapter_count=chapter_count,
+        chapter_number=chapter_number,
+        previous_chapters_info=previous_info
     )
 
-    response = await llm.chat([{"role": "user", "content": prompt}], max_tokens=8192)
+    response = await llm.chat([{"role": "user", "content": prompt}])
 
-    chapter_outlines = parse_chapter_outlines(response)
+    return parse_single_chapter_outline(response, chapter_number)
+
+
+async def generate_chapter_outlines_stream(
+    state: NovelState,
+    llm: LLMService
+) -> AsyncIterator[dict]:
+    """Generate chapter outlines one by one with streaming progress"""
+
+    chapter_count = state.get("chapter_count_suggested", 10)
+    generated_chapters = []
+
+    for chapter_num in range(1, chapter_count + 1):
+        chapter_outline = await generate_single_chapter_outline(
+            state,
+            chapter_num,
+            llm,
+            generated_chapters
+        )
+        generated_chapters.append(chapter_outline)
+
+        # Yield progress event
+        yield {
+            "type": "progress",
+            "chapter_number": chapter_num,
+            "total": chapter_count,
+            "chapter": chapter_outline
+        }
+
+    # Yield completion event
+    yield {
+        "type": "done",
+        "chapter_outlines": generated_chapters
+    }
+
+
+async def generate_chapter_outlines_node(state: NovelState, llm: LLMService) -> NovelState:
+    """Generate all chapter outlines (legacy synchronous version)"""
+
+    chapter_count = state.get("chapter_count_suggested", 10)
+    generated_chapters = []
+
+    for chapter_num in range(1, chapter_count + 1):
+        chapter_outline = await generate_single_chapter_outline(
+            state,
+            chapter_num,
+            llm,
+            generated_chapters
+        )
+        generated_chapters.append(chapter_outline)
 
     new_state: NovelState = {
         **state,
-        "chapter_outlines": chapter_outlines,
+        "chapter_outlines": generated_chapters,
         "stage": STAGE_CHAPTER_OUTLINES_CONFIRMING,
-        "last_assistant_message": response,
     }
 
     return new_state

@@ -54,7 +54,7 @@ N. [结局]
 请生成完整的大纲。
 """
 
-# Generate chapter outlines prompt
+# Generate chapter outlines prompt (all at once - deprecated, kept for reference)
 GENERATE_CHAPTER_OUTLINES_PROMPT = """你是一个小说章节策划师。根据大纲，生成每个章节的详细大纲。
 
 要求：
@@ -79,6 +79,40 @@ GENERATE_CHAPTER_OUTLINES_PROMPT = """你是一个小说章节策划师。根据
 ---
 
 请直接输出所有章节纲。
+"""
+
+# Generate single chapter outline prompt
+GENERATE_SINGLE_CHAPTER_OUTLINE_PROMPT = """你是一个小说章节策划师。根据大纲，生成指定章节的详细大纲。
+
+大纲：
+{outline}
+
+主要情节节点：
+{plot_points}
+
+当前进度：
+- 总章节数：{chapter_count}
+- 当前章节：第 {chapter_number} 章
+{previous_chapters_info}
+
+请生成第 {chapter_number} 章的详细大纲，格式如下：
+---
+章节名：[章节名]
+场景：[发生地点]
+人物：[出场人物]
+情节：[本章主要情节，100-200字]
+冲突：[本章的冲突/矛盾]
+结局：[本章如何收尾/悬念]
+预计字数：[字数]
+---
+
+注意：
+1. 本章情节应与整体故事发展保持连贯
+2. 如果是第一章，要安排好开篇
+3. 如果是最后一章，要给出完整结局
+4. 每章要有明确的冲突和转折
+
+请直接输出章节大纲，不要输出其他内容。
 """
 
 # Generate chapter content prompt
