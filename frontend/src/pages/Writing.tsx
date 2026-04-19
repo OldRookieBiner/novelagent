@@ -44,6 +44,15 @@ export default function Writing() {
       const projectData = await projectsApi.get(parseInt(id))
       setProject(projectData)
 
+      // Ensure stage is set to chapter_writing when entering writing page
+      if (projectData.stage !== 'chapter_writing' &&
+          projectData.stage !== 'chapter_reviewing' &&
+          projectData.stage !== 'completed') {
+        await projectsApi.update(projectData.id, { stage: 'chapter_writing' })
+        const updatedProject = await projectsApi.get(parseInt(id))
+        setProject(updatedProject)
+      }
+
       const chaptersData = await chapterOutlinesApi.list(parseInt(id))
       setChapterOutlines(chaptersData)
 
