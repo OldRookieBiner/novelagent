@@ -167,17 +167,28 @@ class TestPromptTemplates:
         """Outline generation prompt should format correctly"""
         from app.agents.prompts import GENERATE_OUTLINE_PROMPT
 
+        inspiration_template = """# 小说创作灵感
+
+## 基本信息
+- **小说类型**：玄幻
+- **核心主题**：成长与复仇
+
+## 人物设定
+- **主角**：林风，少年天才
+
+## 世界设定
+- **世界观**：修仙世界
+"""
+
         prompt = GENERATE_OUTLINE_PROMPT.format(
-            genre="玄幻",
-            theme="成长与复仇",
-            main_characters="林风，少年天才",
-            world_setting="修仙世界",
-            style_preference="热血，快节奏"
+            inspiration_template=inspiration_template,
+            chapter_count=40
         )
 
         assert "玄幻" in prompt
         assert "林风" in prompt
         assert "修仙世界" in prompt
+        assert "40" in prompt
 
     def test_chapter_content_prompt_format(self):
         """Chapter content prompt should format correctly"""

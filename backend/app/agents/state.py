@@ -1,16 +1,22 @@
 """LangGraph agent state definitions"""
 
-from typing import TypedDict, Optional, Annotated
+from typing import TypedDict, Optional, Annotated, Any
 from operator import add
 
 
 class CollectedInfo(TypedDict, total=False):
-    """Collected information from user"""
-    genre: str
-    theme: str
-    main_characters: str
-    world_setting: str
-    style_preference: str
+    """Collected information from user (v0.5.0 inspiration data)"""
+    novelType: str
+    novelLength: str
+    customChapterCount: int
+    targetWords: str
+    customTargetWords: int
+    coreTheme: str
+    worldSetting: str
+    customWorldSetting: str
+    protagonist: str
+    customProtagonist: str
+    stylePreference: str
 
 
 class NovelState(TypedDict):
@@ -20,8 +26,9 @@ class NovelState(TypedDict):
     project_id: int
     stage: str
 
-    # Collected info
-    collected_info: CollectedInfo
+    # Collected info (v0.5.0 inspiration data)
+    collected_info: dict[str, Any]
+    inspiration_template: Optional[str]
 
     # Outline
     outline_title: Optional[str]
@@ -53,11 +60,9 @@ class NovelState(TypedDict):
 
 
 # Stage constants
-STAGE_COLLECTING_INFO = "collecting_info"
+STAGE_INSPIRATION_COLLECTING = "inspiration_collecting"
 STAGE_OUTLINE_GENERATING = "outline_generating"
 STAGE_OUTLINE_CONFIRMING = "outline_confirming"
-STAGE_CHAPTER_COUNT_SUGGESTING = "chapter_count_suggesting"
-STAGE_CHAPTER_COUNT_CONFIRMING = "chapter_count_confirming"
 STAGE_CHAPTER_OUTLINES_GENERATING = "chapter_outlines_generating"
 STAGE_CHAPTER_OUTLINES_CONFIRMING = "chapter_outlines_confirming"
 STAGE_CHAPTER_WRITING = "chapter_writing"

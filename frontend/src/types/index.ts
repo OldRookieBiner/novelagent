@@ -59,11 +59,17 @@ export interface ProjectUpdate {
 // ==================== Outline Types ====================
 
 export interface CollectedInfo {
-  genre?: string;
-  theme?: string;
-  main_characters?: string;
-  world_setting?: string;
-  style_preference?: string;
+  novelType?: string;
+  novelLength?: string;
+  customChapterCount?: number;
+  targetWords?: string;
+  customTargetWords?: number;
+  coreTheme?: string;
+  worldSetting?: string;
+  customWorldSetting?: string;
+  protagonist?: string;
+  customProtagonist?: string;
+  stylePreference?: string;
 }
 
 export interface Outline {
@@ -73,6 +79,7 @@ export interface Outline {
   summary?: string;
   plot_points?: string[];
   collected_info?: CollectedInfo;
+  inspiration_template?: string;
   chapter_count_suggested: number;
   chapter_count_confirmed: boolean;
   confirmed: boolean;
@@ -84,6 +91,8 @@ export interface OutlineUpdate {
   title?: string;
   summary?: string;
   plot_points?: string[];
+  collected_info?: CollectedInfo;
+  inspiration_template?: string;
 }
 
 export interface ChapterCountRequest {

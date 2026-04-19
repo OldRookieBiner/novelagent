@@ -15,7 +15,7 @@ class Project(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     name = Column(String(100), nullable=False)
-    stage = Column(String(50), default="collecting_info")  # collecting_info, outlining, writing, completed, paused
+    stage = Column(String(50), default="inspiration_collecting")  # inspiration_collecting, outline_generating, chapter_writing, completed, paused
     target_words = Column(Integer, default=100000)
     total_words = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)

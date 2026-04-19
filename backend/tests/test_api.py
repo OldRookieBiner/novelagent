@@ -87,7 +87,7 @@ class TestProjectsAPI:
         data = response.json()
         assert data["name"] == "Test Novel"
         assert data["target_words"] == 50000
-        assert data["stage"] == "collecting_info"
+        assert data["stage"] == "inspiration_collecting"
 
         # Verify outline was created
         outline = db.query(Outline).filter(Outline.project_id == data["id"]).first()

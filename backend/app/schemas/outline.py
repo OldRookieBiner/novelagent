@@ -18,7 +18,8 @@ class OutlineBase(BaseModel):
     title: Optional[str] = None
     summary: Optional[str] = None
     plot_points: Optional[list[str]] = None
-    collected_info: Optional[CollectedInfo] = None
+    collected_info: Optional[dict] = None
+    inspiration_template: Optional[str] = None
 
 
 class OutlineCreate(BaseModel):
@@ -29,6 +30,8 @@ class OutlineUpdate(BaseModel):
     title: Optional[str] = None
     summary: Optional[str] = None
     plot_points: Optional[list[str]] = None
+    collected_info: Optional[dict] = None
+    inspiration_template: Optional[str] = None
 
 
 class OutlineResponse(OutlineBase):

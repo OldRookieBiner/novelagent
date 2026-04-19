@@ -11,11 +11,13 @@ interface ProjectCardProps {
 }
 
 const STAGE_LABELS: Record<string, { label: string; color: string }> = {
-  collecting_info: { label: '信息收集', color: 'bg-yellow-500' },
+  inspiration_collecting: { label: '灵感采集', color: 'bg-yellow-500' },
   outline_generating: { label: '生成大纲', color: 'bg-blue-500' },
   outline_confirming: { label: '确认大纲', color: 'bg-blue-500' },
   chapter_outlines_generating: { label: '生成章节纲', color: 'bg-purple-500' },
+  chapter_outlines_confirming: { label: '确认章节纲', color: 'bg-purple-500' },
   chapter_writing: { label: '写作中', color: 'bg-green-500' },
+  chapter_reviewing: { label: '审核中', color: 'bg-orange-500' },
   completed: { label: '已完成', color: 'bg-emerald-500' },
   paused: { label: '暂停', color: 'bg-gray-500' },
 }

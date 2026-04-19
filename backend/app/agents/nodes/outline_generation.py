@@ -1,13 +1,10 @@
 """Outline generation nodes"""
 
 import re
-from typing import Dict, Any
+from typing import Dict, Any, AsyncIterator
 
-from app.agents.state import NovelState, STAGE_OUTLINE_CONFIRMING, STAGE_CHAPTER_COUNT_SUGGESTING
-from app.agents.prompts import (
-    GENERATE_OUTLINE_PROMPT,
-    SUGGEST_CHAPTER_COUNT_PROMPT
-)
+from app.agents.state import NovelState, STAGE_OUTLINE_CONFIRMING
+from app.agents.prompts import GENERATE_OUTLINE_PROMPT
 from app.services.llm import LLMService
 
 
@@ -22,9 +19,10 @@ def parse_outline(response: str) -> Dict[str, Any]:
     # Extract title - support multiple formats:
     # - "标题：xxx"
     # - "## 标题：xxx"
+    # - "**标题**：xxx" (Markdown bold)
     # - "# 小说大纲：xxx"
     # - "# 《xxx》" (AI directly returns title in 《》)
-    title_match = re.search(r"(?:##\s*)?标题[：:]\s*(.+?)(?:\n|$)", response)
+    title_match = re.search(r"(?:##\s*)?(?:\*\*)?标题(?:\*\*)?[：:]\s*(.+?)(?:\n|$)", response)
     if not title_match:
         # Try format: "# 小说大纲：xxx"
         title_match = re.search(r"#\s*小说大纲[：:]\s*(.+?)(?:\n|$)", response)
@@ -38,9 +36,16 @@ def parse_outline(response: str) -> Dict[str, Any]:
             title = title[1:-1]
         outline["title"] = title
 
-    # Extract summary - support both formats, capture until next heading or plot points
-    # Match "概述：" or "## 概述" followed by content (possibly on same line or next line)
-    summary_match = re.search(r"(?:##\s*)?概述[：:]\s*(.+?)(?=(?:##\s*)?(?:主要情节节点|情节节点|---|\n\d+\.)|$)", response, re.DOTALL)
+    # Extract summary - support multiple formats:
+    # - "概述：内容"
+    # - "**概述**：内容" (Markdown bold)
+    # - "## 概述\n\n内容"
+    # - "概述\n内容"
+    # First try: 概述 followed by colon (standard format)
+    summary_match = re.search(r"(?:##\s*)?(?:\*\*)?概述(?:\*\*)?[：:]\s*(.+?)(?=(?:##\s*)?(?:\*\*)?(?:主要情节节点|情节节点)|---|\n\d+\.)", response, re.DOTALL)
+    if not summary_match:
+        # Second try: 概述 followed by newlines then content (Markdown format)
+        summary_match = re.search(r"(?:##\s*)?(?:\*\*)?概述(?:\*\*)?\s*\n+(.+?)(?=(?:##\s*)?(?:\*\*)?(?:主要情节节点|情节节点)|$)", response, re.DOTALL)
     if summary_match:
         outline["summary"] = summary_match.group(1).strip()
 
@@ -65,16 +70,55 @@ def parse_chapter_count(response: str) -> int:
 
 
 async def generate_outline_node(state: NovelState, llm: LLMService) -> NovelState:
-    """Generate outline from collected info"""
+    """Generate outline from inspiration template"""
 
-    info = state.get("collected_info", {})
+    # 获取灵感模板
+    inspiration_template = state.get("inspiration_template", "")
+    collected_info = state.get("collected_info", {})
+
+    # 计算章节数
+    chapter_count = 40  # 默认值
+    novel_length = collected_info.get("novelLength", "medium")
+    length_to_chapters = {
+        "short": 15,
+        "medium": 40,
+        "long": 75,
+        "extra_long": 100,
+    }
+    if novel_length == "custom":
+        chapter_count = collected_info.get("customChapterCount", 40)
+    else:
+        chapter_count = length_to_chapters.get(novel_length, 40)
+
+    # 如果没有灵感模板，从 collected_info 生成基本信息
+    if not inspiration_template:
+        novel_type = collected_info.get("novelType", "未指定")
+        core_theme = collected_info.get("coreTheme", "未指定")
+        protagonist = collected_info.get("customProtagonist") or collected_info.get("protagonist", "未指定")
+        world_setting = collected_info.get("customWorldSetting") or collected_info.get("worldSetting", "未指定")
+        style = collected_info.get("stylePreference", "未指定")
+        target_words = collected_info.get("targetWords", "100万字")
+
+        inspiration_template = f"""# 小说创作灵感
+
+## 基本信息
+- **小说类型**：{novel_type}
+- **核心主题**：{core_theme}
+- **目标字数**：{target_words}
+
+## 世界设定
+- **世界观**：{world_setting}
+
+## 人物设定
+- **主角**：{protagonist}
+
+## 风格
+- **风格偏好**：{style}
+"""
 
     prompt = GENERATE_OUTLINE_PROMPT.format(
-        genre=info.get("genre", "未指定"),
-        theme=info.get("theme", "未指定"),
-        main_characters=info.get("main_characters", "未指定"),
-        world_setting=info.get("world_setting", "未指定"),
-        style_preference=info.get("style_preference", "未指定")
+        inspiration_template=inspiration_template,
+        chapter_count=chapter_count
     )
 
     response = await llm.chat([{"role": "user", "content": prompt}])
@@ -86,6 +130,7 @@ async def generate_outline_node(state: NovelState, llm: LLMService) -> NovelStat
         "outline_title": outline["title"],
         "outline_summary": outline["summary"],
         "outline_plot_points": outline["plot_points"],
+        "chapter_count_suggested": chapter_count,
         "stage": STAGE_OUTLINE_CONFIRMING,
         "last_assistant_message": response,
     }
@@ -93,25 +138,65 @@ async def generate_outline_node(state: NovelState, llm: LLMService) -> NovelStat
     return new_state
 
 
-async def suggest_chapter_count_node(state: NovelState, llm: LLMService) -> NovelState:
-    """Suggest chapter count"""
+def prepare_outline_prompt(state: NovelState) -> tuple[str, int]:
+    """Prepare outline generation prompt and chapter count from state"""
+    inspiration_template = state.get("inspiration_template", "")
+    collected_info = state.get("collected_info", {})
 
-    outline = f"标题：{state.get('outline_title', '')}\n概述：{state.get('outline_summary', '')}"
-    plot_points = state.get("outline_plot_points", [])
-    if plot_points:
-        outline += "\n主要情节节点：\n" + "\n".join([f"{i+1}. {p}" for i, p in enumerate(plot_points)])
-
-    prompt = SUGGEST_CHAPTER_COUNT_PROMPT.format(outline=outline)
-
-    response = await llm.chat([{"role": "user", "content": prompt}])
-
-    chapter_count = parse_chapter_count(response)
-
-    new_state: NovelState = {
-        **state,
-        "chapter_count_suggested": chapter_count,
-        "stage": STAGE_CHAPTER_COUNT_CONFIRMING,
-        "last_assistant_message": response,
+    # 计算章节数
+    chapter_count = 40  # 默认值
+    novel_length = collected_info.get("novelLength", "medium")
+    length_to_chapters = {
+        "short": 15,
+        "medium": 40,
+        "long": 75,
+        "extra_long": 100,
     }
+    if novel_length == "custom":
+        chapter_count = collected_info.get("customChapterCount", 40)
+    else:
+        chapter_count = length_to_chapters.get(novel_length, 40)
 
-    return new_state
+    # 如果没有灵感模板，从 collected_info 生成基本信息
+    if not inspiration_template:
+        novel_type = collected_info.get("novelType", "未指定")
+        core_theme = collected_info.get("coreTheme", "未指定")
+        protagonist = collected_info.get("customProtagonist") or collected_info.get("protagonist", "未指定")
+        world_setting = collected_info.get("customWorldSetting") or collected_info.get("worldSetting", "未指定")
+        style = collected_info.get("stylePreference", "未指定")
+        target_words = collected_info.get("targetWords", "100万字")
+
+        inspiration_template = f"""# 小说创作灵感
+
+## 基本信息
+- **小说类型**：{novel_type}
+- **核心主题**：{core_theme}
+- **目标字数**：{target_words}
+
+## 世界设定
+- **世界观**：{world_setting}
+
+## 人物设定
+- **主角**：{protagonist}
+
+## 风格
+- **风格偏好**：{style}
+"""
+
+    prompt = GENERATE_OUTLINE_PROMPT.format(
+        inspiration_template=inspiration_template,
+        chapter_count=chapter_count
+    )
+
+    return prompt, chapter_count
+
+
+async def generate_outline_stream(
+    state: NovelState,
+    llm: LLMService
+) -> AsyncIterator[str]:
+    """Generate outline with streaming"""
+    prompt, _ = prepare_outline_prompt(state)
+
+    async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
+        yield chunk

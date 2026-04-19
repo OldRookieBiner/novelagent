@@ -1,6 +1,8 @@
 """Outline API routes"""
 
+import json
 from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -18,13 +20,16 @@ from app.schemas.outline import (
 )
 from app.utils.auth import get_current_user
 from app.agents.state import (
-    STAGE_COLLECTING_INFO,
+    STAGE_INSPIRATION_COLLECTING,
     STAGE_OUTLINE_GENERATING,
     STAGE_OUTLINE_CONFIRMING,
-    STAGE_CHAPTER_COUNT_SUGGESTING,
     STAGE_CHAPTER_OUTLINES_GENERATING
 )
-from app.agents.nodes.outline_generation import generate_outline_node
+from app.agents.nodes.outline_generation import (
+    generate_outline_node,
+    generate_outline_stream,
+    parse_outline,
+)
 from app.agents.nodes.info_collection import info_collection_node
 from app.services.llm import get_llm_service
 
@@ -72,13 +77,13 @@ async def get_outline(
     return OutlineResponse.model_validate(outline)
 
 
-@router.post("/{project_id}/outline", response_model=OutlineResponse)
+@router.post("/{project_id}/outline")
 async def generate_outline(
     project_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Generate outline using AI from collected info."""
+    """Generate outline using AI from collected info with SSE streaming."""
     project, outline = get_project_and_outline(project_id, current_user.id, db)
 
     # Check if outline is already confirmed
@@ -99,44 +104,73 @@ async def generate_outline(
             detail="User settings not found"
         )
 
-    try:
-        # Update project stage
-        project.stage = STAGE_OUTLINE_GENERATING
-        db.commit()
+    # Update project stage
+    project.stage = STAGE_OUTLINE_GENERATING
+    db.commit()
 
-        # Get LLM service
-        llm = get_llm_service(user_settings)
+    # Get LLM service
+    llm = get_llm_service(user_settings)
 
-        # Prepare state for outline generation
-        state = {
-            "collected_info": outline.collected_info or {},
-            "outline_title": outline.title,
-            "outline_summary": outline.summary,
-            "outline_plot_points": outline.plot_points or [],
+    # Prepare state for outline generation
+    state = {
+        "collected_info": outline.collected_info or {},
+        "inspiration_template": outline.inspiration_template or "",
+        "outline_title": outline.title,
+        "outline_summary": outline.summary,
+        "outline_plot_points": outline.plot_points or [],
+    }
+
+    # Create async generator for SSE streaming
+    async def stream_generator():
+        """Generate outline and stream via SSE."""
+        accumulated_content = ""
+
+        try:
+            async for chunk in generate_outline_stream(state, llm):
+                accumulated_content += chunk
+                # Send chunk as SSE event (JSON encode to preserve newlines)
+                yield f"data: {json.dumps(chunk)}\n\n"
+
+            # Parse the final outline
+            parsed = parse_outline(accumulated_content)
+
+            # Update outline with generated content
+            outline.title = parsed["title"]
+            outline.summary = parsed["summary"]
+            outline.plot_points = parsed["plot_points"]
+
+            # Update project stage to confirming
+            project.stage = STAGE_OUTLINE_CONFIRMING
+
+            db.commit()
+            db.refresh(outline)
+
+            # Send completion event with parsed outline and updated stage
+            completion_data = {
+                "outline": {
+                    "title": parsed["title"],
+                    "summary": parsed["summary"],
+                    "plot_points": parsed["plot_points"],
+                    "confirmed": False,
+                    "chapter_count_suggested": outline.chapter_count_suggested,
+                },
+                "stage": STAGE_OUTLINE_CONFIRMING,
+            }
+            yield f"event: done\ndata: {json.dumps(completion_data)}\n\n"
+
+        except Exception as e:
+            # Send error event
+            yield f"event: error\ndata: {json.dumps(str(e))}\n\n"
+
+    return StreamingResponse(
+        stream_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
         }
-
-        # Generate outline using the agent node
-        new_state = await generate_outline_node(state, llm)
-
-        # Update outline with generated content
-        outline.title = new_state.get("outline_title", "")
-        outline.summary = new_state.get("outline_summary", "")
-        outline.plot_points = new_state.get("outline_plot_points", [])
-
-        # Update project stage to confirming
-        project.stage = STAGE_OUTLINE_CONFIRMING
-
-        db.commit()
-        db.refresh(outline)
-
-        return OutlineResponse.model_validate(outline)
-
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate outline: {str(e)}"
-        )
+    )
 
 
 @router.put("/{project_id}/outline", response_model=OutlineResponse)
@@ -146,7 +180,7 @@ async def update_outline(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Update outline (title, summary, plot_points)."""
+    """Update outline (title, summary, plot_points, collected_info, inspiration_template)."""
     _, outline = get_project_and_outline(project_id, current_user.id, db)
 
     # Check if outline is already confirmed
@@ -163,6 +197,10 @@ async def update_outline(
         outline.summary = request.summary
     if request.plot_points is not None:
         outline.plot_points = request.plot_points
+    if request.collected_info is not None:
+        outline.collected_info = request.collected_info
+    if request.inspiration_template is not None:
+        outline.inspiration_template = request.inspiration_template
 
     db.commit()
     db.refresh(outline)
@@ -193,9 +231,31 @@ async def confirm_outline(
             detail="Outline is already confirmed"
         )
 
+    # Calculate chapter count from inspiration data if available
+    collected_info = outline.collected_info or {}
+    novel_length = collected_info.get("novelLength", "medium")
+
+    # Map novelLength to chapter count
+    length_to_chapters = {
+        "short": 15,
+        "medium": 40,
+        "long": 75,
+        "extra_long": 100,
+    }
+
+    if novel_length == "custom":
+        chapter_count = collected_info.get("customChapterCount", 40)
+    else:
+        chapter_count = length_to_chapters.get(novel_length, 40)
+
+    # Update outline with chapter count
+    outline.chapter_count_suggested = chapter_count
+    outline.chapter_count_confirmed = True
+
     # Confirm the outline
     outline.confirmed = True
-    project.stage = STAGE_CHAPTER_COUNT_SUGGESTING
+    # Skip chapter count stage, go directly to chapter outlines generating
+    project.stage = STAGE_CHAPTER_OUTLINES_GENERATING
 
     db.commit()
     db.refresh(outline)
@@ -293,11 +353,11 @@ async def info_collection_chat(
     """Chat with AI for info collection."""
     project, outline = get_project_and_outline(project_id, current_user.id, db)
 
-    # Check if project is in collecting_info stage
-    if project.stage not in [STAGE_COLLECTING_INFO, STAGE_OUTLINE_GENERATING]:
+    # Check if project is in inspiration_collecting stage
+    if project.stage not in [STAGE_INSPIRATION_COLLECTING, STAGE_OUTLINE_GENERATING]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Project is not in info collection stage"
+            detail="Project is not in inspiration collection stage"
         )
 
     # Check if outline is already confirmed
