@@ -30,7 +30,15 @@ export default function Reading() {
 
     try {
       const projectData = await projectsApi.get(parseInt(id))
-      setProject(projectData)
+
+      // Ensure stage is set to chapter_reviewing when entering reading/review page
+      if (projectData.stage === 'chapter_writing') {
+        await projectsApi.update(projectData.id, { stage: 'chapter_reviewing' })
+        const updatedProject = await projectsApi.get(parseInt(id))
+        setProject(updatedProject)
+      } else {
+        setProject(projectData)
+      }
 
       const chaptersData = await chapterOutlinesApi.list(parseInt(id))
       setChapterOutlines(chaptersData)
