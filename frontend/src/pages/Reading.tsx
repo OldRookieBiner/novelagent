@@ -4,6 +4,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ChevronLeft, ChevronRight, Check, X } from 'lucide-react'
+import StepNavigation from '@/components/project/StepNavigation'
 import { projectsApi, chapterOutlinesApi, chaptersApi } from '@/lib/api'
 import type { ProjectDetail, ChapterOutline, Chapter } from '@/types'
 
@@ -73,9 +74,17 @@ export default function Reading() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
-      {/* Header */}
-      <div className="mb-6">
+    <div>
+      {/* Step Navigation */}
+      <StepNavigation
+        currentStage={project.stage}
+        viewingStep={null}
+        onViewStep={() => {}}  // 阅读页面不允许查看历史
+      />
+
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="mb-6">
         <h1 className="text-2xl font-bold mb-2">
           第 {chapterNumber} 章：{currentOutline?.title || '未命名'}
         </h1>
@@ -152,5 +161,6 @@ export default function Reading() {
         </div>
       </div>
     </div>
+  </div>
   )
 }

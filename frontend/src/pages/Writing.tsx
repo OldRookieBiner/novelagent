@@ -5,6 +5,7 @@ import DOMPurify from 'dompurify'
 import { Button } from '@/components/ui/button'
 import TipTapEditor from '@/components/common/TipTapEditor'
 import ErrorMessage from '@/components/common/ErrorMessage'
+import StepNavigation from '@/components/project/StepNavigation'
 import { projectsApi, chapterOutlinesApi, chaptersApi } from '@/lib/api'
 import { getSessionToken } from '@/lib/api'
 import type { ProjectDetail, ChapterOutline } from '@/types'
@@ -216,9 +217,17 @@ export default function Writing() {
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-80px)]">
-      {/* 左侧章节列表 */}
-      <div className="w-[200px] border-r bg-background shrink-0">
+    <div>
+      {/* Step Navigation */}
+      <StepNavigation
+        currentStage={project.stage}
+        viewingStep={null}
+        onViewStep={() => {}}  // 写作页面不允许查看历史
+      />
+
+      <div className="flex min-h-[calc(100vh-80px)]">
+        {/* 左侧章节列表 */}
+        <div className="w-[200px] border-r bg-background shrink-0">
         <div className="p-4 border-b">
           <h2 className="font-semibold text-sm">章节列表</h2>
         </div>
@@ -369,5 +378,6 @@ export default function Writing() {
         </div>
       </div>
     </div>
+  </div>
   )
 }
