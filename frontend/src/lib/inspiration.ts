@@ -248,10 +248,32 @@ export function parseTemplateToData(template: string): Partial<InspirationData> 
   const data: Partial<InspirationData> = {}
 
   for (const line of lines) {
+    if (line.includes('**目标读者**')) {
+      const value = line.split('：')[1]?.trim()
+      if (value === '男频') data.targetReader = 'male'
+      else if (value === '女频') data.targetReader = 'female'
+    }
     if (line.includes('**小说类型**')) {
       const value = line.split('：')[1]?.trim()
       const option = INSPIRATION_OPTIONS.novelTypes.find(o => o.label === value)
       if (option) data.novelType = option.value
+    }
+    if (line.includes('**每章字数**')) {
+      const value = line.split('：')[1]?.trim()
+      const option = INSPIRATION_OPTIONS.wordsPerChapter.find(o => o.label === value)
+      if (option) data.wordsPerChapter = option.value
+      else if (value && value !== '未设置') {
+        const numMatch = value.match(/(\d+)/)
+        if (numMatch) {
+          data.wordsPerChapter = 'custom'
+          data.customWordsPerChapter = parseInt(numMatch[1])
+        }
+      }
+    }
+    if (line.includes('**叙事视角**')) {
+      const value = line.split('：')[1]?.trim()
+      const option = INSPIRATION_OPTIONS.narrative.find(o => o.label === value)
+      if (option) data.narrative = option.value
     }
     if (line.includes('**核心主题**')) {
       const value = line.split('：')[1]?.trim()
@@ -269,6 +291,12 @@ export function parseTemplateToData(template: string): Partial<InspirationData> 
       const option = INSPIRATION_OPTIONS.protagonistTypes.find(o => o.label === value)
       if (option) data.protagonist = option.value
       else if (value && value !== '未设置') data.customProtagonist = value
+    }
+    if (line.includes('**金手指**')) {
+      const value = line.split('：')[1]?.trim()
+      const option = INSPIRATION_OPTIONS.goldFinger.find(o => o.label === value)
+      if (option) data.goldFinger = option.value
+      else if (value && value !== '未设置') data.customGoldFinger = value
     }
     if (line.includes('**风格偏好**')) {
       const value = line.split('：')[1]?.trim()
