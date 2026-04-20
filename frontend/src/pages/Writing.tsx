@@ -231,7 +231,7 @@ export default function Writing() {
       <StepNavigation
         currentStage={project.stage}
         viewingStep={null}
-        onViewStep={() => {}}  // 写作页面不允许查看历史
+        onViewStep={(stepIndex) => navigate(`/project/${id}?viewStep=${stepIndex}`)}
       />
 
       <div className="flex min-h-[calc(100vh-80px)]">
