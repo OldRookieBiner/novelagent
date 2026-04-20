@@ -87,88 +87,122 @@ export default function Reading() {
       <StepNavigation
         currentStage={project.stage}
         viewingStep={null}
-        onViewStep={() => {}}  // 阅读页面不允许查看历史
+        onViewStep={(stepIndex) => navigate(`/project/${id}?viewStep=${stepIndex}`)}
       />
 
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-2">
-          第 {chapterNumber} 章：{currentOutline?.title || '未命名'}
-        </h1>
-        <div className="text-sm text-muted-foreground">
-          字数：{chapter.word_count}
-        </div>
-      </div>
-
-      {/* Content */}
-      <Card className="mb-6">
-        <CardContent className="p-6 prose max-w-none">
-          {chapter.content?.split('\n').map((paragraph, i) => (
-            <p key={i}>{paragraph}</p>
-          ))}
-        </CardContent>
-      </Card>
-
-      {/* Review Result */}
-      {reviewResult && (
-        <Card className={`mb-6 ${reviewResult.passed ? 'border-green-500' : 'border-yellow-500'}`}>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              {reviewResult.passed ? (
-                <>
-                  <Check className="h-5 w-5 text-green-500" />
-                  审核通过
-                </>
-              ) : (
-                <>
-                  <X className="h-5 w-5 text-yellow-500" />
-                  需要修改
-                </>
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <pre className="whitespace-pre-wrap text-sm">{reviewResult.feedback}</pre>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Actions */}
-      <div className="flex justify-between items-center">
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={handleReview}
-            disabled={isReviewing}
-          >
-            {isReviewing ? '审核中...' : '审核'}
-          </Button>
-          <Link to={`/project/${id}/write`}>
-            <Button variant="outline">编辑</Button>
-          </Link>
+      <div className="flex min-h-[calc(100vh-80px)]">
+        {/* 左侧章节列表 */}
+        <div className="w-[200px] border-r bg-background shrink-0">
+          <div className="p-4 border-b">
+            <h2 className="font-semibold text-sm">章节列表</h2>
+          </div>
+          <div className="overflow-y-auto max-h-[calc(100vh-140px)]">
+            {chapterOutlines.map((outline) => (
+              <div
+                key={outline.id}
+                onClick={() => goToChapter(outline.chapter_number)}
+                className={`px-4 py-3 text-sm cursor-pointer border-b ${
+                  outline.chapter_number === chapterNumber
+                    ? 'bg-secondary font-medium'
+                    : 'hover:bg-muted'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="truncate">
+                    第{outline.chapter_number}章：{outline.title || '未命名'}
+                  </span>
+                  {outline.has_content && (
+                    <span className="text-green-600 text-xs ml-1">✓</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            disabled={!hasPrev}
-            onClick={() => goToChapter(chapterOutlines[currentIndex - 1].chapter_number)}
-          >
-            <ChevronLeft className="h-4 w-4 mr-1" />
-            上一章
-          </Button>
-          <Button
-            variant="outline"
-            disabled={!hasNext}
-            onClick={() => goToChapter(chapterOutlines[currentIndex + 1].chapter_number)}
-          >
-            下一章
-            <ChevronRight className="h-4 w-4 ml-1" />
-          </Button>
+        {/* 右侧内容区 */}
+        <div className="flex-1 flex flex-col">
+          <div className="max-w-4xl mx-auto w-full p-6">
+            {/* Header */}
+            <div className="mb-6">
+              <h1 className="text-2xl font-bold mb-2">
+                第 {chapterNumber} 章：{currentOutline?.title || '未命名'}
+              </h1>
+              <div className="text-sm text-muted-foreground">
+                字数：{chapter.word_count}
+              </div>
+            </div>
+
+            {/* Content */}
+            <Card className="mb-6">
+              <CardContent className="p-6 prose max-w-none">
+                {chapter.content?.split('\n').map((paragraph, i) => (
+                  <p key={i}>{paragraph}</p>
+                ))}
+              </CardContent>
+            </Card>
+
+            {/* Review Result */}
+            {reviewResult && (
+              <Card className={`mb-6 ${reviewResult.passed ? 'border-green-500' : 'border-yellow-500'}`}>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    {reviewResult.passed ? (
+                      <>
+                        <Check className="h-5 w-5 text-green-500" />
+                        审核通过
+                      </>
+                    ) : (
+                      <>
+                        <X className="h-5 w-5 text-yellow-500" />
+                        需要修改
+                      </>
+                    )}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <pre className="whitespace-pre-wrap text-sm">{reviewResult.feedback}</pre>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Actions */}
+            <div className="flex justify-between items-center">
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={handleReview}
+                  disabled={isReviewing}
+                >
+                  {isReviewing ? '审核中...' : '审核'}
+                </Button>
+                <Link to={`/project/${id}/write`}>
+                  <Button variant="outline">编辑</Button>
+                </Link>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  disabled={!hasPrev}
+                  onClick={() => goToChapter(chapterOutlines[currentIndex - 1].chapter_number)}
+                >
+                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  上一章
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={!hasNext}
+                  onClick={() => goToChapter(chapterOutlines[currentIndex + 1].chapter_number)}
+                >
+                  下一章
+                  <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
-  </div>
   )
 }
