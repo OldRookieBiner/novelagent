@@ -6,6 +6,16 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import ProjectCard from '@/components/common/ProjectCard'
 import ErrorMessage from '@/components/common/ErrorMessage'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { projectsApi } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import type { ProjectDetail } from '@/types'
@@ -18,6 +28,7 @@ export default function Home() {
   const [newProjectName, setNewProjectName] = useState('')
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null)
 
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
 
@@ -67,16 +78,18 @@ export default function Home() {
   }
 
   const handleDeleteProject = async (id: number) => {
-    if (!confirm('确定要删除这个项目吗？')) return
-
     try {
       await projectsApi.delete(id)
       setProjects(projects.filter(p => p.id !== id))
+      setDeleteTarget(null)
     } catch (err) {
       console.error('Failed to delete project:', err)
-      // Show alert for delete failure since it's a quick action
       alert(err instanceof Error ? err.message : '删除项目失败')
     }
+  }
+
+  const handleDeleteClick = (project: ProjectDetail) => {
+    setDeleteTarget({ id: project.id, name: project.name })
   }
 
   if (loading) {
@@ -140,11 +153,32 @@ export default function Home() {
             <ProjectCard
               key={project.id}
               project={project}
-              onDelete={handleDeleteProject}
+              onDelete={() => handleDeleteClick(project)}
             />
           ))}
         </div>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除项目</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要删除项目「{deleteTarget?.name}」吗？此操作不可撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleteTarget && handleDeleteProject(deleteTarget.id)}
+            >
+              确认删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
