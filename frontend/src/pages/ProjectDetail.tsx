@@ -9,6 +9,7 @@ import OutlineWorkflow from '@/components/project/OutlineWorkflow'
 import StepNavigation, { HistoryBanner, STEPS } from '@/components/project/StepNavigation'
 import InspirationForm from '@/components/project/InspirationForm'
 import InspirationEditor from '@/components/project/InspirationEditor'
+import InspirationDisplay from '@/components/project/InspirationDisplay'
 import { generateInspirationTemplate, type InspirationData } from '@/lib/inspiration'
 import type { ProjectDetail, ChapterOutline, Outline, CollectedInfo } from '@/types'
 
@@ -202,40 +203,6 @@ export default function ProjectDetail() {
     switch (stepIndex) {
       case 0: // 灵感采集
         const info = outline?.collected_info
-        // 中文标签映射
-        const infoLabels: Record<string, string> = {
-          targetReader: '目标读者',
-          novelType: '小说类型',
-          novelLength: '小说长度',
-          customChapterCount: '自定义章节数',
-          targetWords: '目标字数',
-          customTargetWords: '自定义目标字数',
-          wordsPerChapter: '每章字数',
-          customWordsPerChapter: '自定义每章字数',
-          narrative: '叙事视角',
-          coreTheme: '核心主题',
-          worldSetting: '世界观',
-          customWorldSetting: '自定义世界观',
-          protagonist: '主角设定',
-          customProtagonist: '自定义主角',
-          goldFinger: '金手指',
-          customGoldFinger: '自定义金手指',
-          stylePreference: '风格偏好',
-        }
-        // value -> 中文 映射
-        const valueLabels: Record<string, Record<string, string>> = {
-          targetReader: { male: '男频', female: '女频' },
-          novelType: { xuanhuan: '玄幻', kehuan: '科幻', dushi: '都市', yanqing: '言情', xuanyi: '悬疑', lishi: '历史' },
-          novelLength: { short: '短篇', medium: '中篇', long: '长篇', extra_long: '超长篇', custom: '自定义' },
-          wordsPerChapter: { '1500-2000': '1500-2000字', '2000-2500': '2000-2500字', '2500-3000': '2500-3000字', '3000-5000': '3000-5000字', custom: '自定义' },
-          narrative: { first: '第一人称', third: '第三人称' },
-          coreTheme: { revenge: '复仇', growth: '成长', counterattack: '逆袭', love: '爱情', adventure: '探险', power_struggle: '权谋' },
-          worldSetting: { cultivation: '修仙体系', magic: '魔法世界', cyberpunk: '赛博朋克', modern: '现代社会', ancient: '古代王朝', custom: '自定义' },
-          protagonist: { genius: '少年天才', transmigrator: '穿越者', reborn: '重生者', underdog: '草根逆袭', ordinary: '普通人', custom: '自定义' },
-          goldFinger: { system: '系统流', space: '空间流', reborn: '重生流', transmigrate: '穿越流', checkin: '签到流', none: '无金手指', custom: '自定义' },
-          stylePreference: { humorous: '轻松幽默', passionate: '热血激昂', aesthetic: '细腻唯美', dark: '暗黑深沉', tense: '紧张刺激' },
-          targetWords: { '50w': '50万字', '100w': '100万字', '200w': '200万字', '300w': '300万字', '500w': '500万字', custom: '自定义' },
-        }
         return (
           <Card>
             <CardHeader>
@@ -243,23 +210,7 @@ export default function ProjectDetail() {
             </CardHeader>
             <CardContent>
               {info && Object.keys(info).length > 0 ? (
-                <div className="space-y-3">
-                  {Object.entries(info).map(([key, value]) => {
-                    if (!value) return null
-                    const label = infoLabels[key] || key
-                    // 尝试映射为中文
-                    let displayValue = value
-                    if (typeof value === 'string' && valueLabels[key]?.[value]) {
-                      displayValue = valueLabels[key][value]
-                    }
-                    return (
-                      <div key={key} className="flex gap-2">
-                        <span className="text-sm font-medium text-muted-foreground min-w-[100px]">{label}:</span>
-                        <span className="text-sm">{String(displayValue)}</span>
-                      </div>
-                    )
-                  })}
-                </div>
+                <InspirationDisplay data={info} />
               ) : (
                 <div className="text-muted-foreground">暂无灵感采集记录</div>
               )}
