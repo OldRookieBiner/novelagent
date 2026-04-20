@@ -60,10 +60,7 @@ export interface ProjectUpdate {
 
 export interface CollectedInfo {
   novelType?: string;
-  novelLength?: string;
-  customChapterCount?: number;
-  targetWords?: string;
-  customTargetWords?: number;
+  targetWords?: number;
   coreTheme?: string;
   worldSetting?: string;
   customWorldSetting?: string;
@@ -71,11 +68,11 @@ export interface CollectedInfo {
   customProtagonist?: string;
   stylePreference?: string;
   // 新增字段
-  targetReader?: string;        // 'male' | 'female'
-  wordsPerChapter?: string;     // 每章字数
+  targetReader?: string;          // 'male' | 'female'
+  wordsPerChapter?: string;       // 每章字数
   customWordsPerChapter?: number;
-  narrative?: string;           // 'first' | 'third'
-  goldFinger?: string;          // 金手指类型
+  narrative?: string;             // 'first' | 'third'
+  goldFinger?: string;            // 金手指类型
   customGoldFinger?: string;
 }
 
