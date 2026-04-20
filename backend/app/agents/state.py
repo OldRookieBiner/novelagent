@@ -7,16 +7,20 @@ from operator import add
 class CollectedInfo(TypedDict, total=False):
     """Collected information from user (v0.5.0 inspiration data)"""
     novelType: str
-    novelLength: str
-    customChapterCount: int
-    targetWords: str
-    customTargetWords: int
+    targetWords: int  # Changed from string to number
     coreTheme: str
     worldSetting: str
     customWorldSetting: str
     protagonist: str
     customProtagonist: str
     stylePreference: str
+    # New fields
+    targetReader: str
+    wordsPerChapter: str
+    customWordsPerChapter: int
+    narrative: str
+    goldFinger: str
+    customGoldFinger: str
 
 
 class NovelState(TypedDict):

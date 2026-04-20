@@ -233,20 +233,21 @@ async def confirm_outline(
 
     # Calculate chapter count from inspiration data if available
     collected_info = outline.collected_info or {}
-    novel_length = collected_info.get("novelLength", "medium")
+    target_words = collected_info.get("targetWords", 100000)
 
-    # Map novelLength to chapter count
-    length_to_chapters = {
-        "short": 15,
-        "medium": 40,
-        "long": 75,
-        "extra_long": 100,
-    }
-
-    if novel_length == "custom":
-        chapter_count = collected_info.get("customChapterCount", 40)
-    else:
-        chapter_count = length_to_chapters.get(novel_length, 40)
+    # Calculate chapter count based on target words
+    chapter_count = 40  # default
+    if isinstance(target_words, int):
+        if target_words <= 50000:
+            chapter_count = max(5, int(target_words / 3500))
+        elif target_words <= 200000:
+            chapter_count = max(15, int(target_words / 4000))
+        elif target_words <= 500000:
+            chapter_count = max(40, int(target_words / 5000))
+        elif target_words <= 1000000:
+            chapter_count = max(80, int(target_words / 6000))
+        else:
+            chapter_count = max(150, int(target_words / 7000))
 
     # Update outline with chapter count
     outline.chapter_count_suggested = chapter_count

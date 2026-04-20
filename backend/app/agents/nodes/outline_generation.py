@@ -76,19 +76,26 @@ async def generate_outline_node(state: NovelState, llm: LLMService) -> NovelStat
     inspiration_template = state.get("inspiration_template", "")
     collected_info = state.get("collected_info", {})
 
-    # 计算章节数
+    # 计算章节数（基于目标字数）
     chapter_count = 40  # 默认值
-    novel_length = collected_info.get("novelLength", "medium")
-    length_to_chapters = {
-        "short": 15,
-        "medium": 40,
-        "long": 75,
-        "extra_long": 100,
-    }
-    if novel_length == "custom":
-        chapter_count = collected_info.get("customChapterCount", 40)
-    else:
-        chapter_count = length_to_chapters.get(novel_length, 40)
+    target_words = collected_info.get("targetWords", 100000)
+    if isinstance(target_words, int):
+        # 根据目标字数计算章节数
+        # 超短篇: 1万-5万字 -> 5-15章
+        # 短篇: 5万-20万字 -> 15-40章
+        # 中篇: 20万-50万字 -> 40-80章
+        # 长篇: 50万-100万字 -> 80-150章
+        # 超长篇: 100万字以上 -> 150+章
+        if target_words <= 50000:
+            chapter_count = max(5, int(target_words / 3500))  # 约3500字/章
+        elif target_words <= 200000:
+            chapter_count = max(15, int(target_words / 4000))
+        elif target_words <= 500000:
+            chapter_count = max(40, int(target_words / 5000))
+        elif target_words <= 1000000:
+            chapter_count = max(80, int(target_words / 6000))
+        else:
+            chapter_count = max(150, int(target_words / 7000))
 
     # 如果没有灵感模板，从 collected_info 生成基本信息
     if not inspiration_template:
@@ -97,14 +104,14 @@ async def generate_outline_node(state: NovelState, llm: LLMService) -> NovelStat
         protagonist = collected_info.get("customProtagonist") or collected_info.get("protagonist", "未指定")
         world_setting = collected_info.get("customWorldSetting") or collected_info.get("worldSetting", "未指定")
         style = collected_info.get("stylePreference", "未指定")
-        target_words = collected_info.get("targetWords", "100万字")
+        target_words_display = f"{target_words}字" if isinstance(target_words, int) else "未指定"
 
         inspiration_template = f"""# 小说创作灵感
 
 ## 基本信息
 - **小说类型**：{novel_type}
 - **核心主题**：{core_theme}
-- **目标字数**：{target_words}
+- **目标字数**：{target_words_display}
 
 ## 世界设定
 - **世界观**：{world_setting}
@@ -143,19 +150,20 @@ def prepare_outline_prompt(state: NovelState) -> tuple[str, int]:
     inspiration_template = state.get("inspiration_template", "")
     collected_info = state.get("collected_info", {})
 
-    # 计算章节数
+    # 计算章节数（基于目标字数）
     chapter_count = 40  # 默认值
-    novel_length = collected_info.get("novelLength", "medium")
-    length_to_chapters = {
-        "short": 15,
-        "medium": 40,
-        "long": 75,
-        "extra_long": 100,
-    }
-    if novel_length == "custom":
-        chapter_count = collected_info.get("customChapterCount", 40)
-    else:
-        chapter_count = length_to_chapters.get(novel_length, 40)
+    target_words = collected_info.get("targetWords", 100000)
+    if isinstance(target_words, int):
+        if target_words <= 50000:
+            chapter_count = max(5, int(target_words / 3500))
+        elif target_words <= 200000:
+            chapter_count = max(15, int(target_words / 4000))
+        elif target_words <= 500000:
+            chapter_count = max(40, int(target_words / 5000))
+        elif target_words <= 1000000:
+            chapter_count = max(80, int(target_words / 6000))
+        else:
+            chapter_count = max(150, int(target_words / 7000))
 
     # 如果没有灵感模板，从 collected_info 生成基本信息
     if not inspiration_template:
@@ -164,14 +172,14 @@ def prepare_outline_prompt(state: NovelState) -> tuple[str, int]:
         protagonist = collected_info.get("customProtagonist") or collected_info.get("protagonist", "未指定")
         world_setting = collected_info.get("customWorldSetting") or collected_info.get("worldSetting", "未指定")
         style = collected_info.get("stylePreference", "未指定")
-        target_words = collected_info.get("targetWords", "100万字")
+        target_words_display = f"{target_words}字" if isinstance(target_words, int) else "未指定"
 
         inspiration_template = f"""# 小说创作灵感
 
 ## 基本信息
 - **小说类型**：{novel_type}
 - **核心主题**：{core_theme}
-- **目标字数**：{target_words}
+- **目标字数**：{target_words_display}
 
 ## 世界设定
 - **世界观**：{world_setting}

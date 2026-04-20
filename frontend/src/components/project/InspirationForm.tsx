@@ -107,6 +107,7 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
     if (!targetReader) newErrors.targetReader = '请选择目标读者'
     if (!novelType) newErrors.novelType = '请选择小说类型'
     if (!targetWords) newErrors.targetWords = '请输入目标字数'
+    else if (targetWords < 10000) newErrors.targetWords = '目标字数不能少于1万字'
     if (!wordsPerChapter) newErrors.wordsPerChapter = '请选择每章字数'
     if (!coreTheme) newErrors.coreTheme = '请选择核心主题'
 
@@ -254,16 +255,19 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
                 </div>
               </div>
             </div>
-            <Input
-              type="number"
-              value={targetWords || ''}
-              onChange={(e) => {
-                setTargetWords(parseInt(e.target.value) || 0)
-                if (errors.targetWords) setErrors({ ...errors, targetWords: '' })
-              }}
-              placeholder="输入目标字数"
-              className={`h-11 ${errors.targetWords ? 'border-red-500' : ''}`}
-            />
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                value={targetWords || ''}
+                onChange={(e) => {
+                  setTargetWords(parseInt(e.target.value) || 0)
+                  if (errors.targetWords) setErrors({ ...errors, targetWords: '' })
+                }}
+                placeholder="输入目标字数"
+                className={`flex-1 h-11 ${errors.targetWords ? 'border-red-500' : ''}`}
+              />
+              <span className="text-sm text-gray-500">字</span>
+            </div>
             {errors.targetWords && <p className="text-red-500 text-xs mt-1">{errors.targetWords}</p>}
           </div>
 
