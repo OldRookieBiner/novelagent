@@ -204,7 +204,7 @@ export default function ProjectDetail() {
       case 0: // 灵感采集
         const info = outline?.collected_info
         return (
-          <Card>
+          <Card className="flex-1">
             <CardHeader>
               <CardTitle>灵感采集记录</CardTitle>
             </CardHeader>
@@ -220,7 +220,7 @@ export default function ProjectDetail() {
 
       case 1: // 大纲生成
         return (
-          <Card>
+          <Card className="flex-1">
             <CardHeader>
               <CardTitle>大纲信息</CardTitle>
             </CardHeader>
