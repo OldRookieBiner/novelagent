@@ -46,8 +46,26 @@ export default function Reading() {
       const outline = chaptersData.find(c => c.chapter_number === chapterNumber)
       setCurrentOutline(outline || null)
 
-      const chapterData = await chaptersApi.get(parseInt(id), chapterNumber)
-      setChapter(chapterData)
+      // Try to fetch chapter content, handle 404 for chapters without content
+      try {
+        const chapterData = await chaptersApi.get(parseInt(id), chapterNumber)
+        setChapter(chapterData)
+      } catch {
+        // Chapter has no content yet, set empty state
+        setChapter({
+          id: 0,
+          chapter_outline_id: outline?.id || 0,
+          content: undefined,
+          word_count: 0,
+          review_passed: false,
+          review_feedback: undefined,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+      }
+
+      // Clear review result when switching chapters
+      setReviewResult(null)
     } catch (err) {
       console.error('Failed to fetch data:', err)
     }
@@ -136,9 +154,13 @@ export default function Reading() {
             {/* Content */}
             <Card className="mb-6">
               <CardContent className="p-6 prose max-w-none">
-                {chapter.content?.split('\n').map((paragraph, i) => (
-                  <p key={i}>{paragraph}</p>
-                ))}
+                {chapter.content ? (
+                  chapter.content.split('\n').map((paragraph, i) => (
+                    <p key={i}>{paragraph}</p>
+                  ))
+                ) : (
+                  <p className="text-muted-foreground">该章节尚未生成正文</p>
+                )}
               </CardContent>
             </Card>
 
@@ -172,12 +194,14 @@ export default function Reading() {
                 <Button
                   variant="outline"
                   onClick={handleReview}
-                  disabled={isReviewing}
+                  disabled={isReviewing || !chapter.content}
                 >
                   {isReviewing ? '审核中...' : '审核'}
                 </Button>
                 <Link to={`/project/${id}/write`}>
-                  <Button variant="outline">编辑</Button>
+                  <Button variant="outline">
+                    {chapter.content ? '编辑' : '去写作'}
+                  </Button>
                 </Link>
               </div>
 
