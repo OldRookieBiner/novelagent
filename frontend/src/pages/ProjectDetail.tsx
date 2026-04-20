@@ -1,6 +1,6 @@
 // frontend/src/pages/ProjectDetail.tsx
 import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { projectsApi, outlineApi, chapterOutlinesApi } from '@/lib/api'
@@ -26,13 +26,17 @@ const STAGE_LABELS: Record<string, string> = {
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const [project, setProject] = useState<ProjectDetail | null>(null)
   const [outline, setOutline] = useState<Outline | null>(null)
   const [chapterOutlines, setChapterOutlines] = useState<ChapterOutline[]>([])
   const [selectedChapter, setSelectedChapter] = useState<ChapterOutline | null>(null)
   const [loading, setLoading] = useState(true)
-  const [viewingStep, setViewingStep] = useState<number | null>(null)
+  const [viewingStep, setViewingStep] = useState<number | null>(() => {
+    const viewStepParam = searchParams.get('viewStep')
+    return viewStepParam ? parseInt(viewStepParam) : null
+  })
 
   // 灵感采集状态
   const [inspirationData, setInspirationData] = useState<InspirationData | null>(null)
@@ -153,6 +157,11 @@ export default function ProjectDetail() {
   // Step navigation handlers
   const handleViewStep = (stepIndex: number | null) => {
     setViewingStep(stepIndex)
+    if (stepIndex !== null) {
+      setSearchParams({ viewStep: stepIndex.toString() })
+    } else {
+      setSearchParams({})
+    }
   }
 
   const handleReturnToCurrent = () => {
