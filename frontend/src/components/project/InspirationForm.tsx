@@ -225,8 +225,34 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
         {/* 下拉框选项：目标字数、每章字数 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <div className="text-sm font-medium text-gray-700 mb-2">
-              目标字数 <span className="text-red-500">*</span>
+            <div className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
+              目标字数
+              <span className="text-red-500">*</span>
+              {/* Tips 图标 */}
+              <div className="relative group ml-1">
+                <svg
+                  className="w-4 h-4 text-gray-400 cursor-help hover:text-blue-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                {/* Tooltip */}
+                <div className="absolute bottom-full left-0 mb-2 w-56 p-3 bg-gray-800 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                  <div className="font-medium mb-2">📖 字数与篇幅对应关系：</div>
+                  <ul className="space-y-1">
+                    <li>• 超短篇：1万-5万字</li>
+                    <li>• 短篇：5万-20万字</li>
+                    <li>• 中篇：20万-50万字</li>
+                    <li>• 长篇：50万-100万字</li>
+                    <li>• 超长篇：100万字以上</li>
+                  </ul>
+                  <div className="absolute bottom-0 left-4 transform translate-y-full">
+                    <div className="border-8 border-transparent border-t-gray-800"></div>
+                  </div>
+                </div>
+              </div>
             </div>
             <Input
               type="number"
