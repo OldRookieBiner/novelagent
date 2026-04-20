@@ -70,6 +70,13 @@ export interface CollectedInfo {
   protagonist?: string;
   customProtagonist?: string;
   stylePreference?: string;
+  // 新增字段
+  targetReader?: string;        // 'male' | 'female'
+  wordsPerChapter?: string;     // 每章字数
+  customWordsPerChapter?: number;
+  narrative?: string;           // 'first' | 'third'
+  goldFinger?: string;          // 金手指类型
+  customGoldFinger?: string;
 }
 
 export interface Outline {

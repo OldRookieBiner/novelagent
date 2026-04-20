@@ -34,8 +34,10 @@ export default function InspirationEditor({
 
   const showCustomChapter = data.novelLength === 'custom'
   const showCustomWords = data.targetWords === 'custom'
+  const showCustomWordsPerChapter = data.wordsPerChapter === 'custom'
   const showCustomWorld = data.worldSetting === 'custom'
   const showCustomProtagonist = data.protagonist === 'custom'
+  const showCustomGoldFinger = data.goldFinger === 'custom'
 
   // 计算章节数和字数
   const chapterCount = getChapterCount(data)
@@ -54,6 +56,23 @@ export default function InspirationEditor({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* 目标读者 */}
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">目标读者</label>
+            <select
+              className="w-full h-9 px-3 rounded-md border border-gray-300 bg-white text-sm"
+              value={data.targetReader}
+              onChange={(e) => updateData({ ...data, targetReader: e.target.value })}
+            >
+              <option value="">未设置</option>
+              {INSPIRATION_OPTIONS.targetReader.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* 小说类型 */}
           <div>
             <label className="block text-xs text-gray-500 mb-1">小说类型</label>
@@ -131,6 +150,37 @@ export default function InspirationEditor({
             </div>
           )}
 
+          {/* 每章字数 */}
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">每章字数</label>
+            <select
+              className="w-full h-9 px-3 rounded-md border border-gray-300 bg-white text-sm"
+              value={data.wordsPerChapter}
+              onChange={(e) => updateData({ ...data, wordsPerChapter: e.target.value })}
+            >
+              <option value="">未设置</option>
+              {INSPIRATION_OPTIONS.wordsPerChapter.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 自定义每章字数 */}
+          {showCustomWordsPerChapter && (
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">自定义每章字数</label>
+              <Input
+                type="number"
+                className="h-9 text-sm"
+                value={data.customWordsPerChapter || ''}
+                onChange={(e) => updateData({ ...data, customWordsPerChapter: parseInt(e.target.value) || undefined })}
+                placeholder="输入字数"
+              />
+            </div>
+          )}
+
           {/* 核心主题 */}
           <div>
             <label className="block text-xs text-gray-500 mb-1">核心主题</label>
@@ -149,6 +199,23 @@ export default function InspirationEditor({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+          {/* 叙事视角 */}
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">叙事视角</label>
+            <select
+              className="w-full h-9 px-3 rounded-md border border-gray-300 bg-white text-sm"
+              value={data.narrative}
+              onChange={(e) => updateData({ ...data, narrative: e.target.value })}
+            >
+              <option value="">未设置</option>
+              {INSPIRATION_OPTIONS.narrative.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* 世界观 */}
           <div>
             <label className="block text-xs text-gray-500 mb-1">世界观设定</label>
@@ -207,6 +274,37 @@ export default function InspirationEditor({
                 value={data.customProtagonist || ''}
                 onChange={(e) => updateData({ ...data, customProtagonist: e.target.value })}
                 placeholder="输入主角设定"
+              />
+            </div>
+          )}
+
+          {/* 金手指设定 */}
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">金手指设定</label>
+            <select
+              className="w-full h-9 px-3 rounded-md border border-gray-300 bg-white text-sm"
+              value={data.goldFinger}
+              onChange={(e) => updateData({ ...data, goldFinger: e.target.value })}
+            >
+              <option value="">未设置</option>
+              {INSPIRATION_OPTIONS.goldFinger.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 自定义金手指 */}
+          {showCustomGoldFinger && (
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">自定义金手指</label>
+              <Input
+                type="text"
+                className="h-9 text-sm"
+                value={data.customGoldFinger || ''}
+                onChange={(e) => updateData({ ...data, customGoldFinger: e.target.value })}
+                placeholder="输入金手指设定"
               />
             </div>
           )}

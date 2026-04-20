@@ -5,6 +5,7 @@ export interface SelectOption {
   label: string
   chapters?: string  // 仅用于篇幅选项
   words?: string     // 仅用于字数选项
+  desc?: string      // 仅用于每章字数选项
 }
 
 export interface InspirationData {
@@ -19,6 +20,13 @@ export interface InspirationData {
   protagonist?: string
   customProtagonist?: string
   stylePreference?: string
+  // 新增字段
+  targetReader: string        // 'male' | 'female'
+  wordsPerChapter: string     // 每章字数
+  customWordsPerChapter?: number
+  narrative?: string          // 'first' | 'third'
+  goldFinger?: string         // 金手指类型
+  customGoldFinger?: string
 }
 
 // 灵感选项配置
@@ -83,6 +91,35 @@ export const INSPIRATION_OPTIONS = {
     { value: 'dark', label: '暗黑深沉' },
     { value: 'tense', label: '紧张刺激' },
   ],
+
+  // 新增选项
+  targetReader: [
+    { value: 'male', label: '男频' },
+    { value: 'female', label: '女频' },
+  ],
+
+  wordsPerChapter: [
+    { value: '1500-2000', label: '1500-2000字', desc: '短章' },
+    { value: '2000-2500', label: '2000-2500字', desc: '标准·番茄推荐' },
+    { value: '2500-3000', label: '2500-3000字', desc: '中章·七猫推荐' },
+    { value: '3000-5000', label: '3000-5000字', desc: '长章' },
+    { value: 'custom', label: '自定义' },
+  ],
+
+  narrative: [
+    { value: 'first', label: '第一人称' },
+    { value: 'third', label: '第三人称' },
+  ],
+
+  goldFinger: [
+    { value: 'system', label: '系统流' },
+    { value: 'space', label: '空间流' },
+    { value: 'reborn', label: '重生流' },
+    { value: 'transmigrate', label: '穿越流' },
+    { value: 'checkin', label: '签到流' },
+    { value: 'none', label: '无金手指' },
+    { value: 'custom', label: '自定义' },
+  ],
 }
 
 // 获取选项标签
@@ -113,6 +150,18 @@ export function getTargetWordsDisplay(data: InspirationData): string {
     return option.words || option.label
   }
   return data.targetWords
+}
+
+// 获取每章字数显示文本
+export function getWordsPerChapterDisplay(data: InspirationData): string {
+  if (data.wordsPerChapter === 'custom' && data.customWordsPerChapter) {
+    return `${data.customWordsPerChapter}字`
+  }
+  const option = INSPIRATION_OPTIONS.wordsPerChapter.find(o => o.value === data.wordsPerChapter)
+  if (option) {
+    return option.label
+  }
+  return data.wordsPerChapter || ''
 }
 
 // 获取章节数（根据篇幅或自定义）
@@ -149,27 +198,34 @@ export function generateInspirationTemplate(data: InspirationData): string {
   const novelType = getOptionLabel(INSPIRATION_OPTIONS.novelTypes, data.novelType)
   const novelLength = getLengthDisplay(data)
   const targetWords = getTargetWordsDisplay(data)
+  const wordsPerChapter = getWordsPerChapterDisplay(data)
   const coreTheme = getOptionLabel(INSPIRATION_OPTIONS.coreThemes, data.coreTheme)
   const worldSetting = data.customWorldSetting || getOptionLabel(INSPIRATION_OPTIONS.worldSettings, data.worldSetting)
   const protagonist = data.customProtagonist || getOptionLabel(INSPIRATION_OPTIONS.protagonistTypes, data.protagonist)
   const style = getOptionLabel(INSPIRATION_OPTIONS.stylePreferences, data.stylePreference)
+  const narrative = getOptionLabel(INSPIRATION_OPTIONS.narrative, data.narrative)
+  const goldFinger = data.customGoldFinger || getOptionLabel(INSPIRATION_OPTIONS.goldFinger, data.goldFinger)
 
   return `# 小说创作灵感
 
 ## 基本信息
 
+- **目标读者**：${data.targetReader === 'male' ? '男频' : data.targetReader === 'female' ? '女频' : '未设置'}
 - **小说类型**：${novelType || '未设置'}
 - **小说篇幅**：${novelLength || '未设置'}
 - **目标字数**：${targetWords || '未设置'}
+- **每章字数**：${wordsPerChapter || '未设置'}
+
+## 叙事设定
+
+- **叙事视角**：${narrative || '未设置'}
+
+## 核心设定
+
 - **核心主题**：${coreTheme || '未设置'}
-
-## 世界设定
-
 - **世界观**：${worldSetting || '未设置'}
-
-## 人物设定
-
 - **主角**：${protagonist || '未设置'}
+- **金手指**：${goldFinger || '未设置'}
 
 ## 风格
 
