@@ -39,10 +39,7 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
   // 必填项状态
   const [targetReader, setTargetReader] = useState(initialData?.targetReader || '')
   const [novelType, setNovelType] = useState(initialData?.novelType || '')
-  const [novelLength, setNovelLength] = useState(initialData?.novelLength || '')
-  const [customChapterCount, setCustomChapterCount] = useState<number | undefined>(initialData?.customChapterCount)
-  const [targetWords, setTargetWords] = useState(initialData?.targetWords || '')
-  const [customTargetWords, setCustomTargetWords] = useState<number | undefined>(initialData?.customTargetWords)
+  const [targetWords, setTargetWords] = useState<number>(initialData?.targetWords || 0)
   const [wordsPerChapter, setWordsPerChapter] = useState(initialData?.wordsPerChapter || '')
   const [customWordsPerChapter, setCustomWordsPerChapter] = useState<number | undefined>(initialData?.customWordsPerChapter)
 
@@ -66,10 +63,7 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
       if (draft) {
         if (draft.targetReader) setTargetReader(draft.targetReader)
         if (draft.novelType) setNovelType(draft.novelType)
-        if (draft.novelLength) setNovelLength(draft.novelLength)
-        if (draft.customChapterCount) setCustomChapterCount(draft.customChapterCount)
         if (draft.targetWords) setTargetWords(draft.targetWords)
-        if (draft.customTargetWords) setCustomTargetWords(draft.customTargetWords)
         if (draft.wordsPerChapter) setWordsPerChapter(draft.wordsPerChapter)
         if (draft.customWordsPerChapter) setCustomWordsPerChapter(draft.customWordsPerChapter)
         if (draft.narrative) setNarrative(draft.narrative)
@@ -89,10 +83,7 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
   useEffect(() => {
     const data: InspirationData = {
       novelType,
-      novelLength,
-      customChapterCount,
       targetWords,
-      customTargetWords,
       coreTheme,
       worldSetting,
       customWorldSetting,
@@ -106,17 +97,16 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
       goldFinger,
       customGoldFinger,
     }
-    if (novelType || novelLength || targetWords || coreTheme || targetReader) {
+    if (novelType || targetWords || coreTheme || targetReader) {
       saveInspirationDraft(data)
     }
-  }, [novelType, novelLength, customChapterCount, targetWords, customTargetWords, coreTheme, worldSetting, customWorldSetting, protagonist, customProtagonist, stylePreference, targetReader, wordsPerChapter, customWordsPerChapter, narrative, goldFinger, customGoldFinger])
+  }, [novelType, targetWords, coreTheme, worldSetting, customWorldSetting, protagonist, customProtagonist, stylePreference, targetReader, wordsPerChapter, customWordsPerChapter, narrative, goldFinger, customGoldFinger])
 
   const handleSubmit = () => {
     const newErrors: Record<string, string> = {}
     if (!targetReader) newErrors.targetReader = '请选择目标读者'
     if (!novelType) newErrors.novelType = '请选择小说类型'
-    if (!novelLength) newErrors.novelLength = '请选择小说篇幅'
-    if (!targetWords) newErrors.targetWords = '请选择目标字数'
+    if (!targetWords) newErrors.targetWords = '请输入目标字数'
     if (!wordsPerChapter) newErrors.wordsPerChapter = '请选择每章字数'
     if (!coreTheme) newErrors.coreTheme = '请选择核心主题'
 
@@ -127,10 +117,7 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
 
     const data: InspirationData = {
       novelType,
-      novelLength,
-      customChapterCount,
       targetWords,
-      customTargetWords,
       coreTheme,
       worldSetting,
       customWorldSetting,
@@ -153,10 +140,7 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
     clearInspirationDraft()
     setTargetReader('')
     setNovelType('')
-    setNovelLength('')
-    setCustomChapterCount(undefined)
-    setTargetWords('')
-    setCustomTargetWords(undefined)
+    setTargetWords(0)
     setWordsPerChapter('')
     setCustomWordsPerChapter(undefined)
     setNarrative('')
@@ -238,54 +222,22 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
           {errors.novelType && <p className="text-red-500 text-xs mt-2">{errors.novelType}</p>}
         </div>
 
-        {/* 下拉框选项：篇幅、目标字数、每章字数 */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div>
-            <div className="text-sm font-medium text-gray-700 mb-2">
-              小说篇幅 <span className="text-red-500">*</span>
-            </div>
-            <select
-              className={`w-full h-11 px-3 rounded-lg border-2 bg-white text-sm ${
-                errors.novelLength ? 'border-red-500' : 'border-gray-200'
-              }`}
-              value={novelLength}
-              onChange={(e) => {
-                setNovelLength(e.target.value)
-                if (errors.novelLength) setErrors({ ...errors, novelLength: '' })
-              }}
-            >
-              <option value="">请选择</option>
-              {INSPIRATION_OPTIONS.novelLength.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                  {opt.chapters ? ` (${opt.chapters}章)` : ''}
-                </option>
-              ))}
-            </select>
-            {errors.novelLength && <p className="text-red-500 text-xs mt-1">{errors.novelLength}</p>}
-          </div>
-
+        {/* 下拉框选项：目标字数、每章字数 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <div className="text-sm font-medium text-gray-700 mb-2">
               目标字数 <span className="text-red-500">*</span>
             </div>
-            <select
-              className={`w-full h-11 px-3 rounded-lg border-2 bg-white text-sm ${
-                errors.targetWords ? 'border-red-500' : 'border-gray-200'
-              }`}
-              value={targetWords}
+            <Input
+              type="number"
+              value={targetWords || ''}
               onChange={(e) => {
-                setTargetWords(e.target.value)
+                setTargetWords(parseInt(e.target.value) || 0)
                 if (errors.targetWords) setErrors({ ...errors, targetWords: '' })
               }}
-            >
-              <option value="">请选择</option>
-              {INSPIRATION_OPTIONS.targetWords.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+              placeholder="输入目标字数"
+              className={`h-11 ${errors.targetWords ? 'border-red-500' : ''}`}
+            />
             {errors.targetWords && <p className="text-red-500 text-xs mt-1">{errors.targetWords}</p>}
           </div>
 
@@ -316,44 +268,18 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
         </div>
 
         {/* 自定义输入 */}
-        {(novelLength === 'custom' || targetWords === 'custom' || wordsPerChapter === 'custom') && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
-            {novelLength === 'custom' && (
-              <div>
-                <div className="text-sm font-medium text-gray-700 mb-2">自定义章节数</div>
-                <Input
-                  type="number"
-                  value={customChapterCount || ''}
-                  onChange={(e) => setCustomChapterCount(parseInt(e.target.value) || undefined)}
-                  placeholder="输入章节数"
-                  className="h-11"
-                />
-              </div>
-            )}
-            {targetWords === 'custom' && (
-              <div>
-                <div className="text-sm font-medium text-gray-700 mb-2">自定义字数（万字）</div>
-                <Input
-                  type="number"
-                  value={customTargetWords || ''}
-                  onChange={(e) => setCustomTargetWords(parseInt(e.target.value) || undefined)}
-                  placeholder="输入目标字数"
-                  className="h-11"
-                />
-              </div>
-            )}
-            {wordsPerChapter === 'custom' && (
-              <div>
-                <div className="text-sm font-medium text-gray-700 mb-2">自定义每章字数</div>
-                <Input
-                  type="number"
-                  value={customWordsPerChapter || ''}
-                  onChange={(e) => setCustomWordsPerChapter(parseInt(e.target.value) || undefined)}
-                  placeholder="输入字数"
-                  className="h-11"
-                />
-              </div>
-            )}
+        {wordsPerChapter === 'custom' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+            <div>
+              <div className="text-sm font-medium text-gray-700 mb-2">自定义每章字数</div>
+              <Input
+                type="number"
+                value={customWordsPerChapter || ''}
+                onChange={(e) => setCustomWordsPerChapter(parseInt(e.target.value) || undefined)}
+                placeholder="输入字数"
+                className="h-11"
+              />
+            </div>
           </div>
         )}
       </div>

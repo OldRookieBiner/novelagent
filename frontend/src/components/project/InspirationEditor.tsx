@@ -4,8 +4,6 @@ import { Input } from '@/components/ui/input'
 import {
   INSPIRATION_OPTIONS,
   generateInspirationTemplate,
-  getChapterCount,
-  getTotalWords,
   type InspirationData,
 } from '@/lib/inspiration'
 
@@ -32,16 +30,10 @@ export default function InspirationEditor({
     onTemplateChange(generateInspirationTemplate(newData))
   }
 
-  const showCustomChapter = data.novelLength === 'custom'
-  const showCustomWords = data.targetWords === 'custom'
   const showCustomWordsPerChapter = data.wordsPerChapter === 'custom'
   const showCustomWorld = data.worldSetting === 'custom'
   const showCustomProtagonist = data.protagonist === 'custom'
   const showCustomGoldFinger = data.goldFinger === 'custom'
-
-  // 计算章节数和字数
-  const chapterCount = getChapterCount(data)
-  const totalWords = getTotalWords(data)
 
   return (
     <div className="space-y-4">
@@ -50,8 +42,7 @@ export default function InspirationEditor({
         <div className="flex items-center justify-between mb-3">
           <h4 className="text-sm font-medium text-gray-700">基本信息</h4>
           <div className="flex gap-4 text-sm text-gray-600">
-            <span>章节数: <strong>{chapterCount}</strong></span>
-            <span>总字数: <strong>{totalWords}万字</strong></span>
+            <span>目标字数: <strong>{data.targetWords ? data.targetWords.toLocaleString() : 0}字</strong></span>
           </div>
         </div>
 
@@ -89,66 +80,17 @@ export default function InspirationEditor({
             </select>
           </div>
 
-          {/* 小说篇幅 */}
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">小说篇幅</label>
-            <select
-              className="w-full h-9 px-3 rounded-md border border-gray-300 bg-white text-sm"
-              value={data.novelLength}
-              onChange={(e) => updateData({ ...data, novelLength: e.target.value })}
-            >
-              {INSPIRATION_OPTIONS.novelLength.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                  {opt.chapters ? ` (${opt.chapters}章)` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* 自定义章节数 */}
-          {showCustomChapter && (
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">自定义章节数</label>
-              <Input
-                type="number"
-                className="h-9 text-sm"
-                value={data.customChapterCount || ''}
-                onChange={(e) => updateData({ ...data, customChapterCount: parseInt(e.target.value) || undefined })}
-                placeholder="输入章节数"
-              />
-            </div>
-          )}
-
           {/* 目标字数 */}
           <div>
             <label className="block text-xs text-gray-500 mb-1">目标字数</label>
-            <select
-              className="w-full h-9 px-3 rounded-md border border-gray-300 bg-white text-sm"
-              value={data.targetWords}
-              onChange={(e) => updateData({ ...data, targetWords: e.target.value })}
-            >
-              {INSPIRATION_OPTIONS.targetWords.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+            <Input
+              type="number"
+              className="h-9 text-sm"
+              value={data.targetWords || ''}
+              onChange={(e) => updateData({ ...data, targetWords: parseInt(e.target.value) || 0 })}
+              placeholder="输入目标字数"
+            />
           </div>
-
-          {/* 自定义字数 */}
-          {showCustomWords && (
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">自定义字数（万字）</label>
-              <Input
-                type="number"
-                className="h-9 text-sm"
-                value={data.customTargetWords || ''}
-                onChange={(e) => updateData({ ...data, customTargetWords: parseInt(e.target.value) || undefined })}
-                placeholder="输入目标字数"
-              />
-            </div>
-          )}
 
           {/* 每章字数 */}
           <div>

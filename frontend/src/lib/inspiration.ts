@@ -3,17 +3,12 @@
 export interface SelectOption {
   value: string
   label: string
-  chapters?: string  // 仅用于篇幅选项
-  words?: string     // 仅用于字数选项
   desc?: string      // 仅用于每章字数选项
 }
 
 export interface InspirationData {
   novelType: string
-  novelLength: string
-  customChapterCount?: number
-  targetWords: string
-  customTargetWords?: number
+  targetWords: number           // 改为 number 类型
   coreTheme: string
   worldSetting?: string
   customWorldSetting?: string
@@ -21,11 +16,11 @@ export interface InspirationData {
   customProtagonist?: string
   stylePreference?: string
   // 新增字段
-  targetReader: string        // 'male' | 'female'
-  wordsPerChapter: string     // 每章字数
+  targetReader: string
+  wordsPerChapter: string
   customWordsPerChapter?: number
-  narrative?: string          // 'first' | 'third'
-  goldFinger?: string         // 金手指类型
+  narrative?: string
+  goldFinger?: string
   customGoldFinger?: string
 }
 
@@ -38,23 +33,6 @@ export const INSPIRATION_OPTIONS = {
     { value: 'yanqing', label: '言情' },
     { value: 'xuanyi', label: '悬疑' },
     { value: 'lishi', label: '历史' },
-  ],
-
-  novelLength: [
-    { value: 'short', label: '短篇', chapters: '10-20' },
-    { value: 'medium', label: '中篇', chapters: '30-50' },
-    { value: 'long', label: '长篇', chapters: '50-100' },
-    { value: 'extra_long', label: '超长篇', chapters: '100+' },
-    { value: 'custom', label: '自定义' },
-  ],
-
-  targetWords: [
-    { value: '50w', label: '50万字', words: '50万' },
-    { value: '100w', label: '100万字', words: '100万' },
-    { value: '200w', label: '200万字', words: '200万' },
-    { value: '300w', label: '300万字', words: '300万' },
-    { value: '500w', label: '500万字', words: '500万' },
-    { value: 'custom', label: '自定义' },
   ],
 
   coreThemes: [
@@ -128,30 +106,6 @@ export function getOptionLabel(options: SelectOption[], value: string | undefine
   return options.find(o => o.value === value)?.label || value
 }
 
-// 获取篇幅显示文本
-export function getLengthDisplay(data: InspirationData): string {
-  if (data.novelLength === 'custom' && data.customChapterCount) {
-    return `${data.customChapterCount}章`
-  }
-  const option = INSPIRATION_OPTIONS.novelLength.find(o => o.value === data.novelLength)
-  if (option) {
-    return option.chapters ? `${option.label}(${option.chapters}章)` : option.label
-  }
-  return data.novelLength
-}
-
-// 获取字数显示文本
-export function getTargetWordsDisplay(data: InspirationData): string {
-  if (data.targetWords === 'custom' && data.customTargetWords) {
-    return `${data.customTargetWords}万字`
-  }
-  const option = INSPIRATION_OPTIONS.targetWords.find(o => o.value === data.targetWords)
-  if (option) {
-    return option.words || option.label
-  }
-  return data.targetWords
-}
-
 // 获取每章字数显示文本
 export function getWordsPerChapterDisplay(data: InspirationData): string {
   if (data.wordsPerChapter === 'custom' && data.customWordsPerChapter) {
@@ -164,40 +118,10 @@ export function getWordsPerChapterDisplay(data: InspirationData): string {
   return data.wordsPerChapter || ''
 }
 
-// 获取章节数（根据篇幅或自定义）
-export function getChapterCount(data: InspirationData): number {
-  if (data.novelLength === 'custom' && data.customChapterCount) {
-    return data.customChapterCount
-  }
-  const lengthToChapters: Record<string, number> = {
-    short: 15,
-    medium: 40,
-    long: 75,
-    extra_long: 100,
-  }
-  return lengthToChapters[data.novelLength] || 40
-}
-
-// 获取总字数（万字为单位）
-export function getTotalWords(data: InspirationData): number {
-  if (data.targetWords === 'custom' && data.customTargetWords) {
-    return data.customTargetWords
-  }
-  const wordsToNumber: Record<string, number> = {
-    '50w': 50,
-    '100w': 100,
-    '200w': 200,
-    '300w': 300,
-    '500w': 500,
-  }
-  return wordsToNumber[data.targetWords] || 100
-}
-
 // 生成 Markdown 模板
 export function generateInspirationTemplate(data: InspirationData): string {
   const novelType = getOptionLabel(INSPIRATION_OPTIONS.novelTypes, data.novelType)
-  const novelLength = getLengthDisplay(data)
-  const targetWords = getTargetWordsDisplay(data)
+  const targetWords = data.targetWords ? `${data.targetWords.toLocaleString()}字` : '未设置'
   const wordsPerChapter = getWordsPerChapterDisplay(data)
   const coreTheme = getOptionLabel(INSPIRATION_OPTIONS.coreThemes, data.coreTheme)
   const worldSetting = data.customWorldSetting || getOptionLabel(INSPIRATION_OPTIONS.worldSettings, data.worldSetting)
@@ -212,8 +136,7 @@ export function generateInspirationTemplate(data: InspirationData): string {
 
 - **目标读者**：${data.targetReader === 'male' ? '男频' : data.targetReader === 'female' ? '女频' : '未设置'}
 - **小说类型**：${novelType || '未设置'}
-- **小说篇幅**：${novelLength || '未设置'}
-- **目标字数**：${targetWords || '未设置'}
+- **目标字数**：${targetWords}
 - **每章字数**：${wordsPerChapter || '未设置'}
 
 ## 叙事设定
@@ -257,6 +180,14 @@ export function parseTemplateToData(template: string): Partial<InspirationData> 
       const value = line.split('：')[1]?.trim()
       const option = INSPIRATION_OPTIONS.novelTypes.find(o => o.label === value)
       if (option) data.novelType = option.value
+    }
+    if (line.includes('**目标字数**')) {
+      const value = line.split('：')[1]?.trim()
+      // Parse number, remove "字" and commas
+      const numStr = value?.replace(/[字,，]/g, '').replace(/万/g, '0000')
+      if (numStr && !isNaN(parseInt(numStr))) {
+        data.targetWords = parseInt(numStr)
+      }
     }
     if (line.includes('**每章字数**')) {
       const value = line.split('：')[1]?.trim()

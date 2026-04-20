@@ -32,7 +32,6 @@ const TARGET_READER_DESC: Record<string, string> = {
 const VALUE_LABELS: Record<string, Record<string, string>> = {
   targetReader: { male: '男频', female: '女频' },
   novelType: { xuanhuan: '玄幻', kehuan: '科幻', dushi: '都市', yanqing: '言情', xuanyi: '悬疑', lishi: '历史' },
-  novelLength: { short: '短篇', medium: '中篇', long: '长篇', extra_long: '超长篇', custom: '自定义' },
   wordsPerChapter: { '1500-2000': '1500-2000字', '2000-2500': '2000-2500字', '2500-3000': '2500-3000字', '3000-5000': '3000-5000字', custom: '自定义' },
   narrative: { first: '第一人称', third: '第三人称' },
   coreTheme: { revenge: '复仇', growth: '成长', counterattack: '逆袭', love: '爱情', adventure: '探险', power_struggle: '权谋' },
@@ -40,7 +39,6 @@ const VALUE_LABELS: Record<string, Record<string, string>> = {
   protagonist: { genius: '少年天才', transmigrator: '穿越者', reborn: '重生者', underdog: '草根逆袭', ordinary: '普通人', custom: '自定义' },
   goldFinger: { system: '系统流', space: '空间流', reborn: '重生流', transmigrate: '穿越流', checkin: '签到流', none: '无金手指', custom: '自定义' },
   stylePreference: { humorous: '轻松幽默', passionate: '热血激昂', aesthetic: '细腻唯美', dark: '暗黑深沉', tense: '紧张刺激' },
-  targetWords: { '50w': '50万字', '100w': '100万字', '200w': '200万字', '300w': '300万字', '500w': '500万字', custom: '自定义' },
 }
 
 // 获取显示标签
@@ -50,25 +48,12 @@ const getLabel = (key: string, value: string | undefined): string => {
 }
 
 export default function InspirationDisplay({ data }: InspirationDisplayProps) {
-  // 获取篇幅显示文本
-  const getLengthDisplay = (): string => {
-    if (data.novelLength === 'custom' && data.customChapterCount) {
-      return `${data.customChapterCount}章`
-    }
-    const label = getLabel('novelLength', data.novelLength)
-    const option = INSPIRATION_OPTIONS.novelLength.find(o => o.value === data.novelLength)
-    if (option?.chapters) {
-      return `${label} (${option.chapters}章)`
-    }
-    return label || '-'
-  }
-
   // 获取目标字数显示文本
   const getTargetWordsDisplay = (): string => {
-    if (data.targetWords === 'custom' && data.customTargetWords) {
-      return `${data.customTargetWords}万字`
+    if (data.targetWords) {
+      return `${data.targetWords.toLocaleString()}字`
     }
-    return getLabel('targetWords', data.targetWords) || '-'
+    return '-'
   }
 
   // 获取每章字数显示文本
@@ -141,14 +126,7 @@ export default function InspirationDisplay({ data }: InspirationDisplayProps) {
         </div>
 
         {/* 下拉框值展示 */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div>
-            <div className="text-sm font-medium text-gray-700 mb-2">小说篇幅</div>
-            <div className="h-11 px-3 rounded-lg border-2 border-gray-200 bg-gray-50 flex items-center text-sm">
-              {getLengthDisplay()}
-            </div>
-          </div>
-
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <div className="text-sm font-medium text-gray-700 mb-2">目标字数</div>
             <div className="h-11 px-3 rounded-lg border-2 border-gray-200 bg-gray-50 flex items-center text-sm">
