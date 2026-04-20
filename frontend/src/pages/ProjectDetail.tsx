@@ -300,27 +300,109 @@ export default function ProjectDetail() {
       case 3: // 写作
       case 4: // 审核
         return (
-          <Card>
-            <CardHeader>
-              <CardTitle>章节列表</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {chapterOutlines.length > 0 ? (
-                <div className="space-y-2">
-                  {chapterOutlines.map((chapter) => (
-                    <div key={chapter.id} className="flex items-center justify-between p-2 bg-muted rounded">
-                      <span>{chapter.chapter_number}. {chapter.title || '未命名'}</span>
-                      {chapter.has_content && (
-                        <span className="text-xs text-green-600">已写作</span>
+          <>
+            {/* Chapter List */}
+            <Card className="w-64 shrink-0">
+              <CardHeader>
+                <CardTitle className="text-lg">章节列表</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="max-h-96 overflow-y-auto">
+                  {chapterOutlines.length === 0 ? (
+                    <div className="p-4 text-center text-muted-foreground text-sm">
+                      暂无章节
+                    </div>
+                  ) : (
+                    chapterOutlines.map((chapter) => (
+                      <div
+                        key={chapter.id}
+                        className={`px-4 py-2 border-b cursor-pointer hover:bg-muted ${
+                          selectedChapter?.id === chapter.id ? 'bg-muted' : ''
+                        }`}
+                        onClick={() => setSelectedChapter(chapter)}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm">
+                            {chapter.chapter_number}. {chapter.title || '未命名'}
+                          </span>
+                          {chapter.has_content && (
+                            <span className="text-xs text-green-600">✓</span>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Chapter Outline Detail */}
+            <Card className="flex-1">
+              <CardHeader>
+                <CardTitle className="text-lg">
+                  {selectedChapter
+                    ? `第 ${selectedChapter.chapter_number} 章：${selectedChapter.title || '未命名'}`
+                    : '章节详情'}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {selectedChapter ? (
+                  <div className="space-y-4">
+                    <div>
+                      <div className="text-sm font-medium text-muted-foreground">场景</div>
+                      <div>{selectedChapter.scene || '-'}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-muted-foreground">人物</div>
+                      <div>{selectedChapter.characters || '-'}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-muted-foreground">情节</div>
+                      <div>{selectedChapter.plot || '-'}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-muted-foreground">冲突</div>
+                      <div>{selectedChapter.conflict || '-'}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-muted-foreground">结局</div>
+                      <div>{selectedChapter.ending || '-'}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-muted-foreground">预计字数</div>
+                      <div>{selectedChapter.target_words} 字</div>
+                    </div>
+
+                    <div className="flex gap-2 pt-4">
+                      {!selectedChapter.confirmed && (
+                        <Button
+                          onClick={() => handleConfirmChapterOutline(selectedChapter.chapter_number)}
+                        >
+                          确认章节大纲
+                        </Button>
+                      )}
+                      {selectedChapter.confirmed && project && (
+                        <Link to={`/project/${project.id}/write`}>
+                          <Button>
+                            {selectedChapter.has_content ? '编辑正文' : '开始写作'}
+                          </Button>
+                        </Link>
+                      )}
+                      {selectedChapter.has_content && project && (
+                        <Link to={`/project/${project.id}/read/${selectedChapter.chapter_number}`}>
+                          <Button variant="outline">阅读正文</Button>
+                        </Link>
                       )}
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-muted-foreground">暂无章节信息</div>
-              )}
-            </CardContent>
-          </Card>
+                  </div>
+                ) : (
+                  <div className="text-center text-muted-foreground py-10">
+                    选择左侧章节查看详情
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </>
         )
 
       default:
