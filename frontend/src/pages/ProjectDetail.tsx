@@ -1,6 +1,7 @@
 // frontend/src/pages/ProjectDetail.tsx
 import { useState, useEffect } from 'react'
 import { useParams, Link, useSearchParams } from 'react-router-dom'
+import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { projectsApi, outlineApi, chapterOutlinesApi } from '@/lib/api'
@@ -397,7 +398,15 @@ export default function ProjectDetail() {
     <div>
       {/* Project Header */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-2">{project.name}</h1>
+        <div className="flex items-center justify-between mb-2">
+          <h1 className="text-2xl font-bold">{project.name}</h1>
+          <Button asChild>
+            <Link to="/">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              返回列表
+            </Link>
+          </Button>
+        </div>
         <div className="flex gap-6 text-sm text-muted-foreground">
           <span>创建时间: {new Date(project.created_at).toLocaleDateString()}</span>
           <span>阶段: {STAGE_LABELS[project.stage] || project.stage}</span>
