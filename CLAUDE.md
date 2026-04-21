@@ -10,6 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 |------|------|------|
 | v0.1.x | 已发布 | CLI 版本，三 Agent 协作 |
 | v0.2.0 | 已发布 | Web 应用，React + FastAPI + PostgreSQL |
+| v0.5.x | 当前 | UX 优化，灵感采集表单改进 |
 
 ---
 
@@ -144,6 +145,19 @@ editor.commands.setContent(html)
 
 // ✅ 正确
 <Button asChild><Link to="/path">文本</Link></Button>
+```
+
+### lucide-react 图标使用
+
+统一使用 `lucide-react` 图标库，避免内联 SVG：
+
+```tsx
+// ✅ 正确
+import { ArrowLeft, Plus } from 'lucide-react'
+<ArrowLeft className="h-4 w-4" />
+
+// ❌ 避免
+<svg>...</svg>
 ```
 
 ### AI 大纲标题解析
