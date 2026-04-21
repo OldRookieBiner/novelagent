@@ -28,3 +28,6 @@ data/projects/*.json
 
 # 构建产物
 *.log
+
+# AI 辅助开发工具文档（临时文件）
+docs/superpowers/
