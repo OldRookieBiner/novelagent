@@ -90,7 +90,7 @@ async def update_settings(
 
     # Encrypt and save API key if provided
     if request.api_key is not None:
-        settings.api_key_encrypted = encrypt_api_key(request.api_key)
+        settings.api_key_encrypted = encrypt_api_key(request.api_key, current_user.id)
     # Clear API key if requested
     elif request.clear_api_key is True:
         settings.api_key_encrypted = None

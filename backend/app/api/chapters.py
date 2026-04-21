@@ -84,18 +84,22 @@ async def list_chapter_outlines(
     """List all chapter outlines for a project."""
     project = get_project_for_user(project_id, current_user.id, db)
 
-    # Get all chapter outlines for this project, ordered by chapter number
-    chapter_outlines = db.query(ChapterOutline).filter(
+    # 使用 LEFT JOIN 一次性获取所有章节数据，避免 N+1 查询
+    from sqlalchemy.orm import joinedload
+    from sqlalchemy import func
+
+    # 获取所有章节大纲，并预加载关联的章节
+    chapter_outlines = db.query(ChapterOutline).options(
+        joinedload(ChapterOutline.chapter)
+    ).filter(
         ChapterOutline.project_id == project_id
     ).order_by(ChapterOutline.chapter_number).all()
 
     # Build response with has_content flag
     response = []
     for co in chapter_outlines:
-        # Check if a chapter exists for this outline
-        has_content = db.query(Chapter).filter(
-            Chapter.chapter_outline_id == co.id
-        ).first() is not None
+        # 检查是否有对应的章节内容（已通过 JOIN 加载）
+        has_content = co.chapter is not None
 
         outline_dict = {
             "id": co.id,

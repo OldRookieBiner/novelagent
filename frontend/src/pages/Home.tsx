@@ -33,14 +33,12 @@ export default function Home() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
 
   const fetchProjects = async () => {
+    // 获取项目列表，后端已直接返回详情，无需额外请求
     setError(null)
     try {
       const response = await projectsApi.list()
-      // Batch fetch project details (still N+1 but better error handling)
-      const details = await Promise.all(
-        response.projects.map(p => projectsApi.get(p.id))
-      )
-      setProjects(details)
+      // 后端现在直接返回 ProjectDetail 列表
+      setProjects(response.projects as ProjectDetail[])
     } catch (err) {
       console.error('Failed to fetch projects:', err)
       setError(err instanceof Error ? err.message : '加载项目列表失败')

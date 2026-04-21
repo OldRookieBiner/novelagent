@@ -1,5 +1,6 @@
 """Projects API routes"""
 
+import logging
 from typing import List
 from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy.orm import Session
@@ -13,6 +14,9 @@ from app.schemas.project import (
     ProjectCreate, ProjectUpdate, ProjectResponse, ProjectListResponse, ProjectDetail
 )
 from app.utils.auth import get_current_user
+
+# 模块日志
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -56,10 +60,15 @@ async def list_projects(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """List all projects for current user"""
+    """
+    列出当前用户的所有项目
+    直接返回包含进度详情的项目列表，避免前端 N+1 请求
+    """
     projects = db.query(Project).filter(Project.user_id == current_user.id).all()
+    # 直接返回 ProjectDetail 而不是 ProjectResponse，避免前端额外请求
+    project_details = [get_project_detail(p, db) for p in projects]
     return ProjectListResponse(
-        projects=[ProjectResponse.model_validate(p) for p in projects],
+        projects=project_details,
         total=len(projects)
     )
 
@@ -90,9 +99,11 @@ async def create_project(
         return ProjectResponse.model_validate(project)
     except Exception as e:
         db.rollback()
+        # 记录详细错误日志，便于调试
+        logger.error(f"创建项目失败: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create project"
+            detail=f"创建项目失败: {str(e)}"
         )
 
 

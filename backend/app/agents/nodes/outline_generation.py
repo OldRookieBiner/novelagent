@@ -1,4 +1,4 @@
-"""Outline generation nodes"""
+"""大纲生成节点"""
 
 import re
 from typing import Dict, Any, AsyncIterator
@@ -7,95 +7,119 @@ from app.agents.state import NovelState, STAGE_OUTLINE_CONFIRMING
 from app.agents.prompts import GENERATE_OUTLINE_PROMPT
 from app.services.llm import LLMService
 
+# 预编译正则表达式，提升性能
+# 标题匹配模式：支持多种格式
+RE_TITLE = re.compile(r"(?:##\s*)?(?:\*\*)?标题(?:\*\*)?[：:]\s*(.+?)(?:\n|$)")
+RE_TITLE_OUTLINE = re.compile(r"#\s*小说大纲[：:]\s*(.+?)(?:\n|$)")
+RE_TITLE_BRACKET = re.compile(r"#\s*《(.+?)》")
+
+# 概述匹配模式
+RE_SUMMARY = re.compile(r"(?:##\s*)?(?:\*\*)?概述(?:\*\*)?[：:]\s*(.+?)(?=(?:##\s*)?(?:\*\*)?(?:主要情节节点|情节节点)|---|\n\d+\.)", re.DOTALL)
+RE_SUMMARY_MD = re.compile(r"(?:##\s*)?(?:\*\*)?概述(?:\*\*)?\s*\n+(.+?)(?=(?:##\s*)?(?:\*\*)?(?:主要情节节点|情节节点)|$)", re.DOTALL)
+
+# 情节节点匹配模式
+RE_PLOT_BOLD = re.compile(r"\d+\.\s*(?:\*\*)?(.+?)(?:\*\*)?\s*\n", re.DOTALL)
+RE_PLOT_FALLBACK = re.compile(r"\d+\.\s*(.+?)(?=\n\d+\.|$)", re.DOTALL)
+
+# 章节数匹配模式
+RE_CHAPTER_COUNT = re.compile(r"建议章节数[：:]\s*(\d+)")
+
+# ==================== 章节数计算常量 ====================
+# 根据目标字数计算章节数的配置
+# 参考：超短篇 1-5万字，短篇 5-20万字，中篇 20-50万字，长篇 50-100万字，超长篇 100万字+
+
+# 默认章节数
+DEFAULT_CHAPTER_COUNT = 40
+
+# 字数阈值（字）
+WORDS_THRESHOLD_SHORT = 50000      # 超短篇上限
+WORDS_THRESHOLD_MEDIUM = 200000    # 短篇上限
+WORDS_THRESHOLD_LONG = 500000      # 中篇上限
+WORDS_THRESHOLD_VERY_LONG = 1000000  # 长篇上限
+
+# 每章目标字数
+WORDS_PER_CHAPTER_SHORT = 3500     # 超短篇：约3500字/章
+WORDS_PER_CHAPTER_MEDIUM = 4000    # 短篇：约4000字/章
+WORDS_PER_CHAPTER_LONG = 5000      # 中篇：约5000字/章
+WORDS_PER_CHAPTER_VERY_LONG = 6000 # 长篇：约6000字/章
+WORDS_PER_CHAPTER_EPIC = 7000      # 超长篇：约7000字/章
+
+# 最小章节数
+MIN_CHAPTERS_SHORT = 5
+MIN_CHAPTERS_MEDIUM = 15
+MIN_CHAPTERS_LONG = 40
+MIN_CHAPTERS_VERY_LONG = 80
+MIN_CHAPTERS_EPIC = 150
+
 
 def parse_outline(response: str) -> Dict[str, Any]:
-    """Parse outline from response"""
+    """从 AI 响应中解析大纲"""
     outline = {
         "title": "",
         "summary": "",
         "plot_points": []
     }
 
-    # Extract title - support multiple formats:
-    # - "标题：xxx"
-    # - "## 标题：xxx"
-    # - "**标题**：xxx" (Markdown bold)
-    # - "# 小说大纲：xxx"
-    # - "# 《xxx》" (AI directly returns title in 《》)
-    title_match = re.search(r"(?:##\s*)?(?:\*\*)?标题(?:\*\*)?[：:]\s*(.+?)(?:\n|$)", response)
+    # 提取标题 - 支持多种格式
+    title_match = RE_TITLE.search(response)
     if not title_match:
-        # Try format: "# 小说大纲：xxx"
-        title_match = re.search(r"#\s*小说大纲[：:]\s*(.+?)(?:\n|$)", response)
+        title_match = RE_TITLE_OUTLINE.search(response)
     if not title_match:
-        # Try format: "# 《xxx》" (title directly in brackets)
-        title_match = re.search(r"#\s*《(.+?)》", response)
+        title_match = RE_TITLE_BRACKET.search(response)
     if title_match:
-        # Clean up the title - remove surrounding brackets if present
         title = title_match.group(1).strip()
+        # 清理标题 - 移除书名号
         if title.startswith("《") and title.endswith("》"):
             title = title[1:-1]
         outline["title"] = title
 
-    # Extract summary - support multiple formats:
-    # - "概述：内容"
-    # - "**概述**：内容" (Markdown bold)
-    # - "## 概述\n\n内容"
-    # - "概述\n内容"
-    # First try: 概述 followed by colon (standard format)
-    summary_match = re.search(r"(?:##\s*)?(?:\*\*)?概述(?:\*\*)?[：:]\s*(.+?)(?=(?:##\s*)?(?:\*\*)?(?:主要情节节点|情节节点)|---|\n\d+\.)", response, re.DOTALL)
+    # 提取概述
+    summary_match = RE_SUMMARY.search(response)
     if not summary_match:
-        # Second try: 概述 followed by newlines then content (Markdown format)
-        summary_match = re.search(r"(?:##\s*)?(?:\*\*)?概述(?:\*\*)?\s*\n+(.+?)(?=(?:##\s*)?(?:\*\*)?(?:主要情节节点|情节节点)|$)", response, re.DOTALL)
+        summary_match = RE_SUMMARY_MD.search(response)
     if summary_match:
         outline["summary"] = summary_match.group(1).strip()
 
-    # Extract plot points - support numbered list format (1. **xxx** or 1. xxx)
-    plot_matches = re.findall(r"\d+\.\s*(?:\*\*)?(.+?)(?:\*\*)?\s*\n", response, re.DOTALL)
+    # 提取情节节点
+    plot_matches = RE_PLOT_BOLD.findall(response)
     if plot_matches:
         outline["plot_points"] = [p.strip() for p in plot_matches]
     else:
-        # Fallback: try to find all numbered items
-        plot_matches = re.findall(r"\d+\.\s*(.+?)(?=\n\d+\.|$)", response, re.DOTALL)
+        plot_matches = RE_PLOT_FALLBACK.findall(response)
         outline["plot_points"] = [p.strip() for p in plot_matches]
 
     return outline
 
 
 def parse_chapter_count(response: str) -> int:
-    """Parse suggested chapter count from response"""
-    match = re.search(r"建议章节数[：:]\s*(\d+)", response)
+    """从响应中解析建议章节数"""
+    match = RE_CHAPTER_COUNT.search(response)
     if match:
         return int(match.group(1))
-    return 10  # Default
+    return 10  # 默认值
 
 
 async def generate_outline_node(state: NovelState, llm: LLMService) -> NovelState:
-    """Generate outline from inspiration template"""
+    """从灵感模板生成大纲"""
 
     # 获取灵感模板
     inspiration_template = state.get("inspiration_template", "")
     collected_info = state.get("collected_info", {})
 
-    # 计算章节数（基于目标字数）
-    chapter_count = 40  # 默认值
+    # 根据目标字数计算章节数
+    chapter_count = DEFAULT_CHAPTER_COUNT
     target_words = collected_info.get("targetWords", 100000)
     if isinstance(target_words, int):
-        # 根据目标字数计算章节数
-        # 超短篇: 1万-5万字 -> 5-15章
-        # 短篇: 5万-20万字 -> 15-40章
-        # 中篇: 20万-50万字 -> 40-80章
-        # 长篇: 50万-100万字 -> 80-150章
-        # 超长篇: 100万字以上 -> 150+章
-        if target_words <= 50000:
-            chapter_count = max(5, int(target_words / 3500))  # 约3500字/章
-        elif target_words <= 200000:
-            chapter_count = max(15, int(target_words / 4000))
-        elif target_words <= 500000:
-            chapter_count = max(40, int(target_words / 5000))
-        elif target_words <= 1000000:
-            chapter_count = max(80, int(target_words / 6000))
+        if target_words <= WORDS_THRESHOLD_SHORT:
+            chapter_count = max(MIN_CHAPTERS_SHORT, int(target_words / WORDS_PER_CHAPTER_SHORT))
+        elif target_words <= WORDS_THRESHOLD_MEDIUM:
+            chapter_count = max(MIN_CHAPTERS_MEDIUM, int(target_words / WORDS_PER_CHAPTER_MEDIUM))
+        elif target_words <= WORDS_THRESHOLD_LONG:
+            chapter_count = max(MIN_CHAPTERS_LONG, int(target_words / WORDS_PER_CHAPTER_LONG))
+        elif target_words <= WORDS_THRESHOLD_VERY_LONG:
+            chapter_count = max(MIN_CHAPTERS_VERY_LONG, int(target_words / WORDS_PER_CHAPTER_VERY_LONG))
         else:
-            chapter_count = max(150, int(target_words / 7000))
+            chapter_count = max(MIN_CHAPTERS_EPIC, int(target_words / WORDS_PER_CHAPTER_EPIC))
 
     # 如果没有灵感模板，从 collected_info 生成基本信息
     if not inspiration_template:
@@ -146,24 +170,24 @@ async def generate_outline_node(state: NovelState, llm: LLMService) -> NovelStat
 
 
 def prepare_outline_prompt(state: NovelState) -> tuple[str, int]:
-    """Prepare outline generation prompt and chapter count from state"""
+    """准备大纲生成提示词和章节数"""
     inspiration_template = state.get("inspiration_template", "")
     collected_info = state.get("collected_info", {})
 
-    # 计算章节数（基于目标字数）
-    chapter_count = 40  # 默认值
+    # 根据目标字数计算章节数（使用常量）
+    chapter_count = DEFAULT_CHAPTER_COUNT
     target_words = collected_info.get("targetWords", 100000)
     if isinstance(target_words, int):
-        if target_words <= 50000:
-            chapter_count = max(5, int(target_words / 3500))
-        elif target_words <= 200000:
-            chapter_count = max(15, int(target_words / 4000))
-        elif target_words <= 500000:
-            chapter_count = max(40, int(target_words / 5000))
-        elif target_words <= 1000000:
-            chapter_count = max(80, int(target_words / 6000))
+        if target_words <= WORDS_THRESHOLD_SHORT:
+            chapter_count = max(MIN_CHAPTERS_SHORT, int(target_words / WORDS_PER_CHAPTER_SHORT))
+        elif target_words <= WORDS_THRESHOLD_MEDIUM:
+            chapter_count = max(MIN_CHAPTERS_MEDIUM, int(target_words / WORDS_PER_CHAPTER_MEDIUM))
+        elif target_words <= WORDS_THRESHOLD_LONG:
+            chapter_count = max(MIN_CHAPTERS_LONG, int(target_words / WORDS_PER_CHAPTER_LONG))
+        elif target_words <= WORDS_THRESHOLD_VERY_LONG:
+            chapter_count = max(MIN_CHAPTERS_VERY_LONG, int(target_words / WORDS_PER_CHAPTER_VERY_LONG))
         else:
-            chapter_count = max(150, int(target_words / 7000))
+            chapter_count = max(MIN_CHAPTERS_EPIC, int(target_words / WORDS_PER_CHAPTER_EPIC))
 
     # 如果没有灵感模板，从 collected_info 生成基本信息
     if not inspiration_template:

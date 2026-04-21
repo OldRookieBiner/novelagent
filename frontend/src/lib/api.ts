@@ -59,51 +59,75 @@ export function getSessionToken(): string | null {
 
 // ==================== Request Helper ====================
 
+// 请求超时时间（毫秒）
+const REQUEST_TIMEOUT = 30000;
+
 interface RequestOptions {
   method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: unknown;
   requireAuth?: boolean;
+  timeout?: number;  // 自定义超时时间
 }
 
+/**
+ * 发送 API 请求
+ * @param endpoint - API 端点
+ * @param options - 请求选项
+ * @returns 响应数据
+ */
 async function request<T>(
   endpoint: string,
   options: RequestOptions = {}
 ): Promise<T> {
-  const { method = "GET", body, requireAuth = true } = options;
+  const { method = "GET", body, requireAuth = true, timeout = REQUEST_TIMEOUT } = options;
 
   const headers: HeadersInit = {
     "Content-Type": "application/json",
   };
 
-  // Use HTTP Basic auth with session token as username
+  // 使用 HTTP Basic 认证，将 session token 作为 username
   if (requireAuth) {
     const token = getSessionToken();
     if (token) {
-      // HTTP Basic: base64(username:password) - we use token as username with empty password
       const credentials = btoa(`${token}:`);
       headers["Authorization"] = `Basic ${credentials}`;
     }
   }
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  // 创建超时控制器
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-  if (!response.ok) {
-    const error: ApiError = await response.json().catch(() => ({
-      detail: `HTTP ${response.status}: ${response.statusText}`,
-    }));
-    throw new Error(error.detail);
+  try {
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const error: ApiError = await response.json().catch(() => ({
+        detail: `HTTP ${response.status}: ${response.statusText}`,
+      }));
+      throw new Error(error.detail);
+    }
+
+    // 处理 204 No Content
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
+    return response.json();
+  } catch (err) {
+    // 处理超时错误
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('请求超时，请稍后重试');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  // Handle 204 No Content
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return response.json();
 }
 
 // ==================== Auth API ====================

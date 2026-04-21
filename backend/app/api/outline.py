@@ -29,6 +29,22 @@ from app.agents.nodes.outline_generation import (
     generate_outline_node,
     generate_outline_stream,
     parse_outline,
+    # 导入章节数计算常量
+    DEFAULT_CHAPTER_COUNT,
+    WORDS_THRESHOLD_SHORT,
+    WORDS_THRESHOLD_MEDIUM,
+    WORDS_THRESHOLD_LONG,
+    WORDS_THRESHOLD_VERY_LONG,
+    WORDS_PER_CHAPTER_SHORT,
+    WORDS_PER_CHAPTER_MEDIUM,
+    WORDS_PER_CHAPTER_LONG,
+    WORDS_PER_CHAPTER_VERY_LONG,
+    WORDS_PER_CHAPTER_EPIC,
+    MIN_CHAPTERS_SHORT,
+    MIN_CHAPTERS_MEDIUM,
+    MIN_CHAPTERS_LONG,
+    MIN_CHAPTERS_VERY_LONG,
+    MIN_CHAPTERS_EPIC,
 )
 from app.agents.nodes.info_collection import info_collection_node
 from app.services.llm import get_llm_service
@@ -231,23 +247,23 @@ async def confirm_outline(
             detail="Outline is already confirmed"
         )
 
-    # Calculate chapter count from inspiration data if available
+    # 从灵感数据计算章节数
     collected_info = outline.collected_info or {}
     target_words = collected_info.get("targetWords", 100000)
 
-    # Calculate chapter count based on target words
-    chapter_count = 40  # default
+    # 使用常量计算章节数
+    chapter_count = DEFAULT_CHAPTER_COUNT
     if isinstance(target_words, int):
-        if target_words <= 50000:
-            chapter_count = max(5, int(target_words / 3500))
-        elif target_words <= 200000:
-            chapter_count = max(15, int(target_words / 4000))
-        elif target_words <= 500000:
-            chapter_count = max(40, int(target_words / 5000))
-        elif target_words <= 1000000:
-            chapter_count = max(80, int(target_words / 6000))
+        if target_words <= WORDS_THRESHOLD_SHORT:
+            chapter_count = max(MIN_CHAPTERS_SHORT, int(target_words / WORDS_PER_CHAPTER_SHORT))
+        elif target_words <= WORDS_THRESHOLD_MEDIUM:
+            chapter_count = max(MIN_CHAPTERS_MEDIUM, int(target_words / WORDS_PER_CHAPTER_MEDIUM))
+        elif target_words <= WORDS_THRESHOLD_LONG:
+            chapter_count = max(MIN_CHAPTERS_LONG, int(target_words / WORDS_PER_CHAPTER_LONG))
+        elif target_words <= WORDS_THRESHOLD_VERY_LONG:
+            chapter_count = max(MIN_CHAPTERS_VERY_LONG, int(target_words / WORDS_PER_CHAPTER_VERY_LONG))
         else:
-            chapter_count = max(150, int(target_words / 7000))
+            chapter_count = max(MIN_CHAPTERS_EPIC, int(target_words / WORDS_PER_CHAPTER_EPIC))
 
     # Update outline with chapter count
     outline.chapter_count_suggested = chapter_count

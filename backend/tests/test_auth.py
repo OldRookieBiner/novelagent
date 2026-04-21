@@ -86,57 +86,80 @@ class TestSessionTokens:
 
 
 class TestAPIKeyEncryption:
-    """Test API key encryption functions"""
+    """测试 API Key 加密功能"""
 
     def test_encrypt_api_key(self):
-        """Should encrypt API key"""
+        """应该成功加密 API Key"""
         api_key = "sk-test-api-key-12345"
-        encrypted = encrypt_api_key(api_key)
+        user_id = 1
+        encrypted = encrypt_api_key(api_key, user_id)
 
         assert isinstance(encrypted, str)
         assert encrypted != api_key
         assert len(encrypted) > len(api_key)
 
     def test_decrypt_api_key(self):
-        """Should decrypt API key correctly"""
+        """应该正确解密 API Key"""
         api_key = "sk-test-api-key-12345"
-        encrypted = encrypt_api_key(api_key)
-        decrypted = decrypt_api_key(encrypted)
+        user_id = 1
+        encrypted = encrypt_api_key(api_key, user_id)
+        decrypted = decrypt_api_key(encrypted, user_id)
 
         assert decrypted == api_key
 
     def test_encrypt_different_keys_produce_different_ciphertext(self):
-        """Different keys should produce different ciphertext"""
+        """不同的 Key 应该产生不同的密文"""
         key1 = "sk-key-1"
         key2 = "sk-key-2"
+        user_id = 1
 
-        encrypted1 = encrypt_api_key(key1)
-        encrypted2 = encrypt_api_key(key2)
+        encrypted1 = encrypt_api_key(key1, user_id)
+        encrypted2 = encrypt_api_key(key2, user_id)
 
         assert encrypted1 != encrypted2
 
     def test_same_key_produces_different_ciphertext(self):
-        """Same key should produce different ciphertext (random IV)"""
+        """相同的 Key 应该产生不同的密文（随机IV）"""
         api_key = "sk-same-key"
+        user_id = 1
 
-        encrypted1 = encrypt_api_key(api_key)
-        encrypted2 = encrypt_api_key(api_key)
+        encrypted1 = encrypt_api_key(api_key, user_id)
+        encrypted2 = encrypt_api_key(api_key, user_id)
 
-        # Fernet includes timestamp, so same key produces different ciphertext
+        # Fernet 包含时间戳，所以相同的 Key 产生不同的密文
         assert encrypted1 != encrypted2
 
+    def test_different_user_id_different_ciphertext(self):
+        """不同用户的相同 Key 应该产生不同的密文"""
+        api_key = "sk-same-key"
+
+        encrypted1 = encrypt_api_key(api_key, 1)
+        encrypted2 = encrypt_api_key(api_key, 2)
+
+        # 不同用户使用不同的 Salt，产生不同的密文
+        assert encrypted1 != encrypted2
+
+    def test_decrypt_with_wrong_user_fails(self):
+        """使用错误的用户ID解密应该失败"""
+        api_key = "sk-test-key"
+        encrypted = encrypt_api_key(api_key, 1)
+        decrypted = decrypt_api_key(encrypted, 2)
+
+        # 不同用户无法解密
+        assert decrypted == ""
+
     def test_decrypt_empty_string(self):
-        """Empty string should return empty string"""
-        assert decrypt_api_key("") == ""
+        """空字符串应该返回空字符串"""
+        assert decrypt_api_key("", 1) == ""
 
     def test_decrypt_invalid_data(self):
-        """Invalid encrypted data should return empty string"""
-        result = decrypt_api_key("not-valid-encrypted-data")
+        """无效的加密数据应该返回空字符串"""
+        result = decrypt_api_key("not-valid-encrypted-data", 1)
         assert result == ""
 
     def test_get_encryption_key_returns_bytes(self):
-        """Encryption key should be bytes"""
-        key = get_encryption_key()
+        """加密密钥应该是字节类型"""
+        key = get_encryption_key(1)
 
         assert isinstance(key, bytes)
-        assert len(key) == 44  # Base64 encoded 32 bytes
+        assert len(key) == 44  # Base64 编码的 32 字节

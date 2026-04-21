@@ -3,17 +3,27 @@
 import os
 import secrets
 import warnings
+from pathlib import Path
 from pydantic_settings import BaseSettings
 
 
 def _generate_secret_key() -> str:
-    """Generate a secure random secret key"""
+    """生成安全的随机密钥"""
     return secrets.token_urlsafe(32)
 
 
 def _generate_password() -> str:
-    """Generate a secure random password"""
+    """生成安全的随机密码"""
     return secrets.token_urlsafe(12)
+
+
+def _save_password_to_file(password: str) -> Path:
+    """将生成的密码保存到文件，仅首次启动时创建"""
+    password_file = Path("/tmp/novelagent_admin_password.txt")
+    if not password_file.exists():
+        password_file.write_text(password)
+        password_file.chmod(0o600)  # 仅所有者可读写
+    return password_file
 
 
 class Settings(BaseSettings):
@@ -64,8 +74,10 @@ class Settings(BaseSettings):
             self.default_username = "admin"
         if not self.default_password:
             self.default_password = _generate_password()
+            # 将密码保存到文件而非打印到日志
+            password_file = _save_password_to_file(self.default_password)
             warnings.warn(
-                f"DEFAULT_PASSWORD not set. Generated random password: {self.default_password} "
+                f"DEFAULT_PASSWORD not set. Generated random password saved to: {password_file} "
                 "Set DEFAULT_PASSWORD environment variable for production.",
                 UserWarning
             )

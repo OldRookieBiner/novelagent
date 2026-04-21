@@ -87,10 +87,10 @@ class LLMService:
 
 
 def get_llm_service(user_settings) -> LLMService:
-    """Get LLM service from user settings"""
+    """从用户设置获取 LLM 服务"""
     from app.services.crypto import decrypt_api_key
 
-    api_key = decrypt_api_key(user_settings.api_key_encrypted) if user_settings.api_key_encrypted else None
+    api_key = decrypt_api_key(user_settings.api_key_encrypted, user_settings.user_id) if user_settings.api_key_encrypted else None
 
     return LLMService(
         provider=user_settings.model_provider,
