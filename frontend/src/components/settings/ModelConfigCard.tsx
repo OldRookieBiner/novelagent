@@ -99,7 +99,7 @@ export default function ModelConfigCard({
             size="sm"
             onClick={onToggleStatus}
           >
-            {config.is_enabled ? '停用' : '启用'}
+            {config.is_enabled ? '启用' : '停用'}
           </Button>
         )}
 
