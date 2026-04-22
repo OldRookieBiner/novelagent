@@ -14,7 +14,6 @@ from app.schemas.model_config import (
     ModelConfigResponse,
     ModelConfigListResponse,
     HealthCheckResponse,
-    PRESET_MODELS,
 )
 from app.utils.auth import get_current_user
 from app.services.crypto import encrypt_api_key, decrypt_api_key
@@ -23,30 +22,11 @@ from app.services.llm import LLMService
 router = APIRouter()
 
 
-def get_or_create_default_configs(db: Session, user_id: int) -> list[ModelConfig]:
-    """获取或创建用户的默认模型配置"""
+def get_user_model_configs(db: Session, user_id: int) -> list[ModelConfig]:
+    """获取用户的模型配置列表（按创建时间排序）"""
     configs = db.query(ModelConfig).filter(
         ModelConfig.user_id == user_id
-    ).all()
-
-    # 如果用户没有配置，创建预设模型
-    if not configs:
-        for preset in PRESET_MODELS:
-            config = ModelConfig(
-                user_id=user_id,
-                name=preset["name"],
-                provider=preset["provider"],
-                base_url=preset["base_url"],
-                model_name=preset["model_name"],
-                is_enabled=True,
-                is_default=(preset["provider"] == "deepseek"),  # 默认选中 DeepSeek
-                health_status="unknown",
-            )
-            db.add(config)
-        db.commit()
-        configs = db.query(ModelConfig).filter(
-            ModelConfig.user_id == user_id
-        ).all()
+    ).order_by(ModelConfig.created_at).all()
 
     return configs
 
@@ -76,10 +56,52 @@ async def list_model_configs(
     current_user: User = Depends(get_current_user)
 ):
     """获取用户的模型配置列表"""
-    configs = get_or_create_default_configs(db, current_user.id)
+    configs = get_user_model_configs(db, current_user.id)
     return ModelConfigListResponse(
         models=[build_config_response(c) for c in configs]
     )
+
+
+@router.post("/test", response_model=HealthCheckResponse)
+async def test_model_connection(
+    request: ModelConfigCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    测试模型连接（不创建配置）
+    在添加模型前先验证连接是否正常
+    """
+    if not request.api_key:
+        return HealthCheckResponse(
+            status="unhealthy",
+            error="请输入 API Key"
+        )
+
+    try:
+        llm = LLMService(
+            provider="custom",
+            api_key=request.api_key,
+            base_url=request.base_url,
+            model=request.model_name
+        )
+
+        start_time = time.time()
+        # 发送最小请求测试连通性
+        await llm.chat(
+            messages=[{"role": "user", "content": "Hi"}],
+            max_tokens=5
+        )
+        latency = int((time.time() - start_time) * 1000)
+
+        return HealthCheckResponse(
+            status="healthy",
+            latency=latency
+        )
+    except Exception as e:
+        return HealthCheckResponse(
+            status="unhealthy",
+            error=str(e)
+        )
 
 
 @router.post("/", response_model=ModelConfigResponse)
@@ -164,13 +186,6 @@ async def delete_model_config(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Model config not found"
-        )
-
-    # 不允许删除预设模型，只能禁用
-    if config.provider != "custom":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delete preset models. Disable them instead."
         )
 
     db.delete(config)

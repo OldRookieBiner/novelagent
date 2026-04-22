@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { modelConfigsApi } from '@/lib/api'
 import type { ModelConfigCreate } from '@/types'
 
 interface AddModelDialogProps {
@@ -22,15 +23,32 @@ export default function AddModelDialog({
   const [apiKey, setApiKey] = useState('')
   const [errors, setErrors] = useState<Record<string, string>>({})
 
+  // 测试连接状态
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<{ status: 'success' | 'error'; message: string } | null>(null)
+  const [testedData, setTestedData] = useState<ModelConfigCreate | null>(null)
+
   const resetForm = () => {
     setName('')
     setBaseUrl('')
     setModelName('')
     setApiKey('')
     setErrors({})
+    setTestResult(null)
+    setTestedData(null)
   }
 
-  const handleSubmit = async () => {
+  // 获取当前表单数据
+  const getFormData = (): ModelConfigCreate => ({
+    name: name.trim(),
+    provider: 'custom',
+    base_url: baseUrl.trim(),
+    model_name: modelName.trim(),
+    api_key: apiKey.trim() || undefined,
+  })
+
+  // 测试连接
+  const handleTestConnection = async () => {
     const newErrors: Record<string, string> = {}
     if (!name.trim()) newErrors.name = '请输入显示名称'
     if (!baseUrl.trim()) newErrors.baseUrl = '请输入 API 地址'
@@ -41,14 +59,32 @@ export default function AddModelDialog({
       return
     }
 
+    setTesting(true)
+    setTestResult(null)
+
     try {
-      await onSubmit({
-        name: name.trim(),
-        provider: 'custom',
-        base_url: baseUrl.trim(),
-        model_name: modelName.trim(),
-        api_key: apiKey.trim() || undefined,
-      })
+      const data = getFormData()
+      const result = await modelConfigsApi.testConnection(data)
+
+      if (result.status === 'healthy') {
+        setTestResult({ status: 'success', message: `连接成功！延迟: ${result.latency}ms` })
+        setTestedData(data)
+      } else {
+        setTestResult({ status: 'error', message: result.error || '连接失败' })
+      }
+    } catch (err) {
+      setTestResult({ status: 'error', message: err instanceof Error ? err.message : '连接测试失败' })
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  // 添加模型（仅在测试成功后可用）
+  const handleAddModel = async () => {
+    if (!testedData) return
+
+    try {
+      await onSubmit(testedData)
       resetForm()
       onClose()
     } catch (err) {
@@ -59,6 +95,16 @@ export default function AddModelDialog({
   const handleClose = () => {
     resetForm()
     onClose()
+  }
+
+  // 表单字段变化时清除测试结果
+  const handleFieldChange = (field: string, value: string, setter: (v: string) => void) => {
+    setter(value)
+    if (errors[field]) setErrors({ ...errors, [field]: '' })
+    if (testResult) {
+      setTestResult(null)
+      setTestedData(null)
+    }
   }
 
   if (!open) return null
@@ -75,10 +121,7 @@ export default function AddModelDialog({
             </label>
             <Input
               value={name}
-              onChange={(e) => {
-                setName(e.target.value)
-                if (errors.name) setErrors({ ...errors, name: '' })
-              }}
+              onChange={(e) => handleFieldChange('name', e.target.value, setName)}
               placeholder="如：我的 Ollama"
               className={errors.name ? 'border-red-500' : ''}
             />
@@ -91,10 +134,7 @@ export default function AddModelDialog({
             </label>
             <Input
               value={baseUrl}
-              onChange={(e) => {
-                setBaseUrl(e.target.value)
-                if (errors.baseUrl) setErrors({ ...errors, baseUrl: '' })
-              }}
+              onChange={(e) => handleFieldChange('baseUrl', e.target.value, setBaseUrl)}
               placeholder="如：http://localhost:11434/v1"
               className={errors.baseUrl ? 'border-red-500' : ''}
             />
@@ -107,10 +147,7 @@ export default function AddModelDialog({
             </label>
             <Input
               value={modelName}
-              onChange={(e) => {
-                setModelName(e.target.value)
-                if (errors.modelName) setErrors({ ...errors, modelName: '' })
-              }}
+              onChange={(e) => handleFieldChange('modelName', e.target.value, setModelName)}
               placeholder="如：llama3"
               className={errors.modelName ? 'border-red-500' : ''}
             />
@@ -122,18 +159,34 @@ export default function AddModelDialog({
             <Input
               type="password"
               value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
+              onChange={(e) => handleFieldChange('apiKey', e.target.value, setApiKey)}
               placeholder="可选，部分服务需要"
             />
             <p className="text-xs text-gray-400 mt-1">部分本地部署服务无需 API Key</p>
           </div>
         </div>
 
+        {/* 测试结果显示 */}
+        {testResult && (
+          <div className={`mt-4 p-3 rounded-lg ${
+            testResult.status === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+          }`}>
+            {testResult.status === 'success' ? '✓ ' : '✕ '}
+            {testResult.message}
+          </div>
+        )}
+
         <div className="flex justify-end gap-3 mt-6">
           <Button variant="outline" onClick={handleClose}>
             取消
           </Button>
-          <Button onClick={handleSubmit} disabled={loading}>
+          <Button variant="outline" onClick={handleTestConnection} disabled={testing}>
+            {testing ? '测试中...' : '测试连接'}
+          </Button>
+          <Button
+            onClick={handleAddModel}
+            disabled={loading || !testedData}
+          >
             {loading ? '添加中...' : '添加模型'}
           </Button>
         </div>

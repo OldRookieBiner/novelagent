@@ -27,12 +27,10 @@ export default function ModelConfigCard({
     unknown: 'bg-gray-300',
   }
 
-  // 卡片样式
-  const cardClasses = config.is_default
+  // 卡片样式：启用的模型显示蓝色边框
+  const cardClasses = config.is_enabled
     ? 'border-2 border-blue-500 bg-blue-50'
-    : config.is_enabled
-      ? 'border rounded-lg'
-      : 'border rounded-lg opacity-60'
+    : 'border rounded-lg opacity-60'
 
   return (
     <div className={`${cardClasses} p-4 mb-4 transition-all hover:shadow-md`}>
@@ -112,7 +110,7 @@ export default function ModelConfigCard({
           </Button>
         )}
 
-        {config.provider === 'custom' && onDelete && (
+        {!config.is_default && onDelete && (
           <Button variant="outline" size="sm" className="text-red-500 hover:bg-red-50" onClick={onDelete}>
             删除
           </Button>

@@ -5,29 +5,6 @@ from datetime import datetime
 from pydantic import BaseModel
 
 
-# 预设模型配置
-PRESET_MODELS = [
-    {
-        "name": "DeepSeek (火山方舟)",
-        "provider": "deepseek",
-        "base_url": "https://ark.cn-beijing.volces.com/api/coding/v3",
-        "model_name": "deepseek-v3-241227",
-    },
-    {
-        "name": "DeepSeek (官方)",
-        "provider": "deepseek-official",
-        "base_url": "https://api.deepseek.com/v1",
-        "model_name": "deepseek-chat",
-    },
-    {
-        "name": "OpenAI",
-        "provider": "openai",
-        "base_url": "https://api.openai.com/v1",
-        "model_name": "gpt-4o",
-    },
-]
-
-
 class ModelConfigBase(BaseModel):
     """模型配置基础"""
     name: str

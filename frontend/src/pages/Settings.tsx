@@ -261,7 +261,7 @@ export default function Settings() {
                           console.error('Failed to toggle enabled:', err)
                         }
                       }}
-                      onDelete={config.provider === 'custom' ? async () => {
+                      onDelete={!config.is_default ? async () => {
                         if (!confirm('确定要删除这个模型配置吗？')) return
                         try {
                           await modelConfigsApi.delete(config.id)

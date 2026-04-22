@@ -663,6 +663,16 @@ export const modelConfigsApi = {
     return request<ModelConfigListResponse>("/api/model-configs/");
   },
 
+  /**
+   * 测试模型连接（不创建配置）
+   */
+  async testConnection(data: ModelConfigCreate): Promise<HealthCheckResponse> {
+    return request<HealthCheckResponse>("/api/model-configs/test", {
+      method: "POST",
+      body: data,
+    });
+  },
+
   async create(data: ModelConfigCreate): Promise<ModelConfig> {
     return request<ModelConfig>("/api/model-configs/", {
       method: "POST",
