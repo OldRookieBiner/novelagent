@@ -175,6 +175,36 @@ async def generate_outline(
             yield f"event: done\ndata: {json.dumps(completion_data)}\n\n"
 
         except Exception as e:
+            # 检查是否有已生成的内容（可能是用户中断）
+            if accumulated_content and len(accumulated_content) > 50:
+                # 尝试解析已生成的内容
+                try:
+                    parsed = parse_outline(accumulated_content)
+                    if parsed["title"] or parsed["summary"]:
+                        # 保存已生成的内容
+                        outline.title = parsed["title"]
+                        outline.summary = parsed["summary"]
+                        outline.plot_points = parsed["plot_points"]
+                        project.stage = STAGE_OUTLINE_CONFIRMING
+                        db.commit()
+
+                        # 发送中断完成事件
+                        completion_data = {
+                            "outline": {
+                                "title": parsed["title"],
+                                "summary": parsed["summary"],
+                                "plot_points": parsed["plot_points"],
+                                "confirmed": False,
+                                "chapter_count_suggested": outline.chapter_count_suggested,
+                            },
+                            "stage": STAGE_OUTLINE_CONFIRMING,
+                            "interrupted": True,
+                        }
+                        yield f"event: done\ndata: {json.dumps(completion_data)}\n\n"
+                        return
+                except:
+                    pass
+
             # Send error event
             yield f"event: error\ndata: {json.dumps(str(e))}\n\n"
 
