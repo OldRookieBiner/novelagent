@@ -6,8 +6,9 @@ from app.models.project import Project
 from app.models.outline import Outline, ChapterOutline
 from app.models.chapter import Chapter
 from app.models.agent_prompt import AgentPrompt, ProjectAgentPrompt
+from app.models.model_config import ModelConfig
 
 __all__ = [
     "User", "UserSettings", "Project", "Outline", "ChapterOutline", "Chapter",
-    "AgentPrompt", "ProjectAgentPrompt"
+    "AgentPrompt", "ProjectAgentPrompt", "ModelConfig"
 ]
