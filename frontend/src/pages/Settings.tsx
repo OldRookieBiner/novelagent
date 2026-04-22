@@ -1,17 +1,13 @@
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { settingsApi, agentPromptsApi, projectsApi } from '@/lib/api'
+import { settingsApi, agentPromptsApi, projectsApi, modelConfigsApi } from '@/lib/api'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { AgentPromptEditor } from '@/components/settings/AgentPromptEditor'
 import { ProjectPromptConfig } from '@/components/settings/ProjectPromptConfig'
-import type { UserSettings, SettingsUpdate, AgentPrompt, Project } from '@/types'
-
-const MODEL_PROVIDERS = [
-  { value: 'deepseek', label: 'DeepSeek (火山方舟)' },
-  { value: 'deepseek-official', label: 'DeepSeek (官方)' },
-  { value: 'openai', label: 'OpenAI' },
-]
+import ModelConfigCard from '@/components/settings/ModelConfigCard'
+import AddModelDialog from '@/components/settings/AddModelDialog'
+import type { UserSettings, SettingsUpdate, AgentPrompt, Project, ModelConfig, ModelConfigCreate } from '@/types'
 
 const REVIEW_STRICTNESS = [
   { value: 'loose', label: '宽松' },
@@ -35,15 +31,21 @@ export default function Settings() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [clearingKey, setClearingKey] = useState(false)
 
-  // Form state
-  const [modelProvider, setModelProvider] = useState('')
-  const [apiKey, setApiKey] = useState('')
+  // 模型配置状态
+  const [modelConfigs, setModelConfigs] = useState<ModelConfig[]>([])
+  const [configsLoading, setConfigsLoading] = useState(false)
+  const [checkingHealthId, setCheckingHealthId] = useState<number | null>(null)
+  const [showAddDialog, setShowAddDialog] = useState(false)
+  const [editingConfig, setEditingConfig] = useState<ModelConfig | null>(null)
+  const [editApiKey, setEditApiKey] = useState('')
+  const [savingConfig, setSavingConfig] = useState(false)
+
+  // 审核设置状态
   const [reviewEnabled, setReviewEnabled] = useState(true)
   const [reviewStrictness, setReviewStrictness] = useState<ReviewStrictnessValue>('standard')
 
-  // Agent prompts state
+  // Agent prompts 状态
   const [globalPrompts, setGlobalPrompts] = useState<AgentPrompt[]>([])
   const [promptsLoading, setPromptsLoading] = useState(false)
   const [projects, setProjects] = useState<Project[]>([])
@@ -54,7 +56,6 @@ export default function Settings() {
       try {
         const data = await settingsApi.get()
         setSettings(data)
-        setModelProvider(data.model_provider)
         setReviewEnabled(data.review_enabled)
         setReviewStrictness(data.review_strictness as ReviewStrictnessValue)
         useSettingsStore.getState().setSettings(data)
@@ -66,6 +67,26 @@ export default function Settings() {
     }
     fetchSettings()
   }, [])
+
+  // 加载模型配置
+  const loadModelConfigs = async () => {
+    setConfigsLoading(true)
+    try {
+      const data = await modelConfigsApi.list()
+      setModelConfigs(data.models)
+    } catch (err) {
+      console.error('Failed to load model configs:', err)
+    } finally {
+      setConfigsLoading(false)
+    }
+  }
+
+  // 切换到模型配置 tab 时加载
+  useEffect(() => {
+    if (activeTab === 'model') {
+      loadModelConfigs()
+    }
+  }, [activeTab])
 
   // Load agent prompts when tab is switched to agents
   useEffect(() => {
@@ -115,25 +136,20 @@ export default function Settings() {
     )
   }
 
-  const handleSave = async () => {
+  // 保存审核设置
+  const handleSaveReviewSettings = async () => {
     setSaving(true)
     setSaved(false)
 
     try {
       const update: SettingsUpdate = {
-        model_provider: modelProvider,
         review_enabled: reviewEnabled,
         review_strictness: reviewStrictness,
-      }
-
-      if (apiKey) {
-        update.api_key = apiKey
       }
 
       const updated = await settingsApi.update(update)
       setSettings(updated)
       useSettingsStore.getState().setSettings(updated)
-      setApiKey('')
       setSaved(true)
     } catch (err) {
       console.error('Failed to save settings:', err)
@@ -142,20 +158,29 @@ export default function Settings() {
     }
   }
 
-  const handleClearApiKey = async () => {
-    if (!confirm('确定要删除已配置的 API Key 吗？删除后将无法使用 AI 功能。')) {
-      return
-    }
-
-    setClearingKey(true)
+  // 添加自定义模型
+  const handleAddModel = async (data: ModelConfigCreate) => {
+    setSavingConfig(true)
     try {
-      const updated = await settingsApi.update({ clear_api_key: true })
-      setSettings(updated)
-      useSettingsStore.getState().setSettings(updated)
-    } catch (err) {
-      console.error('Failed to clear API key:', err)
+      await modelConfigsApi.create(data)
+      await loadModelConfigs()
     } finally {
-      setClearingKey(false)
+      setSavingConfig(false)
+    }
+  }
+
+  // 保存编辑的 API Key
+  const handleSaveEditApiKey = async () => {
+    if (!editingConfig || !editApiKey.trim()) return
+
+    setSavingConfig(true)
+    try {
+      await modelConfigsApi.update(editingConfig.id, { api_key: editApiKey })
+      setEditingConfig(null)
+      setEditApiKey('')
+      await loadModelConfigs()
+    } finally {
+      setSavingConfig(false)
     }
   }
 
@@ -193,66 +218,79 @@ export default function Settings() {
       {/* 右侧内容区 */}
       <div className="flex-1 p-6 flex flex-col">
         <div className="flex-1">
+          {/* 模型配置 */}
           {activeTab === 'model' && (
-            <div
-              id="model-panel"
-              role="tabpanel"
-              className="max-w-xl"
-            >
+            <div id="model-panel" role="tabpanel" className="max-w-2xl">
               <h3 className="text-lg font-semibold mb-1">模型配置</h3>
-              <p className="text-muted-foreground text-sm mb-6">配置 AI 模型和 API Key</p>
+              <p className="text-muted-foreground text-sm mb-6">管理 AI 模型配置，设置默认模型</p>
 
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">模型提供商</label>
-                  <select
-                    className="w-full h-10 px-3 rounded-md border border-input bg-background"
-                    value={modelProvider}
-                    onChange={(e) => setModelProvider(e.target.value)}
+              {configsLoading ? (
+                <div className="text-muted-foreground">加载中...</div>
+              ) : (
+                <>
+                  {modelConfigs.map((config) => (
+                    <ModelConfigCard
+                      key={config.id}
+                      config={config}
+                      checkingHealth={checkingHealthId === config.id}
+                      onHealthCheck={async () => {
+                        setCheckingHealthId(config.id)
+                        try {
+                          await modelConfigsApi.checkHealth(config.id)
+                          await loadModelConfigs()
+                        } catch (err) {
+                          console.error('Health check failed:', err)
+                        } finally {
+                          setCheckingHealthId(null)
+                        }
+                      }}
+                      onEdit={() => {
+                        setEditingConfig(config)
+                        setEditApiKey('')
+                      }}
+                      onSetDefault={async () => {
+                        try {
+                          await modelConfigsApi.setDefault(config.id)
+                          await loadModelConfigs()
+                        } catch (err) {
+                          console.error('Failed to set default:', err)
+                        }
+                      }}
+                      onToggleEnabled={async () => {
+                        try {
+                          await modelConfigsApi.update(config.id, { is_enabled: !config.is_enabled })
+                          await loadModelConfigs()
+                        } catch (err) {
+                          console.error('Failed to toggle enabled:', err)
+                        }
+                      }}
+                      onDelete={config.provider === 'custom' ? async () => {
+                        if (!confirm('确定要删除这个模型配置吗？')) return
+                        try {
+                          await modelConfigsApi.delete(config.id)
+                          await loadModelConfigs()
+                        } catch (err) {
+                          console.error('Failed to delete:', err)
+                        }
+                      } : undefined}
+                    />
+                  ))}
+
+                  {/* 添加自定义模型按钮 */}
+                  <button
+                    onClick={() => setShowAddDialog(true)}
+                    className="w-full border-2 border-dashed border-gray-300 rounded-lg p-4 text-gray-500 hover:border-blue-400 hover:text-blue-500 transition-all"
                   >
-                    {MODEL_PROVIDERS.map((p) => (
-                      <option key={p.value} value={p.value}>
-                        {p.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">
-                    API Key {settings?.has_api_key && <span className="text-green-600">(已设置)</span>}
-                  </label>
-                  <Input
-                    type="password"
-                    placeholder={settings?.has_api_key ? '输入新的 API Key 以更新' : '输入 API Key'}
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    API Key 会被加密存储
-                  </p>
-                </div>
-
-                {settings?.has_api_key && (
-                  <Button
-                    variant="outline"
-                    onClick={handleClearApiKey}
-                    disabled={clearingKey}
-                    className="text-red-600 hover:text-red-700"
-                  >
-                    {clearingKey ? '删除中...' : '删除 API Key'}
-                  </Button>
-                )}
-              </div>
+                    + 添加自定义模型
+                  </button>
+                </>
+              )}
             </div>
           )}
 
+          {/* 审核设置 */}
           {activeTab === 'review' && (
-            <div
-              id="review-panel"
-              role="tabpanel"
-              className="max-w-xl"
-            >
+            <div id="review-panel" role="tabpanel" className="max-w-xl">
               <h3 className="text-lg font-semibold mb-1">审核设置</h3>
               <p className="text-muted-foreground text-sm mb-6">配置章节审核行为</p>
 
@@ -283,15 +321,23 @@ export default function Settings() {
                   </select>
                 </div>
               </div>
+
+              <div className="mt-6 pt-4 border-t">
+                <div className="flex items-center gap-4">
+                  <Button onClick={handleSaveReviewSettings} disabled={saving}>
+                    {saving ? '保存中...' : '保存设置'}
+                  </Button>
+                  {saved && (
+                    <span className="text-sm text-green-600">已保存</span>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
+          {/* 智能体管理 */}
           {activeTab === 'agents' && (
-            <div
-              id="agents-panel"
-              role="tabpanel"
-              className="max-w-3xl"
-            >
+            <div id="agents-panel" role="tabpanel" className="max-w-3xl">
               <h3 className="text-lg font-semibold mb-1">智能体管理</h3>
               <p className="text-muted-foreground text-sm mb-6">管理全局 Prompt 模板和项目级自定义</p>
 
@@ -365,21 +411,51 @@ export default function Settings() {
             </div>
           )}
         </div>
+      </div>
 
-        {/* Save button section - shared between tabs (except agents tab) */}
-        {activeTab !== 'agents' && (
-          <div className="max-w-xl mt-6 pt-4 border-t">
-            <div className="flex items-center gap-4">
-              <Button onClick={handleSave} disabled={saving}>
-                {saving ? '保存中...' : '保存设置'}
+      {/* 添加模型弹窗 */}
+      <AddModelDialog
+        open={showAddDialog}
+        onClose={() => setShowAddDialog(false)}
+        onSubmit={handleAddModel}
+        loading={savingConfig}
+      />
+
+      {/* 编辑 API Key 弹窗 */}
+      {editingConfig && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-[420px] max-w-[90vw]">
+            <div className="text-lg font-medium mb-4">配置 API Key</div>
+            <div className="text-sm text-gray-600 mb-4">
+              为 <strong>{editingConfig.name}</strong> 配置 API Key
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">API Key</label>
+                <Input
+                  type="password"
+                  value={editApiKey}
+                  onChange={(e) => setEditApiKey(e.target.value)}
+                  placeholder="输入 API Key"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <Button variant="outline" onClick={() => {
+                setEditingConfig(null)
+                setEditApiKey('')
+              }}>
+                取消
               </Button>
-              {saved && (
-                <span className="text-sm text-green-600">已保存</span>
-              )}
+              <Button onClick={handleSaveEditApiKey} disabled={savingConfig || !editApiKey.trim()}>
+                {savingConfig ? '保存中...' : '保存'}
+              </Button>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
