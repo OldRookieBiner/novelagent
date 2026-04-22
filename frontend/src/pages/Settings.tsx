@@ -7,7 +7,7 @@ import { AgentPromptEditor } from '@/components/settings/AgentPromptEditor'
 import { ProjectPromptConfig } from '@/components/settings/ProjectPromptConfig'
 import ModelConfigCard from '@/components/settings/ModelConfigCard'
 import AddModelDialog from '@/components/settings/AddModelDialog'
-import type { UserSettings, SettingsUpdate, AgentPrompt, Project, ModelConfig, ModelConfigCreate } from '@/types'
+import type { SettingsUpdate, AgentPrompt, Project, ModelConfig, ModelConfigCreate } from '@/types'
 
 const REVIEW_STRICTNESS = [
   { value: 'loose', label: '宽松' },
@@ -27,7 +27,6 @@ type SettingsTab = typeof SETTINGS_TABS[number]['id']
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('model')
-  const [settings, setSettings] = useState<UserSettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -55,7 +54,6 @@ export default function Settings() {
     const fetchSettings = async () => {
       try {
         const data = await settingsApi.get()
-        setSettings(data)
         setReviewEnabled(data.review_enabled)
         setReviewStrictness(data.review_strictness as ReviewStrictnessValue)
         useSettingsStore.getState().setSettings(data)
@@ -148,7 +146,6 @@ export default function Settings() {
       }
 
       const updated = await settingsApi.update(update)
-      setSettings(updated)
       useSettingsStore.getState().setSettings(updated)
       setSaved(true)
     } catch (err) {
