@@ -5,8 +5,7 @@ interface ModelConfigCardProps {
   config: ModelConfig
   onHealthCheck: () => void
   onEdit: () => void
-  onSetDefault: () => void
-  onToggleEnabled: () => void
+  onToggleStatus: () => void  // 切换启用/停用状态，启用时自动设为默认
   onDelete?: () => void
   checkingHealth: boolean
 }
@@ -15,8 +14,7 @@ export default function ModelConfigCard({
   config,
   onHealthCheck,
   onEdit,
-  onSetDefault,
-  onToggleEnabled,
+  onToggleStatus,
   onDelete,
   checkingHealth,
 }: ModelConfigCardProps) {
@@ -94,23 +92,18 @@ export default function ModelConfigCard({
           </Button>
         )}
 
-        {config.is_enabled && !config.is_default && (
-          <Button variant="outline" size="sm" onClick={onSetDefault}>
-            设为默认
-          </Button>
-        )}
-
-        {/* 启用/停用切换按钮 */}
+        {/* 启用/停用切换按钮（非默认模型显示） */}
         {!config.is_default && (
           <Button
             variant="outline"
             size="sm"
-            onClick={onToggleEnabled}
+            onClick={onToggleStatus}
           >
             {config.is_enabled ? '停用' : '启用'}
           </Button>
         )}
 
+        {/* 删除按钮（非默认模型显示） */}
         {!config.is_default && onDelete && (
           <Button variant="outline" size="sm" className="text-red-500 hover:bg-red-50" onClick={onDelete}>
             删除

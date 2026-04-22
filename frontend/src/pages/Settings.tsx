@@ -245,20 +245,19 @@ export default function Settings() {
                         setEditingConfig(config)
                         setEditApiKey('')
                       }}
-                      onSetDefault={async () => {
+                      onToggleStatus={async () => {
                         try {
-                          await modelConfigsApi.setDefault(config.id)
+                          if (config.is_enabled) {
+                            // 停用模型
+                            await modelConfigsApi.update(config.id, { is_enabled: false })
+                          } else {
+                            // 启用模型并设为默认
+                            await modelConfigsApi.update(config.id, { is_enabled: true })
+                            await modelConfigsApi.setDefault(config.id)
+                          }
                           await loadModelConfigs()
                         } catch (err) {
-                          console.error('Failed to set default:', err)
-                        }
-                      }}
-                      onToggleEnabled={async () => {
-                        try {
-                          await modelConfigsApi.update(config.id, { is_enabled: !config.is_enabled })
-                          await loadModelConfigs()
-                        } catch (err) {
-                          console.error('Failed to toggle enabled:', err)
+                          console.error('Failed to toggle status:', err)
                         }
                       }}
                       onDelete={!config.is_default ? async () => {
