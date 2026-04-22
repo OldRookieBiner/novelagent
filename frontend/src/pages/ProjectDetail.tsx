@@ -1,6 +1,6 @@
 // frontend/src/pages/ProjectDetail.tsx
 import { useState, useEffect } from 'react'
-import { useParams, Link, useSearchParams } from 'react-router-dom'
+import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -11,6 +11,7 @@ import StepNavigation, { HistoryBanner, STEPS } from '@/components/project/StepN
 import InspirationForm from '@/components/project/InspirationForm'
 import InspirationEditor from '@/components/project/InspirationEditor'
 import InspirationDisplay from '@/components/project/InspirationDisplay'
+import ConfirmDialog from '@/components/common/ConfirmDialog'
 import { generateInspirationTemplate, type InspirationData } from '@/lib/inspiration'
 import type { ProjectDetail, ChapterOutline, Outline, CollectedInfo } from '@/types'
 
@@ -29,6 +30,7 @@ const STAGE_LABELS: Record<string, string> = {
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
 
   const [project, setProject] = useState<ProjectDetail | null>(null)
   const [outline, setOutline] = useState<Outline | null>(null)
@@ -44,6 +46,10 @@ export default function ProjectDetail() {
   const [inspirationData, setInspirationData] = useState<InspirationData | null>(null)
   const [inspirationTemplate, setInspirationTemplate] = useState('')
   const [showInspirationEditor, setShowInspirationEditor] = useState(false)
+
+  // 返回确认弹窗状态
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [showReturnConfirm, setShowReturnConfirm] = useState(false)
 
   const setCurrentProject = useProjectStore((state) => state.setCurrentProject)
   const setProjectOutline = useProjectStore((state) => state.setOutline)
@@ -400,11 +406,17 @@ export default function ProjectDetail() {
       <div className="mb-6">
         <div className="flex items-center justify-between mb-2">
           <h1 className="text-2xl font-bold">{project.name}</h1>
-          <Button asChild>
-            <Link to="/">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              返回列表
-            </Link>
+          <Button
+            onClick={() => {
+              if (isGenerating) {
+                setShowReturnConfirm(true)
+              } else {
+                navigate('/')
+              }
+            }}
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            返回列表
           </Button>
         </div>
         <div className="flex gap-6 text-sm text-muted-foreground">
@@ -588,6 +600,21 @@ export default function ProjectDetail() {
           </>
         )}
       </div>
+
+      {/* 返回确认弹窗 */}
+      <ConfirmDialog
+        open={showReturnConfirm}
+        title="返回列表"
+        message="当前正在生成大纲，返回列表会中断生成进度，已生成的内容将会保留。"
+        confirmText="确认返回"
+        cancelText="继续生成"
+        onConfirm={() => {
+          setShowReturnConfirm(false)
+          setIsGenerating(false)
+          navigate('/')
+        }}
+        onCancel={() => setShowReturnConfirm(false)}
+      />
     </div>
   )
 }
