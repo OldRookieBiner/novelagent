@@ -485,7 +485,7 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
         <Button variant="outline" onClick={handleClear}>
           清空表单
         </Button>
-        <Button onClick={handleSubmit}>生成灵感模板</Button>
+        <Button onClick={handleSubmit}>生成大纲</Button>
       </div>
     </div>
   )
