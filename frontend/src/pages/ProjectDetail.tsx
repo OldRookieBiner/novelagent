@@ -537,6 +537,7 @@ export default function ProjectDetail() {
                 outline={outline}
                 onOutlineUpdate={handleOutlineUpdate}
                 onStageChange={handleStageChange}
+                onGeneratingChange={setIsGenerating}
               />
             )}
 

@@ -205,6 +205,11 @@ export interface OutlineStreamCallbacks {
   onError: (error: string) => void;
 }
 
+// 流式请求选项
+export interface StreamOptions {
+  signal?: AbortSignal;  // 用于取消请求
+}
+
 export const outlineApi = {
   async get(projectId: number): Promise<Outline> {
     return request<Outline>(`/api/projects/${projectId}/outline`);
@@ -218,10 +223,14 @@ export const outlineApi = {
 
   /**
    * Generate outline with streaming - calls callbacks for each chunk
+   * @param projectId - 项目 ID
+   * @param callbacks - 回调函数
+   * @param options - 流式请求选项（包括 AbortSignal 用于取消）
    */
   async createStream(
     projectId: number,
-    callbacks: OutlineStreamCallbacks
+    callbacks: OutlineStreamCallbacks,
+    options?: StreamOptions
   ): Promise<void> {
     const token = getSessionToken();
     const headers: HeadersInit = {};
@@ -234,6 +243,7 @@ export const outlineApi = {
     const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/outline`, {
       method: "POST",
       headers,
+      signal: options?.signal,  // 传递 AbortSignal
     });
 
     if (!response.ok) {
@@ -322,6 +332,10 @@ export const outlineApi = {
         buffer = processBuffer(buffer);
       }
     } catch (err) {
+      // 用户主动取消，不触发错误回调
+      if (err instanceof Error && err.name === 'AbortError') {
+        return;
+      }
       callbacks.onError(err instanceof Error ? err.message : '未知错误');
     }
   },
@@ -366,10 +380,14 @@ export const chapterOutlinesApi = {
 
   /**
    * Generate chapter outlines with SSE streaming - one by one
+   * @param projectId - 项目 ID
+   * @param callbacks - 回调函数
+   * @param options - 流式请求选项（包括 AbortSignal 用于取消）
    */
   async createStream(
     projectId: number,
-    callbacks: ChapterOutlineStreamCallbacks
+    callbacks: ChapterOutlineStreamCallbacks,
+    options?: StreamOptions
   ): Promise<void> {
     const token = getSessionToken();
     const headers: HeadersInit = {};
@@ -382,6 +400,7 @@ export const chapterOutlinesApi = {
     const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/chapter-outlines`, {
       method: "POST",
       headers,
+      signal: options?.signal,  // 传递 AbortSignal
     });
 
     if (!response.ok) {
@@ -469,6 +488,10 @@ export const chapterOutlinesApi = {
         buffer = processBuffer(buffer);
       }
     } catch (err) {
+      // 用户主动取消，不触发错误回调
+      if (err instanceof Error && err.name === 'AbortError') {
+        return;
+      }
       callbacks.onError(err instanceof Error ? err.message : '未知错误');
     }
   },

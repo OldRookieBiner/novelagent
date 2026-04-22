@@ -1,6 +1,7 @@
 """模型配置 API 路由"""
 
 import time
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -278,7 +279,3 @@ async def set_default_model(
     db.refresh(config)
 
     return build_config_response(config)
-
-
-# 导入 datetime
-from datetime import datetime

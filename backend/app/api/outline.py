@@ -47,7 +47,8 @@ from app.agents.nodes.outline_generation import (
     MIN_CHAPTERS_EPIC,
 )
 from app.agents.nodes.info_collection import info_collection_node
-from app.services.llm import get_llm_service
+from app.services.llm import get_llm_service, get_llm_service_from_config
+from app.models.model_config import ModelConfig
 
 router = APIRouter()
 
@@ -80,6 +81,26 @@ def get_project_and_outline(
         )
 
     return project, outline
+
+
+def get_llm_for_user(user_id: int, user_settings, db: Session):
+    """
+    获取用户的 LLM 服务
+
+    优先使用模型配置，如果没有则使用用户设置（兼容旧版本）
+    """
+    # 查找用户的默认模型配置
+    default_config = db.query(ModelConfig).filter(
+        ModelConfig.user_id == user_id,
+        ModelConfig.is_default == True,
+        ModelConfig.is_enabled == True
+    ).first()
+
+    if default_config:
+        return get_llm_service_from_config(default_config, user_id)
+
+    # 回退到用户设置
+    return get_llm_service(user_settings)
 
 
 @router.get("/{project_id}/outline", response_model=OutlineResponse)
@@ -124,8 +145,8 @@ async def generate_outline(
     project.stage = STAGE_OUTLINE_GENERATING
     db.commit()
 
-    # Get LLM service
-    llm = get_llm_service(user_settings)
+    # Get LLM service (优先使用模型配置)
+    llm = get_llm_for_user(current_user.id, user_settings, db)
 
     # Prepare state for outline generation
     state = {
@@ -202,7 +223,7 @@ async def generate_outline(
                         }
                         yield f"event: done\ndata: {json.dumps(completion_data)}\n\n"
                         return
-                except:
+                except Exception:
                     pass
 
             # Send error event

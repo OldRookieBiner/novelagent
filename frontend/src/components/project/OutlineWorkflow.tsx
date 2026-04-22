@@ -11,6 +11,7 @@ interface OutlineWorkflowProps {
   outline: Outline
   onOutlineUpdate: (outline: Outline) => void
   onStageChange: (stage: string, skipRefresh?: boolean) => void
+  onGeneratingChange?: (isGenerating: boolean) => void  // 生成状态变化回调
 }
 
 // 将大纲转换为可编辑文本格式
@@ -60,6 +61,7 @@ export default function OutlineWorkflow({
   outline,
   onOutlineUpdate,
   onStageChange,
+  onGeneratingChange,
 }: OutlineWorkflowProps) {
   const [loading, setLoading] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -75,6 +77,12 @@ export default function OutlineWorkflow({
   // AbortController for stopping generation
   const abortControllerRef = useRef<AbortController | null>(null)
 
+  // 通知父组件生成状态变化
+  useEffect(() => {
+    const isGenerating = isStreaming || isGeneratingChapters
+    onGeneratingChange?.(isGenerating)
+  }, [isStreaming, isGeneratingChapters, onGeneratingChange])
+
   // Sync edit content when outline changes
   useEffect(() => {
     if (!editing) {
@@ -86,6 +94,10 @@ export default function OutlineWorkflow({
     setLoading(true)
     setIsStreaming(true)
     setStreamingContent('')
+
+    // 创建 AbortController 用于取消请求
+    const controller = new AbortController()
+    abortControllerRef.current = controller
 
     try {
       await outlineApi.createStream(projectId, {
@@ -108,12 +120,13 @@ export default function OutlineWorkflow({
           setIsStreaming(false)
           alert(`生成大纲失败: ${error}`)
         },
-      })
+      }, { signal: controller.signal })
     } catch (err) {
       setIsStreaming(false)
       alert('生成大纲失败，请检查 API Key 配置')
     } finally {
       setLoading(false)
+      abortControllerRef.current = null
     }
   }
 
@@ -154,6 +167,10 @@ export default function OutlineWorkflow({
     setChapterProgress({ current: 0, total: outline.chapter_count_suggested })
     setGeneratedChapters([])
 
+    // 创建 AbortController 用于取消请求
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
     try {
       await chapterOutlinesApi.createStream(projectId, {
         onProgress: (chapterNumber, total, chapter) => {
@@ -169,10 +186,12 @@ export default function OutlineWorkflow({
           setIsGeneratingChapters(false)
           alert(`生成章节大纲失败: ${error}`)
         },
-      })
+      }, { signal: controller.signal })
     } catch (err) {
       setIsGeneratingChapters(false)
       alert('生成章节大纲失败，请检查 API Key 配置')
+    } finally {
+      abortControllerRef.current = null
     }
   }
 
@@ -243,11 +262,20 @@ export default function OutlineWorkflow({
             </div>
           )}
 
-          <div className="mt-4 flex items-center gap-2">
-            <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full" />
-            <span className="text-sm text-muted-foreground">
-              正在生成第 {chapterProgress.current + 1} 章...
-            </span>
+          <div className="mt-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full" />
+              <span className="text-sm text-muted-foreground">
+                正在生成第 {chapterProgress.current + 1} 章...
+              </span>
+            </div>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => abortControllerRef.current?.abort()}
+            >
+              停止生成
+            </Button>
           </div>
         </CardContent>
       </Card>
