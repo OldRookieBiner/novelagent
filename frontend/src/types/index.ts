@@ -232,3 +232,48 @@ export interface EffectivePromptResponse {
   source: string;
   prompt_content: string;
 }
+
+// ==================== Model Config Types ====================
+
+export interface ModelConfig {
+  id: number;
+  name: string;
+  provider: string;
+  base_url: string;
+  model_name: string;
+  has_api_key: boolean;
+  is_enabled: boolean;
+  is_default: boolean;
+  health_status: 'healthy' | 'unhealthy' | 'unknown' | null;
+  health_latency: number | null;
+  last_health_check: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ModelConfigListResponse {
+  models: ModelConfig[];
+}
+
+export interface ModelConfigCreate {
+  name: string;
+  provider?: string;
+  base_url: string;
+  model_name: string;
+  api_key?: string;
+}
+
+export interface ModelConfigUpdate {
+  name?: string;
+  base_url?: string;
+  model_name?: string;
+  api_key?: string;
+  is_enabled?: boolean;
+  clear_api_key?: boolean;
+}
+
+export interface HealthCheckResponse {
+  status: 'healthy' | 'unhealthy';
+  latency?: number;
+  error?: string;
+}
