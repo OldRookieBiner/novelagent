@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 |------|------|------|
 | v0.1.x | 已发布 | CLI 版本，三 Agent 协作 |
 | v0.2.0 | 已发布 | Web 应用，React + FastAPI + PostgreSQL |
-| v0.5.x | 当前 | UX 优化，灵感采集表单改进 |
+| v0.6.0 | 当前 | 自定义模型配置、流式生成优化 |
 
 ---
 
@@ -53,13 +53,13 @@ cd frontend && npm run test:coverage
 ```
 novelagent/
 ├── backend/app/
-│   ├── api/            # API 路由 (projects, outline, chapters, settings)
+│   ├── api/            # API 路由 (projects, outline, chapters, settings, model_configs, agent_prompts)
 │   ├── agents/         # LangGraph Agents
-│   ├── models/         # SQLAlchemy 模型
+│   ├── models/         # SQLAlchemy 模型 (user, project, outline, chapter, model_config)
 │   ├── schemas/        # Pydantic schemas
-│   └── services/       # LLM 服务
+│   └── services/       # LLM 服务、加密服务
 ├── frontend/src/
-│   ├── components/     # UI 组件
+│   ├── components/     # UI 组件 (ui/, project/, settings/)
 │   ├── pages/          # 页面
 │   ├── lib/            # API 客户端
 │   └── stores/         # Zustand 状态
@@ -131,7 +131,25 @@ novelagent/
 
 ---
 
-## Gotchas (v0.2.0)
+## Gotchas
+
+### v0.6.0 模型配置
+
+用户模型配置存储在 `model_configs` 表，API Key 使用 AES 加密。LLM 服务优先使用模型配置，回退到用户设置：
+```python
+# 获取 LLM 服务优先级：模型配置 > 用户设置
+from app.services.llm import get_llm_service_from_config, get_llm_service
+```
+
+### SSE 流式中断处理
+
+前端使用 AbortController 取消流式请求：
+```typescript
+const controller = new AbortController()
+await outlineApi.createStream(projectId, callbacks, { signal: controller.signal })
+// 取消请求
+controller.abort()
+```
 
 ### SSE 流式传输换行符
 
