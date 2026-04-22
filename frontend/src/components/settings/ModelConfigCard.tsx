@@ -27,10 +27,12 @@ export default function ModelConfigCard({
     unknown: 'bg-gray-300',
   }
 
-  // 卡片样式：启用的模型显示蓝色边框
-  const cardClasses = config.is_enabled
+  // 卡片样式：默认且启用的模型显示蓝色边框
+  const cardClasses = config.is_default && config.is_enabled
     ? 'border-2 border-blue-500 bg-blue-50'
-    : 'border rounded-lg opacity-60'
+    : config.is_enabled
+      ? 'border rounded-lg'
+      : 'border rounded-lg opacity-60'
 
   return (
     <div className={`${cardClasses} p-4 mb-4 transition-all hover:shadow-md`}>
@@ -98,15 +100,14 @@ export default function ModelConfigCard({
           </Button>
         )}
 
-        {!config.is_enabled && (
-          <Button variant="outline" size="sm" onClick={onToggleEnabled}>
-            启用
-          </Button>
-        )}
-
-        {config.is_enabled && !config.is_default && (
-          <Button variant="outline" size="sm" onClick={onToggleEnabled}>
-            停用
+        {/* 启用/停用切换按钮 */}
+        {!config.is_default && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onToggleEnabled}
+          >
+            {config.is_enabled ? '停用' : '启用'}
           </Button>
         )}
 
