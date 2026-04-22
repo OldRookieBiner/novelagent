@@ -1,5 +1,5 @@
 // frontend/src/components/project/OutlineWorkflow.tsx
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
@@ -71,6 +71,9 @@ export default function OutlineWorkflow({
   const [isGeneratingChapters, setIsGeneratingChapters] = useState(false)
   const [chapterProgress, setChapterProgress] = useState({ current: 0, total: 0 })
   const [generatedChapters, setGeneratedChapters] = useState<ChapterOutline[]>([])
+
+  // AbortController for stopping generation
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   // Sync edit content when outline changes
   useEffect(() => {
@@ -184,9 +187,18 @@ export default function OutlineWorkflow({
           <div className="min-h-[200px] max-h-[500px] overflow-y-auto bg-muted p-4 rounded-md font-mono text-sm whitespace-pre-wrap">
             {streamingContent || '等待生成...'}
           </div>
-          <div className="mt-4 flex items-center gap-2">
-            <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full" />
-            <span className="text-sm text-muted-foreground">AI 正在创作大纲...</span>
+          <div className="mt-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full" />
+              <span className="text-sm text-muted-foreground">AI 正在创作大纲...</span>
+            </div>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => abortControllerRef.current?.abort()}
+            >
+              停止生成
+            </Button>
           </div>
         </CardContent>
       </Card>
