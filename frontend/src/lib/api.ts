@@ -30,6 +30,11 @@ import type {
   AgentPromptUpdate,
   ProjectAgentPromptItem,
   ProjectAgentPromptsResponse,
+  ModelConfig,
+  ModelConfigListResponse,
+  ModelConfigCreate,
+  ModelConfigUpdate,
+  HealthCheckResponse,
 } from "@/types";
 
 // ==================== Configuration ====================
@@ -625,5 +630,45 @@ export const agentPromptsApi = {
       `/api/projects/${projectId}/agent-prompts/${agentType}`,
       { method: "DELETE" }
     );
+  },
+};
+
+// ==================== Model Configs API ====================
+
+export const modelConfigsApi = {
+  async list(): Promise<ModelConfigListResponse> {
+    return request<ModelConfigListResponse>("/api/model-configs/");
+  },
+
+  async create(data: ModelConfigCreate): Promise<ModelConfig> {
+    return request<ModelConfig>("/api/model-configs/", {
+      method: "POST",
+      body: data,
+    });
+  },
+
+  async update(configId: number, data: ModelConfigUpdate): Promise<ModelConfig> {
+    return request<ModelConfig>(`/api/model-configs/${configId}`, {
+      method: "PUT",
+      body: data,
+    });
+  },
+
+  async delete(configId: number): Promise<{ success: boolean }> {
+    return request<{ success: boolean }>(`/api/model-configs/${configId}`, {
+      method: "DELETE",
+    });
+  },
+
+  async checkHealth(configId: number): Promise<HealthCheckResponse> {
+    return request<HealthCheckResponse>(`/api/model-configs/${configId}/health`, {
+      method: "POST",
+    });
+  },
+
+  async setDefault(configId: number): Promise<ModelConfig> {
+    return request<ModelConfig>(`/api/model-configs/${configId}/default`, {
+      method: "PUT",
+    });
   },
 };
