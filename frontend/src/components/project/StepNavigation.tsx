@@ -60,6 +60,7 @@ interface StepNavigationProps {
   currentStage: string
   viewingStep: number | null  // null = 当前步骤, 数字 = 查看历史步骤
   onViewStep: (stepIndex: number | null) => void
+  outlineConfirmed?: boolean  // 大纲是否已确认，未确认时可返回修改灵感采集
 }
 
 // StepNode component
@@ -67,14 +68,16 @@ function StepNode({
   step,
   status,
   isViewing,
-  onClick
+  onClick,
+  clickable
 }: {
   step: StepConfig
   status: StepStatus
   isViewing: boolean
   onClick: () => void
+  clickable: boolean
 }) {
-  const baseClasses = "flex items-center cursor-pointer transition-opacity"
+  const baseClasses = "flex items-center transition-opacity"
 
   const statusClasses = {
     completed: "opacity-100",
@@ -89,11 +92,12 @@ function StepNode({
   }
 
   const viewingRing = isViewing ? "ring-4 ring-green-200" : ""
+  const cursorClass = clickable ? "cursor-pointer hover:opacity-80" : "cursor-default"
 
   return (
     <div
-      className={`${baseClasses} ${statusClasses[status]}`}
-      onClick={status !== 'pending' ? onClick : undefined}
+      className={`${baseClasses} ${statusClasses[status]} ${cursorClass}`}
+      onClick={clickable ? onClick : undefined}
     >
       <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${circleClasses[status]} ${viewingRing}`}>
         {status === 'completed' ? (
@@ -122,7 +126,7 @@ function StepConnector({ completed }: { completed: boolean }) {
 }
 
 // Main StepNavigation component
-export default function StepNavigation({ currentStage, viewingStep, onViewStep }: StepNavigationProps) {
+export default function StepNavigation({ currentStage, viewingStep, onViewStep, outlineConfirmed }: StepNavigationProps) {
   return (
     <div className="p-4 border-b bg-gray-50 overflow-x-auto">
       <div className="flex items-center justify-center min-w-max mx-auto">
@@ -132,6 +136,13 @@ export default function StepNavigation({ currentStage, viewingStep, onViewStep }
             const isViewing = viewingStep === index
             const isCompleted = status === 'completed'
 
+            // 判断是否可点击
+            // 灵感采集步骤（index 0）：大纲未确认时可点击返回修改
+            // 其他已完成步骤：可点击查看
+            const clickable = step.index === 0
+              ? !outlineConfirmed && status !== 'pending'  // 大纲未确认时可返回修改灵感采集
+              : status !== 'pending'
+
             return (
               <Fragment key={step.index}>
                 <StepNode
@@ -139,6 +150,7 @@ export default function StepNavigation({ currentStage, viewingStep, onViewStep }
                   status={status}
                   isViewing={isViewing}
                   onClick={() => onViewStep(index)}
+                  clickable={clickable}
                 />
                 {index < STEPS.length - 1 && (
                   <StepConnector completed={isCompleted} />

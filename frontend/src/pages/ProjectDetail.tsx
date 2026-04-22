@@ -205,11 +205,59 @@ export default function ProjectDetail() {
     }
   }
 
+  // 修改灵感采集记录（大纲未确认时）
+  const handleInspirationUpdate = async (data: InspirationData) => {
+    if (!project) return
+
+    try {
+      // 保存灵感数据
+      await outlineApi.update(project.id, {
+        collected_info: data as unknown as CollectedInfo,
+        inspiration_template: generateInspirationTemplate(data),
+        // 清空大纲内容，需要重新生成
+        title: '',
+        summary: '',
+        plot_points: [],
+      })
+      // 更新 stage 到大纲生成
+      await projectsApi.update(project.id, { stage: 'outline_generating' })
+      // 刷新数据
+      const updatedProject = await projectsApi.get(project.id)
+      setProject(updatedProject)
+      const outlineData = await outlineApi.get(project.id)
+      setOutline(outlineData)
+      // 返回当前步骤
+      setViewingStep(null)
+      setSearchParams({})
+    } catch (err) {
+      console.error('Failed to update inspiration:', err)
+    }
+  }
+
   // Render history content for a specific step
   const renderHistoryContent = (stepIndex: number) => {
     switch (stepIndex) {
       case 0: // 灵感采集
         const info = outline?.collected_info
+        // 如果大纲未确认，允许修改灵感采集
+        if (outline && !outline.confirmed) {
+          return (
+            <Card className="flex-1">
+              <CardHeader>
+                <CardTitle>修改灵感采集</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <InspirationForm
+                  initialData={info as Partial<InspirationData>}
+                  onSubmit={(data) => {
+                    // 保存灵感数据并返回大纲生成阶段
+                    handleInspirationUpdate(data)
+                  }}
+                />
+              </CardContent>
+            </Card>
+          )
+        }
         return (
           <Card className="flex-1">
             <CardHeader>
@@ -431,6 +479,7 @@ export default function ProjectDetail() {
         currentStage={project.stage}
         viewingStep={viewingStep}
         onViewStep={handleViewStep}
+        outlineConfirmed={outline?.confirmed}
       />
 
       {/* History Banner */}
