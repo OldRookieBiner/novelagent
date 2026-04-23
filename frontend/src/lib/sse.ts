@@ -20,6 +20,10 @@ export interface SSECallbacks<T>
   onChunk: (chunk: T | string) => void
   onDone?: (result: T) => void
   onError?: (error: string) => void
+  // 工作流事件回调
+  onNodeStart?: (node: string) => void
+  onNodeDone?: (node: string, state: Record<string, unknown>) => void
+  onWaiting?: (type: string) => void
 }
 
 /**
@@ -89,6 +93,45 @@ export async function parseSSEStream<T>(
         else if (eventType === 'error')
         {
           callbacks.onError?.(eventData)
+        }
+        else if (eventType === 'node_start')
+        {
+          // 节点开始事件
+          try
+          {
+            const nodeName = JSON.parse(eventData) as string
+            callbacks.onNodeStart?.(nodeName)
+          }
+          catch
+          {
+            callbacks.onNodeStart?.(eventData)
+          }
+        }
+        else if (eventType === 'node_done')
+        {
+          // 节点完成事件
+          try
+          {
+            const data = JSON.parse(eventData) as { node: string; state: Record<string, unknown> }
+            callbacks.onNodeDone?.(data.node, data.state)
+          }
+          catch
+          {
+            // 解析失败时忽略
+          }
+        }
+        else if (eventType === 'waiting')
+        {
+          // 等待确认事件
+          try
+          {
+            const waitingType = JSON.parse(eventData) as string
+            callbacks.onWaiting?.(waitingType)
+          }
+          catch
+          {
+            callbacks.onWaiting?.(eventData)
+          }
         }
         else
         {
