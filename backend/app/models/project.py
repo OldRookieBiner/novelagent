@@ -21,6 +21,10 @@ class Project(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # 审核设置
+    review_mode = Column(String(20), default="off", nullable=False)  # off/manual/auto
+    max_rewrite_count = Column(Integer, default=3, nullable=False)
+
     # Relationships
     user = relationship("User", back_populates="projects")
     outline = relationship("Outline", back_populates="project", uselist=False, cascade="all, delete-orphan")
