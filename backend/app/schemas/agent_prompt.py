@@ -14,9 +14,7 @@ class AgentTypeMeta(TypedDict):
 
 
 AgentTypeKey = Literal[
-    "info_collection",
     "outline_generation",
-    "chapter_count_suggestion",
     "chapter_outline_generation",
     "chapter_content_generation",
     "review",
@@ -26,40 +24,30 @@ AgentTypeKey = Literal[
 
 # Agent type metadata
 AGENT_TYPES: dict[AgentTypeKey, AgentTypeMeta] = {
-    "info_collection": {
-        "name": "信息收集智能体",
-        "description": "对话式收集小说创作信息",
-        "variables": ["collected_info", "genre", "theme", "main_characters", "world_setting", "style_preference"]
-    },
     "outline_generation": {
         "name": "大纲生成智能体",
-        "description": "根据收集的信息生成小说大纲",
-        "variables": ["collected_info", "genre", "theme", "main_characters", "world_setting", "style_preference"]
-    },
-    "chapter_count_suggestion": {
-        "name": "章节数建议智能体",
-        "description": "根据大纲建议章节数",
-        "variables": ["outline"]
+        "description": "根据灵感信息生成结构化大纲，包含人物设定、世界观、情节节点",
+        "variables": ["collected_info", "target_words"]
     },
     "chapter_outline_generation": {
         "name": "章节纲生成智能体",
-        "description": "生成每个章节的详细大纲",
-        "variables": ["outline", "chapter_count", "genre", "theme", "main_characters", "world_setting", "style_preference"]
+        "description": "生成每个章节的详细大纲，包含场景、人物、情节、冲突、钩子",
+        "variables": ["outline", "chapter_count", "chapter_number", "previous_chapters"]
     },
     "chapter_content_generation": {
         "name": "章节正文生成智能体",
-        "description": "根据章节纲写正文",
-        "variables": ["chapter_outline", "previous_ending", "genre", "theme", "main_characters", "world_setting", "style_preference"]
+        "description": "根据章节纲写正文，遵循写作原则减少 AI 味",
+        "variables": ["chapter_outline", "previous_ending", "characters", "world_setting", "style_preference"]
     },
     "review": {
         "name": "审核智能体",
-        "description": "审核章节质量",
-        "variables": ["chapter_content", "chapter_outline", "strictness", "genre", "theme", "main_characters", "style_preference"]
+        "description": "审核章节质量，输出分项评分和修改建议",
+        "variables": ["chapter_content", "chapter_outline", "characters", "world_setting", "style_preference"]
     },
     "rewrite": {
         "name": "重写智能体",
-        "description": "根据审核反馈重写章节",
-        "variables": ["chapter_outline", "review_feedback", "original_content", "genre", "theme", "main_characters", "world_setting", "style_preference"]
+        "description": "根据审核反馈重写章节正文",
+        "variables": ["chapter_outline", "original_content", "review_feedback", "characters", "world_setting"]
     }
 }
 
