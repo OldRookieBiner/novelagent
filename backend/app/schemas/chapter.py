@@ -48,6 +48,9 @@ class ChapterResponse(BaseModel):
     word_count: int
     review_passed: bool
     review_feedback: Optional[str] = None
+    # v0.6.1 审核增强字段
+    review_result: Optional[dict] = None
+    rewrite_count: int = 0
     created_at: datetime
     updated_at: datetime
 

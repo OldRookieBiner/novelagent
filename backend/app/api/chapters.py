@@ -179,6 +179,10 @@ async def create_chapter_outlines(
         "outline_title": outline.title,
         "outline_summary": outline.summary,
         "outline_plot_points": outline.plot_points or [],
+        # v0.6.1 增强字段
+        "outline_characters": outline.characters or [],
+        "outline_world_setting": outline.world_setting or {},
+        "outline_emotional_curve": outline.emotional_curve,
         "chapter_count_suggested": outline.chapter_count_suggested,
         "collected_info": outline.collected_info or {},
     }
@@ -442,6 +446,8 @@ async def get_chapter_content(
         word_count=chapter.word_count,
         review_passed=chapter.review_passed,
         review_feedback=chapter.review_feedback,
+        review_result=chapter.review_result,
+        rewrite_count=chapter.rewrite_count,
         created_at=chapter.created_at,
         updated_at=chapter.updated_at
     )
@@ -500,6 +506,8 @@ async def create_chapter(
         word_count=chapter.word_count,
         review_passed=chapter.review_passed,
         review_feedback=chapter.review_feedback,
+        review_result=chapter.review_result,
+        rewrite_count=chapter.rewrite_count,
         created_at=chapter.created_at,
         updated_at=chapter.updated_at
     )
@@ -553,6 +561,8 @@ async def update_chapter_content(
         word_count=chapter.word_count,
         review_passed=chapter.review_passed,
         review_feedback=chapter.review_feedback,
+        review_result=chapter.review_result,
+        rewrite_count=chapter.rewrite_count,
         created_at=chapter.created_at,
         updated_at=chapter.updated_at
     )
@@ -624,6 +634,10 @@ async def generate_chapter(
         "project_id": project_id,
         "outline_title": outline.title,
         "outline_summary": outline.summary,
+        # v0.6.1 增强字段
+        "outline_characters": outline.characters or [],
+        "outline_world_setting": outline.world_setting or {},
+        "outline_emotional_curve": outline.emotional_curve,
         "collected_info": outline.collected_info or {},
     }
 
@@ -733,6 +747,10 @@ async def review_chapter(
         "project_id": project_id,
         "outline_title": outline.title,
         "outline_summary": outline.summary,
+        # v0.6.1 增强字段
+        "outline_characters": outline.characters or [],
+        "outline_world_setting": outline.world_setting or {},
+        "outline_emotional_curve": outline.emotional_curve,
         "collected_info": outline.collected_info or {},
     }
 
@@ -759,6 +777,8 @@ async def review_chapter(
         # Update chapter with review results
         chapter.review_passed = review_result.get("passed", False)
         chapter.review_feedback = review_result.get("feedback", "")
+        # v0.6.1: 保存完整的审核结果
+        chapter.review_result = review_result
         db.commit()
 
         return ReviewResponse(

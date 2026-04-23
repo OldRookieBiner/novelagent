@@ -17,6 +17,10 @@ class Outline(Base):
     title = Column(String(200), nullable=True)
     summary = Column(Text, nullable=True)
     plot_points = Column(JSON, default=list)  # List of plot points
+    # v0.6.1 增强字段
+    characters = Column(JSON, default=list)  # 人物设定列表
+    world_setting = Column(JSON, default=dict)  # 世界观设定
+    emotional_curve = Column(String(500), nullable=True)  # 情感曲线描述
     collected_info = Column(JSON, default=dict)  # Collected information from user
     inspiration_template = Column(Text, nullable=True)  # Markdown template from inspiration collection
     messages = Column(JSON, default=list)  # Chat messages for info collection
