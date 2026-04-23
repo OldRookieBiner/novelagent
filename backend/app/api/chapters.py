@@ -23,9 +23,8 @@ from app.schemas.chapter import (
 )
 from app.utils.auth import get_current_user
 from app.agents.state import (
-    STAGE_CHAPTER_OUTLINES_GENERATING,
-    STAGE_CHAPTER_OUTLINES_CONFIRMING,
-    STAGE_CHAPTER_WRITING
+    STAGE_CHAPTER_OUTLINES,
+    STAGE_WRITING
 )
 from app.agents.nodes.chapter_generation import (
     generate_chapter_outlines_node,
@@ -188,7 +187,7 @@ async def create_chapter_outlines(
         )
 
     # Update project stage
-    project.stage = STAGE_CHAPTER_OUTLINES_GENERATING
+    project.stage = STAGE_CHAPTER_OUTLINES
     db.commit()
 
     # Get LLM service
@@ -249,13 +248,13 @@ async def create_chapter_outlines(
 
                 elif event["type"] == "done":
                     # Update project stage to confirming
-                    project.stage = STAGE_CHAPTER_OUTLINES_CONFIRMING
+                    project.stage = STAGE_CHAPTER_OUTLINES
                     db.commit()
 
                     # Send completion event
                     completion_data = {
                         "total": len(created_outlines),
-                        "stage": STAGE_CHAPTER_OUTLINES_CONFIRMING
+                        "stage": STAGE_CHAPTER_OUTLINES
                     }
                     yield f"event: done\ndata: {json.dumps(completion_data)}\n\n"
 
@@ -396,7 +395,7 @@ async def confirm_chapter_outline(
 
     # If all confirmed, update project stage to chapter writing
     if total_outlines > 0 and confirmed_outlines == total_outlines:
-        project.stage = STAGE_CHAPTER_WRITING
+        project.stage = STAGE_WRITING
 
     db.commit()
     db.refresh(chapter_outline)

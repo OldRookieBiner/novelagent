@@ -3,7 +3,7 @@
 import re
 from typing import Dict, Any, AsyncIterator
 
-from app.agents.state import NovelState, STAGE_OUTLINE_CONFIRMING
+from app.agents.state import NovelState, STAGE_OUTLINE
 from app.agents.prompts import OUTLINE_GENERATION_PROMPT
 from app.services.llm import LLMService
 
@@ -232,9 +232,8 @@ async def generate_outline_node(state: NovelState, llm: LLMService) -> NovelStat
         "outline_world_setting": outline["world_setting"],  # 新增：世界观
         "outline_plot_points": outline["plot_points"],
         "outline_emotional_curve": outline["emotional_curve"],  # 新增：情感曲线
-        "chapter_count_suggested": chapter_count,
-        "stage": STAGE_OUTLINE_CONFIRMING,
-        "last_assistant_message": response,
+        "chapter_count": chapter_count,
+        "stage": STAGE_OUTLINE,
     }
 
     return new_state

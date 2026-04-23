@@ -3,7 +3,7 @@
 import re
 from typing import Dict, Any, AsyncIterator
 
-from app.agents.state import NovelState, STAGE_CHAPTER_OUTLINES_CONFIRMING, STAGE_CHAPTER_WRITING
+from app.agents.state import NovelState, STAGE_CHAPTER_OUTLINES, STAGE_WRITING
 from app.agents.prompts import (
     GENERATE_SINGLE_CHAPTER_OUTLINE_PROMPT,
     GENERATE_CHAPTER_CONTENT_PROMPT,
@@ -207,7 +207,7 @@ async def generate_single_chapter_outline(
     plot_points = state.get("outline_plot_points", [])
     plot_points_str = "\n".join([f"{i+1}. {p}" for i, p in enumerate(plot_points)]) if plot_points else "无"
 
-    chapter_count = state.get("chapter_count_suggested", 10)
+    chapter_count = state.get("chapter_count", 10)
 
     # Build previous chapters info for context
     previous_info = ""
@@ -238,7 +238,7 @@ async def generate_chapter_outlines_stream(
 ) -> AsyncIterator[dict]:
     """Generate chapter outlines one by one with streaming progress"""
 
-    chapter_count = state.get("chapter_count_suggested", 10)
+    chapter_count = state.get("chapter_count", 10)
     generated_chapters = []
 
     for chapter_num in range(1, chapter_count + 1):
@@ -268,7 +268,7 @@ async def generate_chapter_outlines_stream(
 async def generate_chapter_outlines_node(state: NovelState, llm: LLMService) -> NovelState:
     """Generate all chapter outlines (legacy synchronous version)"""
 
-    chapter_count = state.get("chapter_count_suggested", 10)
+    chapter_count = state.get("chapter_count", 10)
     generated_chapters = []
 
     for chapter_num in range(1, chapter_count + 1):
@@ -283,7 +283,7 @@ async def generate_chapter_outlines_node(state: NovelState, llm: LLMService) -> 
     new_state: NovelState = {
         **state,
         "chapter_outlines": generated_chapters,
-        "stage": STAGE_CHAPTER_OUTLINES_CONFIRMING,
+        "stage": STAGE_CHAPTER_OUTLINES,
     }
 
     return new_state

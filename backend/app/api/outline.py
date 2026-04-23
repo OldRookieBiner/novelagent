@@ -20,10 +20,9 @@ from app.schemas.outline import (
 )
 from app.utils.auth import get_current_user
 from app.agents.state import (
-    STAGE_INSPIRATION_COLLECTING,
-    STAGE_OUTLINE_GENERATING,
-    STAGE_OUTLINE_CONFIRMING,
-    STAGE_CHAPTER_OUTLINES_GENERATING
+    STAGE_INSPIRATION,
+    STAGE_OUTLINE,
+    STAGE_CHAPTER_OUTLINES
 )
 from app.agents.nodes.outline_generation import (
     generate_outline_node,
@@ -142,7 +141,7 @@ async def generate_outline(
         )
 
     # Update project stage
-    project.stage = STAGE_OUTLINE_GENERATING
+    project.stage = STAGE_OUTLINE
     db.commit()
 
     # Get LLM service (优先使用模型配置)
@@ -181,7 +180,7 @@ async def generate_outline(
             outline.emotional_curve = parsed.get("emotional_curve")
 
             # Update project stage to confirming
-            project.stage = STAGE_OUTLINE_CONFIRMING
+            project.stage = STAGE_OUTLINE
 
             db.commit()
             db.refresh(outline)
@@ -198,7 +197,7 @@ async def generate_outline(
                     "confirmed": False,
                     "chapter_count_suggested": outline.chapter_count_suggested,
                 },
-                "stage": STAGE_OUTLINE_CONFIRMING,
+                "stage": STAGE_OUTLINE,
             }
             yield f"event: done\ndata: {json.dumps(completion_data)}\n\n"
 
@@ -217,7 +216,7 @@ async def generate_outline(
                         outline.characters = parsed.get("characters", [])
                         outline.world_setting = parsed.get("world_setting", {})
                         outline.emotional_curve = parsed.get("emotional_curve")
-                        project.stage = STAGE_OUTLINE_CONFIRMING
+                        project.stage = STAGE_OUTLINE
                         db.commit()
 
                         # 发送中断完成事件
@@ -232,7 +231,7 @@ async def generate_outline(
                                 "confirmed": False,
                                 "chapter_count_suggested": outline.chapter_count_suggested,
                             },
-                            "stage": STAGE_OUTLINE_CONFIRMING,
+                            "stage": STAGE_OUTLINE,
                             "interrupted": True,
                         }
                         yield f"event: done\ndata: {json.dumps(completion_data)}\n\n"
@@ -337,7 +336,7 @@ async def confirm_outline(
     # Confirm the outline
     outline.confirmed = True
     # Skip chapter count stage, go directly to chapter outlines generating
-    project.stage = STAGE_CHAPTER_OUTLINES_GENERATING
+    project.stage = STAGE_CHAPTER_OUTLINES
 
     db.commit()
     db.refresh(outline)
@@ -374,7 +373,7 @@ async def set_chapter_count(
     outline.chapter_count_confirmed = True
 
     # Update project stage to generate chapter outlines
-    project.stage = STAGE_CHAPTER_OUTLINES_GENERATING
+    project.stage = STAGE_CHAPTER_OUTLINES
 
     db.commit()
     db.refresh(outline)
@@ -417,7 +416,7 @@ async def update_collected_info(
     # Check if all required info is provided
     required_fields = ["genre", "main_characters", "world_setting"]
     if all(field in current_info and current_info[field] for field in required_fields):
-        project.stage = STAGE_OUTLINE_GENERATING
+        project.stage = STAGE_OUTLINE
 
     db.commit()
     db.refresh(outline)
@@ -436,7 +435,7 @@ async def info_collection_chat(
     project, outline = get_project_and_outline(project_id, current_user.id, db)
 
     # Check if project is in inspiration_collecting stage
-    if project.stage not in [STAGE_INSPIRATION_COLLECTING, STAGE_OUTLINE_GENERATING]:
+    if project.stage not in [STAGE_INSPIRATION, STAGE_OUTLINE]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Project is not in inspiration collection stage"
