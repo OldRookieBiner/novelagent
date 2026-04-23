@@ -4,16 +4,18 @@ import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { projectsApi, outlineApi, chapterOutlinesApi } from '@/lib/api'
+import { projectsApi, outlineApi, chapterOutlinesApi, workflowApi } from '@/lib/api'
 import { useProjectStore } from '@/stores/projectStore'
+import { useWorkflowStore } from '@/stores/workflowStore'
 import OutlineWorkflow from '@/components/project/OutlineWorkflow'
 import StepNavigation, { HistoryBanner, STEPS } from '@/components/project/StepNavigation'
 import InspirationForm from '@/components/project/InspirationForm'
 import InspirationEditor from '@/components/project/InspirationEditor'
 import InspirationDisplay from '@/components/project/InspirationDisplay'
+import ResumeDialog from '@/components/project/ResumeDialog'
 import ConfirmDialog from '@/components/common/ConfirmDialog'
 import { generateInspirationTemplate, type InspirationData } from '@/lib/inspiration'
-import type { ProjectDetail, ChapterOutline, Outline, CollectedInfo } from '@/types'
+import type { ProjectDetail, ChapterOutline, Outline, CollectedInfo, WorkflowStateResponse } from '@/types'
 
 const STAGE_LABELS: Record<string, string> = {
   inspiration_collecting: '灵感采集',
@@ -51,6 +53,14 @@ export default function ProjectDetail() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [showReturnConfirm, setShowReturnConfirm] = useState(false)
 
+  // 工作流状态
+  const [workflowState, setWorkflowState] = useState<WorkflowStateResponse | null>(null)
+  const [showResumeDialog, setShowResumeDialog] = useState(false)
+
+  // 工作流 store
+  const setWorkflowStage = useWorkflowStore((state) => state.setStage)
+  const setWorkflowProjectId = useWorkflowStore((state) => state.setProjectId)
+
   const setCurrentProject = useProjectStore((state) => state.setCurrentProject)
   const setProjectOutline = useProjectStore((state) => state.setOutline)
   const setProjectChapterOutlines = useProjectStore((state) => state.setChapterOutlines)
@@ -83,6 +93,32 @@ export default function ProjectDetail() {
 
   useEffect(() => {
     fetchData()
+  }, [id])
+
+  // 获取工作流状态
+  useEffect(() => {
+    const fetchWorkflowState = async () => {
+      if (!id) return
+
+      try {
+        const state = await workflowApi.getWorkflowState(parseInt(id))
+        setWorkflowState(state)
+
+        // 更新工作流 store
+        setWorkflowProjectId(parseInt(id))
+        setWorkflowStage(state.stage)
+
+        // 如果有检查点且未完成，显示恢复弹窗
+        if (state.has_checkpoint && state.stage !== 'complete') {
+          setShowResumeDialog(true)
+        }
+      } catch (err) {
+        // 工作流状态获取失败不影响页面正常显示
+        console.error('Failed to fetch workflow state:', err)
+      }
+    }
+
+    fetchWorkflowState()
   }, [id])
 
   // 灵感数据回显：从 outline 恢复已保存的灵感数据
@@ -667,6 +703,29 @@ export default function ProjectDetail() {
         }}
         onCancel={() => setShowReturnConfirm(false)}
       />
+
+      {/* 恢复创作弹窗 */}
+      {workflowState && (
+        <ResumeDialog
+          open={showResumeDialog}
+          onOpenChange={setShowResumeDialog}
+          projectName={project.name}
+          currentStage={workflowState.stage}
+          currentChapter={workflowState.current_chapter}
+          writtenChaptersCount={workflowState.written_chapters_count}
+          waitingForConfirmation={workflowState.waiting_for_confirmation}
+          confirmationType={workflowState.confirmation_type}
+          hasChapters={workflowState.total_chapters > 0}
+          onResume={() => {
+            // TODO: 启动工作流
+            console.log('Resume workflow')
+          }}
+          onViewChapters={() => {
+            // 切换到章节列表视图
+            setViewingStep(3)
+          }}
+        />
+      )}
     </div>
   )
 }

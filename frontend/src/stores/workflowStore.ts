@@ -17,6 +17,7 @@ interface WorkflowState {
   // ========== 基础状态 ==========
   projectId: number | null
   stage: WorkflowStage
+  totalChapters: number
 
   // ========== 大纲状态 ==========
   outline: Outline | null
@@ -29,6 +30,7 @@ interface WorkflowState {
   // ========== 写作状态 ==========
   writtenChapters: WrittenChapter[]
   currentChapter: number
+  writtenChaptersCount: number
 
   // ========== 审核状态 ==========
   reviewResult: ReviewResponse | null
@@ -48,6 +50,7 @@ interface WorkflowState {
   // 基础状态
   setProjectId: (projectId: number | null) => void
   setStage: (stage: WorkflowStage) => void
+  setTotalChapters: (total: number) => void
 
   // 大纲
   setOutline: (outline: Outline | null) => void
@@ -55,6 +58,8 @@ interface WorkflowState {
 
   // 章节大纲
   setChapterOutlines: (outlines: ChapterOutline[]) => void
+  addChapterOutline: (outline: Partial<ChapterOutline> & { id: number; chapter_number: number }) => void
+  updateChapterOutline: (id: number, updates: Partial<ChapterOutline>) => void
   setChapterOutlinesConfirmed: (confirmed: boolean) => void
 
   // 写作
@@ -68,7 +73,7 @@ interface WorkflowState {
 
   // 工作流运行状态
   setIsRunning: (running: boolean) => void
-  setWaitingForConfirmation: (type: ConfirmationType) => void
+  setWaitingForConfirmation: (waiting: boolean, type: ConfirmationType | null) => void
   clearWaitingForConfirmation: () => void
 
   // 流式输出
@@ -83,12 +88,14 @@ interface WorkflowState {
 const initialState = {
   projectId: null,
   stage: 'inspiration' as WorkflowStage,
+  totalChapters: 0,
   outline: null,
   outlineConfirmed: false,
   chapterOutlines: [],
   chapterOutlinesConfirmed: false,
   writtenChapters: [],
-  currentChapter: 1,
+  currentChapter: 0,
+  writtenChaptersCount: 0,
   reviewResult: null,
   rewriteCount: 0,
   isRunning: false,
@@ -107,6 +114,8 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
 
   setStage: (stage) => set({ stage }),
 
+  setTotalChapters: (totalChapters) => set({ totalChapters }),
+
   // ========== 大纲 Actions ==========
 
   setOutline: (outline) => set({ outline }),
@@ -117,13 +126,29 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
 
   setChapterOutlines: (outlines) => set({ chapterOutlines: outlines }),
 
+  // 添加单个章节大纲
+  addChapterOutline: (outline) => set((state) => ({
+    chapterOutlines: [...state.chapterOutlines.filter(o => o.id !== outline.id), outline as ChapterOutline]
+  })),
+
+  // 更新单个章节大纲
+  updateChapterOutline: (id, updates) => set((state) => ({
+    chapterOutlines: state.chapterOutlines.map(o =>
+      o.id === id ? { ...o, ...updates } : o
+    )
+  })),
+
   setChapterOutlinesConfirmed: (confirmed) => set({ chapterOutlinesConfirmed: confirmed }),
 
   // ========== 写作 Actions ==========
 
-  addWrittenChapter: (chapter) => set((state) => ({
-    writtenChapters: [...state.writtenChapters.filter(c => c.chapter_number !== chapter.chapter_number), chapter]
-  })),
+  addWrittenChapter: (chapter) => set((state) => {
+    const newChapters = [...state.writtenChapters.filter(c => c.chapter_number !== chapter.chapter_number), chapter]
+    return {
+      writtenChapters: newChapters,
+      writtenChaptersCount: newChapters.length
+    }
+  }),
 
   setCurrentChapter: (chapter) => set({ currentChapter: chapter }),
 
@@ -139,8 +164,8 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
 
   setIsRunning: (running) => set({ isRunning: running }),
 
-  setWaitingForConfirmation: (type) => set({
-    waitingForConfirmation: true,
+  setWaitingForConfirmation: (waiting, type) => set({
+    waitingForConfirmation: waiting,
     confirmationType: type
   }),
 

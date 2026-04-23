@@ -4,10 +4,10 @@
  */
 
 import { getSessionToken, StreamOptions } from './api'
+import { parseSSEEventBlock, parseSSEData } from './sseParser'
 import type {
   WorkflowStateResponse,
   WorkflowMode,
-  WorkflowSSEEvent,
   WrittenChapter,
 } from '@/types'
 
@@ -82,6 +82,50 @@ export const workflowApi = {
     let buffer = ''
 
     /**
+     * 处理单个 SSE 事件
+     */
+    const handleEvent = (eventType: string, data: unknown) =>
+    {
+      switch (eventType)
+      {
+        case 'node_start':
+          callbacks.onNodeStart?.(data as string)
+          break
+
+        case 'node_done':
+          {
+            const nodeData = data as { node: string; data: unknown }
+            callbacks.onNodeDone?.(nodeData.node, nodeData.data)
+          }
+          break
+
+        case 'chunk':
+          callbacks.onChunk?.(data as string)
+          break
+
+        case 'checkpoint':
+          callbacks.onCheckpoint?.(data as WorkflowStateResponse)
+          break
+
+        case 'waiting':
+          callbacks.onWaiting?.(data as string)
+          break
+
+        case 'done':
+          callbacks.onDone?.(data as { stage: string; chapters: WrittenChapter[] })
+          break
+
+        case 'error':
+          callbacks.onError?.(data as string)
+          break
+
+        default:
+          // 忽略未知事件类型
+          break
+      }
+    }
+
+    /**
      * 处理缓冲区中的完整事件
      */
     const processBuffer = (buf: string): string =>
@@ -101,79 +145,13 @@ export const workflowApi = {
         const eventBlock = remaining.slice(0, eventEndIndex)
         remaining = remaining.slice(eventEndIndex + 2)
 
-        // 解析事件行
-        const lines = eventBlock.split('\n')
-        let eventType = 'message'
-        let eventData = ''
-
-        for (const line of lines)
+        // 使用共享解析器解析事件
+        const event = parseSSEEventBlock(eventBlock)
+        if (event.data)
         {
-          if (line.startsWith('event:'))
-          {
-            eventType = line.slice(6).trim()
-          }
-          else if (line.startsWith('data:'))
-          {
-            eventData += line.slice(5)
-          }
-        }
-
-        if (eventData)
-        {
-          try
-          {
-            const parsed = JSON.parse(eventData) as WorkflowSSEEvent
-
-            switch (eventType)
-            {
-              case 'node_start':
-                callbacks.onNodeStart?.(parsed.data as string)
-                break
-
-              case 'node_done':
-                callbacks.onNodeDone?.(
-                  (parsed.data as { node: string; data: unknown }).node,
-                  (parsed.data as { node: string; data: unknown }).data
-                )
-                break
-
-              case 'chunk':
-                callbacks.onChunk?.(parsed.data as string)
-                break
-
-              case 'checkpoint':
-                callbacks.onCheckpoint?.(parsed.data as WorkflowStateResponse)
-                break
-
-              case 'waiting':
-                callbacks.onWaiting?.(parsed.data as string)
-                break
-
-              case 'done':
-                callbacks.onDone?.(parsed.data as { stage: string; chapters: WrittenChapter[] })
-                break
-
-              case 'error':
-                callbacks.onError?.(parsed.data as string)
-                break
-
-              default:
-                // 忽略未知事件类型
-                break
-            }
-          }
-          catch
-          {
-            // 尝试直接解析字符串数据
-            if (eventType === 'chunk')
-            {
-              callbacks.onChunk?.(eventData)
-            }
-            else if (eventType === 'error')
-            {
-              callbacks.onError?.(eventData)
-            }
-          }
+          // 解析数据（支持 JSON 或纯字符串）
+          const parsedData = parseSSEData(event.data)
+          handleEvent(event.type, parsedData)
         }
       }
 

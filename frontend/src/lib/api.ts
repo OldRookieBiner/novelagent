@@ -2,6 +2,7 @@
  * API client for NovelAgent frontend
  */
 
+import { parseSSEEventBlock, parseSSEData } from './sseParser'
 import type {
   User,
   LoginRequest,
@@ -261,54 +262,32 @@ export const outlineApi = {
     const decoder = new TextDecoder();
     let buffer = '';
 
-    // Process SSE buffer - returns remaining unprocessed buffer
+    // 使用共享 SSE 解析器处理缓冲区
     const processBuffer = (buf: string): string => {
       let remaining = buf;
 
-      // Process all complete SSE events (ending with \n\n)
+      // 处理所有完整的 SSE 事件（以 \n\n 结尾）
       while (true) {
         const eventEndIndex = remaining.indexOf('\n\n');
         if (eventEndIndex === -1) {
-          // No complete event, keep in buffer
           break;
         }
 
         const eventBlock = remaining.slice(0, eventEndIndex);
         remaining = remaining.slice(eventEndIndex + 2);
 
-        // Parse event lines
-        const lines = eventBlock.split('\n');
-        let eventType = 'message';
-        let eventData = '';
+        // 使用共享解析器
+        const event = parseSSEEventBlock(eventBlock);
+        if (event.data) {
+          const parsedData = parseSSEData(event.data);
 
-        for (const line of lines) {
-          if (line.startsWith('event:')) {
-            eventType = line.slice(6).trim();
-          } else if (line.startsWith('data:')) {
-            eventData += line.slice(5);
-          }
-        }
-
-        if (eventData) {
-          if (eventType === 'done') {
-            // Completion event - parse JSON
-            try {
-              const result = JSON.parse(eventData) as OutlineStreamResult;
-              callbacks.onDone(result);
-            } catch (e) {
-              callbacks.onError(`解析完成数据失败: ${eventData.slice(0, 100)}...`);
-            }
-          } else if (eventType === 'error') {
-            callbacks.onError(eventData);
+          if (event.type === 'done') {
+            callbacks.onDone(parsedData as OutlineStreamResult);
+          } else if (event.type === 'error') {
+            callbacks.onError(typeof parsedData === 'string' ? parsedData : event.data);
           } else {
-            // Regular chunk - decode and forward
-            try {
-              const chunk = JSON.parse(eventData);
-              callbacks.onChunk(chunk);
-            } catch {
-              // If not valid JSON, treat as raw text
-              callbacks.onChunk(eventData);
-            }
+            // onChunk 接受 string 或对象
+            callbacks.onChunk(typeof parsedData === 'string' ? parsedData : String(parsedData));
           }
         }
       }
@@ -418,53 +397,33 @@ export const chapterOutlinesApi = {
     const decoder = new TextDecoder();
     let buffer = '';
 
-    // Process SSE buffer - returns remaining unprocessed buffer
+    // 使用共享 SSE 解析器处理缓冲区
     const processBuffer = (buf: string): string => {
       let remaining = buf;
 
-      // Process all complete SSE events (ending with \n\n)
+      // 处理所有完整的 SSE 事件（以 \n\n 结尾）
       while (true) {
         const eventEndIndex = remaining.indexOf('\n\n');
         if (eventEndIndex === -1) {
-          // No complete event, keep in buffer
           break;
         }
 
         const eventBlock = remaining.slice(0, eventEndIndex);
         remaining = remaining.slice(eventEndIndex + 2);
 
-        // Parse event lines
-        const lines = eventBlock.split('\n');
-        let eventType = 'message';
-        let eventData = '';
+        // 使用共享解析器
+        const event = parseSSEEventBlock(eventBlock);
+        if (event.data) {
+          const parsedData = parseSSEData(event.data);
 
-        for (const line of lines) {
-          if (line.startsWith('event:')) {
-            eventType = line.slice(6).trim();
-          } else if (line.startsWith('data:')) {
-            eventData += line.slice(5);
-          }
-        }
-
-        if (eventData) {
-          if (eventType === 'progress') {
-            // Progress event
-            try {
-              const result = JSON.parse(eventData);
-              callbacks.onProgress(result.chapter_number, result.total, result.chapter);
-            } catch {
-              console.error('Failed to parse progress event');
-            }
-          } else if (eventType === 'done') {
-            // Completion event
-            try {
-              const result = JSON.parse(eventData);
-              callbacks.onDone(result.total, result.stage);
-            } catch {
-              callbacks.onError('解析完成数据失败');
-            }
-          } else if (eventType === 'error') {
-            callbacks.onError(eventData);
+          if (event.type === 'progress') {
+            const progress = parsedData as { chapter_number: number; total: number; chapter: { id: number; chapter_number: number; title: string } };
+            callbacks.onProgress(progress.chapter_number, progress.total, progress.chapter);
+          } else if (event.type === 'done') {
+            const done = parsedData as { total: number; stage: string };
+            callbacks.onDone(done.total, done.stage);
+          } else if (event.type === 'error') {
+            callbacks.onError(typeof parsedData === 'string' ? parsedData : event.data);
           }
         }
       }
@@ -705,3 +664,9 @@ export const modelConfigsApi = {
     });
   },
 };
+
+// ==================== Workflow API ====================
+
+// 重新导出 workflowApi（定义在 workflowApi.ts）
+export { workflowApi } from './workflowApi'
+export type { WorkflowStreamCallbacks } from './workflowApi'

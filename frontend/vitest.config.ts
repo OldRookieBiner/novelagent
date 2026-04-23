@@ -4,6 +4,10 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
+  // 强制使用 development build 以支持 act()
+  define: {
+    'process.env.NODE_ENV': JSON.stringify('development'),
+  },
   test: {
     environment: 'happy-dom',
     globals: true,
