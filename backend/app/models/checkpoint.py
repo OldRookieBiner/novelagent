@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import JSON
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -17,7 +17,7 @@ class WorkflowCheckpoint(Base):
     project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
     thread_id = Column(String(100), nullable=False, index=True)  # LangGraph thread ID
     checkpoint_id = Column(String(36), nullable=True, index=True)  # UUID 格式的检查点 ID
-    checkpoint = Column(JSONB, nullable=False)  # Complete State JSON
+    checkpoint = Column(JSON, nullable=False)  # Complete State JSON
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

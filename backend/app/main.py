@@ -9,7 +9,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
 from app.database import engine, Base
-from app.api import auth, projects, outline, chapters, settings as settings_api, agent_prompts, model_configs
+from app.api import auth, projects, outline, chapters, settings as settings_api, agent_prompts, model_configs, workflow
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -95,6 +95,7 @@ app.include_router(chapters.router, prefix="/api/projects", tags=["chapters"])
 app.include_router(settings_api.router, prefix="/api/settings", tags=["settings"])
 app.include_router(agent_prompts.router, prefix="/api", tags=["agent-prompts"])
 app.include_router(model_configs.router, prefix="/api/model-configs", tags=["model-configs"])
+app.include_router(workflow.router, prefix="/api/projects", tags=["workflow"])
 
 
 @app.get("/")
