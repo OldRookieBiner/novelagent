@@ -3,9 +3,9 @@
 import re
 from typing import Dict, Any
 
-from app.agents.state import NovelState
+from app.agents.state import NovelState, STAGE_REVIEW
 from app.agents.prompts import REVIEW_CHAPTER_PROMPT
-from app.services.llm import LLMService
+from app.services.llm import LLMService, get_llm_service_from_config, get_llm_service
 
 
 def parse_review_result(response: str) -> Dict[str, Any]:
@@ -125,3 +125,127 @@ def check_review_passed(review_result: Dict[str, Any]) -> bool:
         return False
 
     return True
+
+
+# ==================== LangGraph 兼容节点 ====================
+
+def _get_llm_from_state(state: NovelState) -> LLMService:
+    """
+    从状态获取 LLM 服务
+
+    根据状态中的 llm_config_id 或 project_id 获取对应的 LLM 服务。
+    此函数需要在调用时获取数据库会话。
+    """
+    from app.database import SessionLocal
+    from app.models.user import UserSettings
+    from app.models.model_config import ModelConfig
+
+    db = SessionLocal()
+    try:
+        llm_config_id = state.get("llm_config_id")
+        project_id = state.get("project_id")
+
+        # 获取项目以获取 user_id
+        from app.models.project import Project
+        project = db.query(Project).filter(Project.id == project_id).first()
+        if not project:
+            raise ValueError(f"Project {project_id} not found")
+
+        user_id = project.user_id
+
+        # 如果指定了模型配置 ID，使用该配置
+        if llm_config_id:
+            model_config = db.query(ModelConfig).filter(
+                ModelConfig.id == llm_config_id,
+                ModelConfig.user_id == user_id,
+                ModelConfig.is_enabled == True
+            ).first()
+            if model_config:
+                return get_llm_service_from_config(model_config, user_id)
+
+        # 否则使用用户的默认模型配置
+        default_config = db.query(ModelConfig).filter(
+            ModelConfig.user_id == user_id,
+            ModelConfig.is_default == True,
+            ModelConfig.is_enabled == True
+        ).first()
+
+        if default_config:
+            return get_llm_service_from_config(default_config, user_id)
+
+        # 回退到用户设置
+        user_settings = db.query(UserSettings).filter(
+            UserSettings.user_id == user_id
+        ).first()
+
+        if not user_settings:
+            raise ValueError(f"User settings not found for user {user_id}")
+
+        return get_llm_service(user_settings)
+
+    finally:
+        db.close()
+
+
+async def review_node(state: NovelState) -> NovelState:
+    """
+    LangGraph 兼容的章节审核节点
+
+    此节点：
+    1. 从状态获取当前章节内容和章节大纲
+    2. 调用 LLM 进行审核
+    3. 返回更新后的状态，包含审核结果
+
+    签名：(state: NovelState) -> NovelState
+    """
+    # 获取 LLM 服务
+    llm = _get_llm_from_state(state)
+
+    # 获取当前章节信息
+    current_chapter = state.get("current_chapter", 1)
+    written_chapters = state.get("written_chapters", [])
+    chapter_outlines = state.get("chapter_outlines", [])
+
+    # 找到当前章节的内容
+    chapter_content = None
+    for chapter in written_chapters:
+        if chapter.get("chapter_number") == current_chapter - 1:  # current_chapter 已递增
+            chapter_content = chapter.get("content", "")
+            break
+
+    if not chapter_content:
+        # 如果没找到，尝试用当前章节号
+        for chapter in written_chapters:
+            if chapter.get("chapter_number") == current_chapter:
+                chapter_content = chapter.get("content", "")
+                break
+
+    if not chapter_content:
+        raise ValueError(f"Chapter content not found for review")
+
+    # 找到当前章节的大纲
+    chapter_outline = None
+    for outline in chapter_outlines:
+        if outline.get("chapter_number") == current_chapter - 1 or outline.get("chapter_number") == current_chapter:
+            chapter_outline = outline
+            break
+
+    if not chapter_outline:
+        raise ValueError(f"Chapter outline not found for review")
+
+    # 调用现有的审核函数
+    review_result = await review_chapter_node(
+        state,
+        chapter_content,
+        chapter_outline,
+        llm
+    )
+
+    # 更新状态
+    new_state: NovelState = {
+        **state,
+        "review_result": review_result,
+        "stage": STAGE_REVIEW,
+    }
+
+    return new_state

@@ -8,7 +8,7 @@ from app.agents.prompts import (
     GENERATE_SINGLE_CHAPTER_OUTLINE_PROMPT,
     GENERATE_CHAPTER_CONTENT_PROMPT,
 )
-from app.services.llm import LLMService
+from app.services.llm import LLMService, get_llm_service_from_config, get_llm_service
 
 
 def _clean_chapter_title(title: str) -> str:
@@ -337,3 +337,184 @@ async def generate_chapter_content_stream(
 
     async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
         yield chunk
+
+
+# ==================== LangGraph 兼容节点 ====================
+
+def _get_llm_from_state(state: NovelState) -> LLMService:
+    """
+    从状态获取 LLM 服务
+
+    根据状态中的 llm_config_id 或 project_id 获取对应的 LLM 服务。
+    此函数需要在调用时获取数据库会话。
+    """
+    from app.database import SessionLocal
+    from app.models.user import UserSettings
+    from app.models.model_config import ModelConfig
+
+    db = SessionLocal()
+    try:
+        llm_config_id = state.get("llm_config_id")
+        project_id = state.get("project_id")
+
+        # 获取项目以获取 user_id
+        from app.models.project import Project
+        project = db.query(Project).filter(Project.id == project_id).first()
+        if not project:
+            raise ValueError(f"Project {project_id} not found")
+
+        user_id = project.user_id
+
+        # 如果指定了模型配置 ID，使用该配置
+        if llm_config_id:
+            model_config = db.query(ModelConfig).filter(
+                ModelConfig.id == llm_config_id,
+                ModelConfig.user_id == user_id,
+                ModelConfig.is_enabled == True
+            ).first()
+            if model_config:
+                return get_llm_service_from_config(model_config, user_id)
+
+        # 否则使用用户的默认模型配置
+        default_config = db.query(ModelConfig).filter(
+            ModelConfig.user_id == user_id,
+            ModelConfig.is_default == True,
+            ModelConfig.is_enabled == True
+        ).first()
+
+        if default_config:
+            return get_llm_service_from_config(default_config, user_id)
+
+        # 回退到用户设置
+        user_settings = db.query(UserSettings).filter(
+            UserSettings.user_id == user_id
+        ).first()
+
+        if not user_settings:
+            raise ValueError(f"User settings not found for user {user_id}")
+
+        return get_llm_service(user_settings)
+
+    finally:
+        db.close()
+
+
+async def chapter_outlines_node(state: NovelState) -> NovelState:
+    """
+    LangGraph 兼容的章节大纲生成节点
+
+    此节点从状态获取 LLM 服务，生成所有章节大纲，并返回更新后的状态。
+    签名：(state: NovelState) -> NovelState
+    """
+    # 获取 LLM 服务
+    llm = _get_llm_from_state(state)
+
+    # 调用现有的章节大纲生成函数
+    return await generate_chapter_outlines_node(state, llm)
+
+
+async def generate_chapter_content_node(state: NovelState) -> NovelState:
+    """
+    LangGraph 兼容的章节内容生成节点
+
+    此节点：
+    1. 获取当前章节号 (current_chapter)
+    2. 获取章节大纲列表 (chapter_outlines)
+    3. 获取已写章节用于上下文 (written_chapters)
+    4. 调用 LLM 生成章节内容
+    5. 返回更新后的状态，包含新章节
+
+    签名：(state: NovelState) -> NovelState
+    """
+    # 获取 LLM 服务
+    llm = _get_llm_from_state(state)
+
+    # 获取当前章节信息
+    current_chapter = state.get("current_chapter", 1)
+    chapter_outlines = state.get("chapter_outlines", [])
+    written_chapters = state.get("written_chapters", [])
+
+    # 找到当前章节的大纲
+    chapter_outline = None
+    for outline in chapter_outlines:
+        if outline.get("chapter_number") == current_chapter:
+            chapter_outline = outline
+            break
+
+    if not chapter_outline:
+        raise ValueError(f"Chapter outline not found for chapter {current_chapter}")
+
+    # 获取上一章的结尾用于衔接
+    previous_ending = ""
+    if written_chapters:
+        # 找到上一章的内容
+        for chapter in written_chapters:
+            if chapter.get("chapter_number") == current_chapter - 1:
+                content = chapter.get("content", "")
+                # 取最后 500 字作为衔接参考
+                previous_ending = content[-500:] if len(content) > 500 else content
+                break
+
+    # 准备提示词
+    info = state.get("collected_info", {})
+    characters = state.get("outline_characters", [])
+    world_setting = state.get("outline_world_setting", {})
+
+    # 格式化章节大纲
+    outline_str = f"""
+章节名：{chapter_outline.get('title', '')}
+场景：{chapter_outline.get('scene', '')}
+人物：{chapter_outline.get('characters', '')}
+情节：{chapter_outline.get('plot', '')}
+冲突：{chapter_outline.get('conflict', '')}
+转折：{chapter_outline.get('turning_point', '无')}
+钩子：{chapter_outline.get('hook', '')}
+"""
+
+    # 格式化人物设定
+    if characters:
+        chars_str = "\n".join([
+            f"- {c.get('name', '')}：{c.get('personality', '')}，动机：{c.get('motivation', '')}"
+            for c in characters
+        ])
+    else:
+        chars_str = info.get("customProtagonist") or info.get("protagonist", "未指定")
+
+    # 格式化世界观
+    if world_setting:
+        world_str = f"时代：{world_setting.get('era', '')}，核心设定：{world_setting.get('core_rules', '')}"
+    else:
+        world_str = info.get("customWorldSetting") or info.get("worldSetting", "未指定")
+
+    prompt = GENERATE_CHAPTER_CONTENT_PROMPT.format(
+        chapter_outline=outline_str,
+        previous_ending=previous_ending,
+        genre=info.get("novelType", "未指定"),
+        main_characters=chars_str,
+        world_setting=world_str,
+        style_preference=info.get("stylePreference", "未指定")
+    )
+
+    # 调用 LLM 生成内容
+    content = await llm.chat([{"role": "user", "content": prompt}])
+
+    # 计算字数
+    word_count = len(content)
+
+    # 创建新章节
+    new_chapter = {
+        "chapter_number": current_chapter,
+        "title": chapter_outline.get("title", ""),
+        "content": content,
+        "word_count": word_count
+    }
+
+    # 更新状态
+    new_state: NovelState = {
+        **state,
+        "written_chapters": [new_chapter],  # 使用 Annotated[List, add] 会自动追加
+        "current_chapter": current_chapter + 1,
+        "stage": STAGE_WRITING,
+    }
+
+    return new_state

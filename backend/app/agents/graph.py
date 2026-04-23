@@ -12,10 +12,10 @@ from app.agents.state import (
     STAGE_REVIEW,
     STAGE_COMPLETE,
 )
-from app.agents.nodes.outline_generation import generate_outline_node
-from app.agents.nodes.chapter_generation import generate_chapter_outlines_node
-from app.agents.nodes.review import review_chapter_node
-from app.agents.nodes.rewrite import rewrite_chapter_node
+from app.agents.nodes.outline_generation import outline_generation_node
+from app.agents.nodes.chapter_generation import chapter_outlines_node, generate_chapter_content_node
+from app.agents.nodes.review import review_node
+from app.agents.nodes.rewrite import rewrite_node
 from app.agents.nodes.wait_confirm import wait_for_confirmation, set_waiting_state
 
 
@@ -108,14 +108,12 @@ def create_novel_graph():
     graph = StateGraph(NovelState)
 
     # 添加节点
-    # 注意：这些节点函数需要适配 LangGraph 签名 (state) -> state
-    # 当前实现中部分节点需要额外参数（如 llm），需要在实际使用时包装
-    graph.add_node("generate_outline", generate_outline_node)
-    graph.add_node("generate_chapter_outlines", generate_chapter_outlines_node)
-    # TODO: 需要创建 generate_chapter_content_node 包装函数
-    # graph.add_node("generate_chapter_content", generate_chapter_content_node)
-    graph.add_node("review_chapter", review_chapter_node)
-    graph.add_node("rewrite_chapter", rewrite_chapter_node)
+    # 所有节点已适配 LangGraph 签名 (state) -> state
+    graph.add_node("generate_outline", outline_generation_node)
+    graph.add_node("generate_chapter_outlines", chapter_outlines_node)
+    graph.add_node("generate_chapter_content", generate_chapter_content_node)
+    graph.add_node("review_chapter", review_node)
+    graph.add_node("rewrite_chapter", rewrite_node)
 
     # 设置入口点
     graph.set_entry_point("generate_outline")
@@ -137,29 +135,27 @@ def create_novel_graph():
         route_after_chapter_outlines,
         {
             "wait_confirm": END,
-            # TODO: Task 8 创建 generate_chapter_content_node 后改为 "generate_chapter_content"
-            "chapter_content": END,  # 临时映射到 END，防止 KeyError
+            "chapter_content": "generate_chapter_content"
         }
     )
 
-    # TODO: 以下边需要 generate_chapter_content_node 后启用
-    # # 章节正文 → 审核
-    # graph.add_edge("generate_chapter_content", "review_chapter")
+    # 章节正文 → 审核
+    graph.add_edge("generate_chapter_content", "review_chapter")
 
-    # # 审核 → 重写/下一章/完成（条件路由）
-    # graph.add_conditional_edges(
-    #     "review_chapter",
-    #     route_after_review,
-    #     {
-    #         "rewrite": "rewrite_chapter",
-    #         "next_chapter": "generate_chapter_content",  # 回到章节正文生成
-    #         "wait_confirm": END,
-    #         "end": END
-    #     }
-    # )
+    # 审核 → 重写/下一章/完成（条件路由）
+    graph.add_conditional_edges(
+        "review_chapter",
+        route_after_review,
+        {
+            "rewrite": "rewrite_chapter",
+            "next_chapter": "generate_chapter_content",  # 回到章节正文生成
+            "wait_confirm": END,
+            "end": END
+        }
+    )
 
-    # # 重写 → 审核
-    # graph.add_edge("rewrite_chapter", "review_chapter")
+    # 重写 → 审核
+    graph.add_edge("rewrite_chapter", "review_chapter")
 
     return graph.compile()
 
