@@ -25,6 +25,9 @@ class Project(Base):
     review_mode = Column(String(20), default="off", nullable=False)  # off/manual/auto
     max_rewrite_count = Column(Integer, default=3, nullable=False)
 
+    # 工作流模式设置
+    workflow_mode = Column(String(20), default="hybrid", nullable=False)  # step_by_step | hybrid | auto
+
     # Relationships
     user = relationship("User", back_populates="projects")
     outline = relationship("Outline", back_populates="project", uselist=False, cascade="all, delete-orphan")
