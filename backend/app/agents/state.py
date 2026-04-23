@@ -34,10 +34,13 @@ class NovelState(TypedDict):
     collected_info: dict[str, Any]
     inspiration_template: Optional[str]
 
-    # Outline
+    # Outline (v0.6.1 增强版)
     outline_title: Optional[str]
     outline_summary: Optional[str]
     outline_plot_points: list[str]
+    outline_characters: list[dict]  # 新增：人物设定
+    outline_world_setting: Optional[dict]  # 新增：世界观
+    outline_emotional_curve: Optional[str]  # 新增：情感曲线
     outline_confirmed: bool
 
     # Chapter count
@@ -52,10 +55,14 @@ class NovelState(TypedDict):
     current_chapter: int
     chapter_content: Optional[str]
 
-    # Review
+    # Review (v0.6.1 更新)
+    review_mode: str  # 'off' | 'manual' | 'auto'
     review_enabled: bool
     review_passed: bool
+    review_result: Optional[dict]  # 审核结果详情
     review_feedback: Optional[str]
+    rewrite_count: int  # 当前重写次数
+    max_rewrite_count: int  # 最大重写次数
 
     # Chat
     messages: Annotated[list[dict], add]
