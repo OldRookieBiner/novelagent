@@ -75,7 +75,7 @@ export function ReviewModeSelect({
           <Label htmlFor="max-rewrite">最大重写次数</Label>
           <Select
             value={maxRewriteCount.toString()}
-            onValueChange={(v) => onMaxRewriteChange(parseInt(v))}
+            onValueChange={(v: string) => onMaxRewriteChange(parseInt(v))}
           >
             <SelectTrigger className="w-32">
               <SelectValue />
