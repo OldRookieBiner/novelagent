@@ -1,7 +1,7 @@
 """Chapter model"""
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, Text, Boolean, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, Text, Boolean, DateTime, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -18,6 +18,10 @@ class Chapter(Base):
     word_count = Column(Integer, default=0)
     review_passed = Column(Boolean, default=False)
     review_feedback = Column(Text, nullable=True)
+
+    # 审核相关
+    review_result = Column(JSON, nullable=True)  # {"passed": bool, "scores": dict, "issues": list}
+    rewrite_count = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
