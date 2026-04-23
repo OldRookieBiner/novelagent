@@ -15,7 +15,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = 'outline_enhancement'
-down_revision = '20260423_add_review_fields'
+down_revision = '20260423_review'
 branch_labels = None
 depends_on = None
 
