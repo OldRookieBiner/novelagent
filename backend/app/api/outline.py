@@ -46,7 +46,7 @@ from app.agents.nodes.outline_generation import (
     MIN_CHAPTERS_VERY_LONG,
     MIN_CHAPTERS_EPIC,
 )
-from app.agents.nodes.info_collection import info_collection_node
+# info_collection_node 已移除，信息收集由前端表单处理
 from app.services.llm import get_llm_service, get_llm_service_from_config
 from app.models.model_config import ModelConfig
 
@@ -454,32 +454,15 @@ async def info_collection_chat(
         messages = outline.messages or []
 
         # Prepare state for info collection
-        state = {
-            "collected_info": outline.collected_info or {},
-            "messages": messages,
-            "last_user_message": request.message,
-        }
+        # 注意：info_collection_node 已移除，信息收集现在由前端表单处理
+        # 这里保留聊天功能用于向后兼容，但简化处理
 
-        # Run info collection node
-        new_state = await info_collection_node(state, llm)
-
-        # Update outline with new info and messages
-        outline.collected_info = new_state.get("collected_info", {})
-        outline.messages = new_state.get("messages", [])
-
-        # Check if info is sufficient and update stage
-        is_sufficient = new_state.get("stage") == STAGE_OUTLINE_GENERATING
-        if is_sufficient:
-            project.stage = STAGE_OUTLINE_GENERATING
-
-        db.commit()
-
-        # Build response
-        collected_info = outline.collected_info
+        # 简化处理：直接返回用户消息，不进行 AI 处理
+        # 前端已使用灵感表单收集信息，此端点仅保留用于兼容性
         return ChatResponse(
-            response=new_state.get("last_assistant_message", ""),
-            collected_info=CollectedInfo(**collected_info) if collected_info else None,
-            is_info_sufficient=is_sufficient
+            response="信息收集功能已由前端表单处理。请使用灵感表单提交您的创作信息。",
+            collected_info=CollectedInfo(**outline.collected_info) if outline.collected_info else None,
+            is_info_sufficient=True  # 前端表单已完成收集
         )
 
     except Exception as e:

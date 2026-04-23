@@ -4,7 +4,7 @@ import re
 from typing import Dict, Any, AsyncIterator
 
 from app.agents.state import NovelState, STAGE_OUTLINE_CONFIRMING
-from app.agents.prompts import GENERATE_OUTLINE_PROMPT
+from app.agents.prompts import OUTLINE_GENERATION_PROMPT
 from app.services.llm import LLMService
 
 # 预编译正则表达式，提升性能
@@ -215,7 +215,7 @@ async def generate_outline_node(state: NovelState, llm: LLMService) -> NovelStat
 - **风格偏好**：{style}
 """
 
-    prompt = GENERATE_OUTLINE_PROMPT.format(
+    prompt = OUTLINE_GENERATION_PROMPT.format(
         inspiration_template=inspiration_template,
         chapter_count=chapter_count
     )
@@ -286,7 +286,7 @@ def prepare_outline_prompt(state: NovelState) -> tuple[str, int]:
 - **风格偏好**：{style}
 """
 
-    prompt = GENERATE_OUTLINE_PROMPT.format(
+    prompt = OUTLINE_GENERATION_PROMPT.format(
         inspiration_template=inspiration_template,
         chapter_count=chapter_count
     )

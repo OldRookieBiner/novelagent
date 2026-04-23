@@ -153,19 +153,19 @@ class TestChapterOutlineParsing:
 class TestPromptTemplates:
     """Tests for prompt templates"""
 
-    def test_info_collection_prompt_format(self):
-        """Info collection prompt should format correctly"""
-        from app.agents.prompts import INFO_COLLECTION_SYSTEM_PROMPT
+    def test_outline_generation_prompt_variables(self):
+        """Outline generation prompt should contain key variables"""
+        from app.agents.prompts import OUTLINE_GENERATION_PROMPT
 
-        collected_info = {"genre": "玄幻", "theme": "成长"}
-        prompt = INFO_COLLECTION_SYSTEM_PROMPT.format(collected_info="- genre: 玄幻\n- theme: 成长")
-
-        assert "玄幻" in prompt
-        assert "成长" in prompt
+        # Check prompt contains key instructions
+        assert "人物设定" in OUTLINE_GENERATION_PROMPT
+        assert "世界观" in OUTLINE_GENERATION_PROMPT
+        assert "情感曲线" in OUTLINE_GENERATION_PROMPT
+        assert "inspiration_template" in OUTLINE_GENERATION_PROMPT
 
     def test_generate_outline_prompt_format(self):
         """Outline generation prompt should format correctly"""
-        from app.agents.prompts import GENERATE_OUTLINE_PROMPT
+        from app.agents.prompts import OUTLINE_GENERATION_PROMPT
 
         inspiration_template = """# 小说创作灵感
 
@@ -180,7 +180,7 @@ class TestPromptTemplates:
 - **世界观**：修仙世界
 """
 
-        prompt = GENERATE_OUTLINE_PROMPT.format(
+        prompt = OUTLINE_GENERATION_PROMPT.format(
             inspiration_template=inspiration_template,
             chapter_count=40
         )

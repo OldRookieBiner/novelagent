@@ -13,7 +13,7 @@ class TestGlobalAgentPromptsAPI:
     """Tests for global agent prompts API endpoints"""
 
     def test_get_global_prompts(self, client: TestClient, auth_headers: dict):
-        """Should return all global prompts (7 agent types)"""
+        """Should return all global prompts (5 agent types)"""
         response = client.get("/api/agent-prompts", headers=auth_headers)
 
         assert response.status_code == 200
@@ -21,8 +21,8 @@ class TestGlobalAgentPromptsAPI:
         assert "prompts" in data
         prompts = data["prompts"]
 
-        # Should have exactly 7 agent types
-        assert len(prompts) == 7
+        # Should have exactly 5 agent types (v0.6.1 optimization)
+        assert len(prompts) == 5
 
         # Check each prompt has required fields
         for prompt in prompts:
@@ -36,9 +36,7 @@ class TestGlobalAgentPromptsAPI:
         # Verify all expected agent types are present
         agent_types = {p["agent_type"] for p in prompts}
         expected_types = {
-            "info_collection",
             "outline_generation",
-            "chapter_count_suggestion",
             "chapter_outline_generation",
             "chapter_content_generation",
             "review",
@@ -51,45 +49,45 @@ class TestGlobalAgentPromptsAPI:
         new_content = "This is a custom prompt for testing."
 
         response = client.put(
-            "/api/agent-prompts/info_collection",
+            "/api/agent-prompts/outline_generation",
             json={"prompt_content": new_content},
             headers=auth_headers
         )
 
         assert response.status_code == 200
         data = response.json()
-        assert data["agent_type"] == "info_collection"
+        assert data["agent_type"] == "outline_generation"
         assert data["prompt_content"] == new_content
         assert data["is_default"] is False
 
         # Verify the update persisted
         get_response = client.get("/api/agent-prompts", headers=auth_headers)
         prompts = get_response.json()["prompts"]
-        info_collection = next(p for p in prompts if p["agent_type"] == "info_collection")
-        assert info_collection["prompt_content"] == new_content
-        assert info_collection["is_default"] is False
+        outline_gen = next(p for p in prompts if p["agent_type"] == "outline_generation")
+        assert outline_gen["prompt_content"] == new_content
+        assert outline_gen["is_default"] is False
 
     def test_reset_global_prompt(self, client: TestClient, auth_headers: dict):
         """Should reset a global prompt to default"""
         # First update a prompt
         new_content = "Custom content to be reset"
         client.put(
-            "/api/agent-prompts/info_collection",
+            "/api/agent-prompts/outline_generation",
             json={"prompt_content": new_content},
             headers=auth_headers
         )
 
         # Now reset it
         response = client.post(
-            "/api/agent-prompts/info_collection/reset",
+            "/api/agent-prompts/outline_generation/reset",
             headers=auth_headers
         )
 
         assert response.status_code == 200
         data = response.json()
-        assert data["agent_type"] == "info_collection"
+        assert data["agent_type"] == "outline_generation"
         assert data["is_default"] is True
-        assert data["prompt_content"] == DEFAULT_PROMPTS["info_collection"]
+        assert data["prompt_content"] == DEFAULT_PROMPTS["outline_generation"]
 
     def test_update_unknown_agent_type(self, client: TestClient, auth_headers: dict):
         """Should return 404 for unknown agent type"""
@@ -139,9 +137,9 @@ class TestProjectAgentPromptsAPI:
         assert data["project_name"] == "Test Novel"
         assert "agents" in data
 
-        # Should have all 7 agent types
+        # Should have all 5 agent types (v0.6.1 optimization)
         agents = data["agents"]
-        assert len(agents) == 7
+        assert len(agents) == 5
 
         # Initially all should not use custom
         for agent in agents:
@@ -156,14 +154,14 @@ class TestProjectAgentPromptsAPI:
         custom_content = "Project-specific custom prompt content"
 
         response = client.put(
-            f"/api/projects/{project_id}/agent-prompts/info_collection",
+            f"/api/projects/{project_id}/agent-prompts/review",
             json={"prompt_content": custom_content},
             headers=auth_headers
         )
 
         assert response.status_code == 200
         data = response.json()
-        assert data["agent_type"] == "info_collection"
+        assert data["agent_type"] == "review"
         assert data["use_custom"] is True
         assert data["custom_content"] == custom_content
 
@@ -173,23 +171,23 @@ class TestProjectAgentPromptsAPI:
             headers=auth_headers
         )
         agents = get_response.json()["agents"]
-        info_collection = next(a for a in agents if a["agent_type"] == "info_collection")
-        assert info_collection["use_custom"] is True
-        assert info_collection["custom_content"] == custom_content
+        review_agent = next(a for a in agents if a["agent_type"] == "review")
+        assert review_agent["use_custom"] is True
+        assert review_agent["custom_content"] == custom_content
 
     def test_delete_project_custom_prompt(self, client: TestClient, auth_headers: dict, project_id: int):
         """Should delete custom prompt and revert to global"""
         # First set a custom prompt
         custom_content = "Custom content to be deleted"
         client.put(
-            f"/api/projects/{project_id}/agent-prompts/info_collection",
+            f"/api/projects/{project_id}/agent-prompts/review",
             json={"prompt_content": custom_content},
             headers=auth_headers
         )
 
         # Delete it
         response = client.delete(
-            f"/api/projects/{project_id}/agent-prompts/info_collection",
+            f"/api/projects/{project_id}/agent-prompts/review",
             headers=auth_headers
         )
 
@@ -202,9 +200,9 @@ class TestProjectAgentPromptsAPI:
             headers=auth_headers
         )
         agents = get_response.json()["agents"]
-        info_collection = next(a for a in agents if a["agent_type"] == "info_collection")
-        assert info_collection["use_custom"] is False
-        assert info_collection["custom_content"] is None
+        review_agent = next(a for a in agents if a["agent_type"] == "review")
+        assert review_agent["use_custom"] is False
+        assert review_agent["custom_content"] is None
 
     def test_get_effective_prompt_custom(self, client: TestClient, auth_headers: dict, project_id: int):
         """Should return effective prompt with custom source"""

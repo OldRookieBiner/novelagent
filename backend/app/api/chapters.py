@@ -30,8 +30,8 @@ from app.agents.nodes.chapter_generation import (
     generate_chapter_outlines_node,
     generate_chapter_outlines_stream,
     generate_chapter_content_stream,
-    review_chapter_node
 )
+from app.agents.nodes.review import review_chapter_node
 from app.services.llm import get_llm_service
 
 router = APIRouter()
