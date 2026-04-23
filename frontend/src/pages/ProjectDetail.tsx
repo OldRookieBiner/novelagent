@@ -294,9 +294,11 @@ export default function ProjectDetail() {
                     <div>
                       <div className="text-sm font-medium text-muted-foreground">主要情节节点</div>
                       <ul className="list-disc list-inside text-sm mt-1">
-                        {outline.plot_points.map((point, idx) => (
-                          <li key={idx} className="mb-1">{point}</li>
-                        ))}
+                        {outline.plot_points.map((point, idx) => {
+                          // v0.6.1: 支持新的字典格式
+                          const eventText = typeof point === 'string' ? point : point.event
+                          return <li key={idx} className="mb-1">{eventText}</li>
+                        })}
                       </ul>
                     </div>
                   )}

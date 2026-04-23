@@ -76,12 +76,39 @@ export interface CollectedInfo {
   customGoldFinger?: string;
 }
 
+// v0.6.1: 情节节点增强结构
+export interface PlotPoint {
+  order: number;
+  event: string;
+  conflict?: string;
+  hook?: string;
+}
+
+// v0.6.1: 人物设定结构
+export interface Character {
+  name: string;
+  role: string;
+  personality?: string;
+  motivation?: string;
+  arc?: string;
+}
+
+// v0.6.1: 世界观设定结构
+export interface WorldSetting {
+  era?: string;
+  core_rules?: string;
+  power_system?: string;
+}
+
 export interface Outline {
   id: number;
   project_id: number;
   title?: string;
   summary?: string;
-  plot_points?: string[];
+  plot_points?: PlotPoint[];  // v0.6.1: 改为字典数组
+  characters?: Character[];   // v0.6.1: 人物设定
+  world_setting?: WorldSetting;  // v0.6.1: 世界观
+  emotional_curve?: string;   // v0.6.1: 情感曲线
   collected_info?: CollectedInfo;
   inspiration_template?: string;
   chapter_count_suggested: number;
@@ -94,7 +121,10 @@ export interface Outline {
 export interface OutlineUpdate {
   title?: string;
   summary?: string;
-  plot_points?: string[];
+  plot_points?: PlotPoint[];  // v0.6.1: 改为字典数组
+  characters?: Character[];
+  world_setting?: WorldSetting;
+  emotional_curve?: string;
   collected_info?: CollectedInfo;
   inspiration_template?: string;
 }

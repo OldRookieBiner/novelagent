@@ -21,15 +21,17 @@ function outlineToText(outline: Outline): string {
   if (outline.plot_points && outline.plot_points.length > 0) {
     text += `主要情节节点：\n`
     outline.plot_points.forEach((point, idx) => {
-      text += `${idx + 1}. ${point}\n`
+      // v0.6.1: 支持新的字典格式
+      const eventText = typeof point === 'string' ? point : point.event
+      text += `${idx + 1}. ${eventText}\n`
     })
   }
   return text
 }
 
 // 从文本格式解析大纲
-function textToOutline(text: string): { title: string; summary: string; plot_points: string[] } {
-  const result = { title: '', summary: '', plot_points: [] as string[] }
+function textToOutline(text: string): { title: string; summary: string; plot_points: { order: number; event: string }[] } {
+  const result = { title: '', summary: '', plot_points: [] as { order: number; event: string }[] }
 
   // 解析标题
   const titleMatch = text.match(/标题[：:]\s*(.+?)(?:\n|$)/)
@@ -43,14 +45,17 @@ function textToOutline(text: string): { title: string; summary: string; plot_poi
     result.summary = summaryMatch[1].trim()
   }
 
-  // 解析情节节点
+  // 解析情节节点 - v0.6.1: 返回字典格式
   const plotMatch = text.match(/主要情节节点[：:]\s*\n([\s\S]*)$/)
   if (plotMatch) {
     const points = plotMatch[1]
       .split('\n')
       .map(line => line.replace(/^\d+\.\s*/, '').trim())
       .filter(line => line.length > 0)
-    result.plot_points = points
+    result.plot_points = points.map((event, idx) => ({
+      order: idx + 1,
+      event
+    }))
   }
 
   return result
@@ -342,9 +347,11 @@ export default function OutlineWorkflow({
                 <div>
                   <div className="text-sm font-medium text-muted-foreground">主要情节节点</div>
                   <ul className="list-disc list-inside text-sm mt-1">
-                    {outline.plot_points.map((point, idx) => (
-                      <li key={idx} className="mb-1">{point}</li>
-                    ))}
+                    {outline.plot_points.map((point, idx) => {
+                      // v0.6.1: 支持新的字典格式
+                      const eventText = typeof point === 'string' ? point : point.event
+                      return <li key={idx} className="mb-1">{eventText}</li>
+                    })}
                   </ul>
                 </div>
               )}
