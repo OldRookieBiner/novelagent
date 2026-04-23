@@ -307,3 +307,75 @@ export interface HealthCheckResponse {
   latency?: number;
   error?: string;
 }
+
+// ==================== Workflow Types ====================
+
+/**
+ * 工作流模式
+ * - step_by_step: 步步为营模式，每个阶段需手动确认
+ * - hybrid: 混合模式，大纲和章节大纲需确认，写作自动进行
+ * - auto: 全自动模式，无需确认
+ */
+export type WorkflowMode = 'step_by_step' | 'hybrid' | 'auto'
+
+/**
+ * 工作流阶段
+ */
+export type WorkflowStage =
+  | 'inspiration'
+  | 'outline'
+  | 'chapter_outlines'
+  | 'writing'
+  | 'review'
+  | 'complete'
+
+/**
+ * 确认类型
+ */
+export type ConfirmationType = 'outline' | 'chapter_outlines' | 'review_failed'
+
+/**
+ * 工作流状态
+ */
+export interface WorkflowState {
+  stage: WorkflowStage
+  currentChapter: number
+  totalChapters: number
+  writtenChaptersCount: number
+  waitingForConfirmation: boolean
+  confirmationType: ConfirmationType | null
+  hasCheckpoint: boolean
+  updatedAt: string | null
+}
+
+/**
+ * 工作流 API 响应
+ */
+export interface WorkflowStateResponse {
+  project_id: number
+  stage: WorkflowStage
+  has_checkpoint: boolean
+  current_chapter: number
+  total_chapters: number
+  written_chapters_count: number
+  waiting_for_confirmation: boolean
+  confirmation_type: ConfirmationType | null
+  updated_at: string | null
+}
+
+/**
+ * SSE 事件类型
+ */
+export interface WorkflowSSEEvent {
+  type: 'node_start' | 'node_done' | 'chunk' | 'checkpoint' | 'waiting' | 'done' | 'error'
+  data: unknown
+}
+
+/**
+ * 已写章节
+ */
+export interface WrittenChapter {
+  chapter_number: number
+  content: string
+  word_count: number
+}
