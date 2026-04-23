@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 |------|------|------|
 | v0.1.x | 已发布 | CLI 版本，三 Agent 协作 |
 | v0.2.0 | 已发布 | Web 应用，React + FastAPI + PostgreSQL |
-| v0.6.0 | 当前 | 自定义模型配置、流式生成优化 |
+| v0.6.2 | 当前 | LangGraph 工作流集成、SSE 流式传输、暂停/恢复 |
 
 ---
 
@@ -26,7 +26,7 @@ python cli.py list               # 查看项目列表
 
 ---
 
-## v0.2.0 Web 版本
+## v0.2.0+ Web 版本
 
 ### Development Commands
 
@@ -42,9 +42,11 @@ docker compose build --no-cache backend && docker compose up -d backend
 
 # 后端测试
 docker exec novelagent-backend-1 pytest -v
+docker exec novelagent-backend-1 pytest tests/test_workflow.py -v  # 单个测试文件
 
-# 前端测试（需 node 环境）
+# 前端测试
 cd frontend && npm run test:run
+cd frontend && npm run test:run -- src/stores/workflowStore.test.ts  # 单个测试文件
 cd frontend && npm run test:coverage
 ```
 
@@ -53,16 +55,16 @@ cd frontend && npm run test:coverage
 ```
 novelagent/
 ├── backend/app/
-│   ├── api/            # API 路由 (projects, outline, chapters, settings, model_configs, agent_prompts)
-│   ├── agents/         # LangGraph Agents
-│   ├── models/         # SQLAlchemy 模型 (user, project, outline, chapter, model_config)
+│   ├── api/            # API 路由 (projects, outline, chapters, settings, model_configs, agent_prompts, workflow)
+│   ├── agents/         # LangGraph Agents (state, graph, nodes/, checkpointer)
+│   ├── models/         # SQLAlchemy 模型 (user, project, outline, chapter, model_config, checkpoint)
 │   ├── schemas/        # Pydantic schemas
 │   └── services/       # LLM 服务、加密服务
 ├── frontend/src/
 │   ├── components/     # UI 组件 (ui/, project/, settings/)
 │   ├── pages/          # 页面
-│   ├── lib/            # API 客户端
-│   └── stores/         # Zustand 状态
+│   ├── lib/            # API 客户端 (api, workflowApi, sseParser)
+│   └── stores/         # Zustand 状态 (workflowStore, settingsStore)
 └── docker-compose.yml
 ```
 
@@ -82,6 +84,68 @@ novelagent/
 /project/:id/write  → 写作页面
 /project/:id/read/:chapterId → 阅读/审核
 /settings           → 设置
+```
+
+---
+
+## v0.6.2 LangGraph 工作流架构
+
+### 工作流模式
+
+| 模式 | 说明 |
+|------|------|
+| `step_by_step` | 每个阶段需手动确认 |
+| `hybrid` | 大纲和章节大纲需确认，写作自动进行 |
+| `auto` | 全自动，仅审核不通过时暂停 |
+
+### 后端工作流 API
+
+```
+POST /api/projects/{id}/workflow/run     # 运行工作流（SSE 流式）
+POST /api/projects/{id}/workflow/confirm # 确认当前节点
+GET  /api/projects/{id}/workflow/state    # 获取工作流状态
+POST /api/projects/{id}/workflow/cancel   # 取消工作流
+```
+
+### 前端工作流状态管理
+
+```typescript
+// workflowStore - Zustand store
+import { useWorkflowStore } from '@/stores/workflowStore'
+
+// 主要状态
+stage: WorkflowStage              // 当前阶段
+waitingForConfirmation: boolean   // 是否等待确认
+confirmationType: ConfirmationType // 确认类型
+writtenChapters: WrittenChapter[] // 已写章节
+
+// workflowApi - SSE 流式 API
+import { workflowApi } from '@/lib/workflowApi'
+await workflowApi.runWorkflow(projectId, {
+  onNodeStart, onNodeDone, onChunk, onCheckpoint, onWaiting, onDone, onError
+})
+```
+
+### SSE 事件类型
+
+| 事件 | 说明 |
+|------|------|
+| `node_start` | 节点开始 |
+| `node_done` | 节点完成 |
+| `chunk` | 文本块 |
+| `checkpoint` | 检查点保存 |
+| `waiting` | 等待确认 |
+| `done` | 工作流完成 |
+| `error` | 错误 |
+
+### SSE 解析工具
+
+```typescript
+// 共享 SSE 解析器（frontend/src/lib/sseParser.ts）
+import { parseSSEEventBlock, parseSSEData } from '@/lib/sseParser'
+
+const event = parseSSEEventBlock(eventBlock)  // 解析事件块
+const data = parseSSEData(event.data)          // 解析 data 字段
 ```
 
 ---
@@ -141,6 +205,14 @@ novelagent/
 from app.services.llm import get_llm_service_from_config, get_llm_service
 ```
 
+### v0.6.2 workflowMode 持久化
+
+workflowMode 使用 Zustand persist middleware 自动持久化到 localStorage：
+```typescript
+// settingsStore 自动保存 workflowMode 到 localStorage
+// key: 'settings-storage'
+```
+
 ### SSE 流式中断处理
 
 前端使用 AbortController 取消流式请求：
@@ -157,9 +229,9 @@ controller.abort()
 ```python
 yield f"data: {json.dumps(chunk)}\n\n"
 ```
-前端解码：
+前端使用 `sseParser.ts` 解析：
 ```typescript
-const decoded = JSON.parse(data)
+import { parseSSEEventBlock, parseSSEData } from '@/lib/sseParser'
 ```
 
 ### TipTap 纯文本内容转换
