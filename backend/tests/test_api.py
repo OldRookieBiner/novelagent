@@ -196,12 +196,17 @@ class TestOutlineAPI:
 
     def test_update_outline(self, client: TestClient, auth_headers: dict, project_with_outline: int):
         """Should update outline"""
+        # v0.6.1: plot_points 使用增强的字典格式
         response = client.put(
             f"/api/projects/{project_with_outline}/outline",
             json={
                 "title": "My Novel",
                 "summary": "A great story",
-                "plot_points": ["Beginning", "Middle", "End"]
+                "plot_points": [
+                    {"order": 1, "event": "Beginning"},
+                    {"order": 2, "event": "Middle"},
+                    {"order": 3, "event": "End"}
+                ]
             },
             headers=auth_headers
         )

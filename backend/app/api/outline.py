@@ -175,6 +175,10 @@ async def generate_outline(
             outline.title = parsed["title"]
             outline.summary = parsed["summary"]
             outline.plot_points = parsed["plot_points"]
+            # v0.6.1: 保存增强字段
+            outline.characters = parsed.get("characters", [])
+            outline.world_setting = parsed.get("world_setting", {})
+            outline.emotional_curve = parsed.get("emotional_curve")
 
             # Update project stage to confirming
             project.stage = STAGE_OUTLINE_CONFIRMING
@@ -188,6 +192,9 @@ async def generate_outline(
                     "title": parsed["title"],
                     "summary": parsed["summary"],
                     "plot_points": parsed["plot_points"],
+                    "characters": parsed.get("characters", []),
+                    "world_setting": parsed.get("world_setting", {}),
+                    "emotional_curve": parsed.get("emotional_curve"),
                     "confirmed": False,
                     "chapter_count_suggested": outline.chapter_count_suggested,
                 },
@@ -206,6 +213,10 @@ async def generate_outline(
                         outline.title = parsed["title"]
                         outline.summary = parsed["summary"]
                         outline.plot_points = parsed["plot_points"]
+                        # v0.6.1: 保存增强字段
+                        outline.characters = parsed.get("characters", [])
+                        outline.world_setting = parsed.get("world_setting", {})
+                        outline.emotional_curve = parsed.get("emotional_curve")
                         project.stage = STAGE_OUTLINE_CONFIRMING
                         db.commit()
 
@@ -215,6 +226,9 @@ async def generate_outline(
                                 "title": parsed["title"],
                                 "summary": parsed["summary"],
                                 "plot_points": parsed["plot_points"],
+                                "characters": parsed.get("characters", []),
+                                "world_setting": parsed.get("world_setting", {}),
+                                "emotional_curve": parsed.get("emotional_curve"),
                                 "confirmed": False,
                                 "chapter_count_suggested": outline.chapter_count_suggested,
                             },

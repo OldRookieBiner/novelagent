@@ -14,10 +14,40 @@ class CollectedInfo(BaseModel):
     style_preference: Optional[str] = None
 
 
+# v0.6.1: 情节节点增强结构
+class PlotPoint(BaseModel):
+    """情节节点"""
+    order: int = 0
+    event: str = ""
+    conflict: Optional[str] = None
+    hook: Optional[str] = None
+
+
+# v0.6.1: 人物设定结构
+class Character(BaseModel):
+    """人物设定"""
+    name: str = ""
+    role: str = ""
+    personality: Optional[str] = None
+    motivation: Optional[str] = None
+    arc: Optional[str] = None
+
+
+# v0.6.1: 世界观设定结构
+class WorldSetting(BaseModel):
+    """世界观设定"""
+    era: Optional[str] = None
+    core_rules: Optional[str] = None
+    power_system: Optional[str] = None
+
+
 class OutlineBase(BaseModel):
     title: Optional[str] = None
     summary: Optional[str] = None
-    plot_points: Optional[list[str]] = None
+    plot_points: Optional[list[dict]] = None  # v0.6.1: 改为 dict 列表
+    characters: Optional[list[dict]] = None  # v0.6.1: 人物设定
+    world_setting: Optional[dict] = None  # v0.6.1: 世界观
+    emotional_curve: Optional[str] = None  # v0.6.1: 情感曲线
     collected_info: Optional[dict] = None
     inspiration_template: Optional[str] = None
 
@@ -29,7 +59,10 @@ class OutlineCreate(BaseModel):
 class OutlineUpdate(BaseModel):
     title: Optional[str] = None
     summary: Optional[str] = None
-    plot_points: Optional[list[str]] = None
+    plot_points: Optional[list[dict]] = None  # v0.6.1: 改为 dict 列表
+    characters: Optional[list[dict]] = None  # v0.6.1: 人物设定
+    world_setting: Optional[dict] = None  # v0.6.1: 世界观
+    emotional_curve: Optional[str] = None  # v0.6.1: 情感曲线
     collected_info: Optional[dict] = None
     inspiration_template: Optional[str] = None
 
