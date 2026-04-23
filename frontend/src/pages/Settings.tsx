@@ -7,15 +7,8 @@ import { AgentPromptEditor } from '@/components/settings/AgentPromptEditor'
 import { ProjectPromptConfig } from '@/components/settings/ProjectPromptConfig'
 import ModelConfigCard from '@/components/settings/ModelConfigCard'
 import AddModelDialog from '@/components/settings/AddModelDialog'
+import { ReviewModeSelect } from '@/components/project/ReviewModeSelect'
 import type { SettingsUpdate, AgentPrompt, Project, ModelConfig, ModelConfigCreate } from '@/types'
-
-const REVIEW_STRICTNESS = [
-  { value: 'loose', label: '宽松' },
-  { value: 'standard', label: '标准' },
-  { value: 'strict', label: '严格' },
-] as const
-
-type ReviewStrictnessValue = typeof REVIEW_STRICTNESS[number]['value']
 
 const SETTINGS_TABS = [
   { id: 'model', label: '模型配置' },
@@ -41,8 +34,8 @@ export default function Settings() {
   const [savingConfig, setSavingConfig] = useState(false)
 
   // 审核设置状态
-  const [reviewEnabled, setReviewEnabled] = useState(true)
-  const [reviewStrictness, setReviewStrictness] = useState<ReviewStrictnessValue>('standard')
+  const [reviewMode, setReviewMode] = useState<'off' | 'manual' | 'auto'>('manual')
+  const [maxRewriteCount, setMaxRewriteCount] = useState(3)
 
   // Agent prompts 状态
   const [globalPrompts, setGlobalPrompts] = useState<AgentPrompt[]>([])
@@ -54,8 +47,13 @@ export default function Settings() {
     const fetchSettings = async () => {
       try {
         const data = await settingsApi.get()
-        setReviewEnabled(data.review_enabled)
-        setReviewStrictness(data.review_strictness as ReviewStrictnessValue)
+        // 将旧的设置映射到新的审核模式
+        // review_enabled=false -> off, review_enabled=true -> manual (默认)
+        if (!data.review_enabled) {
+          setReviewMode('off')
+        } else {
+          setReviewMode('manual')
+        }
         useSettingsStore.getState().setSettings(data)
       } catch (err) {
         console.error('Failed to fetch settings:', err)
@@ -140,9 +138,10 @@ export default function Settings() {
     setSaved(false)
 
     try {
+      // 将新的审核模式映射到旧的设置格式
       const update: SettingsUpdate = {
-        review_enabled: reviewEnabled,
-        review_strictness: reviewStrictness,
+        review_enabled: reviewMode !== 'off',
+        review_strictness: 'standard', // 保留默认严格度
       }
 
       const updated = await settingsApi.update(update)
@@ -290,33 +289,12 @@ export default function Settings() {
               <h3 className="text-lg font-semibold mb-1">审核设置</h3>
               <p className="text-muted-foreground text-sm mb-6">配置章节审核行为</p>
 
-              <div className="space-y-4">
-                <div className="flex items-center justify-between py-2">
-                  <label className="text-sm font-medium">启用审核</label>
-                  <input
-                    type="checkbox"
-                    checked={reviewEnabled}
-                    onChange={(e) => setReviewEnabled(e.target.checked)}
-                    className="h-4 w-4"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">审核严格度</label>
-                  <select
-                    className="w-full h-10 px-3 rounded-md border border-input bg-background"
-                    value={reviewStrictness}
-                    onChange={(e) => setReviewStrictness(e.target.value as ReviewStrictnessValue)}
-                    disabled={!reviewEnabled}
-                  >
-                    {REVIEW_STRICTNESS.map((s) => (
-                      <option key={s.value} value={s.value}>
-                        {s.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+              <ReviewModeSelect
+                value={reviewMode}
+                maxRewriteCount={maxRewriteCount}
+                onValueChange={setReviewMode}
+                onMaxRewriteChange={setMaxRewriteCount}
+              />
 
               <div className="mt-6 pt-4 border-t">
                 <div className="flex items-center gap-4">
