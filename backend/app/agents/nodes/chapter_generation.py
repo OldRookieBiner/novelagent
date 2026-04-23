@@ -7,7 +7,6 @@ from app.agents.state import NovelState, STAGE_CHAPTER_OUTLINES_CONFIRMING, STAG
 from app.agents.prompts import (
     GENERATE_SINGLE_CHAPTER_OUTLINE_PROMPT,
     GENERATE_CHAPTER_CONTENT_PROMPT,
-    REVIEW_CHAPTER_PROMPT
 )
 from app.services.llm import LLMService
 
@@ -36,7 +35,23 @@ def _clean_chapter_title(title: str) -> str:
 
 
 def parse_single_chapter_outline(response: str, chapter_number: int) -> dict:
-    """Parse a single chapter outline from response"""
+    """解析单章节大纲（增强版）
+
+    返回结构：
+    {
+        "chapter_number": int,
+        "title": str,
+        "scene": str,
+        "characters": str,
+        "plot": str,
+        "conflict": str,
+        "turning_point": str,  # 新增
+        "hook": str,
+        "transition": str,  # 新增
+        "ending": str,
+        "target_words": int
+    }
+    """
     chapter = {
         "chapter_number": chapter_number,
         "title": "",
@@ -44,6 +59,9 @@ def parse_single_chapter_outline(response: str, chapter_number: int) -> dict:
         "characters": "",
         "plot": "",
         "conflict": "",
+        "turning_point": "",
+        "hook": "",
+        "transition": "",
         "ending": "",
         "target_words": 3000
     }
@@ -65,14 +83,29 @@ def parse_single_chapter_outline(response: str, chapter_number: int) -> dict:
         chapter["characters"] = characters_match.group(1).strip()
 
     # Extract plot
-    plot_match = re.search(r"情节[：:]\s*(.+?)(?=冲突|结局|预计字数|$)", response, re.DOTALL)
+    plot_match = re.search(r"情节[：:]\s*(.+?)(?=冲突|转折|钩子|衔接|结局|预计字数|$)", response, re.DOTALL)
     if plot_match:
         chapter["plot"] = plot_match.group(1).strip()
 
     # Extract conflict
-    conflict_match = re.search(r"冲突[：:]\s*(.+?)(?=结局|预计字数|$)", response, re.DOTALL)
+    conflict_match = re.search(r"冲突[：:]\s*(.+?)(?=转折|钩子|衔接|结局|预计字数|$)", response, re.DOTALL)
     if conflict_match:
         chapter["conflict"] = conflict_match.group(1).strip()
+
+    # Extract turning_point（新增）
+    turning_match = re.search(r"转折[：:]\s*(.+?)(?=钩子|衔接|结局|预计字数|$)", response, re.DOTALL)
+    if turning_match:
+        chapter["turning_point"] = turning_match.group(1).strip()
+
+    # Extract hook
+    hook_match = re.search(r"钩子[：:]\s*(.+?)(?=衔接|结局|预计字数|$)", response, re.DOTALL)
+    if hook_match:
+        chapter["hook"] = hook_match.group(1).strip()
+
+    # Extract transition（新增）
+    transition_match = re.search(r"衔接[：:]\s*(.+?)(?=结局|预计字数|$)", response, re.DOTALL)
+    if transition_match:
+        chapter["transition"] = transition_match.group(1).strip()
 
     # Extract ending
     ending_match = re.search(r"结局[：:]\s*(.+?)(?=预计字数|$)", response, re.DOTALL)
@@ -103,13 +136,16 @@ def parse_chapter_outlines(response: str) -> list[dict]:
             "characters": "",
             "plot": "",
             "conflict": "",
+            "turning_point": "",
+            "hook": "",
+            "transition": "",
             "ending": "",
             "target_words": 3000
         }
 
         # Extract title from first line if present (e.g., "初入仙门\n场景：...")
         first_line = content.split('\n')[0].strip() if content else ""
-        if first_line and not first_line.startswith(('场景', '人物', '情节', '冲突', '结局', '预计字数', '章节名')):
+        if first_line and not first_line.startswith(('场景', '人物', '情节', '冲突', '转折', '钩子', '衔接', '结局', '预计字数', '章节名')):
             chapter["title"] = _clean_chapter_title(first_line)
 
         # Also check for explicit 章节名 field
@@ -126,13 +162,25 @@ def parse_chapter_outlines(response: str) -> list[dict]:
         if characters_match:
             chapter["characters"] = characters_match.group(1).strip()
 
-        plot_match = re.search(r"情节[：:]\s*(.+?)(?=冲突|结局|预计字数|$)", content, re.DOTALL)
+        plot_match = re.search(r"情节[：:]\s*(.+?)(?=冲突|转折|钩子|衔接|结局|预计字数|$)", content, re.DOTALL)
         if plot_match:
             chapter["plot"] = plot_match.group(1).strip()
 
-        conflict_match = re.search(r"冲突[：:]\s*(.+?)(?=结局|预计字数|$)", content, re.DOTALL)
+        conflict_match = re.search(r"冲突[：:]\s*(.+?)(?=转折|钩子|衔接|结局|预计字数|$)", content, re.DOTALL)
         if conflict_match:
             chapter["conflict"] = conflict_match.group(1).strip()
+
+        turning_match = re.search(r"转折[：:]\s*(.+?)(?=钩子|衔接|结局|预计字数|$)", content, re.DOTALL)
+        if turning_match:
+            chapter["turning_point"] = turning_match.group(1).strip()
+
+        hook_match = re.search(r"钩子[：:]\s*(.+?)(?=衔接|结局|预计字数|$)", content, re.DOTALL)
+        if hook_match:
+            chapter["hook"] = hook_match.group(1).strip()
+
+        transition_match = re.search(r"衔接[：:]\s*(.+?)(?=结局|预计字数|$)", content, re.DOTALL)
+        if transition_match:
+            chapter["transition"] = transition_match.group(1).strip()
 
         ending_match = re.search(r"结局[：:]\s*(.+?)(?=预计字数|$)", content, re.DOTALL)
         if ending_match:
@@ -246,76 +294,46 @@ async def generate_chapter_content_stream(
     chapter_outline: dict,
     llm: LLMService
 ) -> AsyncIterator[str]:
-    """Generate chapter content with streaming"""
+    """生成章节内容（流式，增强版）"""
 
     info = state.get("collected_info", {})
+    characters = state.get("outline_characters", [])
+    world_setting = state.get("outline_world_setting", {})
 
-    # Format chapter outline
+    # 格式化章节大纲（包含新字段）
     outline_str = f"""
-第{chapter_outline['chapter_number']}章：{chapter_outline['title']}
+章节名：{chapter_outline['title']}
 场景：{chapter_outline['scene']}
 人物：{chapter_outline['characters']}
 情节：{chapter_outline['plot']}
 冲突：{chapter_outline['conflict']}
-结局：{chapter_outline['ending']}
+转折：{chapter_outline.get('turning_point', '无')}
+钩子：{chapter_outline.get('hook', '')}
 """
+
+    # 格式化人物设定
+    if characters:
+        chars_str = "\n".join([
+            f"- {c.get('name', '')}：{c.get('personality', '')}，动机：{c.get('motivation', '')}"
+            for c in characters
+        ])
+    else:
+        chars_str = info.get("customProtagonist") or info.get("protagonist", "未指定")
+
+    # 格式化世界观
+    if world_setting:
+        world_str = f"时代：{world_setting.get('era', '')}，核心设定：{world_setting.get('core_rules', '')}"
+    else:
+        world_str = info.get("customWorldSetting") or info.get("worldSetting", "未指定")
 
     prompt = GENERATE_CHAPTER_CONTENT_PROMPT.format(
         chapter_outline=outline_str,
-        previous_ending="",  # TODO: Get from previous chapter
-        genre=info.get("genre", "未指定"),
-        main_characters=info.get("main_characters", "未指定"),
-        world_setting=info.get("world_setting", "未指定"),
-        style_preference=info.get("style_preference", "未指定")
+        previous_ending="",  # TODO: 从上一章获取
+        genre=info.get("novelType", "未指定"),
+        main_characters=chars_str,
+        world_setting=world_str,
+        style_preference=info.get("stylePreference", "未指定")
     )
 
     async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
         yield chunk
-
-
-async def review_chapter_node(
-    state: NovelState,
-    chapter_content: str,
-    chapter_outline: dict,
-    llm: LLMService,
-    strictness: str = "standard"
-) -> Dict[str, Any]:
-    """Review chapter content"""
-
-    info = state.get("collected_info", {})
-
-    outline_str = f"第{chapter_outline['chapter_number']}章：{chapter_outline['title']}\n情节：{chapter_outline['plot']}"
-
-    prompt = REVIEW_CHAPTER_PROMPT.format(
-        strictness=strictness,
-        chapter_outline=outline_str,
-        chapter_content=chapter_content,
-        genre=info.get("genre", "未指定"),
-        main_characters=info.get("main_characters", "未指定"),
-        style_preference=info.get("style_preference", "未指定")
-    )
-
-    response = await llm.chat([{"role": "user", "content": prompt}])
-
-    # Parse result
-    passed = "【审核结果】通过" in response
-
-    # Extract issues
-    issues = []
-    issues_match = re.search(r"【问题列表】(.+?)【修改建议】", response, re.DOTALL)
-    if issues_match:
-        issues_text = issues_match.group(1)
-        issues = [i.strip() for i in re.findall(r"\d+\.\s*(.+)", issues_text) if i.strip()]
-
-    # Extract suggestions
-    suggestions = ""
-    suggestions_match = re.search(r"【修改建议】(.+?)(?=---|$)", response, re.DOTALL)
-    if suggestions_match:
-        suggestions = suggestions_match.group(1).strip()
-
-    return {
-        "passed": passed,
-        "issues": issues,
-        "feedback": response,
-        "suggestions": suggestions
-    }

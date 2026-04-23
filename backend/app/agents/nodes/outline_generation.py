@@ -53,11 +53,25 @@ MIN_CHAPTERS_EPIC = 150
 
 
 def parse_outline(response: str) -> Dict[str, Any]:
-    """从 AI 响应中解析大纲"""
+    """从 AI 响应中解析大纲（增强版）
+
+    返回结构：
+    {
+        "title": str,
+        "summary": str,
+        "characters": [{"name", "role", "personality", "motivation", "arc"}],
+        "world_setting": {"era", "core_rules", "power_system"},
+        "plot_points": [{"order", "event", "conflict", "hook"}],
+        "emotional_curve": str
+    }
+    """
     outline = {
         "title": "",
         "summary": "",
-        "plot_points": []
+        "characters": [],
+        "world_setting": {},
+        "plot_points": [],
+        "emotional_curve": ""
     }
 
     # 提取标题 - 支持多种格式
@@ -80,13 +94,67 @@ def parse_outline(response: str) -> Dict[str, Any]:
     if summary_match:
         outline["summary"] = summary_match.group(1).strip()
 
-    # 提取情节节点
-    plot_matches = RE_PLOT_BOLD.findall(response)
-    if plot_matches:
-        outline["plot_points"] = [p.strip() for p in plot_matches]
-    else:
-        plot_matches = RE_PLOT_FALLBACK.findall(response)
-        outline["plot_points"] = [p.strip() for p in plot_matches]
+    # 提取人物设定
+    characters_section = re.search(r"人物设定[：:]\s*(.+?)(?=世界观|情节节点|情感曲线|---|$)", response, re.DOTALL)
+    if characters_section:
+        chars_text = characters_section.group(1)
+        # 匹配 "- 主角：xxx" 或 "- 配角1：xxx"
+        char_matches = re.findall(r"[-•]\s*(主角|配角\d*)[：:]\s*(.+?)(?=\n[-•]|\n\n|$)", chars_text, re.DOTALL)
+        for role, content in char_matches:
+            # 解析 "姓名 | 性格 | 动机 | 弧线" 格式
+            parts = [p.strip() for p in content.split("|")]
+            char = {
+                "name": parts[0] if len(parts) > 0 else "",
+                "role": role,
+                "personality": parts[1] if len(parts) > 1 else "",
+                "motivation": parts[2] if len(parts) > 2 else "",
+                "arc": parts[3] if len(parts) > 3 else ""
+            }
+            outline["characters"].append(char)
+
+    # 提取世界观
+    world_section = re.search(r"世界观[：:]\s*(.+?)(?=情节节点|情感曲线|---|$)", response, re.DOTALL)
+    if world_section:
+        world_text = world_section.group(1)
+        era_match = re.search(r"时代背景[：:]\s*(.+)", world_text)
+        rules_match = re.search(r"核心设定[：:]\s*(.+)", world_text)
+        power_match = re.search(r"力量体系[：:]\s*(.+)", world_text)
+
+        outline["world_setting"] = {
+            "era": era_match.group(1).strip() if era_match else "",
+            "core_rules": rules_match.group(1).strip() if rules_match else "",
+            "power_system": power_match.group(1).strip() if power_match else ""
+        }
+
+    # 提取情节节点（增强版，包含冲突和钩子）
+    plot_section = re.search(r"情节节点[：:]\s*(.+?)(?=情感曲线|---|$)", response, re.DOTALL)
+    if plot_section:
+        plot_text = plot_section.group(1)
+        # 匹配 "N. xxx | xxx | xxx" 格式
+        plot_matches = re.findall(r"(\d+)\.\s*(.+?)(?=\n\d+\.|$)", plot_text, re.DOTALL)
+        for num, content in plot_matches:
+            parts = [p.strip() for p in content.split("|")]
+            plot = {
+                "order": int(num),
+                "event": parts[0] if len(parts) > 0 else content.strip(),
+                "conflict": parts[1] if len(parts) > 1 else "",
+                "hook": parts[2] if len(parts) > 2 else ""
+            }
+            outline["plot_points"].append(plot)
+
+    # 如果上面没匹配到，尝试旧格式
+    if not outline["plot_points"]:
+        plot_matches = RE_PLOT_BOLD.findall(response)
+        if plot_matches:
+            outline["plot_points"] = [{"order": i+1, "event": p.strip(), "conflict": "", "hook": ""} for i, p in enumerate(plot_matches)]
+        else:
+            plot_matches = RE_PLOT_FALLBACK.findall(response)
+            outline["plot_points"] = [{"order": i+1, "event": p.strip(), "conflict": "", "hook": ""} for i, p in enumerate(plot_matches)]
+
+    # 提取情感曲线
+    curve_match = re.search(r"情感曲线[：:]\s*(.+?)(?=---|$)", response, re.DOTALL)
+    if curve_match:
+        outline["emotional_curve"] = curve_match.group(1).strip()
 
     return outline
 
@@ -160,7 +228,10 @@ async def generate_outline_node(state: NovelState, llm: LLMService) -> NovelStat
         **state,
         "outline_title": outline["title"],
         "outline_summary": outline["summary"],
+        "outline_characters": outline["characters"],  # 新增：人物设定
+        "outline_world_setting": outline["world_setting"],  # 新增：世界观
         "outline_plot_points": outline["plot_points"],
+        "outline_emotional_curve": outline["emotional_curve"],  # 新增：情感曲线
         "chapter_count_suggested": chapter_count,
         "stage": STAGE_OUTLINE_CONFIRMING,
         "last_assistant_message": response,
