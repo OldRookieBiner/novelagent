@@ -2,7 +2,7 @@
 
 from app.schemas.user import UserBase, UserResponse, LoginRequest, LoginResponse
 from app.schemas.project import (
-    ProjectCreate, ProjectUpdate, ProjectResponse, ProjectListResponse, ProjectDetail
+    ProjectCreate, ProjectUpdate, ProjectResponse, ProjectListResponse, ProjectDetailResponse
 )
 from app.schemas.outline import (
     OutlineBase, OutlineCreate, OutlineUpdate, OutlineResponse,
@@ -21,7 +21,7 @@ from app.schemas.agent_prompt import (
 
 __all__ = [
     "UserBase", "UserResponse", "LoginRequest", "LoginResponse",
-    "ProjectCreate", "ProjectUpdate", "ProjectResponse", "ProjectListResponse", "ProjectDetail",
+    "ProjectCreate", "ProjectUpdate", "ProjectResponse", "ProjectListResponse", "ProjectDetailResponse",
     "OutlineBase", "OutlineCreate", "OutlineUpdate", "OutlineResponse",
     "CollectedInfo", "ChapterCountRequest", "ChatMessage", "ChatResponse",
     "ChapterOutlineBase", "ChapterOutlineUpdate", "ChapterOutlineResponse",

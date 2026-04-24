@@ -10,8 +10,10 @@ from app.models.user import User
 from app.models.project import Project
 from app.models.outline import Outline, ChapterOutline
 from app.models.chapter import Chapter
+from app.models.workflow_state import WorkflowState
 from app.schemas.project import (
-    ProjectCreate, ProjectUpdate, ProjectResponse, ProjectListResponse, ProjectDetail
+    ProjectCreate, ProjectUpdate, ProjectResponse,
+    ProjectListResponse, ProjectDetailResponse, WorkflowStateResponse
 )
 from app.utils.auth import get_current_user
 
@@ -21,11 +23,41 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def get_project_detail(project: Project, db: Session) -> ProjectDetail:
-    """Build project detail with additional info (optimized query)"""
+def get_or_create_workflow_state(db: Session, project_id: int, thread_id: str = "main") -> WorkflowState:
+    """获取或创建工作流状态
+
+    确保每个项目都有对应的工作流状态记录。
+    如果不存在则创建默认状态。
+
+    Args:
+        db: 数据库会话
+        project_id: 项目 ID
+        thread_id: 工作流线程 ID，默认为 "main"
+
+    Returns:
+        WorkflowState 实例
+    """
+    workflow_state = db.query(WorkflowState).filter(
+        WorkflowState.project_id == project_id,
+        WorkflowState.thread_id == thread_id
+    ).first()
+
+    if not workflow_state:
+        workflow_state = WorkflowState(
+            project_id=project_id,
+            thread_id=thread_id
+        )
+        db.add(workflow_state)
+        db.flush()  # 获取 ID 但不提交，让调用者决定何时提交
+
+    return workflow_state
+
+
+def get_project_detail(project: Project, db: Session) -> ProjectDetailResponse:
+    """构建项目详情，包含工作流状态和章节进度（优化查询）"""
     from sqlalchemy.orm import joinedload
 
-    # Single query with joins to avoid N+1
+    # 单次查询带关联加载，避免 N+1 问题
     chapter_outlines = db.query(ChapterOutline).options(
         joinedload(ChapterOutline.chapter)
     ).filter(
@@ -40,15 +72,18 @@ def get_project_detail(project: Project, db: Session) -> ProjectDetail:
 
     progress_percentage = (completed_chapters / chapter_count * 100) if chapter_count > 0 else 0
 
-    return ProjectDetail(
+    # 获取工作流状态
+    workflow_state = get_or_create_workflow_state(db, project.id)
+
+    return ProjectDetailResponse(
         id=project.id,
         user_id=project.user_id,
         name=project.name,
-        stage=project.stage,
         target_words=project.target_words,
         total_words=project.total_words,
         created_at=project.created_at,
         updated_at=project.updated_at,
+        workflow_state=WorkflowStateResponse.model_validate(workflow_state),
         chapter_count=chapter_count,
         completed_chapters=completed_chapters,
         progress_percentage=round(progress_percentage, 1)
@@ -65,7 +100,7 @@ async def list_projects(
     直接返回包含进度详情的项目列表，避免前端 N+1 请求
     """
     projects = db.query(Project).filter(Project.user_id == current_user.id).all()
-    # 直接返回 ProjectDetail 而不是 ProjectResponse，避免前端额外请求
+    # 直接返回 ProjectDetailResponse 而不是 ProjectResponse，避免前端额外请求
     project_details = [get_project_detail(p, db) for p in projects]
     return ProjectListResponse(
         projects=project_details,
@@ -79,7 +114,7 @@ async def create_project(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Create a new project"""
+    """创建新项目，同时创建关联的大纲和工作流状态"""
     try:
         project = Project(
             user_id=current_user.id,
@@ -87,16 +122,29 @@ async def create_project(
             target_words=request.target_words
         )
         db.add(project)
-        db.flush()  # Get the ID without committing
+        db.flush()  # 获取 ID 但不提交
 
-        # Create empty outline
+        # 创建空大纲
         outline = Outline(project_id=project.id)
         db.add(outline)
+
+        # 创建工作流状态
+        workflow_state = WorkflowState(project_id=project.id)
+        db.add(workflow_state)
 
         db.commit()
         db.refresh(project)
 
-        return ProjectResponse.model_validate(project)
+        return ProjectResponse(
+            id=project.id,
+            user_id=project.user_id,
+            name=project.name,
+            target_words=project.target_words,
+            total_words=project.total_words,
+            created_at=project.created_at,
+            updated_at=project.updated_at,
+            workflow_state=WorkflowStateResponse.model_validate(workflow_state)
+        )
     except Exception as e:
         db.rollback()
         # 记录详细错误日志，便于调试
@@ -107,13 +155,13 @@ async def create_project(
         )
 
 
-@router.get("/{project_id}", response_model=ProjectDetail)
+@router.get("/{project_id}", response_model=ProjectDetailResponse)
 async def get_project(
     project_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Get project by ID"""
+    """获取项目详情"""
     project = db.query(Project).filter(
         Project.id == project_id,
         Project.user_id == current_user.id
@@ -135,7 +183,7 @@ async def update_project(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Update project"""
+    """更新项目"""
     project = db.query(Project).filter(
         Project.id == project_id,
         Project.user_id == current_user.id
@@ -149,15 +197,25 @@ async def update_project(
 
     if request.name is not None:
         project.name = request.name
-    if request.stage is not None:
-        project.stage = request.stage
     if request.target_words is not None:
         project.target_words = request.target_words
 
     db.commit()
     db.refresh(project)
 
-    return ProjectResponse.model_validate(project)
+    # 获取工作流状态
+    workflow_state = get_or_create_workflow_state(db, project.id)
+
+    return ProjectResponse(
+        id=project.id,
+        user_id=project.user_id,
+        name=project.name,
+        target_words=project.target_words,
+        total_words=project.total_words,
+        created_at=project.created_at,
+        updated_at=project.updated_at,
+        workflow_state=WorkflowStateResponse.model_validate(workflow_state)
+    )
 
 
 @router.delete("/{project_id}")
@@ -166,7 +224,7 @@ async def delete_project(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Delete project"""
+    """删除项目（级联删除关联数据）"""
     project = db.query(Project).filter(
         Project.id == project_id,
         Project.user_id == current_user.id

@@ -75,8 +75,28 @@ class TestProjectsAPI:
         assert data["total"] == 0
         assert data["projects"] == []
 
+    def test_list_projects_with_workflow_state(self, client: TestClient, auth_headers: dict):
+        """Should include workflow_state in project list"""
+        # Create a project
+        client.post(
+            "/api/projects/",
+            json={"name": "Test Novel"},
+            headers=auth_headers
+        )
+
+        # List projects
+        response = client.get("/api/projects/", headers=auth_headers)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        project = data["projects"][0]
+        assert "workflow_state" in project
+        assert project["workflow_state"]["stage"] == "inspiration"
+        assert project["workflow_state"]["workflow_mode"] == "hybrid"
+
     def test_create_project(self, client: TestClient, auth_headers: dict, db: Session):
-        """Should create a new project"""
+        """Should create a new project with workflow_state"""
         response = client.post(
             "/api/projects/",
             json={"name": "Test Novel", "target_words": 50000},
@@ -87,7 +107,11 @@ class TestProjectsAPI:
         data = response.json()
         assert data["name"] == "Test Novel"
         assert data["target_words"] == 50000
-        assert data["stage"] == "inspiration_collecting"
+        # 验证 workflow_state 存在且有默认值
+        assert "workflow_state" in data
+        assert data["workflow_state"]["stage"] == "inspiration"
+        assert data["workflow_state"]["workflow_mode"] == "hybrid"
+        assert data["workflow_state"]["thread_id"] == "main"
 
         # Verify outline was created
         outline = db.query(Outline).filter(Outline.project_id == data["id"]).first()
@@ -104,7 +128,7 @@ class TestProjectsAPI:
         assert response.status_code == 422  # Validation error
 
     def test_get_project(self, client: TestClient, auth_headers: dict):
-        """Should get project details"""
+        """Should get project details with workflow_state"""
         # Create project first
         create_response = client.post(
             "/api/projects/",
@@ -119,6 +143,9 @@ class TestProjectsAPI:
         assert response.status_code == 200
         data = response.json()
         assert data["name"] == "Test Novel"
+        # 验证 workflow_state 存在
+        assert "workflow_state" in data
+        assert data["workflow_state"]["stage"] == "inspiration"
 
     def test_get_nonexistent_project(self, client: TestClient, auth_headers: dict):
         """Should return 404 for non-existent project"""
