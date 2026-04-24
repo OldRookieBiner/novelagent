@@ -8,10 +8,12 @@ import {
   clearInspirationDraft,
   type InspirationData,
 } from '@/lib/inspiration'
+import { modelConfigsApi } from '@/lib/api'
+import type { ModelConfig } from '@/types'
 
 interface InspirationFormProps {
   initialData?: Partial<InspirationData>
-  onSubmit: (data: InspirationData) => void
+  onSubmit: (data: InspirationData, modelId?: number) => void
 }
 
 // 小说类型图标
@@ -55,6 +57,10 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
   const [stylePreference, setStylePreference] = useState(initialData?.stylePreference || '')
 
   const [errors, setErrors] = useState<Record<string, string>>({})
+
+  // 模型选择状态
+  const [availableModels, setAvailableModels] = useState<ModelConfig[]>([])
+  const [selectedModelId, setSelectedModelId] = useState<number | null>(null)
 
   // 加载草稿
   useEffect(() => {
@@ -102,6 +108,26 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
     }
   }, [novelType, targetWords, coreTheme, worldSetting, customWorldSetting, protagonist, customProtagonist, stylePreference, targetReader, wordsPerChapter, customWordsPerChapter, narrative, goldFinger, customGoldFinger])
 
+  // 加载可用模型列表
+  useEffect(() => {
+    async function loadModels() {
+      try {
+        const result = await modelConfigsApi.list()
+        const enabledModels = result.models.filter(m => m.is_enabled)
+        setAvailableModels(enabledModels)
+
+        // 默认选中用户的默认模型
+        const defaultModel = enabledModels.find(m => m.is_default)
+        if (defaultModel) {
+          setSelectedModelId(defaultModel.id)
+        }
+      } catch (err) {
+        console.error('Failed to load models:', err)
+      }
+    }
+    loadModels()
+  }, [])
+
   const handleSubmit = () => {
     const newErrors: Record<string, string> = {}
     if (!targetReader) newErrors.targetReader = '请选择目标读者'
@@ -134,7 +160,7 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
     }
 
     clearInspirationDraft()
-    onSubmit(data)
+    onSubmit(data, selectedModelId || undefined)
   }
 
   const handleClear = () => {
@@ -478,6 +504,34 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
             </div>
           </div>
         </div>
+      </div>
+
+      {/* 分隔线 */}
+      <div className="border-t border-gray-200" />
+
+      {/* 模型选择 */}
+      <div>
+        <div className="text-sm font-medium text-gray-700 mb-2">
+          生成模型
+        </div>
+        <select
+          className="w-full h-11 px-3 rounded-lg border-2 border-gray-200 bg-white text-sm focus:border-blue-500 focus:outline-none"
+          value={selectedModelId || ''}
+          onChange={(e) => setSelectedModelId(Number(e.target.value) || null)}
+        >
+          {availableModels.length === 0 ? (
+            <option value="">请先在设置中添加模型</option>
+          ) : (
+            availableModels.map(model => (
+              <option key={model.id} value={model.id}>
+                {model.name}{model.is_default ? '（默认）' : ''}
+              </option>
+            ))
+          )}
+        </select>
+        <p className="text-xs text-gray-500 mt-1">
+          选择用于生成内容的 AI 模型
+        </p>
       </div>
 
       {/* 操作按钮 */}
