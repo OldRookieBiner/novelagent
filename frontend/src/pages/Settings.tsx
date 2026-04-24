@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { settingsApi, agentPromptsApi, projectsApi, modelConfigsApi } from '@/lib/api'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { AgentPromptEditor } from '@/components/settings/AgentPromptEditor'
 import { ProjectPromptConfig } from '@/components/settings/ProjectPromptConfig'
-import ModelConfigCard from '@/components/settings/ModelConfigCard'
+import ModelConfigItem from '@/components/settings/ModelConfigItem'
 import AddModelDialog from '@/components/settings/AddModelDialog'
 import { ReviewModeSelect } from '@/components/project/ReviewModeSelect'
 import type { SettingsUpdate, AgentPrompt, Project, ModelConfig, ModelConfigCreate, WorkflowMode } from '@/types'
@@ -29,10 +28,7 @@ export default function Settings() {
   // 模型配置状态
   const [modelConfigs, setModelConfigs] = useState<ModelConfig[]>([])
   const [configsLoading, setConfigsLoading] = useState(false)
-  const [checkingHealthId, setCheckingHealthId] = useState<number | null>(null)
   const [showAddDialog, setShowAddDialog] = useState(false)
-  const [editingConfig, setEditingConfig] = useState<ModelConfig | null>(null)
-  const [editApiKey, setEditApiKey] = useState('')
   const [savingConfig, setSavingConfig] = useState(false)
 
   // 审核设置状态
@@ -171,21 +167,6 @@ export default function Settings() {
     }
   }
 
-  // 保存编辑的 API Key
-  const handleSaveEditApiKey = async () => {
-    if (!editingConfig || !editApiKey.trim()) return
-
-    setSavingConfig(true)
-    try {
-      await modelConfigsApi.update(editingConfig.id, { api_key: editApiKey })
-      setEditingConfig(null)
-      setEditApiKey('')
-      await loadModelConfigs()
-    } finally {
-      setSavingConfig(false)
-    }
-  }
-
   if (loading) {
     return <div className="text-center py-10">加载中...</div>
   }
@@ -231,41 +212,18 @@ export default function Settings() {
               ) : (
                 <>
                   {modelConfigs.map((config) => (
-                    <ModelConfigCard
+                    <ModelConfigItem
                       key={config.id}
                       config={config}
-                      checkingHealth={checkingHealthId === config.id}
-                      onHealthCheck={async () => {
-                        setCheckingHealthId(config.id)
+                      onSetDefault={async () => {
                         try {
-                          await modelConfigsApi.checkHealth(config.id)
+                          await modelConfigsApi.setDefault(config.id)
                           await loadModelConfigs()
                         } catch (err) {
-                          console.error('Health check failed:', err)
-                        } finally {
-                          setCheckingHealthId(null)
+                          console.error('Failed to set default:', err)
                         }
                       }}
-                      onEdit={() => {
-                        setEditingConfig(config)
-                        setEditApiKey('')
-                      }}
-                      onToggleStatus={async () => {
-                        try {
-                          if (config.is_enabled) {
-                            // 停用模型
-                            await modelConfigsApi.update(config.id, { is_enabled: false })
-                          } else {
-                            // 启用模型并设为默认
-                            await modelConfigsApi.update(config.id, { is_enabled: true })
-                            await modelConfigsApi.setDefault(config.id)
-                          }
-                          await loadModelConfigs()
-                        } catch (err) {
-                          console.error('Failed to toggle status:', err)
-                        }
-                      }}
-                      onDelete={!config.is_default ? async () => {
+                      onDelete={config.is_default ? undefined : async () => {
                         if (!confirm('确定要删除这个模型配置吗？')) return
                         try {
                           await modelConfigsApi.delete(config.id)
@@ -273,7 +231,15 @@ export default function Settings() {
                         } catch (err) {
                           console.error('Failed to delete:', err)
                         }
-                      } : undefined}
+                      }}
+                      onRefresh={async () => {
+                        try {
+                          await modelConfigsApi.checkHealth(config.id)
+                          await loadModelConfigs()
+                        } catch (err) {
+                          console.error('Health check failed:', err)
+                        }
+                      }}
                     />
                   ))}
 
@@ -451,42 +417,6 @@ export default function Settings() {
         onSubmit={handleAddModel}
         loading={savingConfig}
       />
-
-      {/* 编辑 API Key 弹窗 */}
-      {editingConfig && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 w-[420px] max-w-[90vw]">
-            <div className="text-lg font-medium mb-4">配置 API Key</div>
-            <div className="text-sm text-gray-600 mb-4">
-              为 <strong>{editingConfig.name}</strong> 配置 API Key
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">API Key</label>
-                <Input
-                  type="password"
-                  value={editApiKey}
-                  onChange={(e) => setEditApiKey(e.target.value)}
-                  placeholder="输入 API Key"
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3 mt-6">
-              <Button variant="outline" onClick={() => {
-                setEditingConfig(null)
-                setEditApiKey('')
-              }}>
-                取消
-              </Button>
-              <Button onClick={handleSaveEditApiKey} disabled={savingConfig || !editApiKey.trim()}>
-                {savingConfig ? '保存中...' : '保存'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
