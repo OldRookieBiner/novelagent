@@ -23,37 +23,53 @@ export interface LoginResponse {
 
 // ==================== Project Types ====================
 
+/**
+ * 工作流状态（后端 WorkflowState 模型）
+ */
+export interface WorkflowStateData {
+  id: number
+  project_id: number
+  thread_id: string
+  stage: WorkflowStage
+  workflow_mode: WorkflowMode
+  max_rewrite_count: number
+  current_chapter: number
+  waiting_for_confirmation: boolean
+  confirmation_type: ConfirmationType | null
+  created_at: string
+  updated_at: string
+}
+
 export interface Project {
-  id: number;
-  user_id: number;
-  name: string;
-  target_words: number;
-  stage: string;
-  total_words: number;
-  created_at: string;
-  updated_at: string;
+  id: number
+  user_id: number
+  name: string
+  target_words: number
+  total_words: number
+  created_at: string
+  updated_at: string
+  workflow_state: WorkflowStateData | null
 }
 
 export interface ProjectDetail extends Project {
-  chapter_count: number;
-  completed_chapters: number;
-  progress_percentage: number;
+  chapter_count: number
+  completed_chapters: number
+  progress_percentage: number
 }
 
 export interface ProjectListResponse {
-  projects: Project[];
-  total: number;
+  projects: Project[]
+  total: number
 }
 
 export interface ProjectCreate {
-  name: string;
-  target_words?: number;
+  name: string
+  target_words?: number
 }
 
 export interface ProjectUpdate {
-  name?: string;
-  stage?: string;
-  target_words?: number;
+  name?: string
+  target_words?: number
 }
 
 // ==================== Outline Types ====================
