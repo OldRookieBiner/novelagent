@@ -16,41 +16,12 @@ from app.schemas.project import (
     ProjectListResponse, ProjectDetailResponse, WorkflowStateResponse
 )
 from app.utils.auth import get_current_user
+from app.utils.workflow import get_or_create_workflow_state
 
 # 模块日志
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-def get_or_create_workflow_state(db: Session, project_id: int, thread_id: str = "main") -> WorkflowState:
-    """获取或创建工作流状态
-
-    确保每个项目都有对应的工作流状态记录。
-    如果不存在则创建默认状态。
-
-    Args:
-        db: 数据库会话
-        project_id: 项目 ID
-        thread_id: 工作流线程 ID，默认为 "main"
-
-    Returns:
-        WorkflowState 实例
-    """
-    workflow_state = db.query(WorkflowState).filter(
-        WorkflowState.project_id == project_id,
-        WorkflowState.thread_id == thread_id
-    ).first()
-
-    if not workflow_state:
-        workflow_state = WorkflowState(
-            project_id=project_id,
-            thread_id=thread_id
-        )
-        db.add(workflow_state)
-        db.flush()  # 获取 ID 但不提交，让调用者决定何时提交
-
-    return workflow_state
 
 
 def get_project_detail(project: Project, db: Session) -> ProjectDetailResponse:

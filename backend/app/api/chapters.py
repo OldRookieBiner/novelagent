@@ -11,7 +11,6 @@ from app.models.user import User
 from app.models.project import Project
 from app.models.outline import Outline, ChapterOutline
 from app.models.chapter import Chapter
-from app.models.workflow_state import WorkflowState
 from app.models.settings import UserSettings
 from app.models.model_config import ModelConfig
 from app.schemas.chapter import (
@@ -23,6 +22,7 @@ from app.schemas.chapter import (
     ReviewResponse
 )
 from app.utils.auth import get_current_user
+from app.utils.workflow import get_or_create_workflow_state
 from app.agents.state import (
     STAGE_CHAPTER_OUTLINES,
     STAGE_WRITING
@@ -94,25 +94,6 @@ def get_outline_for_project(
         )
 
     return outline
-
-
-def get_or_create_workflow_state(
-    db: Session,
-    project_id: int,
-    thread_id: str = "main"
-) -> WorkflowState:
-    """获取或创建工作流状态"""
-    state = db.query(WorkflowState).filter(
-        WorkflowState.project_id == project_id,
-        WorkflowState.thread_id == thread_id
-    ).first()
-
-    if not state:
-        state = WorkflowState(project_id=project_id, thread_id=thread_id)
-        db.add(state)
-        db.flush()
-
-    return state
 
 
 @router.get("/{project_id}/chapter-outlines", response_model=List[ChapterOutlineResponse])

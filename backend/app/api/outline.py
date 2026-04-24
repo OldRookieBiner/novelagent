@@ -9,7 +9,6 @@ from app.database import get_db
 from app.models.user import User
 from app.models.project import Project
 from app.models.outline import Outline
-from app.models.workflow_state import WorkflowState
 from app.models.settings import UserSettings
 from app.schemas.outline import (
     OutlineResponse,
@@ -20,6 +19,7 @@ from app.schemas.outline import (
     CollectedInfoUpdate
 )
 from app.utils.auth import get_current_user
+from app.utils.workflow import get_or_create_workflow_state
 from app.agents.state import (
     STAGE_INSPIRATION,
     STAGE_OUTLINE,
@@ -101,25 +101,6 @@ def get_llm_for_user(user_id: int, user_settings, db: Session):
 
     # 回退到用户设置
     return get_llm_service(user_settings)
-
-
-def get_or_create_workflow_state(
-    db: Session,
-    project_id: int,
-    thread_id: str = "main"
-) -> WorkflowState:
-    """获取或创建工作流状态"""
-    state = db.query(WorkflowState).filter(
-        WorkflowState.project_id == project_id,
-        WorkflowState.thread_id == thread_id
-    ).first()
-
-    if not state:
-        state = WorkflowState(project_id=project_id, thread_id=thread_id)
-        db.add(state)
-        db.flush()
-
-    return state
 
 
 @router.get("/{project_id}/outline", response_model=OutlineResponse)
