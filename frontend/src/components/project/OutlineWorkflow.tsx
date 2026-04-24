@@ -157,7 +157,7 @@ export default function OutlineWorkflow({
     setLoading(true)
     try {
       await outlineApi.confirm(projectId)
-      onStageChange('chapter_outlines_generating')
+      onStageChange('chapter_outlines')
       const updatedOutline = await outlineApi.get(projectId)
       onOutlineUpdate(updatedOutline)
     } catch (err) {

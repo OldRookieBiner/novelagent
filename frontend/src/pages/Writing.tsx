@@ -44,11 +44,12 @@ export default function Writing() {
       const projectData = await projectsApi.get(parseInt(id))
       setProject(projectData)
 
-      // Ensure stage is set to chapter_writing when entering writing page
-      if (projectData.stage !== 'chapter_writing' &&
-          projectData.stage !== 'chapter_reviewing' &&
-          projectData.stage !== 'completed') {
-        await projectsApi.update(projectData.id, { stage: 'chapter_writing' })
+      // Ensure stage is set to writing when entering writing page
+      const currentStage = projectData.workflow_state?.stage
+      if (currentStage !== 'writing' &&
+          currentStage !== 'review' &&
+          currentStage !== 'complete') {
+        await projectsApi.update(projectData.id, { stage: 'writing' })
         const updatedProject = await projectsApi.get(parseInt(id))
         setProject(updatedProject)
       }
@@ -229,7 +230,7 @@ export default function Writing() {
     <div>
       {/* Step Navigation */}
       <StepNavigation
-        currentStage={project.stage}
+        currentStage={project.workflow_state?.stage || 'inspiration'}
         viewingStep={null}
         onViewStep={(stepIndex) => navigate(`/project/${id}?viewStep=${stepIndex}`)}
       />

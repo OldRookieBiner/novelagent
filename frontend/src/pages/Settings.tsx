@@ -422,7 +422,7 @@ export default function Settings() {
                             <div>
                               <div className="font-medium">{project.name}</div>
                               <div className="text-sm text-muted-foreground">
-                                {project.total_words} 字 / {project.stage}
+                                {project.total_words} 字 / {project.workflow_state?.stage || '未知'}
                               </div>
                             </div>
                             <Button

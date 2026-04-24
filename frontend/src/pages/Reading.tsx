@@ -31,9 +31,9 @@ export default function Reading() {
     try {
       const projectData = await projectsApi.get(parseInt(id))
 
-      // Ensure stage is set to chapter_reviewing when entering reading/review page
-      if (projectData.stage === 'chapter_writing') {
-        await projectsApi.update(projectData.id, { stage: 'chapter_reviewing' })
+      // Ensure stage is set to review when entering reading/review page
+      if (projectData.workflow_state?.stage === 'writing') {
+        await projectsApi.update(projectData.id, { stage: 'review' })
         const updatedProject = await projectsApi.get(parseInt(id))
         setProject(updatedProject)
       } else {
@@ -103,7 +103,7 @@ export default function Reading() {
     <div>
       {/* Step Navigation */}
       <StepNavigation
-        currentStage={project.stage}
+        currentStage={project.workflow_state?.stage || 'inspiration'}
         viewingStep={null}
         onViewStep={(stepIndex) => navigate(`/project/${id}?viewStep=${stepIndex}`)}
       />

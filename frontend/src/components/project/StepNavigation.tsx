@@ -7,11 +7,11 @@ export interface StepConfig {
 }
 
 export const STEPS: StepConfig[] = [
-  { index: 0, name: '灵感采集', stages: ['inspiration_collecting'] },
-  { index: 1, name: '大纲生成', stages: ['outline_generating', 'outline_confirming'] },
-  { index: 2, name: '章节纲', stages: ['chapter_outlines_generating', 'chapter_outlines_confirming'] },
-  { index: 3, name: '写作', stages: ['chapter_writing'] },
-  { index: 4, name: '审核', stages: ['chapter_reviewing', 'completed'] },
+  { index: 0, name: '灵感采集', stages: ['inspiration'] },
+  { index: 1, name: '大纲生成', stages: ['outline'] },
+  { index: 2, name: '章节纲', stages: ['chapter_outlines'] },
+  { index: 3, name: '写作', stages: ['writing'] },
+  { index: 4, name: '审核', stages: ['review', 'complete'] },
 ]
 
 export type StepStatus = 'completed' | 'current' | 'pending'
@@ -27,11 +27,12 @@ export function getStepStatus(stepIndex: number, currentStage: string): StepStat
 
   // 判断是否已完成
   const stageOrder = [
-    'inspiration_collecting',
-    'outline_generating', 'outline_confirming',
-    'chapter_outlines_generating', 'chapter_outlines_confirming',
-    'chapter_writing',
-    'chapter_reviewing', 'completed'
+    'inspiration',
+    'outline',
+    'chapter_outlines',
+    'writing',
+    'review',
+    'complete'
   ]
 
   const currentIndex = stageOrder.indexOf(currentStage)

@@ -13,20 +13,18 @@ interface ProjectCardProps {
 
 // 工作流阶段配置：标签、颜色、图标
 const STAGE_CONFIG: Record<string, { label: string; color: string; icon: React.ElementType; isProcessing: boolean; isCompleted: boolean }> = {
-  inspiration_collecting: { label: '灵感采集', color: 'bg-yellow-500', icon: Sparkles, isProcessing: false, isCompleted: false },
-  outline_generating: { label: '生成大纲', color: 'bg-blue-500', icon: Loader2, isProcessing: true, isCompleted: false },
-  outline_confirming: { label: '确认大纲', color: 'bg-blue-500', icon: FileText, isProcessing: false, isCompleted: false },
-  chapter_outlines_generating: { label: '生成章节纲', color: 'bg-purple-500', icon: Loader2, isProcessing: true, isCompleted: false },
-  chapter_outlines_confirming: { label: '确认章节纲', color: 'bg-purple-500', icon: BookOpen, isProcessing: false, isCompleted: false },
-  chapter_writing: { label: '写作中', color: 'bg-green-500', icon: PenLine, isProcessing: false, isCompleted: false },
-  chapter_reviewing: { label: '审核中', color: 'bg-orange-500', icon: Loader2, isProcessing: true, isCompleted: false },
-  completed: { label: '已完成', color: 'bg-emerald-500', icon: CheckCircle, isProcessing: false, isCompleted: true },
+  inspiration: { label: '灵感采集', color: 'bg-yellow-500', icon: Sparkles, isProcessing: false, isCompleted: false },
+  outline: { label: '大纲生成', color: 'bg-blue-500', icon: FileText, isProcessing: false, isCompleted: false },
+  chapter_outlines: { label: '章节纲', color: 'bg-purple-500', icon: BookOpen, isProcessing: false, isCompleted: false },
+  writing: { label: '写作中', color: 'bg-green-500', icon: PenLine, isProcessing: false, isCompleted: false },
+  review: { label: '审核中', color: 'bg-orange-500', icon: Loader2, isProcessing: true, isCompleted: false },
+  complete: { label: '已完成', color: 'bg-emerald-500', icon: CheckCircle, isProcessing: false, isCompleted: true },
   paused: { label: '暂停', color: 'bg-gray-500', icon: Circle, isProcessing: false, isCompleted: false },
 }
 
 export default function ProjectCard({ project, onDelete }: ProjectCardProps) {
-  const stageConfig = STAGE_CONFIG[project.stage] || {
-    label: project.stage,
+  const stageConfig = STAGE_CONFIG[project.workflow_state?.stage || 'inspiration'] || {
+    label: project.workflow_state?.stage || '未知',
     color: 'bg-gray-500',
     icon: Circle,
     isProcessing: false,
@@ -81,7 +79,7 @@ export default function ProjectCard({ project, onDelete }: ProjectCardProps) {
         <div className="flex gap-2">
           <Button asChild className="flex-1" size="sm">
             <Link to={`/project/${project.id}`}>
-              {project.stage === 'completed' ? '查看' : '继续'}
+              {project.workflow_state?.stage === 'complete' ? '查看' : '继续'}
             </Link>
           </Button>
           <Button
