@@ -10,24 +10,13 @@ from pydantic import BaseModel
 from app.database import get_db
 from app.models.user import User
 from app.models.project import Project
-from app.models.outline import Outline, ChapterOutline
-from app.models.chapter import Chapter
+from app.models.outline import Outline
 from app.models.checkpoint import WorkflowCheckpoint
+from app.models.workflow_state import WorkflowState
 from app.models.settings import UserSettings
 from app.utils.auth import get_current_user
 from app.agents.graph import create_novel_graph_with_checkpointer
-from app.agents.state import (
-    NovelState,
-    STAGE_INSPIRATION,
-    STAGE_OUTLINE,
-    STAGE_CHAPTER_OUTLINES,
-    STAGE_WRITING,
-    STAGE_REVIEW,
-    STAGE_COMPLETE,
-    WORKFLOW_MODE_STEP_BY_STEP,
-    WORKFLOW_MODE_HYBRID,
-    WORKFLOW_MODE_AUTO,
-)
+from app.agents.state import NovelState
 
 router = APIRouter()
 
@@ -95,14 +84,16 @@ def get_project_with_ownership(
 def build_initial_state(
     project: Project,
     outline: Outline,
+    workflow_state: WorkflowState,
     llm_config_id: Optional[int] = None
 ) -> NovelState:
     """
-    从项目和大纲构建初始 NovelState。
+    从项目、大纲和工作流状态构建初始 NovelState。
 
     Args:
         project: 项目实例
         outline: 大纲实例
+        workflow_state: 工作流状态实例
         llm_config_id: 模型配置 ID
 
     Returns:
@@ -133,22 +124,13 @@ def build_initial_state(
                 "word_count": co.chapter.word_count,
             })
 
-    # 确定当前阶段
-    stage = project.stage
-    if stage == "inspiration_collecting":
-        stage = STAGE_INSPIRATION
-    elif stage == "outline_generating":
-        stage = STAGE_OUTLINE
-    elif stage == "chapter_writing":
-        stage = STAGE_WRITING
-
     # 构建状态
     state: NovelState = {
         # 基本信息
         "project_id": project.id,
 
-        # 阶段控制
-        "stage": stage,
+        # 阶段控制（使用 workflow_state.stage，无需映射）
+        "stage": workflow_state.stage,
 
         # 灵感/输入
         "collected_info": outline.collected_info or {},
@@ -170,17 +152,17 @@ def build_initial_state(
 
         # 章节正文
         "written_chapters": written_chapters,
-        "current_chapter": len(written_chapters) + 1,
+        "current_chapter": workflow_state.current_chapter,
 
         # 审核/重写
-        "review_mode": project.review_mode or WORKFLOW_MODE_HYBRID,
+        "review_mode": workflow_state.workflow_mode,
         "review_result": None,
         "rewrite_count": 0,
-        "max_rewrite_count": project.max_rewrite_count or 3,
+        "max_rewrite_count": workflow_state.max_rewrite_count,
 
         # 工作流控制
-        "waiting_for_confirmation": False,
-        "confirmation_type": None,
+        "waiting_for_confirmation": workflow_state.waiting_for_confirmation,
+        "confirmation_type": workflow_state.confirmation_type,
 
         # LLM 服务
         "llm_config_id": llm_config_id,
@@ -283,13 +265,25 @@ async def run_workflow(
             detail="User settings not found"
         )
 
+    # 获取或创建 WorkflowState
+    workflow_state = db.query(WorkflowState).filter(
+        WorkflowState.project_id == project_id,
+        WorkflowState.thread_id == "main"
+    ).first()
+
+    if not workflow_state:
+        workflow_state = WorkflowState(project_id=project_id)
+        db.add(workflow_state)
+        db.commit()
+        db.refresh(workflow_state)
+
     # 获取 LLM 配置 ID
     llm_config_id = None
     if request:
         llm_config_id = request.llm_config_id
 
     # 构建初始状态
-    initial_state = build_initial_state(project, outline, llm_config_id)
+    initial_state = build_initial_state(project, outline, workflow_state, llm_config_id)
 
     # 创建带检查点的图
     graph = create_novel_graph_with_checkpointer(project_id, "default")
@@ -472,17 +466,31 @@ async def get_workflow_state(
             current_state=checkpoint_state
         )
     else:
-        # 无检查点，返回项目当前状态
-        outline = db.query(Outline).filter(Outline.project_id == project_id).first()
+        # 无检查点，从 WorkflowState 获取状态
+        workflow_state = db.query(WorkflowState).filter(
+            WorkflowState.project_id == project_id,
+            WorkflowState.thread_id == "main"
+        ).first()
 
-        return WorkflowStateResponse(
-            project_id=project_id,
-            has_checkpoint=False,
-            stage=project.stage,
-            waiting_for_confirmation=False,
-            confirmation_type=None,
-            current_state=None
-        )
+        if workflow_state:
+            return WorkflowStateResponse(
+                project_id=project_id,
+                has_checkpoint=False,
+                stage=workflow_state.stage,
+                waiting_for_confirmation=workflow_state.waiting_for_confirmation,
+                confirmation_type=workflow_state.confirmation_type,
+                current_state=None
+            )
+        else:
+            # 无 WorkflowState，返回默认状态
+            return WorkflowStateResponse(
+                project_id=project_id,
+                has_checkpoint=False,
+                stage="inspiration",
+                waiting_for_confirmation=False,
+                confirmation_type=None,
+                current_state=None
+            )
 
 
 @router.post("/{project_id}/workflow/cancel")
