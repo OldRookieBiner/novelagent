@@ -5,9 +5,6 @@ from app.agents.nodes.outline_generation import (
     parse_outline,
     parse_chapter_count,
 )
-from app.agents.nodes.chapter_generation import (
-    parse_chapter_outlines,
-)
 
 
 class TestOutlineParsing:
@@ -72,82 +69,6 @@ class TestOutlineParsing:
         response = "这是一些文本，没有章节数建议"
         count = parse_chapter_count(response)
         assert count == 10  # Default
-
-
-class TestChapterOutlineParsing:
-    """Tests for chapter outline parsing functions"""
-
-    def test_parse_single_chapter(self):
-        """Should parse a single chapter outline"""
-        response = """
-第1章：初入仙门
-场景：青云山脚下的小村庄
-人物：林风、神秘老者
-情节：少年林风在山中采药时偶遇一位神秘老者，被测试资质后发现是万年难遇的修仙奇才。
-冲突：林风需要说服家人让他离开家乡去修仙。
-结局：林风告别家人，随老者踏上修仙之路。
-预计字数：2500
-"""
-        chapters = parse_chapter_outlines(response)
-
-        assert len(chapters) == 1
-        assert chapters[0]["chapter_number"] == 1
-        assert chapters[0]["title"] == "初入仙门"
-        assert chapters[0]["scene"] == "青云山脚下的小村庄"
-        assert chapters[0]["target_words"] == 2500
-
-    def test_parse_multiple_chapters(self):
-        """Should parse multiple chapter outlines"""
-        response = """
-第1章：开始
-场景：城市
-人物：主角
-情节：故事开始。
-冲突：主角面临选择。
-结局：主角做出决定。
-预计字数：2000
-
-第2章：冒险
-场景：森林
-人物：主角、伙伴
-情节：主角开始冒险之旅。
-冲突：遇到危险。
-结局：化险为夷。
-预计字数：2500
-
-第3章：高潮
-场景：城堡
-人物：主角、敌人
-情节：最终对决。
-冲突：生死存亡。
-结局：主角胜利。
-预计字数：3000
-"""
-        chapters = parse_chapter_outlines(response)
-
-        assert len(chapters) == 3
-        assert chapters[0]["chapter_number"] == 1
-        assert chapters[1]["chapter_number"] == 2
-        assert chapters[2]["chapter_number"] == 3
-        assert chapters[2]["title"] == "高潮"
-
-    def test_parse_chapter_outline_partial(self):
-        """Should handle partial chapter outline data"""
-        response = """
-第1章：测试章节
-场景：测试场景
-"""
-        chapters = parse_chapter_outlines(response)
-
-        assert len(chapters) == 1
-        assert chapters[0]["scene"] == "测试场景"
-        # Missing fields should have defaults
-        assert chapters[0]["target_words"] == 3000
-
-    def test_parse_chapter_outline_empty(self):
-        """Should handle empty response"""
-        chapters = parse_chapter_outlines("")
-        assert chapters == []
 
 
 class TestPromptTemplates:

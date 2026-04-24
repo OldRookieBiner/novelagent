@@ -9,8 +9,7 @@ from app.agents.nodes.chapter_generation import (
     generate_single_chapter_outline,
     generate_chapter_outlines_stream,
     generate_chapter_content_stream,
-    parse_single_chapter_outline,
-    parse_chapter_outlines
+    parse_single_chapter_outline
 )
 from app.agents.nodes.review import (
     review_chapter_node,
@@ -31,7 +30,6 @@ __all__ = [
     "generate_single_chapter_outline",
     "generate_chapter_outlines_stream",
     "parse_single_chapter_outline",
-    "parse_chapter_outlines",
     # Chapter content
     "generate_chapter_content_stream",
     # Review

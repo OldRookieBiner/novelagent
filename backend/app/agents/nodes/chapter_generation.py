@@ -120,81 +120,6 @@ def parse_single_chapter_outline(response: str, chapter_number: int) -> dict:
     return chapter
 
 
-def parse_chapter_outlines(response: str) -> list[dict]:
-    """Parse chapter outlines from response (legacy, for batch parsing)"""
-    chapters = []
-
-    # Split by chapter markers - capture chapter number and title from header
-    pattern = r"第(\d+)章[：:]\s*(.+?)(?=第\d+章|$)"
-    matches = re.findall(pattern, response, re.DOTALL)
-
-    for num, content in matches:
-        chapter = {
-            "chapter_number": int(num),
-            "title": "",
-            "scene": "",
-            "characters": "",
-            "plot": "",
-            "conflict": "",
-            "turning_point": "",
-            "hook": "",
-            "transition": "",
-            "ending": "",
-            "target_words": 3000
-        }
-
-        # Extract title from first line if present (e.g., "初入仙门\n场景：...")
-        first_line = content.split('\n')[0].strip() if content else ""
-        if first_line and not first_line.startswith(('场景', '人物', '情节', '冲突', '转折', '钩子', '衔接', '结局', '预计字数', '章节名')):
-            chapter["title"] = _clean_chapter_title(first_line)
-
-        # Also check for explicit 章节名 field
-        title_match = re.search(r"章节名[：:]\s*(.+)", content)
-        if title_match:
-            raw_title = title_match.group(1).strip()
-            chapter["title"] = _clean_chapter_title(raw_title)
-
-        scene_match = re.search(r"场景[：:]\s*(.+)", content)
-        if scene_match:
-            chapter["scene"] = scene_match.group(1).strip()
-
-        characters_match = re.search(r"人物[：:]\s*(.+)", content)
-        if characters_match:
-            chapter["characters"] = characters_match.group(1).strip()
-
-        plot_match = re.search(r"情节[：:]\s*(.+?)(?=冲突|转折|钩子|衔接|结局|预计字数|$)", content, re.DOTALL)
-        if plot_match:
-            chapter["plot"] = plot_match.group(1).strip()
-
-        conflict_match = re.search(r"冲突[：:]\s*(.+?)(?=转折|钩子|衔接|结局|预计字数|$)", content, re.DOTALL)
-        if conflict_match:
-            chapter["conflict"] = conflict_match.group(1).strip()
-
-        turning_match = re.search(r"转折[：:]\s*(.+?)(?=钩子|衔接|结局|预计字数|$)", content, re.DOTALL)
-        if turning_match:
-            chapter["turning_point"] = turning_match.group(1).strip()
-
-        hook_match = re.search(r"钩子[：:]\s*(.+?)(?=衔接|结局|预计字数|$)", content, re.DOTALL)
-        if hook_match:
-            chapter["hook"] = hook_match.group(1).strip()
-
-        transition_match = re.search(r"衔接[：:]\s*(.+?)(?=结局|预计字数|$)", content, re.DOTALL)
-        if transition_match:
-            chapter["transition"] = transition_match.group(1).strip()
-
-        ending_match = re.search(r"结局[：:]\s*(.+?)(?=预计字数|$)", content, re.DOTALL)
-        if ending_match:
-            chapter["ending"] = ending_match.group(1).strip()
-
-        words_match = re.search(r"预计字数[：:]\s*(\d+)", content)
-        if words_match:
-            chapter["target_words"] = int(words_match.group(1))
-
-        chapters.append(chapter)
-
-    return chapters
-
-
 async def generate_single_chapter_outline(
     state: NovelState,
     chapter_number: int,
@@ -328,7 +253,7 @@ async def generate_chapter_content_stream(
 
     prompt = GENERATE_CHAPTER_CONTENT_PROMPT.format(
         chapter_outline=outline_str,
-        previous_ending="",  # TODO: 从上一章获取
+        previous_ending="",
         genre=info.get("novelType", "未指定"),
         main_characters=chars_str,
         world_setting=world_str,
