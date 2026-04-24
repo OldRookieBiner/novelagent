@@ -18,15 +18,12 @@ import { generateInspirationTemplate, type InspirationData } from '@/lib/inspira
 import type { ProjectDetail, ChapterOutline, Outline, CollectedInfo, WorkflowStateResponse } from '@/types'
 
 const STAGE_LABELS: Record<string, string> = {
-  inspiration_collecting: '灵感采集',
-  outline_generating: '生成大纲',
-  outline_confirming: '确认大纲',
-  chapter_outlines_generating: '生成章节纲',
-  chapter_outlines_confirming: '确认章节纲',
-  chapter_writing: '写作中',
-  chapter_reviewing: '审核中',
-  completed: '已完成',
-  paused: '暂停',
+  inspiration: '灵感采集',
+  outline: '大纲生成',
+  chapter_outlines: '章节大纲',
+  writing: '写作中',
+  review: '审核中',
+  complete: '已完成',
 }
 
 export default function ProjectDetail() {
@@ -154,7 +151,8 @@ export default function ProjectDetail() {
       }
 
       // Refresh chapter outlines if we're in writing stage
-      if (stage === 'chapter_outlines_confirming' || stage === 'chapter_writing') {
+      if (stage === 'chapter_outlines' || stage === 'writing')
+      {
         const chaptersData = await chapterOutlinesApi.list(parseInt(id!))
         setChapterOutlines(chaptersData)
         setProjectChapterOutlines(chaptersData)
@@ -187,8 +185,9 @@ export default function ProjectDetail() {
       }
       // Check if all confirmed, update stage
       const allConfirmed = chaptersData.every(c => c.confirmed)
-      if (allConfirmed && project && project.stage !== 'chapter_writing') {
-        await projectsApi.update(project.id, { stage: 'chapter_writing' })
+      if (allConfirmed && project && project.workflow_state?.stage !== 'writing')
+      {
+        await projectsApi.update(project.id, { stage: 'writing' })
         const updatedProject = await projectsApi.get(project.id)
         setProject(updatedProject)
       }
@@ -223,13 +222,13 @@ export default function ProjectDetail() {
     if (!inspirationData || !project) return
 
     try {
-      // 保存灵感数据和模板
+      // 保存灵感和模板
       await outlineApi.update(project.id, {
         collected_info: inspirationData as unknown as CollectedInfo,
         inspiration_template: inspirationTemplate,
       })
       // 更新 stage 到大纲生成
-      await projectsApi.update(project.id, { stage: 'outline_generating' })
+      await projectsApi.update(project.id, { stage: 'outline' })
       // 刷新数据
       const updatedProject = await projectsApi.get(project.id)
       setProject(updatedProject)
@@ -256,7 +255,7 @@ export default function ProjectDetail() {
         plot_points: [],
       })
       // 更新 stage 到大纲生成
-      await projectsApi.update(project.id, { stage: 'outline_generating' })
+      await projectsApi.update(project.id, { stage: 'outline' })
       // 刷新数据
       const updatedProject = await projectsApi.get(project.id)
       setProject(updatedProject)
@@ -473,18 +472,17 @@ export default function ProjectDetail() {
   }
 
   // Determine which workflow to show based on stage
-  const showInspirationCollection = project.stage === 'inspiration_collecting'
+  const currentStage = project.workflow_state?.stage || ''
+  const showInspirationCollection = currentStage === 'inspiration'
   const showOutlineWorkflow = [
-    'outline_generating',
-    'outline_confirming',
-    'chapter_outlines_generating',
-  ].includes(project.stage)
+    'outline',
+    'chapter_outlines',
+  ].includes(currentStage)
   const showChapterList = [
-    'chapter_outlines_confirming',
-    'chapter_writing',
-    'chapter_reviewing',
-    'completed',
-  ].includes(project.stage)
+    'writing',
+    'review',
+    'complete',
+  ].includes(currentStage)
 
   return (
     <div>
@@ -507,14 +505,14 @@ export default function ProjectDetail() {
         </div>
         <div className="flex gap-6 text-sm text-muted-foreground">
           <span>创建时间: {new Date(project.created_at).toLocaleDateString()}</span>
-          <span>阶段: {STAGE_LABELS[project.stage] || project.stage}</span>
+          <span>阶段: {STAGE_LABELS[currentStage] || currentStage}</span>
           <span>字数: {project.total_words.toLocaleString()}</span>
         </div>
       </div>
 
       {/* Step Navigation */}
       <StepNavigation
-        currentStage={project.stage}
+        currentStage={currentStage}
         viewingStep={viewingStep}
         onViewStep={handleViewStep}
         outlineConfirmed={outline?.confirmed}

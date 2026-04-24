@@ -70,6 +70,7 @@ export interface ProjectCreate {
 export interface ProjectUpdate {
   name?: string
   target_words?: number
+  stage?: string  // 临时保留，用于兼容旧代码
 }
 
 // ==================== Outline Types ====================
