@@ -472,15 +472,15 @@ export default function ProjectDetail() {
   // Determine which workflow to show based on stage
   const currentStage = project.workflow_state?.stage || ''
   const showInspirationCollection = currentStage === 'inspiration'
-  const showOutlineWorkflow = [
-    'outline',
-    'chapter_outlines',
-  ].includes(currentStage)
+  // 显示 OutlineWorkflow：大纲阶段，或者章节大纲阶段但没有已生成的章节大纲
+  const showOutlineWorkflow = currentStage === 'outline' ||
+    (currentStage === 'chapter_outlines' && chapterOutlines.length === 0)
+  // 显示章节列表：写作/审核/完成阶段，或者章节大纲阶段已有章节大纲
   const showChapterList = [
     'writing',
     'review',
     'complete',
-  ].includes(currentStage)
+  ].includes(currentStage) || (currentStage === 'chapter_outlines' && chapterOutlines.length > 0)
 
   return (
     <div>
