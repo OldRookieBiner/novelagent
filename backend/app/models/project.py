@@ -33,6 +33,7 @@ class Project(Base):
     outline = relationship("Outline", back_populates="project", uselist=False, cascade="all, delete-orphan")
     chapter_outlines = relationship("ChapterOutline", back_populates="project", cascade="all, delete-orphan")
     agent_prompts = relationship("ProjectAgentPrompt", back_populates="project", cascade="all, delete-orphan")
+    workflow_states = relationship("WorkflowState", back_populates="project", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Project {self.name}>"
