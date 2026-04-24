@@ -257,7 +257,7 @@ export default function AddModelDialog({
                 {providers.map(provider => (
                   <SelectItem key={provider.id} value={provider.id}>
                     {provider.name}
-                    {provider.provider_type === 'coding_plan' && ' (套餐)'}
+                    {provider.provider_type === 'coding_plan' && ' Coding Plan'}
                   </SelectItem>
                 ))}
               </SelectContent>
