@@ -9,6 +9,7 @@ from app.database import get_db
 from app.models.user import User
 from app.models.project import Project
 from app.models.outline import Outline
+from app.models.workflow_state import WorkflowState
 from app.models.settings import UserSettings
 from app.schemas.outline import (
     OutlineResponse,
@@ -102,6 +103,25 @@ def get_llm_for_user(user_id: int, user_settings, db: Session):
     return get_llm_service(user_settings)
 
 
+def get_or_create_workflow_state(
+    db: Session,
+    project_id: int,
+    thread_id: str = "main"
+) -> WorkflowState:
+    """获取或创建工作流状态"""
+    state = db.query(WorkflowState).filter(
+        WorkflowState.project_id == project_id,
+        WorkflowState.thread_id == thread_id
+    ).first()
+
+    if not state:
+        state = WorkflowState(project_id=project_id, thread_id=thread_id)
+        db.add(state)
+        db.flush()
+
+    return state
+
+
 @router.get("/{project_id}/outline", response_model=OutlineResponse)
 async def get_outline(
     project_id: int,
@@ -140,8 +160,9 @@ async def generate_outline(
             detail="User settings not found"
         )
 
-    # Update project stage
-    project.stage = STAGE_OUTLINE
+    # 更新工作流状态
+    workflow_state = get_or_create_workflow_state(db, project_id)
+    workflow_state.stage = STAGE_OUTLINE
     db.commit()
 
     # Get LLM service (优先使用模型配置)
@@ -179,8 +200,9 @@ async def generate_outline(
             outline.world_setting = parsed.get("world_setting", {})
             outline.emotional_curve = parsed.get("emotional_curve")
 
-            # Update project stage to confirming
-            project.stage = STAGE_OUTLINE
+            # 更新工作流状态
+            workflow_state = get_or_create_workflow_state(db, project_id)
+            workflow_state.stage = STAGE_OUTLINE
 
             db.commit()
             db.refresh(outline)
@@ -216,7 +238,8 @@ async def generate_outline(
                         outline.characters = parsed.get("characters", [])
                         outline.world_setting = parsed.get("world_setting", {})
                         outline.emotional_curve = parsed.get("emotional_curve")
-                        project.stage = STAGE_OUTLINE
+                        workflow_state = get_or_create_workflow_state(db, project_id)
+                        workflow_state.stage = STAGE_OUTLINE
                         db.commit()
 
                         # 发送中断完成事件
@@ -336,7 +359,8 @@ async def confirm_outline(
     # Confirm the outline
     outline.confirmed = True
     # Skip chapter count stage, go directly to chapter outlines generating
-    project.stage = STAGE_CHAPTER_OUTLINES
+    workflow_state = get_or_create_workflow_state(db, project_id)
+    workflow_state.stage = STAGE_CHAPTER_OUTLINES
 
     db.commit()
     db.refresh(outline)
@@ -372,8 +396,9 @@ async def set_chapter_count(
     outline.chapter_count_suggested = request.chapter_count
     outline.chapter_count_confirmed = True
 
-    # Update project stage to generate chapter outlines
-    project.stage = STAGE_CHAPTER_OUTLINES
+    # 更新工作流状态
+    workflow_state = get_or_create_workflow_state(db, project_id)
+    workflow_state.stage = STAGE_CHAPTER_OUTLINES
 
     db.commit()
     db.refresh(outline)
@@ -416,7 +441,8 @@ async def update_collected_info(
     # Check if all required info is provided
     required_fields = ["genre", "main_characters", "world_setting"]
     if all(field in current_info and current_info[field] for field in required_fields):
-        project.stage = STAGE_OUTLINE
+        workflow_state = get_or_create_workflow_state(db, project_id)
+        workflow_state.stage = STAGE_OUTLINE
 
     db.commit()
     db.refresh(outline)
@@ -435,7 +461,8 @@ async def info_collection_chat(
     project, outline = get_project_and_outline(project_id, current_user.id, db)
 
     # Check if project is in inspiration_collecting stage
-    if project.stage not in [STAGE_INSPIRATION, STAGE_OUTLINE]:
+    workflow_state = get_or_create_workflow_state(db, project_id)
+    if workflow_state.stage not in [STAGE_INSPIRATION, STAGE_OUTLINE]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Project is not in inspiration collection stage"

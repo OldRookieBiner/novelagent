@@ -11,6 +11,7 @@ from app.models.user import User
 from app.models.project import Project
 from app.models.outline import Outline, ChapterOutline
 from app.models.chapter import Chapter
+from app.models.workflow_state import WorkflowState
 from app.models.settings import UserSettings
 from app.models.model_config import ModelConfig
 from app.schemas.chapter import (
@@ -93,6 +94,25 @@ def get_outline_for_project(
         )
 
     return outline
+
+
+def get_or_create_workflow_state(
+    db: Session,
+    project_id: int,
+    thread_id: str = "main"
+) -> WorkflowState:
+    """获取或创建工作流状态"""
+    state = db.query(WorkflowState).filter(
+        WorkflowState.project_id == project_id,
+        WorkflowState.thread_id == thread_id
+    ).first()
+
+    if not state:
+        state = WorkflowState(project_id=project_id, thread_id=thread_id)
+        db.add(state)
+        db.flush()
+
+    return state
 
 
 @router.get("/{project_id}/chapter-outlines", response_model=List[ChapterOutlineResponse])
@@ -186,8 +206,9 @@ async def create_chapter_outlines(
             detail="User settings not found"
         )
 
-    # Update project stage
-    project.stage = STAGE_CHAPTER_OUTLINES
+    # 更新工作流状态
+    workflow_state = get_or_create_workflow_state(db, project_id)
+    workflow_state.stage = STAGE_CHAPTER_OUTLINES
     db.commit()
 
     # Get LLM service
@@ -247,8 +268,9 @@ async def create_chapter_outlines(
                     yield f"event: progress\ndata: {json.dumps(progress_data)}\n\n"
 
                 elif event["type"] == "done":
-                    # Update project stage to confirming
-                    project.stage = STAGE_CHAPTER_OUTLINES
+                    # 更新工作流状态
+                    workflow_state = get_or_create_workflow_state(db, project_id)
+                    workflow_state.stage = STAGE_CHAPTER_OUTLINES
                     db.commit()
 
                     # Send completion event
@@ -393,9 +415,10 @@ async def confirm_chapter_outline(
         ChapterOutline.confirmed == True
     ).count()
 
-    # If all confirmed, update project stage to chapter writing
+    # If all confirmed, update workflow state to chapter writing
     if total_outlines > 0 and confirmed_outlines == total_outlines:
-        project.stage = STAGE_WRITING
+        workflow_state = get_or_create_workflow_state(db, project_id)
+        workflow_state.stage = STAGE_WRITING
 
     db.commit()
     db.refresh(chapter_outline)
