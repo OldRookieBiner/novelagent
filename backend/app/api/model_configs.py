@@ -32,7 +32,7 @@ def get_user_model_configs(db: Session, user_id: int) -> list[ModelConfig]:
     """获取用户的模型配置列表（按创建时间排序）"""
     configs = db.query(ModelConfig).filter(
         ModelConfig.user_id == user_id
-    ).order_by(ModelConfig.createdAt).all()
+    ).order_by(ModelConfig.created_at).all()
 
     return configs
 
