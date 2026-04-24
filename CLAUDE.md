@@ -8,21 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 | 版本 | 状态 | 说明 |
 |------|------|------|
-| v0.1.x | 已发布 | CLI 版本，三 Agent 协作 |
 | v0.2.0 | 已发布 | Web 应用，React + FastAPI + PostgreSQL |
 | v0.6.2 | 当前 | LangGraph 工作流集成、SSE 流式传输、暂停/恢复 |
-
----
-
-## v0.1.x CLI 版本
-
-```bash
-python cli.py new "项目名称"      # 创建新项目
-python cli.py continue "项目名称"  # 继续现有项目
-python cli.py list               # 查看项目列表
-```
-
-配置：`export DEEPSEEK_API_KEY="your-key"` 或 `export OPENAI_API_KEY="your-key"`
 
 ---
 
