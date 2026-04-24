@@ -12,7 +12,6 @@ from app.models.project import Project
 from app.models.outline import Outline, ChapterOutline
 from app.models.chapter import Chapter
 from app.models.settings import UserSettings
-from app.models.model_config import ModelConfig
 from app.schemas.chapter import (
     ChapterOutlineResponse,
     ChapterOutlineUpdate,
@@ -23,6 +22,7 @@ from app.schemas.chapter import (
 )
 from app.schemas.outline import ChapterOutlinesGenerateRequest
 from app.utils.auth import get_current_user
+from app.utils.llm import get_llm_for_user
 from app.utils.workflow import get_or_create_workflow_state
 from app.agents.state import (
     STAGE_CHAPTER_OUTLINES,
@@ -34,29 +34,8 @@ from app.agents.nodes.chapter_generation import (
     generate_chapter_content_stream,
 )
 from app.agents.nodes.review import review_chapter_node
-from app.services.llm import get_llm_service, get_llm_service_from_config
 
 router = APIRouter()
-
-
-def get_llm_for_user(user_id: int, user_settings, db: Session):
-    """
-    获取用户的 LLM 服务
-
-    优先使用模型配置，如果没有则使用用户设置（兼容旧版本）
-    """
-    # 查找用户的默认模型配置
-    default_config = db.query(ModelConfig).filter(
-        ModelConfig.user_id == user_id,
-        ModelConfig.is_default == True,
-        ModelConfig.is_enabled == True
-    ).first()
-
-    if default_config:
-        return get_llm_service_from_config(default_config, user_id)
-
-    # 回退到用户设置
-    return get_llm_service(user_settings)
 
 
 def get_project_for_user(
@@ -195,24 +174,8 @@ async def create_chapter_outlines(
     db.commit()
 
     # Get LLM service
-    # 如果指定了 llm_config_id，使用指定的模型配置
     llm_config_id = request.llm_config_id if request else None
-    if llm_config_id:
-        # 验证模型配置属于当前用户
-        config = db.query(ModelConfig).filter(
-            ModelConfig.id == llm_config_id,
-            ModelConfig.user_id == current_user.id
-        ).first()
-        if config:
-            llm = get_llm_service_from_config(config, current_user.id)
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Model config not found"
-            )
-    else:
-        # 使用默认模型（优先使用模型配置，回退到用户设置）
-        llm = get_llm_for_user(current_user.id, user_settings, db)
+    llm = get_llm_for_user(current_user.id, user_settings, db, llm_config_id)
 
     # Prepare state for chapter outline generation
     state = {
