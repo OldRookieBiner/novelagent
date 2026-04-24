@@ -282,47 +282,90 @@ export interface EffectivePromptResponse {
 
 // ==================== Model Config Types ====================
 
+/**
+ * 模型项（用于 coding_plan 类型配置）
+ */
+export interface ModelItem {
+  id: string
+  name: string
+  is_enabled: boolean
+  health_status?: string
+}
+
+/**
+ * 模型配置
+ * - single: 单一模型配置
+ * - coding_plan: 编码套餐（包含多个模型）
+ */
 export interface ModelConfig {
-  id: number;
-  name: string;
-  provider: string;
-  base_url: string;
-  model_name: string;
-  has_api_key: boolean;
-  is_enabled: boolean;
-  is_default: boolean;
-  health_status: 'healthy' | 'unhealthy' | 'unknown' | null;
-  health_latency: number | null;
-  last_health_check: string | null;
-  created_at: string;
-  updated_at: string;
+  id: number
+  name: string
+  provider: string
+  provider_type: 'single' | 'coding_plan'
+  base_url: string
+  model_name?: string
+  models?: ModelItem[]
+  has_api_key: boolean
+  is_enabled: boolean
+  is_default: boolean
+  health_status?: string
+  health_latency?: number
+  last_health_check?: string
+  created_at: string
+  updated_at: string
 }
 
 export interface ModelConfigListResponse {
-  models: ModelConfig[];
+  models: ModelConfig[]
+}
+
+/**
+ * 提供商信息
+ */
+export interface ProviderInfo {
+  id: string
+  name: string
+  provider_type: 'single' | 'coding_plan'
+  base_url: string
+}
+
+export interface ProvidersListResponse {
+  providers: ProviderInfo[]
+}
+
+/**
+ * 获取模型列表响应
+ */
+export interface FetchModelsResponse {
+  models: { id: string; name: string }[]
+  error?: string
+  allow_manual: boolean
 }
 
 export interface ModelConfigCreate {
-  name: string;
-  provider?: string;
-  base_url: string;
-  model_name: string;
-  api_key?: string;
+  name: string
+  provider: string
+  provider_type: string
+  base_url: string
+  model_name?: string
+  models?: ModelItem[]
+  api_key?: string
 }
 
 export interface ModelConfigUpdate {
-  name?: string;
-  base_url?: string;
-  model_name?: string;
-  api_key?: string;
-  is_enabled?: boolean;
-  clear_api_key?: boolean;
+  name?: string
+  base_url?: string
+  model_name?: string
+  models?: ModelItem[]
+  is_enabled?: boolean
+  api_key?: string
+  clear_api_key?: boolean
 }
 
 export interface HealthCheckResponse {
-  status: 'healthy' | 'unhealthy';
-  latency?: number;
-  error?: string;
+  status: 'healthy' | 'unhealthy'
+  latency?: number
+  error?: string
 }
 
 // ==================== Workflow Types ====================

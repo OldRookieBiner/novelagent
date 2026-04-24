@@ -35,6 +35,9 @@ import type {
   ModelConfigListResponse,
   ModelConfigCreate,
   ModelConfigUpdate,
+  ModelItem,
+  ProvidersListResponse,
+  FetchModelsResponse,
   HealthCheckResponse,
 } from "@/types";
 
@@ -618,49 +621,76 @@ export const agentPromptsApi = {
 // ==================== Model Configs API ====================
 
 export const modelConfigsApi = {
+  /**
+   * 获取模型配置列表
+   */
   async list(): Promise<ModelConfigListResponse> {
-    return request<ModelConfigListResponse>("/api/model-configs/");
+    return request<ModelConfigListResponse>("/api/model_configs/");
   },
 
   /**
-   * 测试模型连接（不创建配置）
+   * 获取提供商列表
    */
-  async testConnection(data: ModelConfigCreate): Promise<HealthCheckResponse> {
-    return request<HealthCheckResponse>("/api/model-configs/test", {
+  async getProviders(): Promise<ProvidersListResponse> {
+    return request<ProvidersListResponse>("/api/model_configs/providers");
+  },
+
+  /**
+   * 从提供商获取可用模型列表
+   */
+  async fetchModels(data: {
+    provider: string
+    base_url: string
+    api_key: string
+  }): Promise<FetchModelsResponse> {
+    return request<FetchModelsResponse>("/api/model_configs/fetch-models", {
       method: "POST",
       body: data,
     });
   },
 
+  /**
+   * 创建模型配置
+   */
   async create(data: ModelConfigCreate): Promise<ModelConfig> {
-    return request<ModelConfig>("/api/model-configs/", {
+    return request<ModelConfig>("/api/model_configs/", {
       method: "POST",
       body: data,
     });
   },
 
+  /**
+   * 更新模型配置
+   */
   async update(configId: number, data: ModelConfigUpdate): Promise<ModelConfig> {
-    return request<ModelConfig>(`/api/model-configs/${configId}`, {
+    return request<ModelConfig>(`/api/model_configs/${configId}`, {
       method: "PUT",
       body: data,
     });
   },
 
-  async delete(configId: number): Promise<{ success: boolean }> {
-    return request<{ success: boolean }>(`/api/model-configs/${configId}`, {
-      method: "DELETE",
-    });
+  /**
+   * 删除模型配置
+   */
+  async delete(configId: number): Promise<void> {
+    return request(`/api/model_configs/${configId}`, { method: "DELETE" });
   },
 
-  async checkHealth(configId: number): Promise<HealthCheckResponse> {
-    return request<HealthCheckResponse>(`/api/model-configs/${configId}/health`, {
-      method: "POST",
-    });
-  },
-
+  /**
+   * 设置默认模型配置
+   */
   async setDefault(configId: number): Promise<ModelConfig> {
-    return request<ModelConfig>(`/api/model-configs/${configId}/default`, {
+    return request<ModelConfig>(`/api/model_configs/${configId}/default`, {
       method: "PUT",
+    });
+  },
+
+  /**
+   * 健康检查
+   */
+  async checkHealth(configId: number): Promise<{ status: string; latency?: number; error?: string }> {
+    return request(`/api/model_configs/${configId}/health`, {
+      method: "POST",
     });
   },
 };
