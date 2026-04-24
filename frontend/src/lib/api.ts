@@ -35,10 +35,8 @@ import type {
   ModelConfigListResponse,
   ModelConfigCreate,
   ModelConfigUpdate,
-  ModelItem,
   ProvidersListResponse,
   FetchModelsResponse,
-  HealthCheckResponse,
 } from "@/types";
 
 // ==================== Configuration ====================
