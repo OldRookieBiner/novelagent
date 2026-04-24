@@ -94,7 +94,7 @@ app.include_router(outline.router, prefix="/api/projects", tags=["outline"])
 app.include_router(chapters.router, prefix="/api/projects", tags=["chapters"])
 app.include_router(settings_api.router, prefix="/api/settings", tags=["settings"])
 app.include_router(agent_prompts.router, prefix="/api", tags=["agent-prompts"])
-app.include_router(model_configs.router, prefix="/api/model-configs", tags=["model-configs"])
+app.include_router(model_configs.router, prefix="/api/model_configs", tags=["model-configs"])
 app.include_router(workflow.router, prefix="/api/projects", tags=["workflow"])
 
 
