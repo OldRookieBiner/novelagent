@@ -220,17 +220,6 @@ const data = parseSSEData(event.data)          // 解析 data 字段
 
 ## Gotchas
 
-### 新功能开发前的架构检查
-
-在开发任何涉及 AI 生成、工作流、状态管理的新功能前，必须回答：
-1. 这个功能是否需要作为 LangGraph 节点？
-2. 状态如何与 NovelState 集成？
-3. 是否需要检查点支持？
-
-如果不确定，先查看 `backend/app/agents/` 目录下的现有实现。
-
----
-
 ### v0.6.0 模型配置
 
 用户模型配置存储在 `model_configs` 表，API Key 使用 AES 加密。LLM 服务优先使用模型配置，回退到用户设置：
@@ -255,17 +244,6 @@ const controller = new AbortController()
 await outlineApi.createStream(projectId, callbacks, { signal: controller.signal })
 // 取消请求
 controller.abort()
-```
-
-### SSE 流式传输换行符
-
-`data:` 行包含换行符会破坏 SSE 格式。后端 JSON 编码：
-```python
-yield f"data: {json.dumps(chunk)}\n\n"
-```
-前端使用 `sseParser.ts` 解析：
-```typescript
-import { parseSSEEventBlock, parseSSEData } from '@/lib/sseParser'
 ```
 
 ### TipTap 纯文本内容转换
