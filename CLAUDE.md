@@ -9,7 +9,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | 版本 | 状态 | 说明 |
 |------|------|------|
 | v0.2.0 | 已发布 | Web 应用，React + FastAPI + PostgreSQL |
-| v0.6.2 | 当前 | LangGraph 工作流集成、SSE 流式传输、暂停/恢复 |
+| v0.6.2 | 已发布 | LangGraph 工作流集成、SSE 流式传输、暂停/恢复 |
+| v0.6.4 | 当前 | 多模型配置、Coding Plan API、模型选择 |
 
 ---
 
