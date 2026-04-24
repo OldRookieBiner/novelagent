@@ -287,7 +287,7 @@ export default function OutlineWorkflow({
     )
   }
 
-  // Stage: outline_generating - show generate button
+  // Stage: outline - show generate button
   if (!outline.title && !outline.summary) {
     return (
       <Card className="flex-1">
@@ -306,7 +306,7 @@ export default function OutlineWorkflow({
     )
   }
 
-  // Stage: outline_confirming - show outline for review/edit
+  // Stage: outline - show outline for review/edit
   if (!outline.confirmed) {
     const canConfirm = outline.title && outline.summary
 
@@ -386,7 +386,7 @@ export default function OutlineWorkflow({
     )
   }
 
-  // Stage: chapter_outlines_generating
+  // Stage: chapter_outlines
   return (
     <Card className="flex-1">
       <CardHeader>
