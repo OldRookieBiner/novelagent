@@ -151,8 +151,7 @@ export default function ProjectDetail() {
       }
 
       // Refresh chapter outlines if we're in writing stage
-      if (stage === 'chapter_outlines' || stage === 'writing')
-      {
+      if (stage === 'chapter_outlines' || stage === 'writing') {
         const chaptersData = await chapterOutlinesApi.list(parseInt(id!))
         setChapterOutlines(chaptersData)
         setProjectChapterOutlines(chaptersData)
@@ -185,8 +184,7 @@ export default function ProjectDetail() {
       }
       // Check if all confirmed, update stage
       const allConfirmed = chaptersData.every(c => c.confirmed)
-      if (allConfirmed && project && project.workflow_state?.stage !== 'writing')
-      {
+      if (allConfirmed && project && project.workflow_state?.stage !== 'writing') {
         await projectsApi.update(project.id, { stage: 'writing' })
         const updatedProject = await projectsApi.get(project.id)
         setProject(updatedProject)
