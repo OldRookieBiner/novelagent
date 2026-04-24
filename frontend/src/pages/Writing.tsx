@@ -365,14 +365,13 @@ export default function Writing() {
               </Button>
             ) : (
               <>
-                <Button onClick={handleGenerate}>AI 生成</Button>
+                <Button onClick={handleGenerate}>
+                  {wordCount > 0 ? '重新生成' : 'AI 生成'}
+                </Button>
                 {wordCount > 0 && (
                   <>
                     <Button variant="outline" onClick={() => setMode('edit')}>
                       编辑
-                    </Button>
-                    <Button variant="outline" onClick={handleGenerate}>
-                      重新生成
                     </Button>
                     <Button
                       variant="outline"
