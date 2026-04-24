@@ -34,6 +34,38 @@ def _clean_chapter_title(title: str) -> str:
     return title.strip()
 
 
+def clean_chapter_content(content: str) -> str:
+    """清理章节内容，移除 LLM 可能添加的结尾数字
+
+    某些 LLM 会在生成内容末尾添加字数统计等数字，此函数移除这些多余的数字。
+    只移除独立成行的数字，不移除段落中的数字。
+
+    Args:
+        content: 原始章节内容
+
+    Returns:
+        清理后的章节内容
+
+    Examples:
+        >>> clean_chapter_content("正文内容\\n\\n3247")
+        '正文内容'
+        >>> clean_chapter_content("正文内容3247")
+        '正文内容3247'
+    """
+    if not content:
+        return content
+
+    result = content.strip()
+
+    # 循环移除结尾的纯数字行，直到没有更多匹配
+    # 使用循环处理多个连续的结尾数字行
+    pattern = re.compile(r'\n+\s*\d+\s*$')
+    while pattern.search(result):
+        result = pattern.sub('', result)
+
+    return result
+
+
 def parse_single_chapter_outline(response: str, chapter_number: int) -> dict:
     """解析单章节大纲（增强版）
 
@@ -422,6 +454,9 @@ async def generate_chapter_content_node(state: NovelState) -> NovelState:
 
     # 调用 LLM 生成内容
     content = await llm.chat([{"role": "user", "content": prompt}])
+
+    # 后处理：移除结尾的纯数字（可能是 LLM 自动添加的字数）
+    content = clean_chapter_content(content)
 
     # 计算字数
     word_count = len(content)
