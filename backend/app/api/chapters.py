@@ -21,6 +21,7 @@ from app.schemas.chapter import (
     ReviewRequest,
     ReviewResponse
 )
+from app.schemas.outline import ChapterOutlinesGenerateRequest
 from app.utils.auth import get_current_user
 from app.utils.workflow import get_or_create_workflow_state
 from app.agents.state import (
@@ -145,6 +146,7 @@ async def list_chapter_outlines(
 @router.post("/{project_id}/chapter-outlines")
 async def create_chapter_outlines(
     project_id: int,
+    request: ChapterOutlinesGenerateRequest = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -193,7 +195,24 @@ async def create_chapter_outlines(
     db.commit()
 
     # Get LLM service
-    llm = get_llm_for_user(current_user.id, user_settings, db)
+    # 如果指定了 llm_config_id，使用指定的模型配置
+    llm_config_id = request.llm_config_id if request else None
+    if llm_config_id:
+        # 验证模型配置属于当前用户
+        config = db.query(ModelConfig).filter(
+            ModelConfig.id == llm_config_id,
+            ModelConfig.user_id == current_user.id
+        ).first()
+        if config:
+            llm = get_llm_service_from_config(config, current_user.id)
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Model config not found"
+            )
+    else:
+        # 使用默认模型（优先使用模型配置，回退到用户设置）
+        llm = get_llm_for_user(current_user.id, user_settings, db)
 
     # Prepare state for chapter outline generation
     state = {

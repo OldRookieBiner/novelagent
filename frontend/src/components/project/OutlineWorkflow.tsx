@@ -10,6 +10,7 @@ import type { Outline, ChapterOutline } from '@/types'
 interface OutlineWorkflowProps {
   projectId: number
   outline: Outline
+  modelId?: number  // 用户选择的模型 ID
   onOutlineUpdate: (outline: Outline) => void
   onStageChange: (stage: string, skipRefresh?: boolean) => void
   onGeneratingChange?: (isGenerating: boolean) => void  // 生成状态变化回调
@@ -65,6 +66,7 @@ function textToOutline(text: string): { title: string; summary: string; plot_poi
 export default function OutlineWorkflow({
   projectId,
   outline,
+  modelId,
   onOutlineUpdate,
   onStageChange,
   onGeneratingChange,
@@ -126,7 +128,7 @@ export default function OutlineWorkflow({
           setIsStreaming(false)
           toast.error(`生成大纲失败: ${error}`)
         },
-      }, { signal: controller.signal })
+      }, { signal: controller.signal }, modelId)
     } catch (err) {
       setIsStreaming(false)
       toast.error('生成大纲失败，请检查 API Key 配置')
@@ -192,7 +194,7 @@ export default function OutlineWorkflow({
           setIsGeneratingChapters(false)
           toast.error(`生成章节大纲失败: ${error}`)
         },
-      }, { signal: controller.signal })
+      }, { signal: controller.signal }, modelId)
     } catch (err) {
       setIsGeneratingChapters(false)
       toast.error('生成章节大纲失败，请检查 API Key 配置')

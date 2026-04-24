@@ -46,6 +46,7 @@ export default function ProjectDetail() {
   const [inspirationData, setInspirationData] = useState<InspirationData | null>(null)
   const [inspirationTemplate, setInspirationTemplate] = useState('')
   const [showInspirationEditor, setShowInspirationEditor] = useState(false)
+  const [selectedModelId, setSelectedModelId] = useState<number | undefined>()  // 用户选择的模型 ID
 
   // 返回确认弹窗状态
   const [isGenerating, setIsGenerating] = useState(false)
@@ -211,9 +212,10 @@ export default function ProjectDetail() {
   }
 
   // 灵感采集 handlers
-  const handleInspirationSubmit = (data: InspirationData) => {
+  const handleInspirationSubmit = (data: InspirationData, modelId?: number) => {
     setInspirationData(data)
     setInspirationTemplate(generateInspirationTemplate(data))
+    setSelectedModelId(modelId)
     setShowInspirationEditor(true)
   }
 
@@ -570,6 +572,7 @@ export default function ProjectDetail() {
               <OutlineWorkflow
                 projectId={project.id}
                 outline={outline}
+                modelId={selectedModelId}
                 onOutlineUpdate={handleOutlineUpdate}
                 onStageChange={handleStageChange}
                 onGeneratingChange={setIsGenerating}

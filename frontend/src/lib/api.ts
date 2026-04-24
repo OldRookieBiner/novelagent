@@ -228,14 +228,18 @@ export const outlineApi = {
    * @param projectId - 项目 ID
    * @param callbacks - 回调函数
    * @param options - 流式请求选项（包括 AbortSignal 用于取消）
+   * @param llmConfigId - 可选的模型配置 ID
    */
   async createStream(
     projectId: number,
     callbacks: OutlineStreamCallbacks,
-    options?: StreamOptions
+    options?: StreamOptions,
+    llmConfigId?: number
   ): Promise<void> {
     const token = getSessionToken();
-    const headers: HeadersInit = {};
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+    };
 
     if (token) {
       const credentials = btoa(`${token}:`);
@@ -246,6 +250,7 @@ export const outlineApi = {
       method: "POST",
       headers,
       signal: options?.signal,  // 传递 AbortSignal
+      body: JSON.stringify(llmConfigId ? { llm_config_id: llmConfigId } : {}),
     });
 
     if (!response.ok) {
@@ -363,14 +368,18 @@ export const chapterOutlinesApi = {
    * @param projectId - 项目 ID
    * @param callbacks - 回调函数
    * @param options - 流式请求选项（包括 AbortSignal 用于取消）
+   * @param llmConfigId - 可选的模型配置 ID
    */
   async createStream(
     projectId: number,
     callbacks: ChapterOutlineStreamCallbacks,
-    options?: StreamOptions
+    options?: StreamOptions,
+    llmConfigId?: number
   ): Promise<void> {
     const token = getSessionToken();
-    const headers: HeadersInit = {};
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+    };
 
     if (token) {
       const credentials = btoa(`${token}:`);
@@ -381,6 +390,7 @@ export const chapterOutlinesApi = {
       method: "POST",
       headers,
       signal: options?.signal,  // 传递 AbortSignal
+      body: JSON.stringify(llmConfigId ? { llm_config_id: llmConfigId } : {}),
     });
 
     if (!response.ok) {
