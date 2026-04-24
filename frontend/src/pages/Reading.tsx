@@ -87,6 +87,22 @@ export default function Reading() {
     }
   }
 
+  // 确认章节大纲
+  const handleConfirmOutline = async () => {
+    if (!id || !currentOutline) return
+
+    try {
+      await chapterOutlinesApi.confirm(parseInt(id), chapterNumber)
+      // 刷新数据
+      const chaptersData = await chapterOutlinesApi.list(parseInt(id))
+      setChapterOutlines(chaptersData)
+      const outline = chaptersData.find(c => c.chapter_number === chapterNumber)
+      setCurrentOutline(outline || null)
+    } catch (err) {
+      console.error('Failed to confirm chapter outline:', err)
+    }
+  }
+
   const goToChapter = (num: number) => {
     navigate(`/project/${id}/read/${num}`)
   }
@@ -198,11 +214,18 @@ export default function Reading() {
                 >
                   {isReviewing ? '审核中...' : '审核'}
                 </Button>
-                <Link to={`/project/${id}/write`}>
-                  <Button variant="outline">
-                    {chapter.content ? '编辑' : '去写作'}
+                {/* 根据章节大纲确认状态显示不同按钮 */}
+                {currentOutline?.confirmed ? (
+                  <Link to={`/project/${id}/write`}>
+                    <Button variant="outline">
+                      {chapter.content ? '编辑' : '去写作'}
+                    </Button>
+                  </Link>
+                ) : (
+                  <Button variant="outline" onClick={handleConfirmOutline}>
+                    确认章节大纲
                   </Button>
-                </Link>
+                )}
               </div>
 
               <div className="flex gap-2">
