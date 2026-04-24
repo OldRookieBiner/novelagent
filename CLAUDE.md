@@ -150,6 +150,28 @@ const data = parseSSEData(event.data)          // 解析 data 字段
 
 ---
 
+## 架构约束
+
+### LangGraph 工作流框架（强制）
+
+**LangGraph 是本项目的核心工作流框架，所有新功能开发和优化必须基于 LangGraph 实现。**
+
+| 约束 | 说明 |
+|------|------|
+| 工作流节点 | 所有 AI 生成流程必须作为 LangGraph 节点实现 |
+| 状态管理 | 使用 NovelState (app/agents/state.py) 管理工作流状态 |
+| 检查点 | 使用 WorkflowCheckpoint 实现暂停/恢复功能 |
+| 流式传输 | 通过 LangGraph astream_events 实现 SSE 流式输出 |
+
+**禁止行为：**
+- ❌ 直接在 API 路由中调用 LLM 服务（应通过 LangGraph 节点）
+- ❌ 绕过 StateGraph 实现新的 AI 生成流程
+- ❌ 在节点外部管理工作流状态
+
+**历史教训 (v0.6.2)：** 早期版本虽然在技术栈声明使用 LangGraph，但实际开发中绕过框架直接实现功能，导致 v0.6.2 需要 **大规模重构** 才能正确集成 LangGraph。任何新功能开发前，必须先确认 LangGraph 的集成方式。
+
+---
+
 ## Development Process
 
 使用 **Superpowers skills** 主导开发：
@@ -157,6 +179,7 @@ const data = parseSSEData(event.data)          // 解析 data 字段
 | 阶段 | 核心技能/命令 | 强制要求 |
 |------|--------------|----------|
 | 需求/设计 | `superpowers:brainstorming` | 新功能必须先设计讨论，**不得跳过** |
+| 架构检查 | 确认 LangGraph 集成方式 | 涉及 AI/工作流的功能必须先确认节点设计 |
 | 计划编写 | `superpowers:writing-plans` | 设计确认后编写详细实现计划 |
 | 计划执行 | `superpowers:executing-plans` | 按计划逐步执行 |
 | 并行开发 | `superpowers:subagent-driven-development` | 并行执行独立任务 |
@@ -196,6 +219,17 @@ const data = parseSSEData(event.data)          // 解析 data 字段
 ---
 
 ## Gotchas
+
+### 新功能开发前的架构检查
+
+在开发任何涉及 AI 生成、工作流、状态管理的新功能前，必须回答：
+1. 这个功能是否需要作为 LangGraph 节点？
+2. 状态如何与 NovelState 集成？
+3. 是否需要检查点支持？
+
+如果不确定，先查看 `backend/app/agents/` 目录下的现有实现。
+
+---
 
 ### v0.6.0 模型配置
 
