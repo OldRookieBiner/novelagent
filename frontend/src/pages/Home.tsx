@@ -1,6 +1,7 @@
 // frontend/src/pages/Home.tsx
 import { useState, useEffect } from 'react'
 import { Plus } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
@@ -82,7 +83,7 @@ export default function Home() {
       setDeleteTarget(null)
     } catch (err) {
       console.error('Failed to delete project:', err)
-      alert(err instanceof Error ? err.message : '删除项目失败')
+      toast.error(err instanceof Error ? err.message : '删除项目失败')
     }
   }
 

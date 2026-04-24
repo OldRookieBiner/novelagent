@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { projectsApi, outlineApi, chapterOutlinesApi, workflowApi } from '@/lib/api'
@@ -191,7 +192,7 @@ export default function ProjectDetail() {
       }
     } catch (err) {
       console.error('Failed to confirm chapter outline:', err)
-      alert('确认章节大纲失败')
+      toast.error('确认章节大纲失败')
     }
   }
 

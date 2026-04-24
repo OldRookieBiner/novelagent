@@ -1,5 +1,6 @@
 // frontend/src/components/project/OutlineWorkflow.tsx
 import { useState, useEffect, useRef } from 'react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
@@ -123,12 +124,12 @@ export default function OutlineWorkflow({
         },
         onError: (error) => {
           setIsStreaming(false)
-          alert(`生成大纲失败: ${error}`)
+          toast.error(`生成大纲失败: ${error}`)
         },
       }, { signal: controller.signal })
     } catch (err) {
       setIsStreaming(false)
-      alert('生成大纲失败，请检查 API Key 配置')
+      toast.error('生成大纲失败，请检查 API Key 配置')
     } finally {
       setLoading(false)
       abortControllerRef.current = null
@@ -147,7 +148,7 @@ export default function OutlineWorkflow({
       onOutlineUpdate(newOutline)
       setEditing(false)
     } catch (err) {
-      alert('保存大纲失败')
+      toast.error('保存大纲失败')
     } finally {
       setLoading(false)
     }
@@ -161,7 +162,7 @@ export default function OutlineWorkflow({
       const updatedOutline = await outlineApi.get(projectId)
       onOutlineUpdate(updatedOutline)
     } catch (err) {
-      alert('确认大纲失败')
+      toast.error('确认大纲失败')
     } finally {
       setLoading(false)
     }
@@ -189,12 +190,12 @@ export default function OutlineWorkflow({
         },
         onError: (error) => {
           setIsGeneratingChapters(false)
-          alert(`生成章节大纲失败: ${error}`)
+          toast.error(`生成章节大纲失败: ${error}`)
         },
       }, { signal: controller.signal })
     } catch (err) {
       setIsGeneratingChapters(false)
-      alert('生成章节大纲失败，请检查 API Key 配置')
+      toast.error('生成章节大纲失败，请检查 API Key 配置')
     } finally {
       abortControllerRef.current = null
     }
