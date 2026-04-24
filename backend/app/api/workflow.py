@@ -516,5 +516,42 @@ async def cancel_workflow(
     }
 
 
+class UpdateStageRequest(BaseModel):
+    """更新工作流阶段请求"""
+    stage: str
+
+
+@router.put("/{project_id}/workflow/stage")
+async def update_workflow_stage(
+    project_id: int,
+    request: UpdateStageRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    更新工作流阶段。
+
+    用于手动切换工作流阶段，例如：
+    - 灵感采集完成后切换到大纲生成
+    - 章节大纲确认后切换到写作
+    """
+    from app.utils.workflow import get_or_create_workflow_state
+
+    # 验证项目所有权
+    get_project_with_ownership(project_id, current_user.id, db)
+
+    # 获取或创建工作流状态
+    workflow_state = get_or_create_workflow_state(db, project_id)
+
+    # 更新阶段
+    workflow_state.stage = request.stage
+    db.commit()
+
+    return {
+        "message": "Stage updated",
+        "stage": request.stage
+    }
+
+
 # ========== Export ==========
 __all__ = ["router"]

@@ -137,7 +137,7 @@ export default function ProjectDetail() {
     if (!project) return
     try {
       if (!skipRefresh) {
-        await projectsApi.update(project.id, { stage })
+        await workflowApi.updateStage(project.id, stage)
       }
       // Fetch updated project detail
       const updatedProject = await projectsApi.get(project.id)
@@ -185,7 +185,7 @@ export default function ProjectDetail() {
       // Check if all confirmed, update stage
       const allConfirmed = chaptersData.every(c => c.confirmed)
       if (allConfirmed && project && project.workflow_state?.stage !== 'writing') {
-        await projectsApi.update(project.id, { stage: 'writing' })
+        await workflowApi.updateStage(project.id, 'writing')
         const updatedProject = await projectsApi.get(project.id)
         setProject(updatedProject)
       }
@@ -226,7 +226,7 @@ export default function ProjectDetail() {
         inspiration_template: inspirationTemplate,
       })
       // 更新 stage 到大纲生成
-      await projectsApi.update(project.id, { stage: 'outline' })
+      await workflowApi.updateStage(project.id, 'outline')
       // 刷新数据
       const updatedProject = await projectsApi.get(project.id)
       setProject(updatedProject)
@@ -253,7 +253,7 @@ export default function ProjectDetail() {
         plot_points: [],
       })
       // 更新 stage 到大纲生成
-      await projectsApi.update(project.id, { stage: 'outline' })
+      await workflowApi.updateStage(project.id, 'outline')
       // 刷新数据
       const updatedProject = await projectsApi.get(project.id)
       setProject(updatedProject)

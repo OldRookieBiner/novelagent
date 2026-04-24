@@ -305,4 +305,35 @@ export const workflowApi = {
       throw new Error(errorData.detail || `HTTP ${response.status}`)
     }
   },
+
+  /**
+   * 更新工作流阶段
+   * @param projectId - 项目 ID
+   * @param stage - 新阶段
+   */
+  async updateStage(projectId: number, stage: string): Promise<void>
+  {
+    const token = getSessionToken()
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    }
+
+    if (token)
+    {
+      const credentials = btoa(`${token}:`)
+      headers['Authorization'] = `Basic ${credentials}`
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/workflow/stage`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ stage }),
+    })
+
+    if (!response.ok)
+    {
+      const errorData = await response.json().catch(() => ({ detail: '更新阶段失败' }))
+      throw new Error(errorData.detail || `HTTP ${response.status}`)
+    }
+  },
 }

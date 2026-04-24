@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import TipTapEditor from '@/components/common/TipTapEditor'
 import ErrorMessage from '@/components/common/ErrorMessage'
 import StepNavigation from '@/components/project/StepNavigation'
-import { projectsApi, chapterOutlinesApi, chaptersApi } from '@/lib/api'
+import { projectsApi, chapterOutlinesApi, chaptersApi, workflowApi } from '@/lib/api'
 import { getSessionToken } from '@/lib/api'
 import type { ProjectDetail, ChapterOutline } from '@/types'
 
@@ -49,7 +49,7 @@ export default function Writing() {
       if (currentStage !== 'writing' &&
           currentStage !== 'review' &&
           currentStage !== 'complete') {
-        await projectsApi.update(projectData.id, { stage: 'writing' })
+        await workflowApi.updateStage(projectData.id, 'writing')
         const updatedProject = await projectsApi.get(parseInt(id))
         setProject(updatedProject)
       }

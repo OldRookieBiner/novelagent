@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ChevronLeft, ChevronRight, Check, X } from 'lucide-react'
 import StepNavigation from '@/components/project/StepNavigation'
-import { projectsApi, chapterOutlinesApi, chaptersApi } from '@/lib/api'
+import { projectsApi, chapterOutlinesApi, chaptersApi, workflowApi } from '@/lib/api'
 import type { ProjectDetail, ChapterOutline, Chapter } from '@/types'
 
 export default function Reading() {
@@ -33,7 +33,7 @@ export default function Reading() {
 
       // Ensure stage is set to review when entering reading/review page
       if (projectData.workflow_state?.stage === 'writing') {
-        await projectsApi.update(projectData.id, { stage: 'review' })
+        await workflowApi.updateStage(projectData.id, 'review')
         const updatedProject = await projectsApi.get(parseInt(id))
         setProject(updatedProject)
       } else {
