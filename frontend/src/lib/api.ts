@@ -26,11 +26,9 @@ import type {
   ChatMessage,
   ChatResponse,
   ApiError,
-  AgentPrompt,
-  AgentPromptListResponse,
-  AgentPromptUpdate,
-  ProjectAgentPromptItem,
-  ProjectAgentPromptsResponse,
+  SystemPrompt,
+  SystemPromptListResponse,
+  SystemPromptUpdate,
   ModelConfig,
   ModelConfigListResponse,
   ModelConfigCreate,
@@ -455,57 +453,27 @@ export const collectedInfoApi = {
   },
 };
 
-// ==================== Agent Prompts API ====================
+// ==================== System Prompts API ====================
 
-export const agentPromptsApi = {
-  async getGlobal(): Promise<AgentPromptListResponse> {
-    return request<AgentPromptListResponse>("/api/agent-prompts");
+export const systemPromptsApi = {
+  async list(): Promise<SystemPromptListResponse> {
+    return request<SystemPromptListResponse>("/api/system/prompts");
   },
 
-  async updateGlobal(
+  async update(
     agentType: string,
-    data: AgentPromptUpdate
-  ): Promise<AgentPrompt> {
-    return request<AgentPrompt>(`/api/agent-prompts/${agentType}`, {
+    data: SystemPromptUpdate
+  ): Promise<SystemPrompt> {
+    return request<SystemPrompt>(`/api/system/prompts/${agentType}`, {
       method: "PUT",
       body: data,
     });
   },
 
-  async resetGlobal(agentType: string): Promise<AgentPrompt> {
-    return request<AgentPrompt>(`/api/agent-prompts/${agentType}/reset`, {
+  async reset(agentType: string): Promise<SystemPrompt> {
+    return request<SystemPrompt>(`/api/system/prompts/${agentType}/reset`, {
       method: "POST",
     });
-  },
-
-  async getProject(projectId: number): Promise<ProjectAgentPromptsResponse> {
-    return request<ProjectAgentPromptsResponse>(
-      `/api/projects/${projectId}/agent-prompts`
-    );
-  },
-
-  async setProjectCustom(
-    projectId: number,
-    agentType: string,
-    data: AgentPromptUpdate
-  ): Promise<ProjectAgentPromptItem> {
-    return request<ProjectAgentPromptItem>(
-      `/api/projects/${projectId}/agent-prompts/${agentType}`,
-      {
-        method: "PUT",
-        body: data,
-      }
-    );
-  },
-
-  async deleteProjectCustom(
-    projectId: number,
-    agentType: string
-  ): Promise<{ success: boolean }> {
-    return request<{ success: boolean }>(
-      `/api/projects/${projectId}/agent-prompts/${agentType}`,
-      { method: "DELETE" }
-    );
   },
 };
 
