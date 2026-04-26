@@ -1,6 +1,6 @@
 // frontend/src/pages/ProjectDetail.tsx
 import { useState, useEffect } from 'react'
-import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom'
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -48,7 +48,7 @@ export default function ProjectDetail() {
     refreshProject,
     refreshOutline,
     refreshChapterOutlines,
-    refreshWorkflowState,
+    refreshWorkflowState: _refreshWorkflowState,
   } = useProjectData(projectId)
 
   // 视图状态
@@ -68,9 +68,9 @@ export default function ProjectDetail() {
   const [showReturnConfirm, setShowReturnConfirm] = useState(false)
   const [showResumeDialog, setShowResumeDialog] = useState(false)
 
-  // 工作流 store
-  const setWorkflowStage = useWorkflowStore((state) => state.setStage)
-  const setWorkflowProjectId = useWorkflowStore((state) => state.setProjectId)
+  // 工作流 store (暂未使用)
+  const _setWorkflowStage = useWorkflowStore((state) => state.setStage)
+  const _setWorkflowProjectId = useWorkflowStore((state) => state.setProjectId)
 
   // 恢复弹窗逻辑
   useEffect(() => {
@@ -110,6 +110,7 @@ export default function ProjectDetail() {
       }
     } catch (err) {
       console.error('Failed to update stage:', err)
+      toast.error('切换阶段失败')
     }
   }
 
@@ -174,6 +175,7 @@ export default function ProjectDetail() {
       setShowInspirationEditor(false)
     } catch (err) {
       console.error('Failed to confirm inspiration:', err)
+      toast.error('确认灵感失败')
     }
   }
 
@@ -195,6 +197,7 @@ export default function ProjectDetail() {
       setSearchParams({})
     } catch (err) {
       console.error('Failed to update inspiration:', err)
+      toast.error('更新灵感失败')
     }
   }
 

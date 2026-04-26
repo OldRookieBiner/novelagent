@@ -1,12 +1,10 @@
 // frontend/src/components/project/HistoryContent.tsx
-import { Link } from 'react-router-dom'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import InspirationForm from '@/components/project/InspirationForm'
 import InspirationDisplay from '@/components/project/InspirationDisplay'
 import ChapterList from '@/components/project/ChapterList'
 import ChapterOutlineDetail from '@/components/project/ChapterOutlineDetail'
-import type { Outline, ChapterOutline, CollectedInfo } from '@/types'
+import type { Outline, ChapterOutline } from '@/types'
 import type { InspirationData } from '@/lib/inspiration'
 
 interface HistoryContentProps

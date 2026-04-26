@@ -178,7 +178,7 @@ export async function createSSEStream(
         // 处理剩余缓冲区
         if (buffer.trim())
         {
-          const [remaining, events] = processSSEBuffer(buffer, '')
+          const [_remaining, events] = processSSEBuffer(buffer, '')
           for (const event of events)
           {
             const parsedData = parseSSEData(event.data)

@@ -2,7 +2,7 @@
  * API client for NovelAgent frontend
  */
 
-import { parseSSEEventBlock, parseSSEData, createSSEStream } from './sseParser'
+import { createSSEStream } from './sseParser'
 import type {
   User,
   LoginRequest,
