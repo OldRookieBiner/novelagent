@@ -2,7 +2,7 @@
  * API client for NovelAgent frontend
  */
 
-import { parseSSEEventBlock, parseSSEData } from './sseParser'
+import { parseSSEEventBlock, parseSSEData, createSSEStream } from './sseParser'
 import type {
   User,
   LoginRequest,
@@ -224,7 +224,7 @@ export const outlineApi = {
   },
 
   /**
-   * Generate outline with streaming - calls callbacks for each chunk
+   * Generate outline with streaming - uses unified SSE handler
    * @param projectId - 项目 ID
    * @param callbacks - 回调函数
    * @param options - 流式请求选项（包括 AbortSignal 用于取消）
@@ -236,93 +236,23 @@ export const outlineApi = {
     options?: StreamOptions,
     llmConfigId?: number
   ): Promise<void> {
-    const token = getSessionToken();
-    const headers: HeadersInit = {
-      "Content-Type": "application/json",
-    };
-
-    if (token) {
-      const credentials = btoa(`${token}:`);
-      headers["Authorization"] = `Basic ${credentials}`;
-    }
-
-    const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/outline`, {
-      method: "POST",
-      headers,
-      signal: options?.signal,  // 传递 AbortSignal
-      body: JSON.stringify(llmConfigId ? { llm_config_id: llmConfigId } : {}),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ detail: '生成失败' }));
-      callbacks.onError(errorData.detail || `HTTP ${response.status}`);
-      return;
-    }
-
-    const reader = response.body?.getReader();
-    if (!reader) {
-      callbacks.onError('无法获取数据流');
-      return;
-    }
-
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    // 使用共享 SSE 解析器处理缓冲区
-    const processBuffer = (buf: string): string => {
-      let remaining = buf;
-
-      // 处理所有完整的 SSE 事件（以 \n\n 结尾）
-      while (true) {
-        const eventEndIndex = remaining.indexOf('\n\n');
-        if (eventEndIndex === -1) {
-          break;
+    await createSSEStream(
+      {
+        url: `/api/projects/${projectId}/outline`,
+        method: 'POST',
+        body: llmConfigId ? { llm_config_id: llmConfigId } : {},
+        signal: options?.signal,
+      },
+      (type, data) => {
+        if (type === 'done') {
+          callbacks.onDone(data as OutlineStreamResult)
+        } else if (type !== 'error') {
+          // chunk 事件
+          callbacks.onChunk(typeof data === 'string' ? data : String(data))
         }
-
-        const eventBlock = remaining.slice(0, eventEndIndex);
-        remaining = remaining.slice(eventEndIndex + 2);
-
-        // 使用共享解析器
-        const event = parseSSEEventBlock(eventBlock);
-        if (event.data) {
-          const parsedData = parseSSEData(event.data);
-
-          if (event.type === 'done') {
-            callbacks.onDone(parsedData as OutlineStreamResult);
-          } else if (event.type === 'error') {
-            callbacks.onError(typeof parsedData === 'string' ? parsedData : event.data);
-          } else {
-            // onChunk 接受 string 或对象
-            callbacks.onChunk(typeof parsedData === 'string' ? parsedData : String(parsedData));
-          }
-        }
-      }
-
-      return remaining;
-    };
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-
-        if (done) {
-          // Process any remaining buffer
-          if (buffer.trim()) {
-            processBuffer(buffer);
-          }
-          break;
-        }
-
-        buffer += decoder.decode(value, { stream: true });
-        buffer = processBuffer(buffer);
-      }
-    } catch (err) {
-      // 用户主动取消，不触发错误回调
-      if (err instanceof Error && err.name === 'AbortError') {
-        return;
-      }
-      callbacks.onError(err instanceof Error ? err.message : '未知错误');
-    }
+      },
+      callbacks.onError
+    )
   },
 
   async update(projectId: number, data: OutlineUpdate): Promise<Outline> {
@@ -364,7 +294,7 @@ export const chapterOutlinesApi = {
   },
 
   /**
-   * Generate chapter outlines with SSE streaming - one by one
+   * Generate chapter outlines with SSE streaming - uses unified SSE handler
    * @param projectId - 项目 ID
    * @param callbacks - 回调函数
    * @param options - 流式请求选项（包括 AbortSignal 用于取消）
@@ -376,94 +306,25 @@ export const chapterOutlinesApi = {
     options?: StreamOptions,
     llmConfigId?: number
   ): Promise<void> {
-    const token = getSessionToken();
-    const headers: HeadersInit = {
-      "Content-Type": "application/json",
-    };
-
-    if (token) {
-      const credentials = btoa(`${token}:`);
-      headers["Authorization"] = `Basic ${credentials}`;
-    }
-
-    const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/chapter-outlines`, {
-      method: "POST",
-      headers,
-      signal: options?.signal,  // 传递 AbortSignal
-      body: JSON.stringify(llmConfigId ? { llm_config_id: llmConfigId } : {}),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ detail: '生成失败' }));
-      callbacks.onError(errorData.detail || `HTTP ${response.status}`);
-      return;
-    }
-
-    const reader = response.body?.getReader();
-    if (!reader) {
-      callbacks.onError('无法获取数据流');
-      return;
-    }
-
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    // 使用共享 SSE 解析器处理缓冲区
-    const processBuffer = (buf: string): string => {
-      let remaining = buf;
-
-      // 处理所有完整的 SSE 事件（以 \n\n 结尾）
-      while (true) {
-        const eventEndIndex = remaining.indexOf('\n\n');
-        if (eventEndIndex === -1) {
-          break;
+    await createSSEStream(
+      {
+        url: `/api/projects/${projectId}/chapter-outlines`,
+        method: 'POST',
+        body: llmConfigId ? { llm_config_id: llmConfigId } : {},
+        signal: options?.signal,
+      },
+      (type, data) => {
+        if (type === 'progress') {
+          const progress = data as { chapter_number: number; total: number; chapter: { id: number; chapter_number: number; title: string } }
+          callbacks.onProgress(progress.chapter_number, progress.total, progress.chapter)
+        } else if (type === 'done') {
+          const done = data as { total: number; stage: string }
+          callbacks.onDone(done.total, done.stage)
         }
-
-        const eventBlock = remaining.slice(0, eventEndIndex);
-        remaining = remaining.slice(eventEndIndex + 2);
-
-        // 使用共享解析器
-        const event = parseSSEEventBlock(eventBlock);
-        if (event.data) {
-          const parsedData = parseSSEData(event.data);
-
-          if (event.type === 'progress') {
-            const progress = parsedData as { chapter_number: number; total: number; chapter: { id: number; chapter_number: number; title: string } };
-            callbacks.onProgress(progress.chapter_number, progress.total, progress.chapter);
-          } else if (event.type === 'done') {
-            const done = parsedData as { total: number; stage: string };
-            callbacks.onDone(done.total, done.stage);
-          } else if (event.type === 'error') {
-            callbacks.onError(typeof parsedData === 'string' ? parsedData : event.data);
-          }
-        }
-      }
-
-      return remaining;
-    };
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-
-        if (done) {
-          // Process any remaining buffer
-          if (buffer.trim()) {
-            processBuffer(buffer);
-          }
-          break;
-        }
-
-        buffer += decoder.decode(value, { stream: true });
-        buffer = processBuffer(buffer);
-      }
-    } catch (err) {
-      // 用户主动取消，不触发错误回调
-      if (err instanceof Error && err.name === 'AbortError') {
-        return;
-      }
-      callbacks.onError(err instanceof Error ? err.message : '未知错误');
-    }
+        // error 类型由 onError 回调处理
+      },
+      callbacks.onError
+    )
   },
 
   async update(

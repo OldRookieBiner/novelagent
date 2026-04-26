@@ -4,7 +4,7 @@
  */
 
 import { getSessionToken, StreamOptions } from './api'
-import { parseSSEEventBlock, parseSSEData } from './sseParser'
+import { createSSEStream } from './sseParser'
 import type {
   WorkflowStateResponse,
   WorkflowMode,
@@ -13,6 +13,63 @@ import type {
 
 // 使用空字符串作为相对路径（通过 nginx 代理）或显式 URL
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
+
+// ==================== Helper Functions ====================
+
+/**
+ * 构建认证请求头
+ */
+function buildAuthHeaders(includeContentType = false): HeadersInit
+{
+  const headers: HeadersInit = {}
+
+  if (includeContentType)
+  {
+    headers['Content-Type'] = 'application/json'
+  }
+
+  const token = getSessionToken()
+  if (token)
+  {
+    const credentials = btoa(`${token}:`)
+    headers['Authorization'] = `Basic ${credentials}`
+  }
+
+  return headers
+}
+
+/**
+ * 发送请求并处理错误
+ */
+async function makeRequest<T = void>(
+  url: string,
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+  defaultErrorMsg: string,
+  body?: unknown
+): Promise<T>
+{
+  const headers = buildAuthHeaders(!!body)
+
+  const response = await fetch(`${API_BASE_URL}${url}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  })
+
+  if (!response.ok)
+  {
+    const errorData = await response.json().catch(() => ({ detail: defaultErrorMsg }))
+    throw new Error(errorData.detail || `HTTP ${response.status}`)
+  }
+
+  // 对于 POST/PUT/DELETE 返回 void，对于 GET 返回 JSON
+  if (method === 'GET')
+  {
+    return response.json()
+  }
+
+  return undefined as T
+}
 
 // ==================== Workflow API ====================
 
@@ -38,7 +95,7 @@ export interface WorkflowStreamCallbacks {
 
 export const workflowApi = {
   /**
-   * 运行工作流（SSE 流式）
+   * 运行工作流（SSE 流式）- 使用统一的 SSE 处理器
    * @param projectId - 项目 ID
    * @param callbacks - 回调函数
    * @param options - 流式请求选项（包括 AbortSignal 用于取消）
@@ -49,41 +106,7 @@ export const workflowApi = {
     options?: StreamOptions
   ): Promise<void>
   {
-    const token = getSessionToken()
-    const headers: HeadersInit = {}
-
-    if (token)
-    {
-      const credentials = btoa(`${token}:`)
-      headers['Authorization'] = `Basic ${credentials}`
-    }
-
-    const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/workflow/run`, {
-      method: 'POST',
-      headers,
-      signal: options?.signal,
-    })
-
-    if (!response.ok)
-    {
-      const errorData = await response.json().catch(() => ({ detail: '运行工作流失败' }))
-      callbacks.onError?.(errorData.detail || `HTTP ${response.status}`)
-      return
-    }
-
-    const reader = response.body?.getReader()
-    if (!reader)
-    {
-      callbacks.onError?.('无法获取数据流')
-      return
-    }
-
-    const decoder = new TextDecoder()
-    let buffer = ''
-
-    /**
-     * 处理单个 SSE 事件
-     */
+    // 事件处理函数
     const handleEvent = (eventType: string, data: unknown) =>
     {
       switch (eventType)
@@ -125,68 +148,16 @@ export const workflowApi = {
       }
     }
 
-    /**
-     * 处理缓冲区中的完整事件
-     */
-    const processBuffer = (buf: string): string =>
-    {
-      let remaining = buf
-
-      // 处理所有完整的 SSE 事件（以 \n\n 结尾）
-      while (true)
+    // 使用统一的 SSE 流处理器
+    await createSSEStream(
       {
-        const eventEndIndex = remaining.indexOf('\n\n')
-        if (eventEndIndex === -1)
-        {
-          // 没有完整事件，保留在缓冲区
-          break
-        }
-
-        const eventBlock = remaining.slice(0, eventEndIndex)
-        remaining = remaining.slice(eventEndIndex + 2)
-
-        // 使用共享解析器解析事件
-        const event = parseSSEEventBlock(eventBlock)
-        if (event.data)
-        {
-          // 解析数据（支持 JSON 或纯字符串）
-          const parsedData = parseSSEData(event.data)
-          handleEvent(event.type, parsedData)
-        }
-      }
-
-      return remaining
-    }
-
-    try
-    {
-      while (true)
-      {
-        const { done, value } = await reader.read()
-
-        if (done)
-        {
-          // 处理剩余的缓冲区
-          if (buffer.trim())
-          {
-            processBuffer(buffer)
-          }
-          break
-        }
-
-        buffer += decoder.decode(value, { stream: true })
-        buffer = processBuffer(buffer)
-      }
-    }
-    catch (err)
-    {
-      // 用户主动取消，不触发错误回调
-      if (err instanceof Error && err.name === 'AbortError')
-      {
-        return
-      }
-      callbacks.onError?.(err instanceof Error ? err.message : '未知错误')
-    }
+        url: `/api/projects/${projectId}/workflow/run`,
+        method: 'POST',
+        signal: options?.signal,
+      },
+      handleEvent,
+      (error) => callbacks.onError?.(error)
+    )
   },
 
   /**
@@ -195,27 +166,11 @@ export const workflowApi = {
    */
   async confirmWorkflow(projectId: number): Promise<void>
   {
-    const token = getSessionToken()
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    }
-
-    if (token)
-    {
-      const credentials = btoa(`${token}:`)
-      headers['Authorization'] = `Basic ${credentials}`
-    }
-
-    const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/workflow/confirm`, {
-      method: 'POST',
-      headers,
-    })
-
-    if (!response.ok)
-    {
-      const errorData = await response.json().catch(() => ({ detail: '确认失败' }))
-      throw new Error(errorData.detail || `HTTP ${response.status}`)
-    }
+    await makeRequest<void>(
+      `/api/projects/${projectId}/workflow/confirm`,
+      'POST',
+      '确认失败'
+    )
   },
 
   /**
@@ -225,27 +180,11 @@ export const workflowApi = {
    */
   async getWorkflowState(projectId: number): Promise<WorkflowStateResponse>
   {
-    const token = getSessionToken()
-    const headers: HeadersInit = {}
-
-    if (token)
-    {
-      const credentials = btoa(`${token}:`)
-      headers['Authorization'] = `Basic ${credentials}`
-    }
-
-    const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/workflow/state`, {
-      method: 'GET',
-      headers,
-    })
-
-    if (!response.ok)
-    {
-      const errorData = await response.json().catch(() => ({ detail: '获取状态失败' }))
-      throw new Error(errorData.detail || `HTTP ${response.status}`)
-    }
-
-    return response.json()
+    return makeRequest<WorkflowStateResponse>(
+      `/api/projects/${projectId}/workflow/state`,
+      'GET',
+      '获取状态失败'
+    )
   },
 
   /**
@@ -254,25 +193,11 @@ export const workflowApi = {
    */
   async cancelWorkflow(projectId: number): Promise<void>
   {
-    const token = getSessionToken()
-    const headers: HeadersInit = {}
-
-    if (token)
-    {
-      const credentials = btoa(`${token}:`)
-      headers['Authorization'] = `Basic ${credentials}`
-    }
-
-    const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/workflow/cancel`, {
-      method: 'POST',
-      headers,
-    })
-
-    if (!response.ok)
-    {
-      const errorData = await response.json().catch(() => ({ detail: '取消失败' }))
-      throw new Error(errorData.detail || `HTTP ${response.status}`)
-    }
+    await makeRequest<void>(
+      `/api/projects/${projectId}/workflow/cancel`,
+      'POST',
+      '取消失败'
+    )
   },
 
   /**
@@ -282,28 +207,12 @@ export const workflowApi = {
    */
   async setWorkflowMode(projectId: number, mode: WorkflowMode): Promise<void>
   {
-    const token = getSessionToken()
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    }
-
-    if (token)
-    {
-      const credentials = btoa(`${token}:`)
-      headers['Authorization'] = `Basic ${credentials}`
-    }
-
-    const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/workflow/mode`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify({ mode }),
-    })
-
-    if (!response.ok)
-    {
-      const errorData = await response.json().catch(() => ({ detail: '设置模式失败' }))
-      throw new Error(errorData.detail || `HTTP ${response.status}`)
-    }
+    await makeRequest<void>(
+      `/api/projects/${projectId}/workflow/mode`,
+      'PUT',
+      '设置模式失败',
+      { mode }
+    )
   },
 
   /**
@@ -313,27 +222,11 @@ export const workflowApi = {
    */
   async updateStage(projectId: number, stage: string): Promise<void>
   {
-    const token = getSessionToken()
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    }
-
-    if (token)
-    {
-      const credentials = btoa(`${token}:`)
-      headers['Authorization'] = `Basic ${credentials}`
-    }
-
-    const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/workflow/stage`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify({ stage }),
-    })
-
-    if (!response.ok)
-    {
-      const errorData = await response.json().catch(() => ({ detail: '更新阶段失败' }))
-      throw new Error(errorData.detail || `HTTP ${response.status}`)
-    }
+    await makeRequest<void>(
+      `/api/projects/${projectId}/workflow/stage`,
+      'PUT',
+      '更新阶段失败',
+      { stage }
+    )
   },
 }

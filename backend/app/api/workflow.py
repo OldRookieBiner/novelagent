@@ -16,6 +16,7 @@ from app.models.workflow_state import WorkflowState
 from app.models.settings import UserSettings
 from app.utils.auth import get_current_user
 from app.utils.project import get_project_for_user
+from app.utils.error import format_sse_error
 from app.agents.graph import create_novel_graph_with_checkpointer
 from app.agents.state import NovelState
 
@@ -253,8 +254,8 @@ async def run_workflow(
     # 构建初始状态
     initial_state = build_initial_state(project, outline, workflow_state, llm_config_id)
 
-    # 创建带检查点的图
-    graph = create_novel_graph_with_checkpointer(project_id, "default")
+    # 创建带检查点的图（复用 db 会话）
+    graph = create_novel_graph_with_checkpointer(project_id, "default", db)
 
     # 配置
     config = {
@@ -306,9 +307,8 @@ async def run_workflow(
             yield f"event: done\ndata: {json.dumps({'message': 'Workflow completed'})}\n\n"
 
         except Exception as e:
-            # 发送错误事件
-            error_msg = str(e)
-            yield f"event: error\ndata: {json.dumps({'error': error_msg})}\n\n"
+            # 发送错误事件（已清理敏感信息）
+            yield format_sse_error(e)
 
     return StreamingResponse(
         stream_generator(),

@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import ProjectCard from '@/components/common/ProjectCard'
 import ErrorMessage from '@/components/common/ErrorMessage'
+import { ProjectCardSkeleton } from '@/components/ui/skeleton'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -92,7 +93,13 @@ export default function Home() {
   }
 
   if (loading) {
-    return <div className="text-center py-10">加载中...</div>
+    return (
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <ProjectCardSkeleton key={i} />
+        ))}
+      </div>
+    )
   }
 
   return (

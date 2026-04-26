@@ -160,7 +160,11 @@ def create_novel_graph():
     return graph.compile()
 
 
-def create_novel_graph_with_checkpointer(project_id: int, thread_id: str = "default"):
+def create_novel_graph_with_checkpointer(
+    project_id: int,
+    thread_id: str = "default",
+    db=None
+):
     """
     创建带检查点的小说创作工作流图。
 
@@ -170,6 +174,7 @@ def create_novel_graph_with_checkpointer(project_id: int, thread_id: str = "defa
     Args:
         project_id: 项目 ID
         thread_id: 线程 ID（默认 "default"）
+        db: 可选的数据库会话，用于会话复用
 
     Returns:
         编译后的 StateGraph 实例
@@ -177,7 +182,7 @@ def create_novel_graph_with_checkpointer(project_id: int, thread_id: str = "defa
     from app.agents.checkpointer import get_checkpoint_saver
 
     graph = create_novel_graph()
-    checkpointer = get_checkpoint_saver(project_id, thread_id)
+    checkpointer = get_checkpoint_saver(project_id, thread_id, db)
 
     return graph.with_checkpointer(checkpointer)
 

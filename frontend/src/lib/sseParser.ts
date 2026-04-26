@@ -99,3 +99,113 @@ export function parseSSEData(data: string): unknown
     return data
   }
 }
+
+/**
+ * SSE 流式请求选项
+ */
+export interface SSEStreamOptions
+{
+  url: string
+  method?: string
+  body?: unknown
+  signal?: AbortSignal
+}
+
+/**
+ * 创建 SSE 流式连接的通用函数
+ * 统一处理认证、fetch、流读取、缓冲区解析、错误处理
+ * @param options - 请求选项
+ * @param onEvent - 事件回调函数
+ * @param onError - 错误回调函数
+ */
+export async function createSSEStream(
+  options: SSEStreamOptions,
+  onEvent: (type: string, data: unknown) => void,
+  onError: (error: string) => void
+): Promise<void>
+{
+  // 动态导入避免循环依赖
+  const { getSessionToken } = await import('./api')
+
+  const API_BASE_URL = import.meta.env.VITE_API_URL || ''
+  const headers: HeadersInit = {}
+
+  if (options.method === 'POST' || options.body)
+  {
+    headers['Content-Type'] = 'application/json'
+  }
+
+  // 构建认证头
+  const token = getSessionToken()
+  if (token)
+  {
+    const credentials = btoa(`${token}:`)
+    headers['Authorization'] = `Basic ${credentials}`
+  }
+
+  const response = await fetch(`${API_BASE_URL}${options.url}`, {
+    method: options.method || 'GET',
+    headers,
+    signal: options.signal,
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  })
+
+  if (!response.ok)
+  {
+    const errorData = await response.json().catch(() => ({ detail: '请求失败' }))
+    onError(errorData.detail || `HTTP ${response.status}`)
+    return
+  }
+
+  const reader = response.body?.getReader()
+  if (!reader)
+  {
+    onError('无法获取数据流')
+    return
+  }
+
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  try
+  {
+    while (true)
+    {
+      const { done, value } = await reader.read()
+
+      if (done)
+      {
+        // 处理剩余缓冲区
+        if (buffer.trim())
+        {
+          const [remaining, events] = processSSEBuffer(buffer, '')
+          for (const event of events)
+          {
+            const parsedData = parseSSEData(event.data)
+            onEvent(event.type, parsedData)
+          }
+        }
+        break
+      }
+
+      const newData = decoder.decode(value, { stream: true })
+      const [remaining, events] = processSSEBuffer(buffer, newData)
+      buffer = remaining
+
+      for (const event of events)
+      {
+        const parsedData = parseSSEData(event.data)
+        onEvent(event.type, parsedData)
+      }
+    }
+  }
+  catch (err)
+  {
+    // 用户主动取消，不触发错误回调
+    if (err instanceof Error && err.name === 'AbortError')
+    {
+      return
+    }
+    onError(err instanceof Error ? err.message : '未知错误')
+  }
+}

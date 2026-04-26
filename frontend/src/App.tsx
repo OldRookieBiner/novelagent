@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
 import { Toaster } from '@/components/ui/sonner'
 import Layout from '@/components/layout/Layout'
+import ErrorBoundary from '@/components/common/ErrorBoundary'
 import Login from '@/pages/Login'
 import Home from '@/pages/Home'
 import ProjectDetail from '@/pages/ProjectDetail'
@@ -17,26 +18,28 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 
 function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route
-          path="/"
-          element={
-            <PrivateRoute>
-              <Layout />
-            </PrivateRoute>
-          }
-        >
-          <Route index element={<Home />} />
-          <Route path="project/:id" element={<ProjectDetail />} />
-          <Route path="project/:id/write" element={<Writing />} />
-          <Route path="project/:id/read/:chapterNum" element={<Reading />} />
-          <Route path="settings" element={<Settings />} />
-        </Route>
-      </Routes>
-      <Toaster />
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route
+            path="/"
+            element={
+              <PrivateRoute>
+                <Layout />
+              </PrivateRoute>
+            }
+          >
+            <Route index element={<Home />} />
+            <Route path="project/:id" element={<ProjectDetail />} />
+            <Route path="project/:id/write" element={<Writing />} />
+            <Route path="project/:id/read/:chapterNum" element={<Reading />} />
+            <Route path="settings" element={<Settings />} />
+          </Route>
+        </Routes>
+        <Toaster />
+      </BrowserRouter>
+    </ErrorBoundary>
   )
 }
 

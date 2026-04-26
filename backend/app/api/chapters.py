@@ -25,6 +25,7 @@ from app.utils.auth import get_current_user
 from app.utils.llm import get_llm_for_user
 from app.utils.project import get_project_for_user
 from app.utils.workflow import get_or_create_workflow_state
+from app.utils.error import format_sse_error
 from app.agents.state import (
     STAGE_CHAPTER_OUTLINES,
     STAGE_WRITING
@@ -225,8 +226,8 @@ async def create_chapter_outlines(
                     yield f"event: done\ndata: {json.dumps(completion_data)}\n\n"
 
         except Exception as e:
-            # Send error event
-            yield f"event: error\ndata: {json.dumps(str(e))}\n\n"
+            # Send error event (sanitized)
+            yield format_sse_error(e)
 
     return StreamingResponse(
         stream_generator(),
@@ -349,15 +350,19 @@ async def confirm_chapter_outline(
     # Confirm the chapter outline
     chapter_outline.confirmed = True
 
-    # Check if all chapter outlines are confirmed
-    total_outlines = db.query(ChapterOutline).filter(
-        ChapterOutline.project_id == project_id
-    ).count()
+    # Check if all chapter outlines are confirmed - 使用单次聚合查询
+    from sqlalchemy import func
 
-    confirmed_outlines = db.query(ChapterOutline).filter(
-        ChapterOutline.project_id == project_id,
-        ChapterOutline.confirmed == True
-    ).count()
+    stats = db.query(
+        func.count(ChapterOutline.id).label('total'),
+        func.sum(func.cast(ChapterOutline.confirmed, int)).label('confirmed')
+    ).filter(
+        ChapterOutline.project_id == project_id
+    ).first()
+
+    total_outlines = stats.total or 0
+    # 确认后，已确认数需要 +1（因为当前章节还未 commit）
+    confirmed_outlines = (stats.confirmed or 0) + 1
 
     # If all confirmed, update workflow state to chapter writing
     if total_outlines > 0 and confirmed_outlines == total_outlines:
@@ -660,8 +665,8 @@ async def generate_chapter(
             yield f"event: done\ndata: {chapter.word_count}\n\n"
 
         except Exception as e:
-            # Send error event
-            yield f"event: error\ndata: {str(e)}\n\n"
+            # Send error event (sanitized)
+            yield format_sse_error(e)
 
     return StreamingResponse(
         stream_generator(),

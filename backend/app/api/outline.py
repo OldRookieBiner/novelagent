@@ -23,6 +23,7 @@ from app.utils.auth import get_current_user
 from app.utils.llm import get_llm_for_user
 from app.utils.project import get_project_for_user, get_project_and_outline
 from app.utils.workflow import get_or_create_workflow_state
+from app.utils.error import format_sse_error
 from app.agents.state import (
     STAGE_INSPIRATION,
     STAGE_OUTLINE,
@@ -197,8 +198,8 @@ async def generate_outline(
                 except Exception:
                     pass
 
-            # Send error event
-            yield f"event: error\ndata: {json.dumps(str(e))}\n\n"
+            # Send error event (sanitized)
+            yield format_sse_error(e)
 
     return StreamingResponse(
         stream_generator(),
