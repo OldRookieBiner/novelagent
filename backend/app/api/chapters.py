@@ -23,6 +23,7 @@ from app.schemas.chapter import (
 from app.schemas.outline import ChapterOutlinesGenerateRequest
 from app.utils.auth import get_current_user
 from app.utils.llm import get_llm_for_user
+from app.utils.project import get_project_for_user
 from app.utils.workflow import get_or_create_workflow_state
 from app.agents.state import (
     STAGE_CHAPTER_OUTLINES,
@@ -36,26 +37,6 @@ from app.agents.nodes.chapter_generation import (
 from app.agents.nodes.review import review_chapter_node
 
 router = APIRouter()
-
-
-def get_project_for_user(
-    project_id: int,
-    user_id: int,
-    db: Session
-) -> Project:
-    """Get project, verifying ownership."""
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == user_id
-    ).first()
-
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found"
-        )
-
-    return project
 
 
 def get_outline_for_project(

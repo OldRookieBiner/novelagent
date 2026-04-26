@@ -15,6 +15,7 @@ from app.models.checkpoint import WorkflowCheckpoint
 from app.models.workflow_state import WorkflowState
 from app.models.settings import UserSettings
 from app.utils.auth import get_current_user
+from app.utils.project import get_project_for_user
 from app.agents.graph import create_novel_graph_with_checkpointer
 from app.agents.state import NovelState
 
@@ -47,39 +48,6 @@ class WorkflowStateResponse(BaseModel):
 
 
 # ========== Helper Functions ==========
-
-def get_project_with_ownership(
-    project_id: int,
-    user_id: int,
-    db: Session
-) -> Project:
-    """
-    获取项目并验证所有权。
-
-    Args:
-        project_id: 项目 ID
-        user_id: 用户 ID
-        db: 数据库会话
-
-    Returns:
-        Project 实例
-
-    Raises:
-        HTTPException: 项目不存在或无权访问
-    """
-    project = db.query(Project).filter(
-        Project.id == project_id,
-        Project.user_id == user_id
-    ).first()
-
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found"
-        )
-
-    return project
-
 
 def build_initial_state(
     project: Project,
@@ -241,7 +209,7 @@ async def run_workflow(
     - error: 错误
     """
     # 验证项目所有权
-    project = get_project_with_ownership(project_id, current_user.id, db)
+    project = get_project_for_user(project_id, current_user.id, db)
 
     # 获取大纲
     outline = db.query(Outline).filter(
@@ -367,7 +335,7 @@ async def confirm_workflow(
     用户确认大纲或章节大纲后继续执行。
     """
     # 验证项目所有权
-    project = get_project_with_ownership(project_id, current_user.id, db)
+    project = get_project_for_user(project_id, current_user.id, db)
 
     # 获取最新检查点
     checkpoint_state = get_latest_checkpoint(project_id, "default", db)
@@ -451,7 +419,7 @@ async def get_workflow_state(
     - 完整状态数据
     """
     # 验证项目所有权
-    project = get_project_with_ownership(project_id, current_user.id, db)
+    project = get_project_for_user(project_id, current_user.id, db)
 
     # 获取最新检查点
     checkpoint_state = get_latest_checkpoint(project_id, "default", db)
@@ -505,7 +473,7 @@ async def cancel_workflow(
     删除项目的所有检查点，工作流将无法恢复。
     """
     # 验证项目所有权
-    project = get_project_with_ownership(project_id, current_user.id, db)
+    project = get_project_for_user(project_id, current_user.id, db)
 
     # 删除检查点
     deleted_count = delete_project_checkpoints(project_id, "default", db)
@@ -538,7 +506,7 @@ async def update_workflow_stage(
     from app.utils.workflow import get_or_create_workflow_state
 
     # 验证项目所有权
-    get_project_with_ownership(project_id, current_user.id, db)
+    get_project_for_user(project_id, current_user.id, db)
 
     # 获取或创建工作流状态
     workflow_state = get_or_create_workflow_state(db, project_id)
