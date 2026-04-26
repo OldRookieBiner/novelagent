@@ -148,6 +148,7 @@ export async function createSSEStream(
     headers,
     signal: options.signal,
     body: options.body ? JSON.stringify(options.body) : undefined,
+    credentials: 'include', // 发送和接收 cookies
   })
 
   if (!response.ok)

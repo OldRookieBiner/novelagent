@@ -8,7 +8,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ProjectDetailSkeleton } from '@/components/ui/skeleton'
 import { outlineApi, chapterOutlinesApi, workflowApi } from '@/lib/api'
 import { useProjectData } from '@/hooks/useProjectData'
-import { useWorkflowStore } from '@/stores/workflowStore'
 import OutlineWorkflow from '@/components/project/OutlineWorkflow'
 import StepNavigation, { HistoryBanner, STEPS } from '@/components/project/StepNavigation'
 import InspirationForm from '@/components/project/InspirationForm'
@@ -67,10 +66,6 @@ export default function ProjectDetail() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [showReturnConfirm, setShowReturnConfirm] = useState(false)
   const [showResumeDialog, setShowResumeDialog] = useState(false)
-
-  // 工作流 store (暂未使用)
-  const _setWorkflowStage = useWorkflowStore((state) => state.setStage)
-  const _setWorkflowProjectId = useWorkflowStore((state) => state.setProjectId)
 
   // 恢复弹窗逻辑
   useEffect(() => {

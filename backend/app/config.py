@@ -46,6 +46,7 @@ class Settings(BaseSettings):
 
     # App settings
     debug: bool = False  # Secure by default
+    log_level: str = "INFO"  # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173", "http://localhost:3001"]
 
     # Rate limiting

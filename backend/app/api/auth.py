@@ -14,7 +14,7 @@ router = APIRouter()
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login(request: LoginRequest, db: Session = Depends(get_db)):
+async def login(request: LoginRequest, response: Response, db: Session = Depends(get_db)):
     """Login with username and password"""
     # Find user
     user = db.query(User).filter(User.username == request.username).first()
@@ -35,17 +35,29 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
     # Create session token
     session_token = create_session_token(user.id)
 
+    # 设置 HttpOnly Cookie（安全方式）
+    response.set_cookie(
+        key="session_token",
+        value=session_token,
+        httponly=True,
+        secure=False,  # 开发环境设为 True
+        samesite="lax",
+        max_age=settings.session_expire_seconds,
+        path="/"
+    )
+
     return LoginResponse(
         success=True,
         user=UserResponse.model_validate(user),
-        session_token=session_token
+        session_token=session_token  # 兼容旧版前端
     )
 
 
 @router.post("/logout")
-async def logout(current_user: User = Depends(get_current_user)):
+async def logout(response: Response, current_user: User = Depends(get_current_user)):
     """Logout current user"""
-    # In a stateless session, client just needs to discard the token
+    # 清除 session cookie
+    response.delete_cookie(key="session_token", path="/")
     return {"success": True, "message": "Logged out successfully"}
 
 

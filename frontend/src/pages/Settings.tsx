@@ -7,7 +7,7 @@ import { useSettingsStore } from '@/stores/settingsStore'
 import { AgentPromptEditor } from '@/components/settings/AgentPromptEditor'
 import { ProjectPromptConfig } from '@/components/settings/ProjectPromptConfig'
 import ModelConfigItem from '@/components/settings/ModelConfigItem'
-import AddModelDialog from '@/components/settings/AddModelDialog'
+import ModelConfigDialog from '@/components/settings/ModelConfigDialog'
 import { ReviewModeSelect } from '@/components/project/ReviewModeSelect'
 import type { SettingsUpdate, AgentPrompt, Project, ModelConfig, ModelConfigCreate, WorkflowMode } from '@/types'
 
@@ -28,8 +28,9 @@ export default function Settings() {
   // 模型配置状态
   const [modelConfigs, setModelConfigs] = useState<ModelConfig[]>([])
   const [configsLoading, setConfigsLoading] = useState(false)
-  const [showAddDialog, setShowAddDialog] = useState(false)
+  const [showConfigDialog, setShowConfigDialog] = useState(false)
   const [savingConfig, setSavingConfig] = useState(false)
+  const [editingConfig, setEditingConfig] = useState<ModelConfig | null>(null)
 
   // 审核设置状态
   const [reviewMode, setReviewMode] = useState<'off' | 'manual' | 'auto'>('manual')
@@ -156,15 +157,33 @@ export default function Settings() {
     }
   }
 
-  // 添加自定义模型
-  const handleAddModel = async (data: ModelConfigCreate) => {
+  // 添加或更新模型配置
+  const handleSaveModel = async (data: ModelConfigCreate) => {
     setSavingConfig(true)
     try {
-      await modelConfigsApi.create(data)
+      if (editingConfig) {
+        // 编辑模式
+        await modelConfigsApi.update(editingConfig.id, data)
+      } else {
+        // 新增模式
+        await modelConfigsApi.create(data)
+      }
       await loadModelConfigs()
     } finally {
       setSavingConfig(false)
     }
+  }
+
+  // 打开编辑对话框
+  const handleEditModel = (config: ModelConfig) => {
+    setEditingConfig(config)
+    setShowConfigDialog(true)
+  }
+
+  // 打开新增对话框
+  const handleAddModel = () => {
+    setEditingConfig(null)
+    setShowConfigDialog(true)
   }
 
   if (loading) {
@@ -223,6 +242,7 @@ export default function Settings() {
                           console.error('Failed to set default:', err)
                         }
                       }}
+                      onEdit={handleEditModel}
                       onDelete={config.is_default ? undefined : async () => {
                         if (!confirm('确定要删除这个模型配置吗？')) return
                         try {
@@ -245,7 +265,7 @@ export default function Settings() {
 
                   {/* 添加自定义模型按钮 */}
                   <button
-                    onClick={() => setShowAddDialog(true)}
+                    onClick={handleAddModel}
                     className="w-full border-2 border-dashed border-gray-300 rounded-lg p-4 text-gray-500 hover:border-blue-400 hover:text-blue-500 transition-all"
                   >
                     + 添加自定义模型
@@ -410,12 +430,16 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* 添加模型弹窗 */}
-      <AddModelDialog
-        open={showAddDialog}
-        onClose={() => setShowAddDialog(false)}
-        onSubmit={handleAddModel}
+      {/* 模型配置弹窗 */}
+      <ModelConfigDialog
+        open={showConfigDialog}
+        onClose={() => {
+          setShowConfigDialog(false)
+          setEditingConfig(null)
+        }}
+        onSubmit={handleSaveModel}
         loading={savingConfig}
+        editConfig={editingConfig}
       />
     </div>
   )

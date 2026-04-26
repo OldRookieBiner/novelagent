@@ -20,21 +20,23 @@ import {
 } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { modelConfigsApi } from '@/lib/api'
-import type { ModelConfigCreate, ProviderInfo, ModelItem } from '@/types'
+import type { ModelConfigCreate, ModelConfig, ProviderInfo, ModelItem } from '@/types'
 
-interface AddModelDialogProps {
+interface ModelConfigDialogProps {
   open: boolean
   onClose: () => void
   onSubmit: (data: ModelConfigCreate) => Promise<void>
   loading: boolean
+  editConfig?: ModelConfig | null  // 编辑模式：传入要编辑的配置
 }
 
-export default function AddModelDialog({
+export default function ModelConfigDialog({
   open,
   onClose,
   onSubmit,
   loading,
-}: AddModelDialogProps) {
+  editConfig,
+}: ModelConfigDialogProps) {
   // 提供商列表
   const [providers, setProviders] = useState<ProviderInfo[]>([])
   const [loadingProviders, setLoadingProviders] = useState(false)
@@ -54,9 +56,12 @@ export default function AddModelDialog({
   // 错误状态
   const [errors, setErrors] = useState<Record<string, string>>({})
 
+  // 是否为编辑模式
+  const isEditMode = !!editConfig
+
   // 获取选中的提供商信息
   const selectedProviderInfo = providers.find(p => p.id === selectedProvider)
-  const isCodingPlan = selectedProviderInfo?.provider_type === 'coding_plan'
+  const isCodingPlan = selectedProviderInfo?.provider_type === 'coding_plan' || editConfig?.provider_type === 'coding_plan'
   const isCustom = selectedProvider === 'custom'
 
   // 加载提供商列表
@@ -65,6 +70,18 @@ export default function AddModelDialog({
       loadProviders()
     }
   }, [open])
+
+  // 编辑模式：初始化表单数据
+  useEffect(() => {
+    if (editConfig && open) {
+      setSelectedProvider(editConfig.provider)
+      setName(editConfig.name)
+      setBaseUrl(editConfig.base_url)
+      setApiKey('')  // API Key 不回显
+      setModelName(editConfig.model_name || '')
+      setAvailableModels(editConfig.models || [])
+    }
+  }, [editConfig, open])
 
   // 重置表单
   const resetForm = () => {
@@ -98,8 +115,8 @@ export default function AddModelDialog({
     const provider = providers.find(p => p.id === providerId)
     if (provider && providerId !== 'custom') {
       setBaseUrl(provider.base_url)
-      // 自动填充名称
-      if (!name) {
+      // 自动填充名称（仅新增模式）
+      if (!isEditMode && !name) {
         setName(provider.name)
       }
     } else {
@@ -227,9 +244,12 @@ export default function AddModelDialog({
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>添加模型配置</DialogTitle>
+          <DialogTitle>{isEditMode ? '编辑模型配置' : '添加模型配置'}</DialogTitle>
           <DialogDescription>
-            选择提供商并配置 API 信息，添加新的模型配置
+            {isEditMode
+              ? '修改模型配置信息，留空的 API Key 将保持原有值'
+              : '选择提供商并配置 API 信息，添加新的模型配置'
+            }
           </DialogDescription>
         </DialogHeader>
 
@@ -242,7 +262,7 @@ export default function AddModelDialog({
             <Select
               value={selectedProvider}
               onValueChange={handleProviderChange}
-              disabled={loadingProviders}
+              disabled={loadingProviders || isEditMode}
             >
               <SelectTrigger id="provider">
                 <SelectValue placeholder={loadingProviders ? '加载中...' : '选择提供商'} />
@@ -258,6 +278,9 @@ export default function AddModelDialog({
             </Select>
             {errors.provider && (
               <p className="text-red-500 text-xs">{errors.provider}</p>
+            )}
+            {isEditMode && (
+              <p className="text-xs text-muted-foreground">编辑模式下不可更改提供商</p>
             )}
           </div>
 
@@ -293,7 +316,7 @@ export default function AddModelDialog({
                 if (errors.baseUrl) setErrors({ ...errors, baseUrl: '' })
               }}
               placeholder="如：https://api.openai.com/v1"
-              disabled={!isCustom && selectedProvider !== ''}
+              disabled={!isCustom && selectedProvider !== '' && !isEditMode}
             />
             {errors.baseUrl && (
               <p className="text-red-500 text-xs">{errors.baseUrl}</p>
@@ -311,9 +334,11 @@ export default function AddModelDialog({
               type="password"
               value={apiKey}
               onChange={e => setApiKey(e.target.value)}
-              placeholder="可选，部分服务需要"
+              placeholder={isEditMode ? '留空保持原有值' : '可选，部分服务需要'}
             />
-            <p className="text-xs text-muted-foreground">部分本地部署服务无需 API Key</p>
+            <p className="text-xs text-muted-foreground">
+              {isEditMode ? '留空则不修改原有的 API Key' : '部分本地部署服务无需 API Key'}
+            </p>
           </div>
 
           {/* 单模型配置：模型名称 */}
@@ -420,7 +445,10 @@ export default function AddModelDialog({
             取消
           </Button>
           <Button onClick={handleSubmit} disabled={loading}>
-            {loading ? '添加中...' : '添加配置'}
+            {loading
+              ? (isEditMode ? '保存中...' : '添加中...')
+              : (isEditMode ? '保存' : '添加配置')
+            }
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -48,20 +48,41 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 
 let sessionToken: string | null = null;
 
-export function setSessionToken(token: string | null): void {
-  sessionToken = token;
-  if (token) {
-    localStorage.setItem("session_token", token);
-  } else {
-    localStorage.removeItem("session_token");
-  }
-}
-
+/**
+ * 获取 session token - 优先从 Cookie 读取，其次从 localStorage 读取
+ */
 export function getSessionToken(): string | null {
   if (!sessionToken) {
+    // 首先尝试从 Cookie 读取（HttpOnly 方式）
+    const cookies = document.cookie.split(';');
+    for (const cookie of cookies) {
+      const [name, value] = cookie.trim().split('=');
+      if (name === 'session_token') {
+        sessionToken = decodeURIComponent(value);
+        return sessionToken;
+      }
+    }
+    // 兼容旧版 localStorage 方式
     sessionToken = localStorage.getItem("session_token");
   }
   return sessionToken;
+}
+
+/**
+ * 设置 session token - 同时写入 Cookie 和 localStorage
+ */
+export function setSessionToken(token: string | null): void {
+  sessionToken = token;
+  if (token) {
+    // 写入 localStorage（兼容旧版）
+    localStorage.setItem("session_token", token);
+    // 写入 Cookie（供后端 HttpOnly 模式使用）
+    document.cookie = `session_token=${encodeURIComponent(token)}; path=/; max-age=${7 * 24 * 60 * 60}`;
+  } else {
+    localStorage.removeItem("session_token");
+    // 清除 Cookie
+    document.cookie = 'session_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+  }
 }
 
 // ==================== Request Helper ====================
@@ -111,6 +132,7 @@ async function request<T>(
       headers,
       body: body ? JSON.stringify(body) : undefined,
       signal: controller.signal,
+      credentials: 'include', // 发送和接收 cookies
     });
 
     if (!response.ok) {

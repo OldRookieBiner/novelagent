@@ -10,6 +10,9 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.models.checkpoint import WorkflowCheckpoint
+from app.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 # 检查点保留策略配置
@@ -189,6 +192,7 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
             )
             db.add(record)
             db.commit()
+            logger.debug(f"Checkpoint saved: project_id={self.project_id}, thread_id={thread_id}, checkpoint_id={checkpoint_id}")
 
             # 定期清理旧检查点
             self._put_count += 1
@@ -234,6 +238,7 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
                 db.delete(checkpoint)
             deleted_count = len(to_delete)
             db.commit()
+            logger.info(f"Cleaned up {deleted_count} old checkpoints for project_id={self.project_id}, thread_id={thread_id}")
 
         return deleted_count
 

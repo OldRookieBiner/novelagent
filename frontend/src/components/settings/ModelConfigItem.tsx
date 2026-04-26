@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDown, Star, Trash2, RefreshCw } from 'lucide-react'
+import { ChevronDown, Star, Trash2, RefreshCw, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { ModelConfig } from '@/types'
@@ -7,6 +7,7 @@ import type { ModelConfig } from '@/types'
 interface ModelConfigItemProps {
   config: ModelConfig
   onSetDefault?: (id: number) => void
+  onEdit?: (config: ModelConfig) => void
   onDelete?: (id: number) => void
   onRefresh?: (id: number) => void
 }
@@ -14,6 +15,7 @@ interface ModelConfigItemProps {
 export default function ModelConfigItem({
   config,
   onSetDefault,
+  onEdit,
   onDelete,
   onRefresh,
 }: ModelConfigItemProps) {
@@ -73,19 +75,29 @@ export default function ModelConfigItem({
         <Button
           variant="ghost"
           size="sm"
+          onClick={() => onEdit?.(config)}
+          title="编辑"
+        >
+          <Pencil className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => onRefresh?.(config.id)}
           title="健康检查"
         >
           <RefreshCw className="h-4 w-4" />
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => onDelete?.(config.id)}
-          title="删除"
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        {!config.is_default && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onDelete?.(config.id)}
+            title="删除"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        )}
       </div>
     )
   }
@@ -127,6 +139,36 @@ export default function ModelConfigItem({
         <span className="text-muted-foreground text-sm mr-3">
           {enabledCount} 个模型
         </span>
+
+        {/* 操作按钮 - 阻止事件冒泡避免触发展开/收起 */}
+        <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onEdit?.(config)}
+            title="编辑"
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onRefresh?.(config.id)}
+            title="健康检查"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+          {!config.is_default && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onDelete?.(config.id)}
+              title="删除"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* 展开的模型列表 */}

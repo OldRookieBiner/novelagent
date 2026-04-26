@@ -3,13 +3,28 @@
 import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, HTTPException, status
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
 from app.database import engine, Base
 from app.api import auth, projects, outline, chapters, settings as settings_api, agent_prompts, model_configs, workflow
+from app.utils.logger import setup_logging, get_logger
+from app.utils.exceptions import (
+    APIError,
+    api_error_handler,
+    http_exception_handler,
+    validation_exception_handler,
+    general_exception_handler
+)
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+# 初始化日志系统
+setup_logging(settings.log_level)
+logger = get_logger(__name__)
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -37,9 +52,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         # Check limit
         if len(self.requests[client_ip]) >= self.requests_limit:
-            raise HTTPException(
+            logger.warning(f"Rate limit exceeded for IP: {client_ip}")
+            return JSONResponse(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="Too many login attempts. Please try again later."
+                content={"detail": "Too many login attempts. Please try again later."}
             )
 
         # Record request
@@ -51,25 +67,35 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events"""
+    logger.info("Starting NovelAgent API...")
+
     # Startup: Create tables if they don't exist
     Base.metadata.create_all(bind=engine)
+    logger.info("Database tables initialized")
 
     # Create default user if not exists
     from app.utils.auth import create_default_user
     create_default_user()
+    logger.info("Default user initialized")
 
     yield
 
     # Shutdown
-    pass
+    logger.info("Shutting down NovelAgent API...")
 
 
 app = FastAPI(
     title="NovelAgent API",
     description="AI Novel Creation Assistant API",
-    version="0.6.4",
+    version="0.7.0",
     lifespan=lifespan
 )
+
+# 注册异常处理器
+app.add_exception_handler(APIError, api_error_handler)
+app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(Exception, general_exception_handler)
 
 # Rate limiting middleware
 app.add_middleware(
@@ -101,7 +127,7 @@ app.include_router(workflow.router, prefix="/api/projects", tags=["workflow"])
 @app.get("/")
 async def root():
     """Root endpoint"""
-    return {"message": "NovelAgent API", "version": "0.6.4"}
+    return {"message": "NovelAgent API", "version": "0.7.0"}
 
 
 @app.get("/health")
