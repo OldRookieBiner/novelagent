@@ -3,7 +3,8 @@
 from typing import Dict, Any
 
 from app.agents.state import NovelState, STAGE_WRITING
-from app.agents.prompts import REWRITE_CHAPTER_PROMPT
+from app.services.prompt_loader import get_system_prompt
+from app.database import SessionLocal
 from app.services.llm import LLMService, get_llm_service_from_config, get_llm_service
 from app.utils.llm import get_llm_from_state_async
 
@@ -27,6 +28,7 @@ async def rewrite_chapter_node(
     Returns:
         重写后的章节内容
     """
+    db = SessionLocal()
     info = state.get("collected_info", {})
     characters = state.get("outline_characters", [])
 
@@ -47,7 +49,7 @@ async def rewrite_chapter_node(
     else:
         chars_str = info.get("customProtagonist") or info.get("protagonist", "未指定")
 
-    prompt = REWRITE_CHAPTER_PROMPT.format(
+    prompt = get_system_prompt(db, "rewrite").format(
         chapter_outline=outline_str,
         original_content=original_content,
         review_feedback=review_feedback,
@@ -58,6 +60,7 @@ async def rewrite_chapter_node(
 
     response = await llm.chat([{"role": "user", "content": prompt}])
 
+    db.close()
     return response
 
 

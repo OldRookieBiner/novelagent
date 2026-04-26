@@ -4,7 +4,8 @@ import re
 from typing import Dict, Any
 
 from app.agents.state import NovelState, STAGE_REVIEW
-from app.agents.prompts import REVIEW_CHAPTER_PROMPT
+from app.services.prompt_loader import get_system_prompt
+from app.database import SessionLocal
 from app.services.llm import LLMService
 from app.utils.llm import get_llm_from_state_async
 
@@ -72,6 +73,7 @@ async def review_chapter_node(
     Returns:
         审核结果字典
     """
+    db = SessionLocal()
     info = state.get("collected_info", {})
     characters = state.get("outline_characters", [])
 
@@ -92,7 +94,7 @@ async def review_chapter_node(
     else:
         chars_str = info.get("customProtagonist") or info.get("protagonist", "未指定")
 
-    prompt = REVIEW_CHAPTER_PROMPT.format(
+    prompt = get_system_prompt(db, "review").format(
         strictness=strictness,
         chapter_outline=outline_str,
         chapter_content=chapter_content,
@@ -106,6 +108,7 @@ async def review_chapter_node(
     result = parse_review_result(response)
     result["raw_response"] = response
 
+    db.close()
     return result
 
 

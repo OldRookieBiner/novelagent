@@ -4,10 +4,8 @@ import re
 from typing import Dict, Any, AsyncIterator
 
 from app.agents.state import NovelState, STAGE_CHAPTER_OUTLINES, STAGE_WRITING
-from app.agents.prompts import (
-    GENERATE_SINGLE_CHAPTER_OUTLINE_PROMPT,
-    GENERATE_CHAPTER_CONTENT_PROMPT,
-)
+from app.services.prompt_loader import get_system_prompt
+from app.database import SessionLocal
 from app.services.llm import LLMService
 from app.utils.llm import get_llm_from_state_async
 
@@ -160,6 +158,7 @@ async def generate_single_chapter_outline(
     previous_chapters: list[dict] = None
 ) -> dict:
     """Generate a single chapter outline"""
+    db = SessionLocal()
 
     outline = f"标题：{state.get('outline_title', '')}\n概述：{state.get('outline_summary', '')}"
     plot_points = state.get("outline_plot_points", [])
@@ -177,7 +176,7 @@ async def generate_single_chapter_outline(
             for c in recent
         ])
 
-    prompt = GENERATE_SINGLE_CHAPTER_OUTLINE_PROMPT.format(
+    prompt = get_system_prompt(db, "chapter_outline_generation").format(
         outline=outline,
         plot_points=plot_points_str,
         chapter_count=chapter_count,
@@ -187,6 +186,7 @@ async def generate_single_chapter_outline(
 
     response = await llm.chat([{"role": "user", "content": prompt}])
 
+    db.close()
     return parse_single_chapter_outline(response, chapter_number)
 
 
@@ -244,6 +244,7 @@ async def generate_chapter_outlines_node(state: NovelState, llm: LLMService) -> 
         "stage": STAGE_CHAPTER_OUTLINES,
     }
 
+    db.close()
     return new_state
 
 
@@ -253,6 +254,7 @@ async def generate_chapter_content_stream(
     llm: LLMService
 ) -> AsyncIterator[str]:
     """生成章节内容（流式，增强版）"""
+    db = SessionLocal()
 
     info = state.get("collected_info", {})
     characters = state.get("outline_characters", [])
@@ -284,7 +286,7 @@ async def generate_chapter_content_stream(
     else:
         world_str = info.get("customWorldSetting") or info.get("worldSetting", "未指定")
 
-    prompt = GENERATE_CHAPTER_CONTENT_PROMPT.format(
+    prompt = get_system_prompt(db, "chapter_content_generation").format(
         chapter_outline=outline_str,
         previous_ending="",
         genre=info.get("novelType", "未指定"),
@@ -292,6 +294,8 @@ async def generate_chapter_content_stream(
         world_setting=world_str,
         style_preference=info.get("stylePreference", "未指定")
     )
+
+    db.close()
 
     async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
         yield chunk
@@ -326,6 +330,8 @@ async def generate_chapter_content_node(state: NovelState) -> NovelState:
 
     签名：(state: NovelState) -> NovelState
     """
+    db = SessionLocal()
+
     # 获取 LLM 服务（异步）
     llm = await get_llm_from_state_async(state)
 
@@ -386,7 +392,7 @@ async def generate_chapter_content_node(state: NovelState) -> NovelState:
     else:
         world_str = info.get("customWorldSetting") or info.get("worldSetting", "未指定")
 
-    prompt = GENERATE_CHAPTER_CONTENT_PROMPT.format(
+    prompt = get_system_prompt(db, "chapter_content_generation").format(
         chapter_outline=outline_str,
         previous_ending=previous_ending,
         genre=info.get("novelType", "未指定"),
@@ -420,4 +426,5 @@ async def generate_chapter_content_node(state: NovelState) -> NovelState:
         "stage": STAGE_WRITING,
     }
 
+    db.close()
     return new_state

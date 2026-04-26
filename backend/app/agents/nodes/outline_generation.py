@@ -4,7 +4,8 @@ import re
 from typing import Dict, Any, AsyncIterator
 
 from app.agents.state import NovelState, STAGE_OUTLINE
-from app.agents.prompts import OUTLINE_GENERATION_PROMPT
+from app.services.prompt_loader import get_system_prompt
+from app.database import SessionLocal
 from app.services.llm import LLMService
 from app.utils.llm import get_llm_from_state_async
 
@@ -193,6 +194,7 @@ async def generate_outline_node(state: NovelState, llm: LLMService) -> NovelStat
 
 def prepare_outline_prompt(state: NovelState) -> tuple[str, int]:
     """准备大纲生成提示词和章节数"""
+    db = SessionLocal()
     inspiration_template = state.get("inspiration_template", "")
     collected_info = state.get("collected_info", {})
 
@@ -237,11 +239,12 @@ def prepare_outline_prompt(state: NovelState) -> tuple[str, int]:
 - **风格偏好**：{style}
 """
 
-    prompt = OUTLINE_GENERATION_PROMPT.format(
+    prompt = get_system_prompt(db, "outline_generation").format(
         inspiration_template=inspiration_template,
         chapter_count=chapter_count
     )
 
+    db.close()
     return prompt, chapter_count
 
 
