@@ -2,14 +2,13 @@ import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { settingsApi, agentPromptsApi, projectsApi, modelConfigsApi } from '@/lib/api'
+import { Textarea } from '@/components/ui/textarea'
+import { settingsApi, systemPromptsApi, modelConfigsApi } from '@/lib/api'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { AgentPromptEditor } from '@/components/settings/AgentPromptEditor'
-import { ProjectPromptConfig } from '@/components/settings/ProjectPromptConfig'
 import ModelConfigItem from '@/components/settings/ModelConfigItem'
 import ModelConfigDialog from '@/components/settings/ModelConfigDialog'
 import { ReviewModeSelect } from '@/components/project/ReviewModeSelect'
-import type { SettingsUpdate, AgentPrompt, Project, ModelConfig, ModelConfigCreate, WorkflowMode } from '@/types'
+import type { SettingsUpdate, SystemPrompt, ModelConfig, ModelConfigCreate, WorkflowMode } from '@/types'
 
 const SETTINGS_TABS = [
   { id: 'model', label: '模型配置' },
@@ -18,6 +17,17 @@ const SETTINGS_TABS = [
 ] as const
 
 type SettingsTab = typeof SETTINGS_TABS[number]['id']
+
+// Agent type labels for tabs
+const AGENT_TABS = [
+  { id: 'outline_generation', label: '大纲生成' },
+  { id: 'chapter_outline_generation', label: '章节大纲' },
+  { id: 'chapter_content_generation', label: '正文生成' },
+  { id: 'review', label: '审核' },
+  { id: 'rewrite', label: '重写' },
+] as const
+
+type AgentTab = typeof AGENT_TABS[number]['id']
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('model')
@@ -40,18 +50,18 @@ export default function Settings() {
   const workflowMode = useSettingsStore((state) => state.workflowMode)
   const setWorkflowMode = useSettingsStore((state) => state.setWorkflowMode)
 
-  // Agent prompts 状态
-  const [globalPrompts, setGlobalPrompts] = useState<AgentPrompt[]>([])
+  // 系统提示词状态
+  const [prompts, setPrompts] = useState<SystemPrompt[]>([])
   const [promptsLoading, setPromptsLoading] = useState(false)
-  const [projects, setProjects] = useState<Project[]>([])
-  const [selectedProject, setSelectedProject] = useState<Project | null>(null)
+  const [selectedAgent, setSelectedAgent] = useState<AgentTab>('outline_generation')
+  const [editContent, setEditContent] = useState('')
+  const [savingPrompt, setSavingPrompt] = useState(false)
+  const [resettingPrompt, setResettingPrompt] = useState(false)
 
   useEffect(() => {
     const fetchSettings = async () => {
       try {
         const data = await settingsApi.get()
-        // 将旧的设置映射到新的审核模式
-        // review_enabled=false -> off, review_enabled=true -> manual (默认)
         if (!data.review_enabled) {
           setReviewMode('off')
         } else {
@@ -87,52 +97,64 @@ export default function Settings() {
     }
   }, [activeTab])
 
-  // Load agent prompts when tab is switched to agents
+  // 加载系统提示词
   useEffect(() => {
     if (activeTab === 'agents') {
-      loadAgentPrompts()
-      loadProjects()
+      loadPrompts()
     }
   }, [activeTab])
 
-  const loadAgentPrompts = async () => {
+  // 当 prompts 加载后，更新编辑内容
+  useEffect(() => {
+    const currentPrompt = prompts.find((p) => p.agent_type === selectedAgent)
+    if (currentPrompt) {
+      setEditContent(currentPrompt.prompt_content)
+    }
+  }, [prompts, selectedAgent])
+
+  const loadPrompts = async () => {
     setPromptsLoading(true)
     try {
-      const data = await agentPromptsApi.getGlobal()
-      setGlobalPrompts(data.prompts)
+      const data = await systemPromptsApi.list()
+      setPrompts(data.prompts)
     } catch (err) {
-      console.error('Failed to load agent prompts:', err)
+      console.error('Failed to load system prompts:', err)
     } finally {
       setPromptsLoading(false)
     }
   }
 
-  const loadProjects = async () => {
+  const currentPrompt = prompts.find((p) => p.agent_type === selectedAgent)
+
+  const handleSavePrompt = async () => {
+    if (!currentPrompt) return
+    setSavingPrompt(true)
     try {
-      const data = await projectsApi.list()
-      setProjects(data.projects)
+      const updated = await systemPromptsApi.update(selectedAgent, { prompt_content: editContent })
+      setPrompts((prev) =>
+        prev.map((p) => (p.agent_type === selectedAgent ? updated : p))
+      )
     } catch (err) {
-      console.error('Failed to load projects:', err)
+      console.error('Failed to save prompt:', err)
+    } finally {
+      setSavingPrompt(false)
     }
   }
 
-  const handleSavePrompt = async (agentType: string, content: string) => {
-    await agentPromptsApi.updateGlobal(agentType, { prompt_content: content })
-    // Update local state
-    setGlobalPrompts((prev) =>
-      prev.map((p) =>
-        p.agent_type === agentType
-          ? { ...p, prompt_content: content, is_default: false }
-          : p
+  const handleResetPrompt = async () => {
+    if (!confirm('确定要重置为默认值吗？您的修改将丢失。')) return
+    setResettingPrompt(true)
+    try {
+      const updated = await systemPromptsApi.reset(selectedAgent)
+      setPrompts((prev) =>
+        prev.map((p) => (p.agent_type === selectedAgent ? updated : p))
       )
-    )
-  }
-
-  const handleResetPrompt = async (agentType: string) => {
-    const updated = await agentPromptsApi.resetGlobal(agentType)
-    setGlobalPrompts((prev) =>
-      prev.map((p) => (p.agent_type === agentType ? updated : p))
-    )
+      setEditContent(updated.prompt_content)
+    } catch (err) {
+      console.error('Failed to reset prompt:', err)
+    } finally {
+      setResettingPrompt(false)
+    }
   }
 
   // 保存审核设置
@@ -141,10 +163,9 @@ export default function Settings() {
     setSaved(false)
 
     try {
-      // 将新的审核模式映射到旧的设置格式
       const update: SettingsUpdate = {
         review_enabled: reviewMode !== 'off',
-        review_strictness: 'standard', // 保留默认严格度
+        review_strictness: 'standard',
       }
 
       const updated = await settingsApi.update(update)
@@ -162,10 +183,8 @@ export default function Settings() {
     setSavingConfig(true)
     try {
       if (editingConfig) {
-        // 编辑模式
         await modelConfigsApi.update(editingConfig.id, data)
       } else {
-        // 新增模式
         await modelConfigsApi.create(data)
       }
       await loadModelConfigs()
@@ -354,75 +373,71 @@ export default function Settings() {
 
           {/* 智能体管理 */}
           {activeTab === 'agents' && (
-            <div id="agents-panel" role="tabpanel" className="max-w-3xl">
+            <div id="agents-panel" role="tabpanel" className="max-w-4xl">
               <h3 className="text-lg font-semibold mb-1">智能体管理</h3>
-              <p className="text-muted-foreground text-sm mb-6">管理全局 Prompt 模板和项目级自定义</p>
+              <p className="text-muted-foreground text-sm mb-6">配置系统级 Prompt 模板</p>
 
-              {selectedProject ? (
-                <div className="mb-4">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setSelectedProject(null)}
-                    className="mb-4"
-                  >
-                    &larr; 返回项目列表
-                  </Button>
-                  <ProjectPromptConfig
-                    projectId={selectedProject.id}
-                    projectName={selectedProject.name}
-                    onClose={() => setSelectedProject(null)}
-                  />
-                </div>
+              {promptsLoading ? (
+                <div className="text-muted-foreground">加载中...</div>
               ) : (
                 <>
-                  {/* Global Prompts Section */}
-                  <div className="mb-8">
-                    <h4 className="font-medium mb-3">全局 Prompt 模板</h4>
-                    {promptsLoading ? (
-                      <div className="text-muted-foreground">加载中...</div>
-                    ) : (
-                      globalPrompts.map((prompt) => (
-                        <AgentPromptEditor
-                          key={prompt.agent_type}
-                          prompt={prompt}
-                          onSave={(content) => handleSavePrompt(prompt.agent_type, content)}
-                          onReset={() => handleResetPrompt(prompt.agent_type)}
-                        />
-                      ))
-                    )}
+                  {/* 标签切换 */}
+                  <div className="border-b mb-4">
+                    <div className="flex">
+                      {AGENT_TABS.map((tab) => (
+                        <button
+                          key={tab.id}
+                          onClick={() => setSelectedAgent(tab.id)}
+                          className={`px-4 py-2 text-sm transition-colors ${
+                            selectedAgent === tab.id
+                              ? 'bg-background border-b-2 border-primary font-medium text-foreground'
+                              : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
-                  {/* Projects Section */}
-                  <div>
-                    <h4 className="font-medium mb-3">项目级自定义</h4>
-                    {projects.length === 0 ? (
-                      <div className="text-muted-foreground text-sm">暂无项目</div>
-                    ) : (
-                      <div className="border rounded-lg divide-y">
-                        {projects.map((project) => (
-                          <div
-                            key={project.id}
-                            className="p-3 flex items-center justify-between hover:bg-gray-50"
-                          >
-                            <div>
-                              <div className="font-medium">{project.name}</div>
-                              <div className="text-sm text-muted-foreground">
-                                {project.total_words} 字 / {project.workflow_state?.stage || '未知'}
-                              </div>
-                            </div>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setSelectedProject(project)}
-                            >
-                              管理
-                            </Button>
-                          </div>
-                        ))}
+                  {/* 编辑区 */}
+                  {currentPrompt && (
+                    <>
+                      {/* 变量提示 */}
+                      <div className="p-4 bg-muted rounded-lg mb-4">
+                        <div className="text-sm text-muted-foreground mb-2">可用变量</div>
+                        <div className="flex flex-wrap gap-2">
+                          {currentPrompt.variables.map((v) => (
+                            <code key={v} className="bg-background px-2 py-1 rounded text-sm">
+                              {`{${v}}`}
+                            </code>
+                          ))}
+                        </div>
                       </div>
-                    )}
-                  </div>
+
+                      {/* 编辑器 */}
+                      <Textarea
+                        value={editContent}
+                        onChange={(e) => setEditContent(e.target.value)}
+                        className="min-h-[400px] font-mono text-sm"
+                      />
+
+                      {/* 操作按钮 */}
+                      <div className="mt-4 flex items-center justify-between">
+                        <div className="text-sm text-muted-foreground">
+                          {currentPrompt.updated_at && `上次更新：${new Date(currentPrompt.updated_at).toLocaleString()}`}
+                        </div>
+                        <div className="flex gap-2">
+                          <Button variant="outline" onClick={handleResetPrompt} disabled={resettingPrompt}>
+                            {resettingPrompt ? '重置中...' : '重置默认'}
+                          </Button>
+                          <Button onClick={handleSavePrompt} disabled={savingPrompt}>
+                            {savingPrompt ? '保存中...' : '保存'}
+                          </Button>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </>
               )}
             </div>
