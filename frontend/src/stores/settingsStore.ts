@@ -1,33 +1,24 @@
 /**
  * Settings Store - 用户设置状态管理
- * 使用 Zustand persist middleware 持久化 workflowMode
+ *
+ * 注意：workflowMode 已迁移到项目级别（后端 WorkflowState 表）
+ * 此处仅作为临时缓存，不再持久化到 localStorage
+ * 项目的 workflowMode 应从后端获取
  */
 
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
 import type { UserSettings, WorkflowMode } from '@/types'
 
 interface SettingsState {
   settings: UserSettings | null
-  workflowMode: WorkflowMode
+  workflowMode: WorkflowMode  // 临时缓存，不持久化
   setSettings: (settings: UserSettings) => void
   setWorkflowMode: (mode: WorkflowMode) => void
 }
 
-export const useSettingsStore = create<SettingsState>()(
-  persist(
-    (set) => ({
-      settings: null,
-      workflowMode: 'hybrid', // 默认使用混合模式
-      setSettings: (settings) => set({ settings }),
-      setWorkflowMode: (mode) => set({ workflowMode: mode }),
-    }),
-    {
-      name: 'settings-storage', // localStorage key
-      // 只持久化 workflowMode，settings 从 API 获取
-      partialize: (state) => ({
-        workflowMode: state.workflowMode,
-      }),
-    }
-  )
-)
+export const useSettingsStore = create<SettingsState>()((set) => ({
+  settings: null,
+  workflowMode: 'hybrid', // 默认使用混合模式
+  setSettings: (settings) => set({ settings }),
+  setWorkflowMode: (mode) => set({ workflowMode: mode }),
+}))

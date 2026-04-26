@@ -5,6 +5,7 @@ from typing import Dict, Any
 from app.agents.state import NovelState, STAGE_WRITING
 from app.agents.prompts import REWRITE_CHAPTER_PROMPT
 from app.services.llm import LLMService, get_llm_service_from_config, get_llm_service
+from app.utils.llm import get_llm_from_state_async
 
 
 async def rewrite_chapter_node(
@@ -124,64 +125,6 @@ async def rewrite_with_retry(
 
 # ==================== LangGraph 兼容节点 ====================
 
-def _get_llm_from_state(state: NovelState) -> LLMService:
-    """
-    从状态获取 LLM 服务
-
-    根据状态中的 llm_config_id 或 project_id 获取对应的 LLM 服务。
-    此函数需要在调用时获取数据库会话。
-    """
-    from app.database import SessionLocal
-    from app.models.user import UserSettings
-    from app.models.model_config import ModelConfig
-
-    db = SessionLocal()
-    try:
-        llm_config_id = state.get("llm_config_id")
-        project_id = state.get("project_id")
-
-        # 获取项目以获取 user_id
-        from app.models.project import Project
-        project = db.query(Project).filter(Project.id == project_id).first()
-        if not project:
-            raise ValueError(f"Project {project_id} not found")
-
-        user_id = project.user_id
-
-        # 如果指定了模型配置 ID，使用该配置
-        if llm_config_id:
-            model_config = db.query(ModelConfig).filter(
-                ModelConfig.id == llm_config_id,
-                ModelConfig.user_id == user_id,
-                ModelConfig.is_enabled == True
-            ).first()
-            if model_config:
-                return get_llm_service_from_config(model_config, user_id)
-
-        # 否则使用用户的默认模型配置
-        default_config = db.query(ModelConfig).filter(
-            ModelConfig.user_id == user_id,
-            ModelConfig.is_default == True,
-            ModelConfig.is_enabled == True
-        ).first()
-
-        if default_config:
-            return get_llm_service_from_config(default_config, user_id)
-
-        # 回退到用户设置
-        user_settings = db.query(UserSettings).filter(
-            UserSettings.user_id == user_id
-        ).first()
-
-        if not user_settings:
-            raise ValueError(f"User settings not found for user {user_id}")
-
-        return get_llm_service(user_settings)
-
-    finally:
-        db.close()
-
-
 async def rewrite_node(state: NovelState) -> NovelState:
     """
     LangGraph 兼容的章节重写节点
@@ -193,8 +136,8 @@ async def rewrite_node(state: NovelState) -> NovelState:
 
     签名：(state: NovelState) -> NovelState
     """
-    # 获取 LLM 服务
-    llm = _get_llm_from_state(state)
+    # 获取 LLM 服务（异步）
+    llm = await get_llm_from_state_async(state)
 
     # 获取审核结果和章节信息
     review_result = state.get("review_result", {})

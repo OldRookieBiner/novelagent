@@ -3,12 +3,18 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, Iterator, Union
+from sqlalchemy import func, and_
 
 from langgraph.checkpoint.base import BaseCheckpointSaver, CheckpointTuple
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.models.checkpoint import WorkflowCheckpoint
+
+
+# 检查点保留策略配置
+MAX_CHECKPOINTS_PER_PROJECT = 20  # 每个项目保留的最大检查点数
+CLEANUP_INTERVAL = 10  # 每保存 N 个检查点后执行一次清理
 
 
 class PostgresCheckpointSaver(BaseCheckpointSaver):
@@ -38,6 +44,7 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
         self.thread_id = thread_id
         self._external_db = db  # 外部传入的会话
         self._internal_db: Optional[Session] = None  # 内部创建的会话
+        self._put_count = 0  # 记录保存次数，用于定期清理
 
     def _get_db(self) -> Session:
         """获取数据库会话，优先使用外部会话"""
@@ -144,7 +151,7 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
 
     def put(self, config: dict, checkpoint: dict, metadata: dict) -> dict:
         """
-        保存检查点。
+        保存检查点（自动清理旧记录）
 
         Args:
             config: 包含 thread_id 的配置
@@ -173,7 +180,7 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
                 "metadata": metadata
             }
 
-            # 创建新记录（每次保存都创建新记录，支持历史追踪）
+            # 创建新记录
             record = WorkflowCheckpoint(
                 project_id=self.project_id,
                 thread_id=thread_id,
@@ -182,6 +189,11 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
             )
             db.add(record)
             db.commit()
+
+            # 定期清理旧检查点
+            self._put_count += 1
+            if self._put_count % CLEANUP_INTERVAL == 0:
+                self._cleanup_old_checkpoints(db, thread_id)
 
             # 返回更新后的配置
             return {
@@ -193,6 +205,37 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
             }
         finally:
             self._close_db()
+
+    def _cleanup_old_checkpoints(self, db: Session, thread_id: str) -> int:
+        """
+        清理旧检查点（内部方法）
+
+        Args:
+            db: 数据库会话
+            thread_id: 线程 ID
+
+        Returns:
+            删除的记录数
+        """
+        # 获取该组合的所有记录，按创建时间倒序
+        all_checkpoints = db.query(WorkflowCheckpoint).filter(
+            and_(
+                WorkflowCheckpoint.project_id == self.project_id,
+                WorkflowCheckpoint.thread_id == thread_id
+            )
+        ).order_by(WorkflowCheckpoint.created_at.desc()).all()
+
+        deleted_count = 0
+
+        # 如果超过保留数量，删除旧的
+        if len(all_checkpoints) > MAX_CHECKPOINTS_PER_PROJECT:
+            to_delete = all_checkpoints[MAX_CHECKPOINTS_PER_PROJECT:]
+            for checkpoint in to_delete:
+                db.delete(checkpoint)
+            deleted_count = len(to_delete)
+            db.commit()
+
+        return deleted_count
 
     def list(self, config: dict) -> Iterator[CheckpointTuple]:
         """
@@ -233,6 +276,68 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
                 WorkflowCheckpoint.checkpoint_id == checkpoint_id
             ).delete()
             db.commit()
+        finally:
+            self._close_db()
+
+    def cleanup_old_checkpoints(
+        self,
+        keep_latest: int = 10
+    ) -> int:
+        """
+        清理旧检查点，保留最新的 N 个记录
+
+        防止检查点表无限增长。每次 put 操作后可调用此方法。
+
+        Args:
+            keep_latest: 每个 project_id + thread_id 组合保留的检查点数量
+
+        Returns:
+            删除的记录数
+        """
+        db = self._get_db()
+        try:
+            # 获取需要清理的项目/线程组合
+            from sqlalchemy import func, and_
+
+            # 找出每个 project_id + thread_id 组合中，超出保留数量的记录
+            subquery = db.query(
+                WorkflowCheckpoint.project_id,
+                WorkflowCheckpoint.thread_id,
+                func.count(WorkflowCheckpoint.id).label('count')
+            ).group_by(
+                WorkflowCheckpoint.project_id,
+                WorkflowCheckpoint.thread_id
+            ).having(func.count(WorkflowCheckpoint.id) > keep_latest).subquery()
+
+            # 对每个超标的组合，删除旧的记录
+            deleted_count = 0
+
+            # 获取所有 project_id + thread_id 组合
+            combinations = db.query(
+                WorkflowCheckpoint.project_id,
+                WorkflowCheckpoint.thread_id
+            ).distinct().all()
+
+            for project_id, thread_id in combinations:
+                # 获取该组合的所有记录，按创建时间倒序
+                all_checkpoints = db.query(WorkflowCheckpoint).filter(
+                    and_(
+                        WorkflowCheckpoint.project_id == project_id,
+                        WorkflowCheckpoint.thread_id == thread_id
+                    )
+                ).order_by(WorkflowCheckpoint.created_at.desc()).all()
+
+                # 如果超过保留数量，删除旧的
+                if len(all_checkpoints) > keep_latest:
+                    to_delete = all_checkpoints[keep_latest:]
+                    for checkpoint in to_delete:
+                        db.delete(checkpoint)
+                    deleted_count += len(to_delete)
+
+            if deleted_count > 0:
+                db.commit()
+
+            return deleted_count
         finally:
             self._close_db()
 

@@ -1,11 +1,16 @@
 """LLM utility functions"""
 
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.models.model_config import ModelConfig
 from app.services.llm import get_llm_service, get_llm_service_from_config
+
+# 线程池用于在 async 上下文中执行同步 DB 操作
+_db_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="db-")
 
 
 def get_llm_for_user(
@@ -59,10 +64,13 @@ def get_llm_for_user(
 
 
 def get_llm_from_state(state: dict) -> "LLMService":
-    """从工作流状态获取 LLM 服务（统一入口）
+    """从工作流状态获取 LLM 服务（同步版本，不推荐在 async 上下文使用）
 
     根据 state 中的 llm_config_id 和 project_id 获取对应的 LLM 服务。
     优先级：指定模型配置 > 默认模型配置 > 用户设置
+
+    警告：此函数使用同步数据库连接，在 async 上下文中会阻塞 event loop。
+    在 async 节点中请使用 get_llm_from_state_async()。
 
     Args:
         state: NovelState 字典
@@ -97,3 +105,21 @@ def get_llm_from_state(state: dict) -> "LLMService":
         )
     finally:
         db.close()
+
+
+async def get_llm_from_state_async(state: dict) -> "LLMService":
+    """从工作流状态获取 LLM 服务（异步版本，推荐在 async 节点使用）
+
+    将同步数据库操作放到线程池中执行，避免阻塞 event loop。
+
+    Args:
+        state: NovelState 字典
+
+    Returns:
+        LLMService 实例
+
+    Raises:
+        ValueError: 项目未找到或用户设置未找到
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(_db_executor, get_llm_from_state, state)

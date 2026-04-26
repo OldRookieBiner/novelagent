@@ -67,7 +67,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="NovelAgent API",
     description="AI Novel Creation Assistant API",
-    version="0.2.0",
+    version="0.6.4",
     lifespan=lifespan
 )
 
@@ -101,7 +101,7 @@ app.include_router(workflow.router, prefix="/api/projects", tags=["workflow"])
 @app.get("/")
 async def root():
     """Root endpoint"""
-    return {"message": "NovelAgent API", "version": "0.2.0"}
+    return {"message": "NovelAgent API", "version": "0.6.4"}
 
 
 @app.get("/health")

@@ -4,6 +4,29 @@ from typing import TypedDict, Optional, Annotated, Any
 from operator import add
 
 
+def replace_or_append_chapters(existing: list[dict], new_items: list[dict]) -> list[dict]:
+    """
+    自定义 reducer：替换同章节号的章节或追加新章节
+
+    用于 written_chapters 字段，解决 rewrite 场景的重复章节问题：
+    - 如果新章节的 chapter_number 已存在，则替换
+    - 否则追加到列表末尾
+    """
+    result = list(existing)
+    for new_chapter in new_items:
+        chapter_num = new_chapter.get("chapter_number")
+        existing_idx = None
+        for i, ch in enumerate(result):
+            if ch.get("chapter_number") == chapter_num:
+                existing_idx = i
+                break
+        if existing_idx is not None:
+            result[existing_idx] = new_chapter
+        else:
+            result.append(new_chapter)
+    return result
+
+
 class CollectedInfo(TypedDict, total=False):
     """用户收集的信息（v0.5.0 灵感数据）"""
     novelType: str
@@ -51,7 +74,7 @@ class NovelState(TypedDict):
 
     # ========== 章节正文（累积）==========
     # Annotated[List, add] 表示新内容会追加到列表
-    written_chapters: Annotated[list[dict], add]  # [{chapter_number, content, word_count}]
+    written_chapters: Annotated[list[dict], replace_or_append_chapters]  # [{chapter_number, content, word_count}]
     current_chapter: int
 
     # ========== 审核/重写 ==========

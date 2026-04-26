@@ -1,10 +1,11 @@
 """项目工具函数"""
 
 from fastapi import HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models.project import Project
-from app.models.outline import Outline
+from app.models.outline import Outline, ChapterOutline
+from app.models.chapter import Chapter
 
 
 def get_project_for_user(
@@ -12,7 +13,9 @@ def get_project_for_user(
     user_id: int,
     db: Session
 ) -> Project:
-    """获取项目并验证所有权
+    """获取项目并验证所有权（使用 joinedload 避免 N+1 查询）
+
+    预加载：chapter_outlines.chapter
 
     Args:
         project_id: 项目 ID
@@ -25,7 +28,9 @@ def get_project_for_user(
     Raises:
         HTTPException: 项目不存在或无权访问
     """
-    project = db.query(Project).filter(
+    project = db.query(Project).options(
+        joinedload(Project.chapter_outlines).joinedload(ChapterOutline.chapter)
+    ).filter(
         Project.id == project_id,
         Project.user_id == user_id
     ).first()

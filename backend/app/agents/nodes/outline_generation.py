@@ -6,7 +6,7 @@ from typing import Dict, Any, AsyncIterator
 from app.agents.state import NovelState, STAGE_OUTLINE
 from app.agents.prompts import OUTLINE_GENERATION_PROMPT
 from app.services.llm import LLMService
-from app.utils.llm import get_llm_from_state
+from app.utils.llm import get_llm_from_state_async
 
 # 预编译正则表达式，提升性能
 # 标题匹配模式：支持多种格式
@@ -265,8 +265,8 @@ async def outline_generation_node(state: NovelState) -> NovelState:
     此节点从状态获取 LLM 服务，生成大纲，并返回更新后的状态。
     签名：(state: NovelState) -> NovelState
     """
-    # 获取 LLM 服务
-    llm = get_llm_from_state(state)
+    # 获取 LLM 服务（异步）
+    llm = await get_llm_from_state_async(state)
 
     # 调用现有的大纲生成函数
     return await generate_outline_node(state, llm)

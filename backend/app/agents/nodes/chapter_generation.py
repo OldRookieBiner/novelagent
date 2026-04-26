@@ -9,7 +9,7 @@ from app.agents.prompts import (
     GENERATE_CHAPTER_CONTENT_PROMPT,
 )
 from app.services.llm import LLMService
-from app.utils.llm import get_llm_from_state
+from app.utils.llm import get_llm_from_state_async
 
 
 def _clean_chapter_title(title: str) -> str:
@@ -306,8 +306,8 @@ async def chapter_outlines_node(state: NovelState) -> NovelState:
     此节点从状态获取 LLM 服务，生成所有章节大纲，并返回更新后的状态。
     签名：(state: NovelState) -> NovelState
     """
-    # 获取 LLM 服务
-    llm = get_llm_from_state(state)
+    # 获取 LLM 服务（异步）
+    llm = await get_llm_from_state_async(state)
 
     # 调用现有的章节大纲生成函数
     return await generate_chapter_outlines_node(state, llm)
@@ -326,8 +326,8 @@ async def generate_chapter_content_node(state: NovelState) -> NovelState:
 
     签名：(state: NovelState) -> NovelState
     """
-    # 获取 LLM 服务
-    llm = get_llm_from_state(state)
+    # 获取 LLM 服务（异步）
+    llm = await get_llm_from_state_async(state)
 
     # 获取当前章节信息
     current_chapter = state.get("current_chapter", 1)

@@ -6,7 +6,7 @@ from typing import Dict, Any
 from app.agents.state import NovelState, STAGE_REVIEW
 from app.agents.prompts import REVIEW_CHAPTER_PROMPT
 from app.services.llm import LLMService
-from app.utils.llm import get_llm_from_state
+from app.utils.llm import get_llm_from_state_async
 
 
 def parse_review_result(response: str) -> Dict[str, Any]:
@@ -141,8 +141,8 @@ async def review_node(state: NovelState) -> NovelState:
 
     签名：(state: NovelState) -> NovelState
     """
-    # 获取 LLM 服务
-    llm = get_llm_from_state(state)
+    # 获取 LLM 服务（异步）
+    llm = await get_llm_from_state_async(state)
 
     # 获取当前章节信息
     current_chapter = state.get("current_chapter", 1)
