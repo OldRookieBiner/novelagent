@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.7.0 - 2026-04-26
+
+### Features
+- **日志基础设施** - 可配置日志级别，全链路日志记录
+- **统一错误处理** - 全局异常处理器，标准化错误响应格式
+- **HttpOnly Cookie 认证** - Session Token 安全增强，防范 XSS 攻击
+- **前端错误边界** - React ErrorBoundary 组件，友好的错误提示界面
+
+### Fixes
+- 修复限流中间件响应格式错误（使用 JSONResponse 替代 HTTPException）
+- 修复 written_chapters 重复追加 bug（自定义 reducer 替换同章节号内容）
+- 修复同步数据库调用阻塞事件循环问题（ThreadPoolExecutor 异步化）
+- 修复前端 TypeScript 未使用变量警告
+
+### Testing
+- 新增 test_checkpointer.py - 检查点保存器测试（11 个测试）
+- 新增 test_review.py - 审核节点测试（13 个测试）
+- 新增 test_rewrite.py - 重写节点测试（10 个测试）
+- 总计 113 个测试通过
+
+### Improvements
+- 检查点自动清理策略（每项目保留最新 20 个）
+- 前端 Cookie 认证支持（credentials: include）
+- 移除未使用的前端代码和导入
+- 数据库查询优化（joinedload 防止 N+1 问题）
+
 ## v0.6.4 - 2026-04-24
 
 ### Features
