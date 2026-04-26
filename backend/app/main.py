@@ -10,7 +10,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
 from app.database import engine, Base
-from app.api import auth, projects, outline, chapters, settings as settings_api, agent_prompts, model_configs, workflow
+from app.api import auth, projects, outline, chapters, settings as settings_api, model_configs, workflow
+from app.api.system_prompts import router as system_prompts_router
 from app.utils.logger import setup_logging, get_logger
 from app.utils.exceptions import (
     APIError,
@@ -119,9 +120,9 @@ app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
 app.include_router(outline.router, prefix="/api/projects", tags=["outline"])
 app.include_router(chapters.router, prefix="/api/projects", tags=["chapters"])
 app.include_router(settings_api.router, prefix="/api/settings", tags=["settings"])
-app.include_router(agent_prompts.router, prefix="/api", tags=["agent-prompts"])
 app.include_router(model_configs.router, prefix="/api/model_configs", tags=["model-configs"])
 app.include_router(workflow.router, prefix="/api/projects", tags=["workflow"])
+app.include_router(system_prompts_router, prefix="/api/system/prompts", tags=["system-prompts"])
 
 
 @app.get("/")
