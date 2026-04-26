@@ -170,56 +170,7 @@ def parse_chapter_count(response: str) -> int:
 
 async def generate_outline_node(state: NovelState, llm: LLMService) -> NovelState:
     """从灵感模板生成大纲"""
-
-    # 获取灵感模板
-    inspiration_template = state.get("inspiration_template", "")
-    collected_info = state.get("collected_info", {})
-
-    # 根据目标字数计算章节数
-    chapter_count = DEFAULT_CHAPTER_COUNT
-    target_words = collected_info.get("targetWords", 100000)
-    if isinstance(target_words, int):
-        if target_words <= WORDS_THRESHOLD_SHORT:
-            chapter_count = max(MIN_CHAPTERS_SHORT, int(target_words / WORDS_PER_CHAPTER_SHORT))
-        elif target_words <= WORDS_THRESHOLD_MEDIUM:
-            chapter_count = max(MIN_CHAPTERS_MEDIUM, int(target_words / WORDS_PER_CHAPTER_MEDIUM))
-        elif target_words <= WORDS_THRESHOLD_LONG:
-            chapter_count = max(MIN_CHAPTERS_LONG, int(target_words / WORDS_PER_CHAPTER_LONG))
-        elif target_words <= WORDS_THRESHOLD_VERY_LONG:
-            chapter_count = max(MIN_CHAPTERS_VERY_LONG, int(target_words / WORDS_PER_CHAPTER_VERY_LONG))
-        else:
-            chapter_count = max(MIN_CHAPTERS_EPIC, int(target_words / WORDS_PER_CHAPTER_EPIC))
-
-    # 如果没有灵感模板，从 collected_info 生成基本信息
-    if not inspiration_template:
-        novel_type = collected_info.get("novelType", "未指定")
-        core_theme = collected_info.get("coreTheme", "未指定")
-        protagonist = collected_info.get("customProtagonist") or collected_info.get("protagonist", "未指定")
-        world_setting = collected_info.get("customWorldSetting") or collected_info.get("worldSetting", "未指定")
-        style = collected_info.get("stylePreference", "未指定")
-        target_words_display = f"{target_words}字" if isinstance(target_words, int) else "未指定"
-
-        inspiration_template = f"""# 小说创作灵感
-
-## 基本信息
-- **小说类型**：{novel_type}
-- **核心主题**：{core_theme}
-- **目标字数**：{target_words_display}
-
-## 世界设定
-- **世界观**：{world_setting}
-
-## 人物设定
-- **主角**：{protagonist}
-
-## 风格
-- **风格偏好**：{style}
-"""
-
-    prompt = OUTLINE_GENERATION_PROMPT.format(
-        inspiration_template=inspiration_template,
-        chapter_count=chapter_count
-    )
+    prompt, chapter_count = prepare_outline_prompt(state)
 
     response = await llm.chat([{"role": "user", "content": prompt}])
 
