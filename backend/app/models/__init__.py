@@ -9,9 +9,10 @@ from app.models.agent_prompt import AgentPrompt, ProjectAgentPrompt
 from app.models.model_config import ModelConfig
 from app.models.checkpoint import WorkflowCheckpoint
 from app.models.workflow_state import WorkflowState
+from app.models.system_config import SystemConfig
 
 __all__ = [
     "User", "UserSettings", "Project", "Outline", "ChapterOutline", "Chapter",
     "AgentPrompt", "ProjectAgentPrompt", "ModelConfig", "WorkflowCheckpoint",
-    "WorkflowState",
+    "WorkflowState", "SystemConfig",
 ]
