@@ -56,3 +56,44 @@ def get_llm_for_user(
 
     # 兼容旧版本：使用用户设置
     return get_llm_service(user_settings)
+
+
+def get_llm_from_state(state: dict) -> "LLMService":
+    """从工作流状态获取 LLM 服务（统一入口）
+
+    根据 state 中的 llm_config_id 和 project_id 获取对应的 LLM 服务。
+    优先级：指定模型配置 > 默认模型配置 > 用户设置
+
+    Args:
+        state: NovelState 字典
+
+    Returns:
+        LLMService 实例
+
+    Raises:
+        ValueError: 项目未找到或用户设置未找到
+    """
+    from app.database import SessionLocal
+    from app.models.project import Project
+    from app.models.settings import UserSettings
+
+    db = SessionLocal()
+    try:
+        project_id = state.get("project_id")
+        project = db.query(Project).filter(Project.id == project_id).first()
+        if not project:
+            raise ValueError(f"Project {project_id} not found")
+
+        user_id = project.user_id
+        user_settings = db.query(UserSettings).filter(
+            UserSettings.user_id == user_id
+        ).first()
+
+        if not user_settings:
+            raise ValueError(f"User settings not found for user {user_id}")
+
+        return get_llm_for_user(
+            user_id, user_settings, db, state.get("llm_config_id")
+        )
+    finally:
+        db.close()
