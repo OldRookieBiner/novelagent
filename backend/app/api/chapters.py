@@ -350,19 +350,20 @@ async def confirm_chapter_outline(
     # Confirm the chapter outline
     chapter_outline.confirmed = True
 
-    # Check if all chapter outlines are confirmed - 使用单次聚合查询
+    # Check if all chapter outlines are confirmed - 使用两个简单查询
     from sqlalchemy import func
 
-    stats = db.query(
-        func.count(ChapterOutline.id).label('total'),
-        func.sum(func.cast(ChapterOutline.confirmed, int)).label('confirmed')
-    ).filter(
+    total_outlines = db.query(func.count(ChapterOutline.id)).filter(
         ChapterOutline.project_id == project_id
-    ).first()
+    ).scalar() or 0
 
-    total_outlines = stats.total or 0
+    confirmed_outlines = db.query(func.count(ChapterOutline.id)).filter(
+        ChapterOutline.project_id == project_id,
+        ChapterOutline.confirmed == True
+    ).scalar() or 0
+
     # 确认后，已确认数需要 +1（因为当前章节还未 commit）
-    confirmed_outlines = (stats.confirmed or 0) + 1
+    confirmed_outlines += 1
 
     # If all confirmed, update workflow state to chapter writing
     if total_outlines > 0 and confirmed_outlines == total_outlines:
