@@ -42,6 +42,12 @@ export const COMMON_OPTIONS = {
     { value: 'yanqing', label: '言情' },
     { value: 'xuanyi', label: '悬疑' },
     { value: 'lishi', label: '历史' },
+    { value: 'junshi', label: '军事' },
+    { value: 'youxi', label: '游戏' },
+    { value: 'lingyi', label: '灵异' },
+    { value: 'jingji', label: '竞技' },
+    { value: 'qihuan', label: '奇幻' },
+    { value: 'tongren', label: '同人' },
   ],
 
   coreThemes: [
@@ -117,6 +123,13 @@ export const MALE_OPTIONS = {
     { value: 'mortal', label: '凡人流' },
     { value: 'prehistoric', label: '洪荒流' },
     { value: 'infinite', label: '无限流' },
+    { value: 'farm', label: '种田文' },
+    { value: 'domination', label: '争霸文' },
+    { value: 'invincible', label: '无敌流' },
+    { value: 'low_key', label: '苟道流' },
+    { value: 'heaven', label: '诸天流' },
+    { value: 'system', label: '系统流' },
+    { value: 'livestream', label: '直播流' },
   ],
 
   // 男主人设（男频专属）
