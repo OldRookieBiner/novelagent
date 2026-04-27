@@ -248,6 +248,7 @@ export interface SystemPrompt {
   description: string;
   prompt_content: string;
   variables: string[];
+  variable_descriptions: Record<string, string>;
   updated_at?: string;
 }
 

@@ -457,21 +457,21 @@ export const collectedInfoApi = {
 
 export const systemPromptsApi = {
   async list(): Promise<SystemPromptListResponse> {
-    return request<SystemPromptListResponse>("/api/system/prompts");
+    return request<SystemPromptListResponse>("/api/system/prompts/");
   },
 
   async update(
     agentType: string,
     data: SystemPromptUpdate
   ): Promise<SystemPrompt> {
-    return request<SystemPrompt>(`/api/system/prompts/${agentType}`, {
+    return request<SystemPrompt>(`/api/system/prompts/${agentType}/`, {
       method: "PUT",
       body: data,
     });
   },
 
   async reset(agentType: string): Promise<SystemPrompt> {
-    return request<SystemPrompt>(`/api/system/prompts/${agentType}/reset`, {
+    return request<SystemPrompt>(`/api/system/prompts/${agentType}/reset/`, {
       method: "POST",
     });
   },

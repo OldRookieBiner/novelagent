@@ -47,6 +47,7 @@ async def get_system_prompts(db: Session = Depends(get_db)):
             description=meta["description"],
             prompt_content=content,
             variables=meta["variables"],
+            variable_descriptions=meta["variable_descriptions"],
             updated_at=updated_at
         ))
 
@@ -82,6 +83,7 @@ async def update_system_prompt(
         description=meta["description"],
         prompt_content=config.value,
         variables=meta["variables"],
+        variable_descriptions=meta["variable_descriptions"],
         updated_at=config.updated_at
     )
 
@@ -113,5 +115,6 @@ async def reset_system_prompt(agent_type: str, db: Session = Depends(get_db)):
         description=meta["description"],
         prompt_content=config.value,
         variables=meta["variables"],
+        variable_descriptions=meta["variable_descriptions"],
         updated_at=config.updated_at
     )
