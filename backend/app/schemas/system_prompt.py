@@ -48,14 +48,15 @@ AGENT_TYPES: dict[AgentTypeKey, AgentTypeMeta] = {
     "chapter_content_generation": {
         "name": "正文生成",
         "description": "根据章节大纲写正文，遵循写作原则减少 AI 味",
-        "variables": ["chapter_outline", "previous_ending", "genre", "main_characters", "world_setting", "style_preference"],
+        "variables": ["chapter_outline", "previous_ending", "genre", "main_characters", "world_setting", "style_preference", "target_words"],
         "variable_descriptions": {
             "chapter_outline": "当前章节的大纲，包含标题、场景、人物、情节等",
             "previous_ending": "上一章结尾的内容，用于衔接",
             "genre": "小说题材类型，如都市、玄幻、悬疑等",
             "main_characters": "主角及主要人物设定",
             "world_setting": "世界观和背景设定",
-            "style_preference": "写作风格偏好"
+            "style_preference": "写作风格偏好",
+            "target_words": "本章目标字数，根据灵感采集阶段的目标字数计算得出"
         }
     },
     "review": {
