@@ -28,21 +28,28 @@ def replace_or_append_chapters(existing: list[dict], new_items: list[dict]) -> l
 
 
 class CollectedInfo(TypedDict, total=False):
-    """用户收集的信息（v0.5.0 灵感数据）"""
+    """用户收集的信息（v0.5.0 灵感数据，v0.7.x 扩展）"""
+    # 必填项
     novelType: str
     targetWords: int
     coreTheme: str
-    worldSetting: str
-    customWorldSetting: str
-    protagonist: str
-    customProtagonist: str
-    stylePreference: str
     targetReader: str
+    era: str                    # v0.7.x: 年代设定
     wordsPerChapter: str
     customWordsPerChapter: int
+    # 主角设定（根据 targetReader 选择）
+    maleLead: str               # v0.7.x: 男主人设
+    customMaleLead: str
+    femaleLead: str             # v0.7.x: 女主人设
+    customFemaleLead: str
+    # 选填项
+    worldSetting: str
+    customWorldSetting: str
+    genre: str                  # v0.7.x: 流派
     narrative: str
     goldFinger: str
     customGoldFinger: str
+    stylePreference: str
 
 
 class NovelState(TypedDict):
