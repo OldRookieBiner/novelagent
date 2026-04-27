@@ -104,6 +104,22 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
     }
   }, [initialData])
 
+  // 当目标读者切换时，清除不相关的字段
+  useEffect(() => {
+    if (targetReader === 'female') {
+      // 切换到女频时清除男频专属字段
+      setGenre('')
+      setMaleLead('')
+      setCustomMaleLead('')
+      setGoldFinger('')
+      setCustomGoldFinger('')
+    } else if (targetReader === 'male') {
+      // 切换到男频时清除女频专属字段
+      setFemaleLead('')
+      setCustomFemaleLead('')
+    }
+  }, [targetReader])
+
   // 自动保存草稿
   useEffect(() => {
     const data: InspirationData = {
