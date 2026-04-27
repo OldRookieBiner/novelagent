@@ -273,20 +273,25 @@ async def confirm_outline(
     # 从灵感数据计算章节数
     collected_info = outline.collected_info or {}
     target_words = collected_info.get("targetWords", 100000)
+    words_per_chapter_str = collected_info.get("wordsPerChapter", "")
+    custom_words_per_chapter = collected_info.get("customWordsPerChapter")
 
-    # 使用常量计算章节数
-    chapter_count = DEFAULT_CHAPTER_COUNT
-    if isinstance(target_words, int):
-        if target_words <= WORDS_THRESHOLD_SHORT:
-            chapter_count = max(MIN_CHAPTERS_SHORT, int(target_words / WORDS_PER_CHAPTER_SHORT))
-        elif target_words <= WORDS_THRESHOLD_MEDIUM:
-            chapter_count = max(MIN_CHAPTERS_MEDIUM, int(target_words / WORDS_PER_CHAPTER_MEDIUM))
-        elif target_words <= WORDS_THRESHOLD_LONG:
-            chapter_count = max(MIN_CHAPTERS_LONG, int(target_words / WORDS_PER_CHAPTER_LONG))
-        elif target_words <= WORDS_THRESHOLD_VERY_LONG:
-            chapter_count = max(MIN_CHAPTERS_VERY_LONG, int(target_words / WORDS_PER_CHAPTER_VERY_LONG))
-        else:
-            chapter_count = max(MIN_CHAPTERS_EPIC, int(target_words / WORDS_PER_CHAPTER_EPIC))
+    # 计算每章字数
+    if words_per_chapter_str == "custom" and custom_words_per_chapter:
+        words_per_chapter = custom_words_per_chapter
+    elif words_per_chapter_str and words_per_chapter_str != "custom":
+        try:
+            words_per_chapter = int(words_per_chapter_str)
+        except (ValueError, TypeError):
+            words_per_chapter = WORDS_PER_CHAPTER_MEDIUM
+    else:
+        words_per_chapter = WORDS_PER_CHAPTER_MEDIUM
+
+    # 根据目标字数和每章字数计算章节数
+    if isinstance(target_words, int) and target_words > 0 and words_per_chapter > 0:
+        chapter_count = max(3, int(target_words / words_per_chapter))
+    else:
+        chapter_count = DEFAULT_CHAPTER_COUNT
 
     # Update outline with chapter count
     outline.chapter_count_suggested = chapter_count
