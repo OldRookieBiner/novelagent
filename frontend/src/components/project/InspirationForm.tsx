@@ -3,6 +3,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
   INSPIRATION_OPTIONS,
+  COMMON_OPTIONS,
+  MALE_OPTIONS,
+  FEMALE_OPTIONS,
   saveInspirationDraft,
   loadInspirationDraft,
   clearInspirationDraft,
@@ -26,6 +29,14 @@ const NOVEL_TYPE_ICONS: Record<string, string> = {
   lishi: '📜',
 }
 
+// 年代图标
+const ERA_ICONS: Record<string, string> = {
+  ancient: '🏛️',
+  modern: '🏙️',
+  future: '🚀',
+  fantasy: '🌐',
+}
+
 // 目标读者图标和描述
 const TARGET_READER_ICONS: Record<string, string> = {
   male: '👨',
@@ -44,14 +55,18 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
   const [targetWords, setTargetWords] = useState<number>(initialData?.targetWords || 0)
   const [wordsPerChapter, setWordsPerChapter] = useState(initialData?.wordsPerChapter || '')
   const [customWordsPerChapter, setCustomWordsPerChapter] = useState<number | undefined>(initialData?.customWordsPerChapter)
+  const [era, setEra] = useState(initialData?.era || '')  // 年代
 
   // 选填项状态
   const [narrative, setNarrative] = useState(initialData?.narrative || '')
   const [coreTheme, setCoreTheme] = useState(initialData?.coreTheme || '')
   const [worldSetting, setWorldSetting] = useState(initialData?.worldSetting || '')
   const [customWorldSetting, setCustomWorldSetting] = useState(initialData?.customWorldSetting || '')
-  const [protagonist, setProtagonist] = useState(initialData?.protagonist || '')
-  const [customProtagonist, setCustomProtagonist] = useState(initialData?.customProtagonist || '')
+  const [genre, setGenre] = useState(initialData?.genre || '')  // 流派（男频专属）
+  const [maleLead, setMaleLead] = useState(initialData?.maleLead || '')  // 男主人设
+  const [customMaleLead, setCustomMaleLead] = useState(initialData?.customMaleLead || '')
+  const [femaleLead, setFemaleLead] = useState(initialData?.femaleLead || '')  // 女主人设
+  const [customFemaleLead, setCustomFemaleLead] = useState(initialData?.customFemaleLead || '')
   const [goldFinger, setGoldFinger] = useState(initialData?.goldFinger || '')
   const [customGoldFinger, setCustomGoldFinger] = useState(initialData?.customGoldFinger || '')
   const [stylePreference, setStylePreference] = useState(initialData?.stylePreference || '')
@@ -72,12 +87,16 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
         if (draft.targetWords) setTargetWords(draft.targetWords)
         if (draft.wordsPerChapter) setWordsPerChapter(draft.wordsPerChapter)
         if (draft.customWordsPerChapter) setCustomWordsPerChapter(draft.customWordsPerChapter)
+        if (draft.era) setEra(draft.era)
         if (draft.narrative) setNarrative(draft.narrative)
         if (draft.coreTheme) setCoreTheme(draft.coreTheme)
         if (draft.worldSetting) setWorldSetting(draft.worldSetting)
         if (draft.customWorldSetting) setCustomWorldSetting(draft.customWorldSetting)
-        if (draft.protagonist) setProtagonist(draft.protagonist)
-        if (draft.customProtagonist) setCustomProtagonist(draft.customProtagonist)
+        if (draft.genre) setGenre(draft.genre)
+        if (draft.maleLead) setMaleLead(draft.maleLead)
+        if (draft.customMaleLead) setCustomMaleLead(draft.customMaleLead)
+        if (draft.femaleLead) setFemaleLead(draft.femaleLead)
+        if (draft.customFemaleLead) setCustomFemaleLead(draft.customFemaleLead)
         if (draft.goldFinger) setGoldFinger(draft.goldFinger)
         if (draft.customGoldFinger) setCustomGoldFinger(draft.customGoldFinger)
         if (draft.stylePreference) setStylePreference(draft.stylePreference)
@@ -93,8 +112,12 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
       coreTheme,
       worldSetting,
       customWorldSetting,
-      protagonist,
-      customProtagonist,
+      era,
+      genre,
+      maleLead,
+      customMaleLead,
+      femaleLead,
+      customFemaleLead,
       stylePreference,
       targetReader,
       wordsPerChapter,
@@ -106,7 +129,7 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
     if (novelType || targetWords || coreTheme || targetReader) {
       saveInspirationDraft(data)
     }
-  }, [novelType, targetWords, coreTheme, worldSetting, customWorldSetting, protagonist, customProtagonist, stylePreference, targetReader, wordsPerChapter, customWordsPerChapter, narrative, goldFinger, customGoldFinger])
+  }, [novelType, targetWords, coreTheme, worldSetting, customWorldSetting, era, genre, maleLead, customMaleLead, femaleLead, customFemaleLead, stylePreference, targetReader, wordsPerChapter, customWordsPerChapter, narrative, goldFinger, customGoldFinger])
 
   // 加载可用模型列表
   useEffect(() => {
@@ -135,7 +158,16 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
     if (!targetWords) newErrors.targetWords = '请输入目标字数'
     else if (targetWords < 10000) newErrors.targetWords = '目标字数不能少于1万字'
     if (!wordsPerChapter) newErrors.wordsPerChapter = '请选择每章字数'
+    if (!era) newErrors.era = '请选择年代'
     if (!coreTheme) newErrors.coreTheme = '请选择核心主题'
+
+    // 根据目标读者验证主角设定
+    if (targetReader === 'male' && !maleLead) {
+      newErrors.maleLead = '请选择男主人设'
+    }
+    if (targetReader === 'female' && !femaleLead) {
+      newErrors.femaleLead = '请选择女主人设'
+    }
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors)
@@ -148,8 +180,12 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
       coreTheme,
       worldSetting,
       customWorldSetting,
-      protagonist,
-      customProtagonist,
+      era,
+      genre,
+      maleLead,
+      customMaleLead,
+      femaleLead,
+      customFemaleLead,
       stylePreference,
       targetReader,
       wordsPerChapter,
@@ -170,12 +206,16 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
     setTargetWords(0)
     setWordsPerChapter('')
     setCustomWordsPerChapter(undefined)
+    setEra('')
     setNarrative('')
     setCoreTheme('')
     setWorldSetting('')
     setCustomWorldSetting('')
-    setProtagonist('')
-    setCustomProtagonist('')
+    setGenre('')
+    setMaleLead('')
+    setCustomMaleLead('')
+    setFemaleLead('')
+    setCustomFemaleLead('')
     setGoldFinger('')
     setCustomGoldFinger('')
     setStylePreference('')
@@ -247,6 +287,33 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
             ))}
           </div>
           {errors.novelType && <p className="text-red-500 text-xs mt-2">{errors.novelType}</p>}
+        </div>
+
+        {/* 年代：卡片选择 */}
+        <div className="mb-6">
+          <div className="text-sm font-medium text-gray-700 mb-3">
+            年代 <span className="text-red-500">*</span>
+          </div>
+          <div className="grid grid-cols-4 gap-2 max-w-lg">
+            {COMMON_OPTIONS.era.map((opt) => (
+              <div
+                key={opt.value}
+                onClick={() => {
+                  setEra(opt.value)
+                  if (errors.era) setErrors({ ...errors, era: '' })
+                }}
+                className={`border-2 rounded-lg p-3 text-center cursor-pointer transition-all ${
+                  era === opt.value
+                    ? 'border-blue-500 bg-blue-50 shadow-sm'
+                    : 'border-gray-200 hover:border-blue-300 hover:shadow-sm'
+                }`}
+              >
+                <div className="text-lg mb-1">{ERA_ICONS[opt.value]}</div>
+                <div className="text-sm font-medium">{opt.label}</div>
+              </div>
+            ))}
+          </div>
+          {errors.era && <p className="text-red-500 text-xs mt-2">{errors.era}</p>}
         </div>
 
         {/* 下拉框选项：目标字数、每章字数 */}
@@ -426,63 +493,140 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
             )}
           </div>
 
-          {/* 主角设定 */}
-          <div>
-            <div className="text-sm font-medium text-gray-700 mb-2">主角设定</div>
-            <div className="flex flex-wrap gap-2">
-              {INSPIRATION_OPTIONS.protagonistTypes.map((opt) => (
-                <span
-                  key={opt.value}
-                  onClick={() => setProtagonist(opt.value)}
-                  className={`px-4 py-2 rounded-full border-2 text-sm cursor-pointer transition-all ${
-                    protagonist === opt.value
-                      ? 'bg-blue-500 text-white border-blue-500'
-                      : 'border-gray-200 hover:border-blue-300'
-                  }`}
-                >
-                  {opt.label}
-                </span>
-              ))}
+          {/* 流派（男频专属） */}
+          {targetReader === 'male' && (
+            <div>
+              <div className="text-sm font-medium text-gray-700 mb-2">流派</div>
+              <div className="flex flex-wrap gap-2">
+                {MALE_OPTIONS.genre.map((opt) => (
+                  <span
+                    key={opt.value}
+                    onClick={() => setGenre(opt.value)}
+                    className={`px-4 py-2 rounded-full border-2 text-sm cursor-pointer transition-all ${
+                      genre === opt.value
+                        ? 'bg-blue-500 text-white border-blue-500'
+                        : 'border-gray-200 hover:border-blue-300'
+                    }`}
+                  >
+                    {opt.label}
+                  </span>
+                ))}
+              </div>
             </div>
-            {protagonist === 'custom' && (
-              <Input
-                type="text"
-                value={customProtagonist || ''}
-                onChange={(e) => setCustomProtagonist(e.target.value)}
-                placeholder="输入自定义主角设定"
-                className="mt-2 max-w-md"
-              />
-            )}
-          </div>
+          )}
 
-          {/* 金手指设定 */}
-          <div>
-            <div className="text-sm font-medium text-gray-700 mb-2">金手指设定</div>
-            <div className="flex flex-wrap gap-2">
-              {INSPIRATION_OPTIONS.goldFinger.map((opt) => (
-                <span
-                  key={opt.value}
-                  onClick={() => setGoldFinger(opt.value)}
-                  className={`px-4 py-2 rounded-full border-2 text-sm cursor-pointer transition-all ${
-                    goldFinger === opt.value
-                      ? 'bg-blue-500 text-white border-blue-500'
-                      : 'border-gray-200 hover:border-blue-300'
-                  }`}
-                >
-                  {opt.label}
-                </span>
-              ))}
+          {/* 男主人设（男频专属） */}
+          {targetReader === 'male' && (
+            <div>
+              <div className="text-sm font-medium text-gray-700 mb-2">
+                男主人设 <span className="text-red-500">*</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {MALE_OPTIONS.maleLead.map((opt) => (
+                  <span
+                    key={opt.value}
+                    onClick={() => {
+                      setMaleLead(opt.value)
+                      if (errors.maleLead) setErrors({ ...errors, maleLead: '' })
+                    }}
+                    className={`px-4 py-2 rounded-full border-2 text-sm cursor-pointer transition-all ${
+                      maleLead === opt.value
+                        ? 'bg-blue-500 text-white border-blue-500'
+                        : 'border-gray-200 hover:border-blue-300'
+                    }`}
+                  >
+                    {opt.label}
+                  </span>
+                ))}
+              </div>
+              {maleLead === 'custom' && (
+                <Input
+                  type="text"
+                  value={customMaleLead || ''}
+                  onChange={(e) => setCustomMaleLead(e.target.value)}
+                  placeholder="输入自定义男主人设"
+                  className="mt-2 max-w-md"
+                />
+              )}
+              {errors.maleLead && <p className="text-red-500 text-xs mt-2">{errors.maleLead}</p>}
             </div>
-            {goldFinger === 'custom' && (
-              <Input
-                type="text"
-                value={customGoldFinger || ''}
-                onChange={(e) => setCustomGoldFinger(e.target.value)}
-                placeholder="输入自定义金手指设定"
-                className="mt-2 max-w-md"
-              />
-            )}
-          </div>
+          )}
+
+          {/* 女主人设（女频专属） */}
+          {targetReader === 'female' && (
+            <div>
+              <div className="text-sm font-medium text-gray-700 mb-2">
+                女主人设 <span className="text-red-500">*</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {FEMALE_OPTIONS.femaleLead.map((opt) => (
+                  <span
+                    key={opt.value}
+                    onClick={() => {
+                      setFemaleLead(opt.value)
+                      if (errors.femaleLead) setErrors({ ...errors, femaleLead: '' })
+                    }}
+                    className={`px-4 py-2 rounded-full border-2 text-sm cursor-pointer transition-all ${
+                      femaleLead === opt.value
+                        ? 'bg-blue-500 text-white border-blue-500'
+                        : 'border-gray-200 hover:border-blue-300'
+                    }`}
+                  >
+                    {opt.label}
+                  </span>
+                ))}
+              </div>
+              {femaleLead === 'custom' && (
+                <Input
+                  type="text"
+                  value={customFemaleLead || ''}
+                  onChange={(e) => setCustomFemaleLead(e.target.value)}
+                  placeholder="输入自定义女主人设"
+                  className="mt-2 max-w-md"
+                />
+              )}
+              {errors.femaleLead && <p className="text-red-500 text-xs mt-2">{errors.femaleLead}</p>}
+            </div>
+          )}
+
+          {/* 未选择目标读者时提示 */}
+          {!targetReader && (
+            <div>
+              <div className="text-sm font-medium text-gray-700 mb-2">主角设定</div>
+              <p className="text-sm text-gray-400">请先选择目标读者</p>
+            </div>
+          )}
+
+          {/* 金手指设定（男频专属） */}
+          {targetReader === 'male' && (
+            <div>
+              <div className="text-sm font-medium text-gray-700 mb-2">金手指设定</div>
+              <div className="flex flex-wrap gap-2">
+                {MALE_OPTIONS.goldFinger.map((opt) => (
+                  <span
+                    key={opt.value}
+                    onClick={() => setGoldFinger(opt.value)}
+                    className={`px-4 py-2 rounded-full border-2 text-sm cursor-pointer transition-all ${
+                      goldFinger === opt.value
+                        ? 'bg-blue-500 text-white border-blue-500'
+                        : 'border-gray-200 hover:border-blue-300'
+                    }`}
+                  >
+                    {opt.label}
+                  </span>
+                ))}
+              </div>
+              {goldFinger === 'custom' && (
+                <Input
+                  type="text"
+                  value={customGoldFinger || ''}
+                  onChange={(e) => setCustomGoldFinger(e.target.value)}
+                  placeholder="输入自定义金手指设定"
+                  className="mt-2 max-w-md"
+                />
+              )}
+            </div>
+          )}
 
           {/* 风格偏好 */}
           <div>
