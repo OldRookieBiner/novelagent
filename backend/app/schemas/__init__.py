@@ -13,10 +13,9 @@ from app.schemas.chapter import (
     ChapterContentUpdate, ChapterResponse, ReviewRequest, ReviewResponse
 )
 from app.schemas.settings import SettingsBase, SettingsUpdate, SettingsResponse
-from app.schemas.agent_prompt import (
+from app.schemas.system_prompt import (
     AGENT_TYPES, AgentTypeKey, AgentTypeMeta,
-    AgentPromptResponse, AgentPromptListResponse, AgentPromptUpdate,
-    ProjectAgentPromptItem, ProjectAgentPromptsResponse, EffectivePromptResponse
+    SystemPromptResponse, SystemPromptListResponse, SystemPromptUpdate
 )
 
 __all__ = [
@@ -28,6 +27,5 @@ __all__ = [
     "ChapterContentUpdate", "ChapterResponse", "ReviewRequest", "ReviewResponse",
     "SettingsBase", "SettingsUpdate", "SettingsResponse",
     "AGENT_TYPES", "AgentTypeKey", "AgentTypeMeta",
-    "AgentPromptResponse", "AgentPromptListResponse", "AgentPromptUpdate",
-    "ProjectAgentPromptItem", "ProjectAgentPromptsResponse", "EffectivePromptResponse",
+    "SystemPromptResponse", "SystemPromptListResponse", "SystemPromptUpdate",
 ]
