@@ -224,23 +224,44 @@ def prepare_outline_prompt(state: NovelState) -> tuple[str, int]:
     if not inspiration_template:
         novel_type = collected_info.get("novelType", "未指定")
         core_theme = collected_info.get("coreTheme", "未指定")
-        protagonist = collected_info.get("customProtagonist") or collected_info.get("protagonist", "未指定")
+        target_reader = collected_info.get("targetReader", "未指定")
+        era = collected_info.get("era", "未指定")
+        genre = collected_info.get("genre", "未指定")
         world_setting = collected_info.get("customWorldSetting") or collected_info.get("worldSetting", "未指定")
         style = collected_info.get("stylePreference", "未指定")
         target_words_display = f"{target_words}字" if isinstance(target_words, int) else "未指定"
 
+        # 根据目标读者获取主角设定
+        target_reader_label = "男频" if target_reader == "male" else "女频" if target_reader == "female" else "未指定"
+        if target_reader == "male":
+            protagonist = collected_info.get("customMaleLead") or collected_info.get("maleLead", "未指定")
+            protagonist_label = "男主"
+            gold_finger = collected_info.get("customGoldFinger") or collected_info.get("goldFinger", "未指定")
+        elif target_reader == "female":
+            protagonist = collected_info.get("customFemaleLead") or collected_info.get("femaleLead", "未指定")
+            protagonist_label = "女主"
+            gold_finger = "未指定"
+        else:
+            protagonist = collected_info.get("customProtagonist") or collected_info.get("protagonist", "未指定")
+            protagonist_label = "主角"
+            gold_finger = collected_info.get("customGoldFinger") or collected_info.get("goldFinger", "未指定")
+
         inspiration_template = f"""# 小说创作灵感
 
 ## 基本信息
+- **目标读者**：{target_reader_label}
 - **小说类型**：{novel_type}
-- **核心主题**：{core_theme}
+- **年代设定**：{era}
 - **目标字数**：{target_words_display}
 
-## 世界设定
-- **世界观**：{world_setting}
+## 主角设定
+- **{protagonist_label}**：{protagonist}
 
-## 人物设定
-- **主角**：{protagonist}
+## 核心设定
+- **核心主题**：{core_theme}
+- **世界观**：{world_setting}
+- **流派**：{genre}
+- **金手指**：{gold_finger}
 
 ## 风格
 - **风格偏好**：{style}
