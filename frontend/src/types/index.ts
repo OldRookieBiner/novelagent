@@ -101,8 +101,8 @@ export interface PlotPoint {
   hook?: string;
 }
 
-// v0.6.1: 人物设定结构
-export interface Character {
+// v0.6.1: 人物设定结构（用于大纲，简化版）
+export interface OutlineCharacter {
   name: string;
   role: string;
   personality?: string;
@@ -123,7 +123,7 @@ export interface Outline {
   title?: string;
   summary?: string;
   plot_points?: PlotPoint[];  // v0.6.1: 改为字典数组
-  characters?: Character[];   // v0.6.1: 人物设定
+  characters?: OutlineCharacter[];   // v0.6.1: 人物设定（简化版）
   world_setting?: WorldSetting;  // v0.6.1: 世界观
   emotional_curve?: string;   // v0.6.1: 情感曲线
   collected_info?: CollectedInfo;
@@ -139,7 +139,7 @@ export interface OutlineUpdate {
   title?: string;
   summary?: string;
   plot_points?: PlotPoint[];  // v0.6.1: 改为字典数组
-  characters?: Character[];
+  characters?: OutlineCharacter[];  // v0.6.1: 人物设定（简化版）
   world_setting?: WorldSetting;
   emotional_curve?: string;
   collected_info?: CollectedInfo;
@@ -419,3 +419,7 @@ export interface WrittenChapter {
   content: string
   word_count: number
 }
+
+// ==================== Character Setting Module Types ====================
+
+export * from './character'
