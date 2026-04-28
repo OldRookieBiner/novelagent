@@ -22,11 +22,18 @@ interface InspirationFormProps {
 // 小说类型图标
 const NOVEL_TYPE_ICONS: Record<string, string> = {
   xuanhuan: '⚔️',
-  kehuan: '🚀',
   dushi: '🏙️',
+  xianxia: '☁️',
   yanqing: '💕',
-  xuanyi: '🔍',
   lishi: '📜',
+  xuanyi: '🔍',
+  kehuan: '🚀',
+  youxi: '🎮',
+  qihuan: '🧙',
+  junshi: '🎖️',
+  lingyi: '👻',
+  jingji: '🏆',
+  tongren: '📖',
 }
 
 // 年代图标

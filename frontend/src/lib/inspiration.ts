@@ -37,16 +37,17 @@ export interface InspirationData {
 export const COMMON_OPTIONS = {
   novelTypes: [
     { value: 'xuanhuan', label: '玄幻' },
-    { value: 'kehuan', label: '科幻' },
     { value: 'dushi', label: '都市' },
+    { value: 'xianxia', label: '仙侠' },
     { value: 'yanqing', label: '言情' },
-    { value: 'xuanyi', label: '悬疑' },
     { value: 'lishi', label: '历史' },
-    { value: 'junshi', label: '军事' },
+    { value: 'xuanyi', label: '悬疑' },
+    { value: 'kehuan', label: '科幻' },
     { value: 'youxi', label: '游戏' },
+    { value: 'qihuan', label: '奇幻' },
+    { value: 'junshi', label: '军事' },
     { value: 'lingyi', label: '灵异' },
     { value: 'jingji', label: '竞技' },
-    { value: 'qihuan', label: '奇幻' },
     { value: 'tongren', label: '同人' },
   ],
 
