@@ -9,9 +9,11 @@ export interface StepConfig {
 export const STEPS: StepConfig[] = [
   { index: 0, name: '灵感采集', stages: ['inspiration'] },
   { index: 1, name: '大纲生成', stages: ['outline'] },
-  { index: 2, name: '章节纲', stages: ['chapter_outlines'] },
-  { index: 3, name: '写作', stages: ['writing'] },
-  { index: 4, name: '审核', stages: ['review', 'complete'] },
+  { index: 2, name: '人物设定', stages: ['characters'] },
+  { index: 3, name: '关系规划', stages: ['relations'] },
+  { index: 4, name: '章节纲', stages: ['chapter_outlines'] },
+  { index: 5, name: '写作', stages: ['writing'] },
+  { index: 6, name: '审核', stages: ['review', 'complete'] },
 ]
 
 export type StepStatus = 'completed' | 'current' | 'pending'
@@ -29,6 +31,8 @@ export function getStepStatus(stepIndex: number, currentStage: string): StepStat
   const stageOrder = [
     'inspiration',
     'outline',
+    'characters',
+    'relations',
     'chapter_outlines',
     'writing',
     'review',
