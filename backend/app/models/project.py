@@ -8,14 +8,15 @@ from app.database import Base
 
 
 class Project(Base):
-    """Project model"""
+    """Project model - 小说项目"""
 
     __tablename__ = "projects"
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     name = Column(String(100), nullable=False)
-    target_words = Column(Integer, default=100000)
+    novel_length = Column(Integer, default=100000)  # 小说目标字数
+    target_words = Column(Integer, default=100000)  # 保留向后兼容
     total_words = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -25,6 +26,9 @@ class Project(Base):
     outline = relationship("Outline", back_populates="project", uselist=False, cascade="all, delete-orphan")
     chapter_outlines = relationship("ChapterOutline", back_populates="project", cascade="all, delete-orphan")
     workflow_states = relationship("WorkflowState", back_populates="project", cascade="all, delete-orphan")
+    # 人物设定相关
+    characters = relationship("Character", back_populates="project", cascade="all, delete-orphan")
+    relations = relationship("Relation", back_populates="project", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Project {self.name}>"
