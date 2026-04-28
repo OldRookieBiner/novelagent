@@ -10,6 +10,7 @@ import ProjectDetail from '@/pages/ProjectDetail'
 import Writing from '@/pages/Writing'
 import Reading from '@/pages/Reading'
 import Settings from '@/pages/Settings'
+import CharacterSetting from '@/pages/CharacterSetting'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
@@ -34,6 +35,7 @@ function App() {
             <Route path="project/:id" element={<ProjectDetail />} />
             <Route path="project/:id/write" element={<Writing />} />
             <Route path="project/:id/read/:chapterNum" element={<Reading />} />
+            <Route path="project/:id/characters" element={<CharacterSetting />} />
             <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>
