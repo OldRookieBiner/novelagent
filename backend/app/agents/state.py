@@ -60,7 +60,7 @@ class NovelState(TypedDict):
     project_id: int
 
     # ========== 阶段控制 ==========
-    stage: str  # inspiration | outline | chapter_outlines | writing | review | complete
+    stage: str  # inspiration | outline | characters | relations | chapter_outlines | writing | review | complete
 
     # ========== 灵感/输入 ==========
     collected_info: dict[str, Any]
@@ -74,6 +74,15 @@ class NovelState(TypedDict):
     outline_world_setting: Optional[dict]  # {era, core_rules, power_system}
     outline_emotional_curve: Optional[str]
     outline_confirmed: bool
+
+    # ========== 人物设定（v0.8.0）==========
+    characters: list[dict]           # [{name, role, age, appearance, personality, background, skills, goals, conflicts}]
+    relations: list[dict]            # [{character1, character2, relationship_type, description, development}]
+    evolution_plans: list[dict]      # [{chapter_number, character_name, changes}]
+    evolution_records: list[dict]    # [{chapter_number, character_name, actual_changes}]
+
+    # ========== 小说规格 ==========
+    novel_length: str                # short | medium | long
 
     # ========== 章节大纲 ==========
     chapter_count: int
@@ -102,6 +111,8 @@ class NovelState(TypedDict):
 # ========== 阶段常量 ==========
 STAGE_INSPIRATION = "inspiration"
 STAGE_OUTLINE = "outline"
+STAGE_CHARACTERS = "characters"        # v0.8.0: 人物设定
+STAGE_RELATIONS = "relations"          # v0.8.0: 人物关系
 STAGE_CHAPTER_OUTLINES = "chapter_outlines"
 STAGE_WRITING = "writing"
 STAGE_REVIEW = "review"

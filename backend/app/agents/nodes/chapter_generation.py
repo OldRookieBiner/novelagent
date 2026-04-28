@@ -258,6 +258,11 @@ async def generate_chapter_content_stream(
     characters = state.get("outline_characters", [])
     world_setting = state.get("outline_world_setting", {})
 
+    # v0.8.0: 获取详细人物设定和关系
+    detailed_characters = state.get("characters", [])
+    relations = state.get("relations", [])
+    evolution_records = state.get("evolution_records", [])
+
     # 格式化章节大纲（包含新字段）
     outline_str = f"""
 章节名：{chapter_outline['title']}
@@ -269,8 +274,24 @@ async def generate_chapter_content_stream(
 钩子：{chapter_outline.get('hook', '')}
 """
 
-    # 格式化人物设定
-    if characters:
+    # 格式化人物设定（优先使用详细人物设定）
+    if detailed_characters:
+        # v0.8.0: 使用详细人物设定
+        chars_str = "【详细人物设定】\n"
+        for c in detailed_characters:
+            chars_str += f"- {c.get('name', '')}（{c.get('role', '配角')}）：\n"
+            if c.get('appearance'):
+                chars_str += f"  外貌：{c.get('appearance')}\n"
+            if c.get('personality'):
+                chars_str += f"  性格：{c.get('personality')}\n"
+            if c.get('background'):
+                chars_str += f"  背景：{c.get('background')}\n"
+            if c.get('skills'):
+                chars_str += f"  能力：{c.get('skills')}\n"
+            if c.get('goals'):
+                chars_str += f"  目标：{c.get('goals')}\n"
+    elif characters:
+        # 兼容旧版本大纲人物
         chars_str = "\n".join([
             f"- {c.get('name', '')}：{c.get('personality', '')}，动机：{c.get('motivation', '')}"
             for c in characters
@@ -278,11 +299,31 @@ async def generate_chapter_content_stream(
     else:
         chars_str = info.get("customProtagonist") or info.get("protagonist", "未指定")
 
+    # v0.8.0: 格式化人物关系
+    relations_str = ""
+    if relations:
+        relations_str = "\n【人物关系】\n"
+        for r in relations:
+            relations_str += f"- {r.get('character1', '')} 与 {r.get('character2', '')}：{r.get('relationship_type', '')}"
+            if r.get('description'):
+                relations_str += f"（{r.get('description')}）"
+            relations_str += "\n"
+
+    # v0.8.0: 格式化人物演变记录
+    evolution_str = ""
+    if evolution_records:
+        evolution_str = "\n【人物演变】\n"
+        for e in evolution_records[-3:]:  # 只取最近几条
+            evolution_str += f"- 第{e.get('chapter_number', '')}章 {e.get('character_name', '')}：{e.get('actual_changes', '')}\n"
+
     # 格式化世界观
     if world_setting:
         world_str = f"时代：{world_setting.get('era', '')}，核心设定：{world_setting.get('core_rules', '')}"
     else:
         world_str = info.get("customWorldSetting") or info.get("worldSetting", "未指定")
+
+    # 合并人物设定、关系和演变信息
+    combined_characters_str = chars_str + relations_str + evolution_str
 
     # 获取章节目标字数
     target_words = chapter_outline.get("target_words", 3000)
@@ -291,7 +332,7 @@ async def generate_chapter_content_stream(
         chapter_outline=outline_str,
         previous_ending="",
         genre=info.get("novelType", "未指定"),
-        main_characters=chars_str,
+        main_characters=combined_characters_str,
         world_setting=world_str,
         style_preference=info.get("stylePreference", "未指定"),
         target_words=target_words
@@ -364,6 +405,11 @@ async def generate_chapter_content_node(state: NovelState) -> NovelState:
     characters = state.get("outline_characters", [])
     world_setting = state.get("outline_world_setting", {})
 
+    # v0.8.0: 获取详细人物设定和关系
+    detailed_characters = state.get("characters", [])
+    relations = state.get("relations", [])
+    evolution_records = state.get("evolution_records", [])
+
     # 格式化章节大纲
     outline_str = f"""
 章节名：{chapter_outline.get('title', '')}
@@ -375,8 +421,24 @@ async def generate_chapter_content_node(state: NovelState) -> NovelState:
 钩子：{chapter_outline.get('hook', '')}
 """
 
-    # 格式化人物设定
-    if characters:
+    # 格式化人物设定（优先使用详细人物设定）
+    if detailed_characters:
+        # v0.8.0: 使用详细人物设定
+        chars_str = "【详细人物设定】\n"
+        for c in detailed_characters:
+            chars_str += f"- {c.get('name', '')}（{c.get('role', '配角')}）：\n"
+            if c.get('appearance'):
+                chars_str += f"  外貌：{c.get('appearance')}\n"
+            if c.get('personality'):
+                chars_str += f"  性格：{c.get('personality')}\n"
+            if c.get('background'):
+                chars_str += f"  背景：{c.get('background')}\n"
+            if c.get('skills'):
+                chars_str += f"  能力：{c.get('skills')}\n"
+            if c.get('goals'):
+                chars_str += f"  目标：{c.get('goals')}\n"
+    elif characters:
+        # 兼容旧版本大纲人物
         chars_str = "\n".join([
             f"- {c.get('name', '')}：{c.get('personality', '')}，动机：{c.get('motivation', '')}"
             for c in characters
@@ -384,11 +446,34 @@ async def generate_chapter_content_node(state: NovelState) -> NovelState:
     else:
         chars_str = info.get("customProtagonist") or info.get("protagonist", "未指定")
 
+    # v0.8.0: 格式化人物关系
+    relations_str = ""
+    if relations:
+        relations_str = "\n【人物关系】\n"
+        for r in relations:
+            relations_str += f"- {r.get('character1', '')} 与 {r.get('character2', '')}：{r.get('relationship_type', '')}"
+            if r.get('description'):
+                relations_str += f"（{r.get('description')}）"
+            relations_str += "\n"
+
+    # v0.8.0: 格式化人物演变记录（用于保持人物发展一致性）
+    evolution_str = ""
+    if evolution_records:
+        # 只取最近几章的演变记录
+        recent_evolution = [e for e in evolution_records if e.get('chapter_number', 0) < current_chapter][-3:]
+        if recent_evolution:
+            evolution_str = "\n【人物演变】\n"
+            for e in recent_evolution:
+                evolution_str += f"- 第{e.get('chapter_number', '')}章 {e.get('character_name', '')}：{e.get('actual_changes', '')}\n"
+
     # 格式化世界观
     if world_setting:
         world_str = f"时代：{world_setting.get('era', '')}，核心设定：{world_setting.get('core_rules', '')}"
     else:
         world_str = info.get("customWorldSetting") or info.get("worldSetting", "未指定")
+
+    # 合并人物设定、关系和演变信息（用于 prompt）
+    combined_characters_str = chars_str + relations_str + evolution_str
 
     # 获取章节目标字数
     target_words = chapter_outline.get("target_words", 3000)
@@ -397,7 +482,7 @@ async def generate_chapter_content_node(state: NovelState) -> NovelState:
         chapter_outline=outline_str,
         previous_ending=previous_ending,
         genre=info.get("novelType", "未指定"),
-        main_characters=chars_str,
+        main_characters=combined_characters_str,
         world_setting=world_str,
         style_preference=info.get("stylePreference", "未指定"),
         target_words=target_words
