@@ -70,6 +70,7 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
   const [worldSetting, setWorldSetting] = useState(initialData?.worldSetting || '')
   const [customWorldSetting, setCustomWorldSetting] = useState(initialData?.customWorldSetting || '')
   const [genre, setGenre] = useState(initialData?.genre || '')  // 流派（男频专属）
+  const [customGenre, setCustomGenre] = useState(initialData?.customGenre || '')  // 自定义流派
   const [maleLead, setMaleLead] = useState(initialData?.maleLead || '')  // 男主人设
   const [customMaleLead, setCustomMaleLead] = useState(initialData?.customMaleLead || '')
   const [femaleLead, setFemaleLead] = useState(initialData?.femaleLead || '')  // 女主人设
@@ -100,6 +101,7 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
         if (draft.worldSetting) setWorldSetting(draft.worldSetting)
         if (draft.customWorldSetting) setCustomWorldSetting(draft.customWorldSetting)
         if (draft.genre) setGenre(draft.genre)
+        if (draft.customGenre) setCustomGenre(draft.customGenre)
         if (draft.maleLead) setMaleLead(draft.maleLead)
         if (draft.customMaleLead) setCustomMaleLead(draft.customMaleLead)
         if (draft.femaleLead) setFemaleLead(draft.femaleLead)
@@ -116,6 +118,7 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
     if (targetReader === 'female') {
       // 切换到女频时清除男频专属字段
       setGenre('')
+      setCustomGenre('')
       setMaleLead('')
       setCustomMaleLead('')
       setGoldFinger('')
@@ -137,6 +140,7 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
       customWorldSetting,
       era,
       genre,
+      customGenre,
       maleLead,
       customMaleLead,
       femaleLead,
@@ -152,7 +156,7 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
     if (novelType || targetWords || coreTheme || targetReader) {
       saveInspirationDraft(data)
     }
-  }, [novelType, targetWords, coreTheme, worldSetting, customWorldSetting, era, genre, maleLead, customMaleLead, femaleLead, customFemaleLead, stylePreference, targetReader, wordsPerChapter, customWordsPerChapter, narrative, goldFinger, customGoldFinger])
+  }, [novelType, targetWords, coreTheme, worldSetting, customWorldSetting, era, genre, customGenre, maleLead, customMaleLead, femaleLead, customFemaleLead, stylePreference, targetReader, wordsPerChapter, customWordsPerChapter, narrative, goldFinger, customGoldFinger])
 
   // 加载可用模型列表
   useEffect(() => {
@@ -205,6 +209,7 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
       customWorldSetting,
       era,
       genre,
+      customGenre,
       maleLead,
       customMaleLead,
       femaleLead,
@@ -235,6 +240,7 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
     setWorldSetting('')
     setCustomWorldSetting('')
     setGenre('')
+    setCustomGenre('')
     setMaleLead('')
     setCustomMaleLead('')
     setFemaleLead('')
@@ -535,6 +541,15 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
                   </span>
                 ))}
               </div>
+              {genre === 'custom' && (
+                <Input
+                  type="text"
+                  value={customGenre || ''}
+                  onChange={(e) => setCustomGenre(e.target.value)}
+                  placeholder="输入自定义流派"
+                  className="mt-2 max-w-md"
+                />
+              )}
             </div>
           )}
 

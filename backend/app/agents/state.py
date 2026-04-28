@@ -46,6 +46,7 @@ class CollectedInfo(TypedDict, total=False):
     worldSetting: str
     customWorldSetting: str
     genre: str                  # v0.7.x: 流派
+    customGenre: str            # v0.7.x: 自定义流派
     narrative: str
     goldFinger: str
     customGoldFinger: str

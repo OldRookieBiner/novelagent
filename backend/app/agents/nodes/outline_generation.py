@@ -226,7 +226,7 @@ def prepare_outline_prompt(state: NovelState) -> tuple[str, int]:
         core_theme = collected_info.get("coreTheme", "未指定")
         target_reader = collected_info.get("targetReader", "未指定")
         era = collected_info.get("era", "未指定")
-        genre = collected_info.get("genre", "未指定")
+        genre = collected_info.get("customGenre") or collected_info.get("genre", "未指定")
         world_setting = collected_info.get("customWorldSetting") or collected_info.get("worldSetting", "未指定")
         style = collected_info.get("stylePreference", "未指定")
         target_words_display = f"{target_words}字" if isinstance(target_words, int) else "未指定"

@@ -25,6 +25,7 @@ export interface InspirationData {
   // 分层选项新增字段
   era?: string                   // 年代
   genre?: string                 // 流派
+  customGenre?: string           // 自定义流派
   maleLead?: string              // 男主人设
   customMaleLead?: string
   femaleLead?: string            // 女主人设
@@ -131,6 +132,7 @@ export const MALE_OPTIONS = {
     { value: 'heaven', label: '诸天流' },
     { value: 'system', label: '系统流' },
     { value: 'livestream', label: '直播流' },
+    { value: 'custom', label: '自定义' },
   ],
 
   // 男主人设（男频专属）
@@ -248,7 +250,7 @@ export function generateInspirationTemplate(data: InspirationData): string {
   if (data.targetReader === 'male') {
     const maleLead = data.customMaleLead || getOptionLabel(MALE_OPTIONS.maleLead, data.maleLead)
     const goldFinger = data.customGoldFinger || getOptionLabel(MALE_OPTIONS.goldFinger, data.goldFinger)
-    const genre = getOptionLabel(MALE_OPTIONS.genre, data.genre)
+    const genre = data.customGenre || getOptionLabel(MALE_OPTIONS.genre, data.genre)
     protagonistSection = `- **流派**：${genre || '未设置'}
 - **男主人设**：${maleLead || '未设置'}
 - **金手指**：${goldFinger || '未设置'}`
@@ -361,6 +363,7 @@ export function parseTemplateToData(template: string): Partial<InspirationData> 
       const value = line.split('：')[1]?.trim()
       const option = MALE_OPTIONS.genre.find(o => o.label === value)
       if (option) data.genre = option.value
+      else if (value && value !== '未设置') data.customGenre = value
     }
     // 解析男主人设
     if (line.includes('**男主人设**')) {
