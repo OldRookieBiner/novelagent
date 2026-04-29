@@ -1,30 +1,24 @@
 // frontend/src/pages/CharacterSetting.tsx
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Plus, Users, Heart, X, Pencil, Trash2 } from 'lucide-react'
+import { ArrowLeft, Plus, Users, Heart, X, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Textarea } from '@/components/ui/textarea'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { characterApi, relationApi } from '@/lib/characterApi'
+import LoadingSpinner from '@/components/ui/LoadingSpinner'
 import { projectsApi } from '@/lib/api'
+import { useCharacters } from '@/components/character/hooks/useCharacters'
+import CharacterList from '@/components/character/CharacterList'
+import CharacterDetail from '@/components/character/CharacterDetail'
+import CharacterFormDialog from '@/components/character/CharacterFormDialog'
+import RelationList from '@/components/character/RelationList'
+import RelationFormDialog from '@/components/character/RelationFormDialog'
 import type { Character, CharacterCreate, RelationWithCharacters, RelationCreate } from '@/types'
 import type { Project } from '@/types'
 
 // 标签页类型
 type TabType = 'characters' | 'relations'
-
-// 角色类型选项
-const ROLE_OPTIONS = ['主角', '核心反派', '重要配角', '配角']
-
-// 关系类型选项
-const RELATION_TYPES = ['信任', '敌对', '感情', '合作', '利用', '陌生']
-
-// 关系方向选项
-const DIRECTION_OPTIONS = ['双向', '单向A->B', '单向B->A']
 
 export default function CharacterSetting()
 {
@@ -38,37 +32,31 @@ export default function CharacterSetting()
     // 标签页状态
     const [activeTab, setActiveTab] = useState<TabType>('characters')
 
-    // 人物列表状态
-    const [characters, setCharacters] = useState<Character[]>([])
-    const [charactersLoading, setCharactersLoading] = useState(false)
-    const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null)
+    // 数据钩子
+    const {
+        characters,
+        charactersLoading,
+        relations,
+        relationsLoading,
+        saving,
+        createCharacter,
+        updateCharacter,
+        deleteCharacter,
+        createRelation,
+        deleteRelation,
+    } = useCharacters(projectId, activeTab)
 
-    // 关系列表状态
-    const [relations, setRelations] = useState<RelationWithCharacters[]>([])
-    const [relationsLoading, setRelationsLoading] = useState(false)
+    // 选中状态
+    const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null)
     const [selectedRelation, setSelectedRelation] = useState<RelationWithCharacters | null>(null)
 
-    // 编辑状态
+    // 人物编辑状态
     const [isEditing, setIsEditing] = useState(false)
     const [editForm, setEditForm] = useState<Partial<Character>>({})
-    const [saving, setSaving] = useState(false)
 
-    // 新增人物弹窗状态
+    // 弹窗状态
     const [showAddDialog, setShowAddDialog] = useState(false)
-    const [newCharacter, setNewCharacter] = useState<CharacterCreate>({
-        name: '',
-        role: '配角',
-    })
-
-    // 新增关系弹窗状态
     const [showAddRelationDialog, setShowAddRelationDialog] = useState(false)
-    const [newRelation, setNewRelation] = useState<RelationCreate>({
-        character_a_id: 0,
-        character_b_id: 0,
-        relation_type: '陌生',
-        direction: '双向',
-        trust_level: 50,
-    })
 
     // 加载项目信息
     useEffect(() =>
@@ -93,60 +81,6 @@ export default function CharacterSetting()
         }
         fetchProject()
     }, [projectId])
-
-    // 加载人物列表
-    useEffect(() =>
-    {
-        const fetchCharacters = async () =>
-        {
-            if (!projectId) return
-            setCharactersLoading(true)
-            try
-            {
-                const data = await characterApi.list(projectId)
-                setCharacters(data.characters)
-            }
-            catch (err)
-            {
-                console.error('Failed to fetch characters:', err)
-            }
-            finally
-            {
-                setCharactersLoading(false)
-            }
-        }
-        if (activeTab === 'characters')
-        {
-            fetchCharacters()
-        }
-    }, [projectId, activeTab])
-
-    // 加载关系列表
-    useEffect(() =>
-    {
-        const fetchRelations = async () =>
-        {
-            if (!projectId) return
-            setRelationsLoading(true)
-            try
-            {
-                const data = await relationApi.list(projectId)
-                setRelations(data.relations)
-            }
-            catch (err)
-            {
-                console.error('Failed to fetch relations:', err)
-            }
-            finally
-            {
-                setRelationsLoading(false)
-            }
-        }
-        if (activeTab === 'relations')
-        {
-            fetchRelations()
-        }
-    }, [projectId, activeTab])
 
     // 选择人物时重置编辑状态
     useEffect(() =>
@@ -198,145 +132,66 @@ export default function CharacterSetting()
     // 保存人物编辑
     const handleSaveEdit = async () =>
     {
-        if (!projectId || !selectedCharacter) return
-        setSaving(true)
-        try
+        if (!selectedCharacter) return
+        const updated = await updateCharacter(selectedCharacter.id, editForm)
+        if (updated)
         {
-            const updated = await characterApi.update(projectId, selectedCharacter.id, editForm)
-            setCharacters((prev) =>
-                prev.map((c) => (c.id === updated.id ? updated : c))
-            )
             setSelectedCharacter(updated)
             setIsEditing(false)
             setEditForm({})
-            toast.success('保存成功')
-        }
-        catch (err)
-        {
-            console.error('Failed to save character:', err)
-            toast.error('保存失败')
-        }
-        finally
-        {
-            setSaving(false)
         }
     }
 
     // 删除人物
     const handleDeleteCharacter = async () =>
     {
-        if (!projectId || !selectedCharacter) return
+        if (!selectedCharacter) return
         if (!confirm(`确定要删除人物 "${selectedCharacter.name}" 吗？`)) return
-
-        try
-        {
-            await characterApi.delete(projectId, selectedCharacter.id)
-            setCharacters((prev) => prev.filter((c) => c.id !== selectedCharacter.id))
-            setSelectedCharacter(null)
-            toast.success('删除成功')
-        }
-        catch (err)
-        {
-            console.error('Failed to delete character:', err)
-            toast.error('删除失败')
-        }
+        const ok = await deleteCharacter(selectedCharacter.id)
+        if (ok) setSelectedCharacter(null)
     }
 
     // 创建新人物
-    const handleCreateCharacter = async () =>
+    const handleCreateCharacter = async (data: CharacterCreate) =>
     {
-        if (!projectId || !newCharacter.name.trim())
+        if (!data.name.trim())
         {
             toast.error('请输入人物名称')
             return
         }
-
-        setSaving(true)
-        try
-        {
-            const created = await characterApi.create(projectId, newCharacter)
-            setCharacters((prev) => [...prev, created])
-            setShowAddDialog(false)
-            setNewCharacter({ name: '', role: '配角' })
-            toast.success('创建成功')
-        }
-        catch (err)
-        {
-            console.error('Failed to create character:', err)
-            toast.error('创建失败')
-        }
-        finally
-        {
-            setSaving(false)
-        }
+        const created = await createCharacter(data)
+        if (created) setShowAddDialog(false)
     }
 
     // 创建新关系
-    const handleCreateRelation = async () =>
+    const handleCreateRelation = async (data: RelationCreate) =>
     {
-        if (!projectId) return
-        if (!newRelation.character_a_id || !newRelation.character_b_id)
+        if (!data.character_a_id || !data.character_b_id)
         {
             toast.error('请选择两个人物')
             return
         }
-        if (newRelation.character_a_id === newRelation.character_b_id)
+        if (data.character_a_id === data.character_b_id)
         {
             toast.error('不能选择相同的人物')
             return
         }
-
-        setSaving(true)
-        try
-        {
-            const created = await relationApi.create(projectId, newRelation)
-            // 重新加载关系列表以获取人物详情
-            const data = await relationApi.list(projectId)
-            setRelations(data.relations)
-            setShowAddRelationDialog(false)
-            setNewRelation({
-                character_a_id: 0,
-                character_b_id: 0,
-                relation_type: '陌生',
-                direction: '双向',
-                trust_level: 50,
-            })
-            toast.success('创建成功')
-        }
-        catch (err)
-        {
-            console.error('Failed to create relation:', err)
-            toast.error('创建失败')
-        }
-        finally
-        {
-            setSaving(false)
-        }
+        const ok = await createRelation(data)
+        if (ok) setShowAddRelationDialog(false)
     }
 
     // 删除关系
     const handleDeleteRelation = async () =>
     {
-        if (!projectId || !selectedRelation) return
+        if (!selectedRelation) return
         if (!confirm('确定要删除这个关系吗？')) return
-
-        try
-        {
-            await relationApi.delete(projectId, selectedRelation.id)
-            setRelations((prev) => prev.filter((r) => r.id !== selectedRelation.id))
-            setSelectedRelation(null)
-            toast.success('删除成功')
-        }
-        catch (err)
-        {
-            console.error('Failed to delete relation:', err)
-            toast.error('删除失败')
-        }
+        const ok = await deleteRelation(selectedRelation.id)
+        if (ok) setSelectedRelation(null)
     }
 
     if (loading)
     {
-        return <div className="text-center py-10">加载中...</div>
+        return <LoadingSpinner fullPage text="加载中..." />
     }
 
     if (!project)
@@ -407,82 +262,24 @@ export default function CharacterSetting()
                 {/* 人物列表 */}
                 {activeTab === 'characters' && (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        {charactersLoading ? (
-                            <div className="col-span-4 text-center py-10 text-muted-foreground">
-                                加载中...
-                            </div>
-                        ) : characters.length === 0 ? (
-                            <div className="col-span-4 text-center py-10 text-muted-foreground">
-                                暂无人物，点击右上角"新增人物"按钮添加
-                            </div>
-                        ) : (
-                            characters.map((character) => (
-                                <Card
-                                    key={character.id}
-                                    className={`cursor-pointer transition-all hover:shadow-md ${selectedCharacter?.id === character.id
-                                        ? 'ring-2 ring-primary'
-                                        : ''
-                                        }`}
-                                    onClick={() => handleCharacterClick(character)}
-                                >
-                                    <CardHeader className="pb-2">
-                                        <CardTitle className="text-base flex items-center justify-between">
-                                            <span className="truncate">{character.name}</span>
-                                            <span className="text-xs text-muted-foreground font-normal">
-                                                {character.role}
-                                            </span>
-                                        </CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <p className="text-sm text-muted-foreground line-clamp-2">
-                                            {character.personality || '暂无性格描述'}
-                                        </p>
-                                    </CardContent>
-                                </Card>
-                            ))
-                        )}
+                        <CharacterList
+                            characters={characters}
+                            loading={charactersLoading}
+                            selectedCharacterId={selectedCharacter?.id ?? null}
+                            onSelectCharacter={handleCharacterClick}
+                        />
                     </div>
                 )}
 
                 {/* 关系列表 */}
                 {activeTab === 'relations' && (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        {relationsLoading ? (
-                            <div className="col-span-4 text-center py-10 text-muted-foreground">
-                                加载中...
-                            </div>
-                        ) : relations.length === 0 ? (
-                            <div className="col-span-4 text-center py-10 text-muted-foreground">
-                                暂无关系，点击右上角"新增关系"按钮添加
-                            </div>
-                        ) : (
-                            relations.map((relation) => (
-                                <Card
-                                    key={relation.id}
-                                    className={`cursor-pointer transition-all hover:shadow-md ${selectedRelation?.id === relation.id
-                                        ? 'ring-2 ring-primary'
-                                        : ''
-                                        }`}
-                                    onClick={() => handleRelationClick(relation)}
-                                >
-                                    <CardHeader className="pb-2">
-                                        <CardTitle className="text-sm flex items-center justify-between">
-                                            <span className="truncate">
-                                                {relation.character_a?.name || '?'} - {relation.character_b?.name || '?'}
-                                            </span>
-                                        </CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div className="flex items-center justify-between text-sm">
-                                            <span className="text-muted-foreground">{relation.relation_type}</span>
-                                            <span className="text-xs text-muted-foreground">
-                                                信任度: {relation.trust_level}
-                                            </span>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            ))
-                        )}
+                        <RelationList
+                            relations={relations}
+                            loading={relationsLoading}
+                            selectedRelationId={selectedRelation?.id ?? null}
+                            onSelectRelation={handleRelationClick}
+                        />
                     </div>
                 )}
             </div>
@@ -502,196 +299,17 @@ export default function CharacterSetting()
 
                     {/* 人物详情 */}
                     {selectedCharacter && (
-                        <ScrollArea className="flex-1">
-                            <div className="p-4 space-y-4">
-                                {isEditing ? (
-                                    /* 编辑模式 */
-                                    <>
-                                        <div>
-                                            <Label className="text-sm text-muted-foreground">姓名</Label>
-                                            <Input
-                                                value={editForm.name || ''}
-                                                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                                                className="mt-1"
-                                            />
-                                        </div>
-                                        <div>
-                                            <Label className="text-sm text-muted-foreground">角色</Label>
-                                            <select
-                                                value={editForm.role || ''}
-                                                onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
-                                                className="mt-1 w-full px-3 py-2 border rounded-md"
-                                            >
-                                                {ROLE_OPTIONS.map((role) => (
-                                                    <option key={role} value={role}>{role}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <Label className="text-sm text-muted-foreground">性格特点</Label>
-                                            <Textarea
-                                                value={editForm.personality || ''}
-                                                onChange={(e) => setEditForm({ ...editForm, personality: e.target.value })}
-                                                className="mt-1"
-                                                rows={3}
-                                            />
-                                        </div>
-                                        <div>
-                                            <Label className="text-sm text-muted-foreground">口头禅</Label>
-                                            <Input
-                                                value={editForm.catchphrase || ''}
-                                                onChange={(e) => setEditForm({ ...editForm, catchphrase: e.target.value })}
-                                                className="mt-1"
-                                            />
-                                        </div>
-                                        <div>
-                                            <Label className="text-sm text-muted-foreground">习惯性动作</Label>
-                                            <Input
-                                                value={editForm.habit_action || ''}
-                                                onChange={(e) => setEditForm({ ...editForm, habit_action: e.target.value })}
-                                                className="mt-1"
-                                            />
-                                        </div>
-                                        <div>
-                                            <Label className="text-sm text-muted-foreground">内心深处的恐惧</Label>
-                                            <Textarea
-                                                value={editForm.deep_fear || ''}
-                                                onChange={(e) => setEditForm({ ...editForm, deep_fear: e.target.value })}
-                                                className="mt-1"
-                                                rows={2}
-                                            />
-                                        </div>
-                                        <div>
-                                            <Label className="text-sm text-muted-foreground">核心动机</Label>
-                                            <Textarea
-                                                value={editForm.core_motivation || ''}
-                                                onChange={(e) => setEditForm({ ...editForm, core_motivation: e.target.value })}
-                                                className="mt-1"
-                                                rows={2}
-                                            />
-                                        </div>
-                                        <div>
-                                            <Label className="text-sm text-muted-foreground">成长弧光</Label>
-                                            <Textarea
-                                                value={editForm.growth_arc || ''}
-                                                onChange={(e) => setEditForm({ ...editForm, growth_arc: e.target.value })}
-                                                className="mt-1"
-                                                rows={2}
-                                            />
-                                        </div>
-                                        <div>
-                                            <Label className="text-sm text-muted-foreground">外貌描写</Label>
-                                            <Textarea
-                                                value={editForm.appearance || ''}
-                                                onChange={(e) => setEditForm({ ...editForm, appearance: e.target.value })}
-                                                className="mt-1"
-                                                rows={3}
-                                            />
-                                        </div>
-                                        <div>
-                                            <Label className="text-sm text-muted-foreground">背景故事</Label>
-                                            <Textarea
-                                                value={editForm.backstory || ''}
-                                                onChange={(e) => setEditForm({ ...editForm, backstory: e.target.value })}
-                                                className="mt-1"
-                                                rows={4}
-                                            />
-                                        </div>
-                                        <div>
-                                            <Label className="text-sm text-muted-foreground">标志性物品</Label>
-                                            <Input
-                                                value={editForm.signature_item || ''}
-                                                onChange={(e) => setEditForm({ ...editForm, signature_item: e.target.value })}
-                                                className="mt-1"
-                                            />
-                                        </div>
-                                        <div className="flex gap-2 pt-4">
-                                            <Button variant="outline" onClick={handleCancelEdit} className="flex-1">
-                                                取消
-                                            </Button>
-                                            <Button onClick={handleSaveEdit} disabled={saving} className="flex-1">
-                                                {saving ? '保存中...' : '保存'}
-                                            </Button>
-                                        </div>
-                                    </>
-                                ) : (
-                                    /* 查看模式 */
-                                    <>
-                                        <div className="flex items-center justify-between">
-                                            <h3 className="text-lg font-semibold">{selectedCharacter.name}</h3>
-                                            <div className="flex gap-1">
-                                                <Button variant="ghost" size="icon" onClick={handleStartEdit}>
-                                                    <Pencil className="h-4 w-4" />
-                                                </Button>
-                                                <Button variant="ghost" size="icon" onClick={handleDeleteCharacter}>
-                                                    <Trash2 className="h-4 w-4 text-destructive" />
-                                                </Button>
-                                            </div>
-                                        </div>
-                                        <div className="text-sm text-muted-foreground">
-                                            角色: {selectedCharacter.role}
-                                        </div>
-
-                                        <div className="pt-2 space-y-3">
-                                            {selectedCharacter.personality && (
-                                                <div>
-                                                    <Label className="text-sm text-muted-foreground">性格特点</Label>
-                                                    <p className="text-sm mt-1">{selectedCharacter.personality}</p>
-                                                </div>
-                                            )}
-                                            {selectedCharacter.catchphrase && (
-                                                <div>
-                                                    <Label className="text-sm text-muted-foreground">口头禅</Label>
-                                                    <p className="text-sm mt-1 italic">"{selectedCharacter.catchphrase}"</p>
-                                                </div>
-                                            )}
-                                            {selectedCharacter.habit_action && (
-                                                <div>
-                                                    <Label className="text-sm text-muted-foreground">习惯性动作</Label>
-                                                    <p className="text-sm mt-1">{selectedCharacter.habit_action}</p>
-                                                </div>
-                                            )}
-                                            {selectedCharacter.deep_fear && (
-                                                <div>
-                                                    <Label className="text-sm text-muted-foreground">内心深处的恐惧</Label>
-                                                    <p className="text-sm mt-1">{selectedCharacter.deep_fear}</p>
-                                                </div>
-                                            )}
-                                            {selectedCharacter.core_motivation && (
-                                                <div>
-                                                    <Label className="text-sm text-muted-foreground">核心动机</Label>
-                                                    <p className="text-sm mt-1">{selectedCharacter.core_motivation}</p>
-                                                </div>
-                                            )}
-                                            {selectedCharacter.growth_arc && (
-                                                <div>
-                                                    <Label className="text-sm text-muted-foreground">成长弧光</Label>
-                                                    <p className="text-sm mt-1">{selectedCharacter.growth_arc}</p>
-                                                </div>
-                                            )}
-                                            {selectedCharacter.appearance && (
-                                                <div>
-                                                    <Label className="text-sm text-muted-foreground">外貌描写</Label>
-                                                    <p className="text-sm mt-1">{selectedCharacter.appearance}</p>
-                                                </div>
-                                            )}
-                                            {selectedCharacter.backstory && (
-                                                <div>
-                                                    <Label className="text-sm text-muted-foreground">背景故事</Label>
-                                                    <p className="text-sm mt-1">{selectedCharacter.backstory}</p>
-                                                </div>
-                                            )}
-                                            {selectedCharacter.signature_item && (
-                                                <div>
-                                                    <Label className="text-sm text-muted-foreground">标志性物品</Label>
-                                                    <p className="text-sm mt-1">{selectedCharacter.signature_item}</p>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-                        </ScrollArea>
+                        <CharacterDetail
+                            character={selectedCharacter}
+                            isEditing={isEditing}
+                            editForm={editForm}
+                            saving={saving}
+                            onStartEdit={handleStartEdit}
+                            onCancelEdit={handleCancelEdit}
+                            onSaveEdit={handleSaveEdit}
+                            onDeleteCharacter={handleDeleteCharacter}
+                            onEditFormChange={setEditForm}
+                        />
                     )}
 
                     {/* 关系详情 */}
@@ -742,138 +360,21 @@ export default function CharacterSetting()
             )}
 
             {/* 新增人物弹窗 */}
-            {showAddDialog && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <Card className="w-[400px]">
-                        <CardHeader>
-                            <CardTitle>新增人物</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div>
-                                <Label>姓名 *</Label>
-                                <Input
-                                    value={newCharacter.name}
-                                    onChange={(e) => setNewCharacter({ ...newCharacter, name: e.target.value })}
-                                    placeholder="请输入人物姓名"
-                                    className="mt-1"
-                                />
-                            </div>
-                            <div>
-                                <Label>角色</Label>
-                                <select
-                                    value={newCharacter.role}
-                                    onChange={(e) => setNewCharacter({ ...newCharacter, role: e.target.value })}
-                                    className="mt-1 w-full px-3 py-2 border rounded-md"
-                                >
-                                    {ROLE_OPTIONS.map((role) => (
-                                        <option key={role} value={role}>{role}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-                                <Label>性格特点</Label>
-                                <Textarea
-                                    value={newCharacter.personality || ''}
-                                    onChange={(e) => setNewCharacter({ ...newCharacter, personality: e.target.value })}
-                                    placeholder="描述人物的性格特点"
-                                    className="mt-1"
-                                    rows={3}
-                                />
-                            </div>
-                            <div className="flex gap-2 pt-2">
-                                <Button variant="outline" onClick={() => setShowAddDialog(false)} className="flex-1">
-                                    取消
-                                </Button>
-                                <Button onClick={handleCreateCharacter} disabled={saving} className="flex-1">
-                                    {saving ? '创建中...' : '创建'}
-                                </Button>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
-            )}
+            <CharacterFormDialog
+                open={showAddDialog}
+                saving={saving}
+                onClose={() => setShowAddDialog(false)}
+                onSubmit={handleCreateCharacter}
+            />
 
             {/* 新增关系弹窗 */}
-            {showAddRelationDialog && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <Card className="w-[400px]">
-                        <CardHeader>
-                            <CardTitle>新增关系</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div>
-                                <Label>人物 A</Label>
-                                <select
-                                    value={newRelation.character_a_id}
-                                    onChange={(e) => setNewRelation({ ...newRelation, character_a_id: parseInt(e.target.value) })}
-                                    className="mt-1 w-full px-3 py-2 border rounded-md"
-                                >
-                                    <option value={0}>请选择人物</option>
-                                    {characters.map((c) => (
-                                        <option key={c.id} value={c.id}>{c.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-                                <Label>人物 B</Label>
-                                <select
-                                    value={newRelation.character_b_id}
-                                    onChange={(e) => setNewRelation({ ...newRelation, character_b_id: parseInt(e.target.value) })}
-                                    className="mt-1 w-full px-3 py-2 border rounded-md"
-                                >
-                                    <option value={0}>请选择人物</option>
-                                    {characters.map((c) => (
-                                        <option key={c.id} value={c.id}>{c.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-                                <Label>关系类型</Label>
-                                <select
-                                    value={newRelation.relation_type}
-                                    onChange={(e) => setNewRelation({ ...newRelation, relation_type: e.target.value })}
-                                    className="mt-1 w-full px-3 py-2 border rounded-md"
-                                >
-                                    {RELATION_TYPES.map((type) => (
-                                        <option key={type} value={type}>{type}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-                                <Label>方向</Label>
-                                <select
-                                    value={newRelation.direction}
-                                    onChange={(e) => setNewRelation({ ...newRelation, direction: e.target.value })}
-                                    className="mt-1 w-full px-3 py-2 border rounded-md"
-                                >
-                                    {DIRECTION_OPTIONS.map((dir) => (
-                                        <option key={dir} value={dir}>{dir}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-                                <Label>信任度 (0-100)</Label>
-                                <Input
-                                    type="number"
-                                    min={0}
-                                    max={100}
-                                    value={newRelation.trust_level}
-                                    onChange={(e) => setNewRelation({ ...newRelation, trust_level: parseInt(e.target.value) || 50 })}
-                                    className="mt-1"
-                                />
-                            </div>
-                            <div className="flex gap-2 pt-2">
-                                <Button variant="outline" onClick={() => setShowAddRelationDialog(false)} className="flex-1">
-                                    取消
-                                </Button>
-                                <Button onClick={handleCreateRelation} disabled={saving} className="flex-1">
-                                    {saving ? '创建中...' : '创建'}
-                                </Button>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
-            )}
+            <RelationFormDialog
+                open={showAddRelationDialog}
+                saving={saving}
+                characters={characters}
+                onClose={() => setShowAddRelationDialog(false)}
+                onSubmit={handleCreateRelation}
+            />
         </div>
     )
 }

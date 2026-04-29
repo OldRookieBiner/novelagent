@@ -10,7 +10,35 @@
 
 from datetime import datetime
 from typing import Optional, List
+from enum import Enum
 from pydantic import BaseModel, Field
+
+
+# ==================== 枚举定义 ====================
+
+class CharacterRole(str, Enum):
+    """角色定位枚举"""
+    PROTAGONIST = "主角"
+    ANTAGONIST = "核心反派"
+    SUPPORTING = "重要配角"
+    MINOR = "配角"
+
+
+class RelationType(str, Enum):
+    """关系类型枚举"""
+    TRUST = "信任"
+    HOSTILE = "敌对"
+    ROMANCE = "感情"
+    COOPERATION = "合作"
+    EXPLOITATION = "利用"
+    STRANGER = "陌生"
+
+
+class RelationDirection(str, Enum):
+    """关系方向枚举"""
+    BIDIRECTIONAL = "双向"
+    A_TO_B = "单向A->B"
+    B_TO_A = "单向B->A"
 
 
 # ==================== Character Schemas ====================
@@ -18,7 +46,7 @@ from pydantic import BaseModel, Field
 class CharacterBase(BaseModel):
     """人物设定基础 Schema"""
     name: str = Field(..., max_length=100, description="人物姓名")
-    role: str = Field(..., max_length=50, description="角色定位：主角/核心反派/重要配角/配角")
+    role: CharacterRole = Field(..., description="角色定位：主角/核心反派/重要配角/配角")
     personality: Optional[str] = Field(None, description="性格特征")
     catchphrase: Optional[str] = Field(None, max_length=200, description="口头禅")
     habit_action: Optional[str] = Field(None, max_length=200, description="习惯动作")
@@ -38,7 +66,7 @@ class CharacterCreate(CharacterBase):
 class CharacterUpdate(BaseModel):
     """人物设定更新 Schema"""
     name: Optional[str] = Field(None, max_length=100, description="人物姓名")
-    role: Optional[str] = Field(None, max_length=50, description="角色定位")
+    role: Optional[CharacterRole] = Field(None, description="角色定位")
     personality: Optional[str] = Field(None, description="性格特征")
     catchphrase: Optional[str] = Field(None, max_length=200, description="口头禅")
     habit_action: Optional[str] = Field(None, max_length=200, description="习惯动作")
@@ -73,8 +101,8 @@ class RelationBase(BaseModel):
     """人物关系基础 Schema"""
     character_a_id: int = Field(..., description="人物A ID")
     character_b_id: int = Field(..., description="人物B ID")
-    relation_type: str = Field(..., max_length=50, description="关系类型：信任/敌对/感情/合作/利用/陌生")
-    direction: str = Field("双向", max_length=20, description="方向：双向/单向A→B/单向B→A")
+    relation_type: RelationType = Field(..., description="关系类型：信任/敌对/感情/合作/利用/陌生")
+    direction: RelationDirection = Field(RelationDirection.BIDIRECTIONAL, description="方向：双向/单向A->B/单向B->A")
     current_status: Optional[str] = Field(None, description="当前状态描述")
     trust_level: int = Field(50, ge=0, le=100, description="信任度 0-100")
 
@@ -88,8 +116,8 @@ class RelationUpdate(BaseModel):
     """人物关系更新 Schema"""
     character_a_id: Optional[int] = Field(None, description="人物A ID")
     character_b_id: Optional[int] = Field(None, description="人物B ID")
-    relation_type: Optional[str] = Field(None, max_length=50, description="关系类型")
-    direction: Optional[str] = Field(None, max_length=20, description="方向")
+    relation_type: Optional[RelationType] = Field(None, description="关系类型")
+    direction: Optional[RelationDirection] = Field(None, description="方向")
     current_status: Optional[str] = Field(None, description="当前状态描述")
     trust_level: Optional[int] = Field(None, ge=0, le=100, description="信任度 0-100")
 

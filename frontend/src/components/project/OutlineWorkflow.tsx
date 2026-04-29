@@ -110,6 +110,8 @@ export default function OutlineWorkflow({
     try {
       await outlineApi.createStream(projectId, {
         onChunk: (chunk) => {
+          // 检查是否已中止
+          if (controller.signal.aborted) return
           setStreamingContent(prev => prev + chunk)
         },
         onDone: (result) => {
@@ -130,7 +132,12 @@ export default function OutlineWorkflow({
         },
       }, { signal: controller.signal }, modelId)
     } catch (err) {
+      // 用户主动取消或请求失败
       setIsStreaming(false)
+      if (err instanceof Error && err.name === 'AbortError') {
+        // 用户取消，不显示错误提示
+        return
+      }
       toast.error('生成大纲失败，请检查 API Key 配置')
     } finally {
       setLoading(false)
@@ -182,6 +189,8 @@ export default function OutlineWorkflow({
     try {
       await chapterOutlinesApi.createStream(projectId, {
         onProgress: (chapterNumber, total, chapter) => {
+          // 检查是否已中止
+          if (controller.signal.aborted) return
           setChapterProgress({ current: chapterNumber, total })
           // Add to generated chapters list
           setGeneratedChapters(prev => [...prev, chapter as ChapterOutline])
@@ -197,6 +206,10 @@ export default function OutlineWorkflow({
       }, { signal: controller.signal }, modelId)
     } catch (err) {
       setIsGeneratingChapters(false)
+      if (err instanceof Error && err.name === 'AbortError') {
+        // 用户取消，不显示错误提示
+        return
+      }
       toast.error('生成章节大纲失败，请检查 API Key 配置')
     } finally {
       abortControllerRef.current = null

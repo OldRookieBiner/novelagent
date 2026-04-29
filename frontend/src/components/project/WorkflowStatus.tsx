@@ -11,14 +11,16 @@ import type { WorkflowStage } from '@/types'
 const STAGE_CONFIG: Record<WorkflowStage, { label: string; step: number }> = {
   inspiration: { label: '灵感收集', step: 1 },
   outline: { label: '大纲生成', step: 2 },
-  chapter_outlines: { label: '章节大纲', step: 3 },
-  writing: { label: '章节写作', step: 4 },
-  review: { label: '审核', step: 5 },
-  complete: { label: '已完成', step: 6 },
+  characters: { label: '人物设定', step: 3 },
+  relations: { label: '关系规划', step: 4 },
+  chapter_outlines: { label: '章节大纲', step: 5 },
+  writing: { label: '章节写作', step: 6 },
+  review: { label: '审核', step: 7 },
+  complete: { label: '已完成', step: 8 },
 }
 
 // 总阶段数
-const TOTAL_STEPS = 6
+const TOTAL_STEPS = 8
 
 /**
  * 阶段标签组件

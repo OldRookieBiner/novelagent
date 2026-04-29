@@ -18,7 +18,6 @@ import type {
   EvolutionPlanCreate,
   EvolutionPlanUpdate,
   EvolutionPlanListResponse,
-  EvolutionRecord,
   EvolutionRecordListResponse,
 } from '@/types/character'
 

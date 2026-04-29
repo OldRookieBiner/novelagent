@@ -20,6 +20,8 @@ import type { WorkflowStage, ConfirmationType } from '@/types'
 const STAGE_LABELS: Record<WorkflowStage, string> = {
   inspiration: '灵感收集',
   outline: '大纲生成',
+  characters: '人物设定',
+  relations: '关系规划',
   chapter_outlines: '章节大纲',
   writing: '章节写作',
   review: '审核',

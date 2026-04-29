@@ -72,15 +72,13 @@ async def list_characters(
     if role:
         query = query.filter(Character.role == role)
 
-    # 按角色重要性排序（主角 > 核心反派 > 重要配角 > 配角）
-    role_order = {
-        "主角": 1,
-        "核心反派": 2,
-        "重要配角": 3,
-        "配角": 4
-    }
-    characters = query.all()
-    characters.sort(key=lambda c: role_order.get(c.role, 5))
+    # 按角色重要性排序（主角 > 核心反派 > 重要配角 > 配角）- 使用 SQL CASE
+    from sqlalchemy import case
+    role_order = case(
+        {value: i for i, value in enumerate(["主角", "核心反派", "重要配角", "配角"])},
+        value=Character.role
+    )
+    characters = query.order_by(role_order).all()
 
     return CharacterListResponse(
         characters=[CharacterResponse.model_validate(c) for c in characters],
@@ -272,8 +270,12 @@ async def list_relations(
     # 验证项目权限
     get_project_for_user(project_id, current_user.id, db)
 
-    # 构建查询
-    query = db.query(Relation).filter(Relation.project_id == project_id)
+    # 构建查询 - 使用 joinedload 避免 N+1 查询
+    from sqlalchemy.orm import joinedload
+    query = db.query(Relation).options(
+        joinedload(Relation.character_a),
+        joinedload(Relation.character_b)
+    ).filter(Relation.project_id == project_id)
 
     # 可选过滤
     if relation_type:

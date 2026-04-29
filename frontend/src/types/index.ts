@@ -364,6 +364,8 @@ export type WorkflowMode = 'step_by_step' | 'hybrid' | 'auto'
 export type WorkflowStage =
   | 'inspiration'
   | 'outline'
+  | 'characters'
+  | 'relations'
   | 'chapter_outlines'
   | 'writing'
   | 'review'
