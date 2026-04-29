@@ -78,7 +78,7 @@ export default function ProjectCard({ project, onDelete }: ProjectCardProps) {
 
         <div className="flex gap-2">
           <Button asChild className="flex-1" size="sm">
-            <Link to={`/project/${project.id}`}>
+            <Link to={`/project/${project.id}/workbench`}>
               {project.workflow_state?.stage === 'complete' ? '查看' : '继续'}
             </Link>
           </Button>
