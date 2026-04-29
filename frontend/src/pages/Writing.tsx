@@ -6,9 +6,10 @@ import { Button } from '@/components/ui/button'
 import TipTapEditor from '@/components/common/TipTapEditor'
 import ErrorMessage from '@/components/common/ErrorMessage'
 import StepNavigation from '@/components/project/StepNavigation'
+import ChapterList from '@/components/project/ChapterList'
 import { projectsApi, chapterOutlinesApi, chaptersApi, workflowApi } from '@/lib/api'
-import { getSessionToken } from '@/lib/api'
 import type { ProjectDetail, ChapterOutline } from '@/types'
+import { createSSEStream } from '@/lib/sseParser'
 
 export default function Writing() {
   const { id } = useParams<{ id: string }>()
@@ -238,32 +239,12 @@ export default function Writing() {
       <div className="flex min-h-[calc(100vh-80px)]">
         {/* 左侧章节列表 */}
         <div className="w-[200px] border-r bg-background shrink-0">
-        <div className="p-4 border-b">
-          <h2 className="font-semibold text-sm">章节列表</h2>
+          <ChapterList
+            chapters={chapterOutlines}
+            selectedChapter={currentChapter}
+            onSelectChapter={handleChapterSelect}
+          />
         </div>
-        <div className="overflow-y-auto max-h-[calc(100vh-140px)]">
-          {chapterOutlines.map((chapter) => (
-            <div
-              key={chapter.id}
-              onClick={() => handleChapterSelect(chapter)}
-              className={`px-4 py-3 text-sm cursor-pointer border-b ${
-                currentChapter.id === chapter.id
-                  ? 'bg-secondary font-medium'
-                  : 'hover:bg-muted'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="truncate">
-                  第{chapter.chapter_number}章：{chapter.title || '未命名'}
-                </span>
-                {chapter.has_content && (
-                  <span className="text-green-600 text-xs ml-1">✓</span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
 
       {/* 右侧区域 */}
       <div className="flex-1 flex flex-col">

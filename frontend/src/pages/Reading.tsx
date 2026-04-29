@@ -4,6 +4,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ChevronLeft, ChevronRight, Check, X } from 'lucide-react'
+import ChapterList from '@/components/project/ChapterList'
 import StepNavigation from '@/components/project/StepNavigation'
 import { projectsApi, chapterOutlinesApi, chaptersApi, workflowApi } from '@/lib/api'
 import type { ProjectDetail, ChapterOutline, Chapter } from '@/types'
@@ -127,31 +128,11 @@ export default function Reading() {
       <div className="flex min-h-[calc(100vh-80px)]">
         {/* 左侧章节列表 */}
         <div className="w-[200px] border-r bg-background shrink-0">
-          <div className="p-4 border-b">
-            <h2 className="font-semibold text-sm">章节列表</h2>
-          </div>
-          <div className="overflow-y-auto max-h-[calc(100vh-140px)]">
-            {chapterOutlines.map((outline) => (
-              <div
-                key={outline.id}
-                onClick={() => goToChapter(outline.chapter_number)}
-                className={`px-4 py-3 text-sm cursor-pointer border-b ${
-                  outline.chapter_number === chapterNumber
-                    ? 'bg-secondary font-medium'
-                    : 'hover:bg-muted'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="truncate">
-                    第{outline.chapter_number}章：{outline.title || '未命名'}
-                  </span>
-                  {outline.has_content && (
-                    <span className="text-green-600 text-xs ml-1">✓</span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+          <ChapterList
+            chapters={chapterOutlines}
+            selectedChapter={currentOutline}
+            onSelectChapter={(chapter) => goToChapter(chapter.chapter_number)}
+          />
         </div>
 
         {/* 右侧内容区 */}
