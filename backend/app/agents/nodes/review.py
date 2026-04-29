@@ -8,6 +8,7 @@ from app.services.prompt_loader import get_system_prompt
 from app.database import SessionLocal
 from app.services.llm import LLMService
 from app.utils.llm import get_llm_from_state_async
+from app.agents.nodes.utils import _format_chapter_outline_str, format_characters_info
 
 
 def parse_review_result(response: str) -> Dict[str, Any]:
@@ -75,24 +76,12 @@ async def review_chapter_node(
     """
     db = SessionLocal()
     info = state.get("collected_info", {})
-    characters = state.get("outline_characters", [])
 
-    # 格式化章节大纲
-    outline_str = f"""章节名：{chapter_outline.get('title', '')}
-场景：{chapter_outline.get('scene', '')}
-人物：{chapter_outline.get('characters', '')}
-情节：{chapter_outline.get('plot', '')}
-冲突：{chapter_outline.get('conflict', '')}
-钩子：{chapter_outline.get('hook', '')}"""
+    # 格式化章节大纲（使用共享工具函数）
+    outline_str = _format_chapter_outline_str(chapter_outline)
 
-    # 格式化人物设定
-    if characters:
-        chars_str = "\n".join([
-            f"- {c.get('name', '')}：{c.get('personality', '')}，动机：{c.get('motivation', '')}"
-            for c in characters
-        ])
-    else:
-        chars_str = info.get("customProtagonist") or info.get("protagonist", "未指定")
+    # 格式化人物设定（使用共享工具函数）
+    chars_str = format_characters_info(state)
 
     prompt = get_system_prompt(db, "review").format(
         strictness=strictness,
