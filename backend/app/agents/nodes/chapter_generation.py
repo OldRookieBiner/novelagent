@@ -10,6 +10,13 @@ from app.agents.prompts import (
 )
 from app.services.llm import LLMService
 from app.utils.llm import get_llm_from_state_async
+from app.agents.nodes.utils import (
+    _format_chapter_outline_str,
+    format_characters_info,
+    format_relations_info,
+    format_evolution_info,
+    format_world_setting,
+)
 
 
 def _clean_chapter_title(title: str) -> str:
@@ -255,75 +262,24 @@ async def generate_chapter_content_stream(
     """生成章节内容（流式，增强版）"""
 
     info = state.get("collected_info", {})
-    characters = state.get("outline_characters", [])
-    world_setting = state.get("outline_world_setting", {})
 
-    # v0.8.0: 获取详细人物设定和关系
-    detailed_characters = state.get("characters", [])
-    relations = state.get("relations", [])
-    evolution_records = state.get("evolution_records", [])
+    # 格式化章节大纲（使用共享工具函数）
+    outline_str = _format_chapter_outline_str(chapter_outline)
 
-    # 格式化章节大纲（包含新字段）
-    outline_str = f"""
-章节名：{chapter_outline['title']}
-场景：{chapter_outline['scene']}
-人物：{chapter_outline['characters']}
-情节：{chapter_outline['plot']}
-冲突：{chapter_outline['conflict']}
-转折：{chapter_outline.get('turning_point', '无')}
-钩子：{chapter_outline.get('hook', '')}
-"""
+    # 格式化人物设定（使用共享工具函数）
+    chars_str = format_characters_info(state)
 
-    # 格式化人物设定（优先使用详细人物设定）
-    if detailed_characters:
-        # v0.8.0: 使用详细人物设定
-        chars_str = "【详细人物设定】\n"
-        for c in detailed_characters:
-            chars_str += f"- {c.get('name', '')}（{c.get('role', '配角')}）：\n"
-            if c.get('appearance'):
-                chars_str += f"  外貌：{c.get('appearance')}\n"
-            if c.get('personality'):
-                chars_str += f"  性格：{c.get('personality')}\n"
-            if c.get('background'):
-                chars_str += f"  背景：{c.get('background')}\n"
-            if c.get('skills'):
-                chars_str += f"  能力：{c.get('skills')}\n"
-            if c.get('goals'):
-                chars_str += f"  目标：{c.get('goals')}\n"
-    elif characters:
-        # 兼容旧版本大纲人物
-        chars_str = "\n".join([
-            f"- {c.get('name', '')}：{c.get('personality', '')}，动机：{c.get('motivation', '')}"
-            for c in characters
-        ])
-    else:
-        chars_str = info.get("customProtagonist") or info.get("protagonist", "未指定")
+    # 格式化人物关系（使用共享工具函数）
+    relations_str = format_relations_info(state, chapter_outline.get("chapter_number", 1))
 
-    # v0.8.0: 格式化人物关系
-    relations_str = ""
-    if relations:
-        relations_str = "\n【人物关系】\n"
-        for r in relations:
-            relations_str += f"- {r.get('character1', '')} 与 {r.get('character2', '')}：{r.get('relationship_type', '')}"
-            if r.get('description'):
-                relations_str += f"（{r.get('description')}）"
-            relations_str += "\n"
+    # 格式化人物演变历史（使用共享工具函数）
+    evolution_str, evolution_plans_str = format_evolution_info(state, chapter_outline.get("chapter_number", 1))
 
-    # v0.8.0: 格式化人物演变记录
-    evolution_str = ""
-    if evolution_records:
-        evolution_str = "\n【人物演变】\n"
-        for e in evolution_records[-3:]:  # 只取最近几条
-            evolution_str += f"- 第{e.get('chapter_number', '')}章 {e.get('character_name', '')}：{e.get('actual_changes', '')}\n"
-
-    # 格式化世界观
-    if world_setting:
-        world_str = f"时代：{world_setting.get('era', '')}，核心设定：{world_setting.get('core_rules', '')}"
-    else:
-        world_str = info.get("customWorldSetting") or info.get("worldSetting", "未指定")
+    # 格式化世界观（使用共享工具函数）
+    world_str = format_world_setting(state)
 
     # 合并人物设定、关系和演变信息
-    combined_characters_str = chars_str + relations_str + evolution_str
+    combined_characters_str = chars_str + relations_str + evolution_str + evolution_plans_str
 
     # 获取章节目标字数
     target_words = chapter_outline.get("target_words", 3000)
@@ -402,75 +358,21 @@ async def generate_chapter_content_node(state: NovelState) -> NovelState:
 
     # 准备提示词
     info = state.get("collected_info", {})
-    characters = state.get("outline_characters", [])
-    world_setting = state.get("outline_world_setting", {})
 
-    # v0.8.0: 获取详细人物设定和关系
-    detailed_characters = state.get("characters", [])
-    relations = state.get("relations", [])
-    evolution_records = state.get("evolution_records", [])
+    # 格式化章节大纲（使用共享工具函数）
+    outline_str = _format_chapter_outline_str(chapter_outline)
 
-    # 格式化章节大纲
-    outline_str = f"""
-章节名：{chapter_outline.get('title', '')}
-场景：{chapter_outline.get('scene', '')}
-人物：{chapter_outline.get('characters', '')}
-情节：{chapter_outline.get('plot', '')}
-冲突：{chapter_outline.get('conflict', '')}
-转折：{chapter_outline.get('turning_point', '无')}
-钩子：{chapter_outline.get('hook', '')}
-"""
+    # 格式化人物设定（使用共享工具函数）
+    chars_str = format_characters_info(state)
 
-    # 格式化人物设定（优先使用详细人物设定）
-    if detailed_characters:
-        # v0.8.0: 使用详细人物设定
-        chars_str = "【详细人物设定】\n"
-        for c in detailed_characters:
-            chars_str += f"- {c.get('name', '')}（{c.get('role', '配角')}）：\n"
-            if c.get('appearance'):
-                chars_str += f"  外貌：{c.get('appearance')}\n"
-            if c.get('personality'):
-                chars_str += f"  性格：{c.get('personality')}\n"
-            if c.get('background'):
-                chars_str += f"  背景：{c.get('background')}\n"
-            if c.get('skills'):
-                chars_str += f"  能力：{c.get('skills')}\n"
-            if c.get('goals'):
-                chars_str += f"  目标：{c.get('goals')}\n"
-    elif characters:
-        # 兼容旧版本大纲人物
-        chars_str = "\n".join([
-            f"- {c.get('name', '')}：{c.get('personality', '')}，动机：{c.get('motivation', '')}"
-            for c in characters
-        ])
-    else:
-        chars_str = info.get("customProtagonist") or info.get("protagonist", "未指定")
+    # 格式化人物关系（使用共享工具函数）
+    relations_str = format_relations_info(state, chapter_outline.get("chapter_number", 1))
 
-    # v0.8.0: 格式化人物关系
-    relations_str = ""
-    if relations:
-        relations_str = "\n【人物关系】\n"
-        for r in relations:
-            relations_str += f"- {r.get('character1', '')} 与 {r.get('character2', '')}：{r.get('relationship_type', '')}"
-            if r.get('description'):
-                relations_str += f"（{r.get('description')}）"
-            relations_str += "\n"
+    # 格式化人物演变历史（使用共享工具函数）
+    evolution_str, _ = format_evolution_info(state, chapter_outline.get("chapter_number", 1))
 
-    # v0.8.0: 格式化人物演变记录（用于保持人物发展一致性）
-    evolution_str = ""
-    if evolution_records:
-        # 只取最近几章的演变记录
-        recent_evolution = [e for e in evolution_records if e.get('chapter_number', 0) < current_chapter][-3:]
-        if recent_evolution:
-            evolution_str = "\n【人物演变】\n"
-            for e in recent_evolution:
-                evolution_str += f"- 第{e.get('chapter_number', '')}章 {e.get('character_name', '')}：{e.get('actual_changes', '')}\n"
-
-    # 格式化世界观
-    if world_setting:
-        world_str = f"时代：{world_setting.get('era', '')}，核心设定：{world_setting.get('core_rules', '')}"
-    else:
-        world_str = info.get("customWorldSetting") or info.get("worldSetting", "未指定")
+    # 格式化世界观（使用共享工具函数）
+    world_str = format_world_setting(state)
 
     # 合并人物设定、关系和演变信息（用于 prompt）
     combined_characters_str = chars_str + relations_str + evolution_str
