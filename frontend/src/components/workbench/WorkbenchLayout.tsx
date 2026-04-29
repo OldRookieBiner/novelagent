@@ -35,11 +35,6 @@ export function WorkbenchLayout({ projectName, progress, children }: WorkbenchLa
             <span>{progress}%</span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button className="px-3 py-1.5 text-sm bg-primary text-white rounded-md hover:bg-primary/90">
-            保存
-          </button>
-        </div>
       </header>
 
       {/* Tab 导航 */}
