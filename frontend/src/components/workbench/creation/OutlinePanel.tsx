@@ -1,6 +1,6 @@
 // frontend/src/components/workbench/creation/OutlinePanel.tsx
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { FileText, Sparkles, Save, Plus, X, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -28,6 +28,8 @@ export function OutlinePanel({ projectId }: OutlinePanelProps)
   const [saving, setSaving] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [generatedContent, setGeneratedContent] = useState('')
+  // SSE 流式请求控制器
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   useEffect(() =>
   {
@@ -54,6 +56,19 @@ export function OutlinePanel({ projectId }: OutlinePanelProps)
     }
     fetchOutline()
   }, [projectId])
+
+  // 组件卸载时取消进行中的 SSE 请求
+  useEffect(() =>
+  {
+    return () =>
+    {
+      if (abortControllerRef.current)
+      {
+        abortControllerRef.current.abort()
+        abortControllerRef.current = null
+      }
+    }
+  }, [])
 
   const addPlotPoint = () =>
   {
@@ -106,6 +121,9 @@ export function OutlinePanel({ projectId }: OutlinePanelProps)
   {
     setGenerating(true)
     setGeneratedContent('')
+    // 创建 AbortController 用于取消请求
+    const controller = new AbortController()
+    abortControllerRef.current = controller
     try
     {
       await outlineApi.createStream(
@@ -127,19 +145,23 @@ export function OutlinePanel({ projectId }: OutlinePanelProps)
               ))
             }
             setGenerating(false)
+            abortControllerRef.current = null
             toast.success('AI 生成完成')
           },
           onError: (error) =>
           {
             setGenerating(false)
+            abortControllerRef.current = null
             toast.error(`生成失败: ${error}`)
           }
-        }
+        },
+        { signal: controller.signal }
       )
     }
     catch (err)
     {
       setGenerating(false)
+      abortControllerRef.current = null
       toast.error('生成失败')
     }
   }
@@ -158,10 +180,7 @@ export function OutlinePanel({ projectId }: OutlinePanelProps)
       await outlineApi.confirm(projectId)
       toast.success('大纲已确认')
       // 更新本地状态
-      if (outline)
-      {
-        setOutline({ ...outline, confirmed: true })
-      }
+      setOutline({ ...outline, confirmed: true })
     }
     catch (err)
     {
@@ -271,12 +290,12 @@ export function OutlinePanel({ projectId }: OutlinePanelProps)
               </div>
 
               <div>
-                <label className="text-sm text-muted-foreground">章节数量建议</label>
+                <label className="text-sm text-muted-foreground">章节数量建议（仅供参考）</label>
                 <Input
                   type="number"
                   value={chapterCount}
-                  onChange={(e) => setChapterCount(parseInt(e.target.value) || 10)}
-                  className="mt-1 w-32"
+                  readOnly
+                  className="mt-1 w-32 bg-muted"
                 />
               </div>
             </CardContent>
@@ -298,6 +317,7 @@ export function OutlinePanel({ projectId }: OutlinePanelProps)
           </div>
         )}
         <div className="space-y-3">
+          {/* TODO: 替换为 AI 生成的动态建议 */}
           <div className="p-3 bg-muted rounded-md text-sm">
             <p className="font-medium">情节建议</p>
             <p className="text-muted-foreground text-xs mt-1">可以在第3章加入转折</p>
