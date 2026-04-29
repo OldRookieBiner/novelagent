@@ -67,6 +67,13 @@ export default function ProjectDetail() {
   const [showReturnConfirm, setShowReturnConfirm] = useState(false)
   const [showResumeDialog, setShowResumeDialog] = useState(false)
 
+  // 重定向到人物设定页面
+  useEffect(() => {
+    if (project?.workflow_state?.stage === 'characters' || project?.workflow_state?.stage === 'relations') {
+      navigate(`/project/${projectId}/characters`, { replace: true })
+    }
+  }, [project, projectId, navigate])
+
   // 恢复弹窗逻辑
   useEffect(() => {
     if (workflowState?.has_checkpoint && workflowState.stage !== 'complete') {
@@ -360,8 +367,25 @@ export default function ProjectDetail() {
           waitingForConfirmation={workflowState.waiting_for_confirmation}
           confirmationType={workflowState.confirmation_type}
           hasChapters={workflowState.total_chapters > 0}
-          onResume={() => {
-            console.log('Resume workflow')
+          onResume={async () => {
+            try
+            {
+              await workflowApi.runWorkflow(project.id, {
+                onNodeStart: () => {},
+                onWaiting: () => {},
+                onDone: () => {
+                  refreshProject()
+                  toast.success('创作恢复成功')
+                },
+                onError: (error: string) => {
+                  toast.error(`恢复失败: ${error}`)
+                },
+              })
+            }
+            catch (err)
+            {
+              toast.error('恢复创作失败')
+            }
           }}
           onViewChapters={() => {
             setViewingStep(3)
