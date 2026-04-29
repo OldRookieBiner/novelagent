@@ -5,6 +5,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Textarea } from '@/components/ui/textarea'
 import { settingsApi, systemPromptsApi, modelConfigsApi } from '@/lib/api'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { toast } from 'sonner'
 import ModelConfigItem from '@/components/settings/ModelConfigItem'
 import ModelConfigDialog from '@/components/settings/ModelConfigDialog'
 import { ReviewModeSelect } from '@/components/project/ReviewModeSelect'
@@ -70,6 +71,7 @@ export default function Settings() {
         useSettingsStore.getState().setSettings(data)
       } catch (err) {
         console.error('Failed to fetch settings:', err)
+        toast.error('加载设置失败')
       } finally {
         setLoading(false)
       }
@@ -85,6 +87,7 @@ export default function Settings() {
       setModelConfigs(data.models)
     } catch (err) {
       console.error('Failed to load model configs:', err)
+      toast.error('加载模型配置失败')
     } finally {
       setConfigsLoading(false)
     }
@@ -119,6 +122,7 @@ export default function Settings() {
       setPrompts(data.prompts)
     } catch (err) {
       console.error('Failed to load system prompts:', err)
+      toast.error('加载提示词失败')
     } finally {
       setPromptsLoading(false)
     }
@@ -136,6 +140,7 @@ export default function Settings() {
       )
     } catch (err) {
       console.error('Failed to save prompt:', err)
+      toast.error('保存提示词失败')
     } finally {
       setSavingPrompt(false)
     }
@@ -152,6 +157,7 @@ export default function Settings() {
       setEditContent(updated.prompt_content)
     } catch (err) {
       console.error('Failed to reset prompt:', err)
+      toast.error('重置提示词失败')
     } finally {
       setResettingPrompt(false)
     }
@@ -173,6 +179,7 @@ export default function Settings() {
       setSaved(true)
     } catch (err) {
       console.error('Failed to save settings:', err)
+      toast.error('保存审核设置失败')
     } finally {
       setSaving(false)
     }
@@ -259,6 +266,7 @@ export default function Settings() {
                           await loadModelConfigs()
                         } catch (err) {
                           console.error('Failed to set default:', err)
+                          toast.error('设置默认模型失败')
                         }
                       }}
                       onEdit={handleEditModel}
@@ -269,6 +277,7 @@ export default function Settings() {
                           await loadModelConfigs()
                         } catch (err) {
                           console.error('Failed to delete:', err)
+                          toast.error('删除模型配置失败')
                         }
                       }}
                       onRefresh={async () => {
