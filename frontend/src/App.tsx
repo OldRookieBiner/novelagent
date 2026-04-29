@@ -1,19 +1,35 @@
 // frontend/src/App.tsx
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
 import { Toaster } from '@/components/ui/sonner'
 import Layout from '@/components/layout/Layout'
 import ErrorBoundary from '@/components/common/ErrorBoundary'
 import Login from '@/pages/Login'
 import Home from '@/pages/Home'
-import ProjectDetail from '@/pages/ProjectDetail'
-import Writing from '@/pages/Writing'
-import Reading from '@/pages/Reading'
 import Settings from '@/pages/Settings'
-import CharacterSetting from '@/pages/CharacterSetting'
+import ProjectWorkbench from '@/pages/ProjectWorkbench'
+
+function RedirectToWorkbench() {
+  const { id } = useParams()
+  return <Navigate to={`/project/${id}/workbench`} replace />
+}
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const token = useAuthStore((state) => state.token)
+  const hasHydrated = useAuthStore((state) => state._hasHydrated)
+
+  // 从 token 推导认证状态，而不是依赖 isAuthenticated（可能未正确恢复）
+  const isAuthenticated = !!token
+
+  // 等待 rehydration 完成
+  if (!hasHydrated) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    )
+  }
+
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />
 }
 
@@ -23,6 +39,16 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          {/* 工作台页面使用独立布局（全屏） */}
+          <Route
+            path="/project/:id/workbench"
+            element={
+              <PrivateRoute>
+                <ProjectWorkbench />
+              </PrivateRoute>
+            }
+          />
+          {/* 其他页面使用 Layout */}
           <Route
             path="/"
             element={
@@ -32,10 +58,7 @@ function App() {
             }
           >
             <Route index element={<Home />} />
-            <Route path="project/:id" element={<ProjectDetail />} />
-            <Route path="project/:id/write" element={<Writing />} />
-            <Route path="project/:id/read/:chapterNum" element={<Reading />} />
-            <Route path="project/:id/characters" element={<CharacterSetting />} />
+            <Route path="project/:id" element={<RedirectToWorkbench />} />
             <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>
