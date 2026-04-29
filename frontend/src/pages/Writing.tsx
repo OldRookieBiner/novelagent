@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button'
 import TipTapEditor from '@/components/common/TipTapEditor'
 import ErrorMessage from '@/components/common/ErrorMessage'
 import StepNavigation from '@/components/project/StepNavigation'
-import ChapterList from '@/components/project/ChapterList'
 import { projectsApi, chapterOutlinesApi, chaptersApi, workflowApi } from '@/lib/api'
 import type { ProjectDetail, ChapterOutline } from '@/types'
 import { createSSEStream } from '@/lib/sseParser'
@@ -104,85 +103,39 @@ export default function Writing() {
     setWordCount(0)
     setError(null)
 
-    // Create abort controller for streaming
-    abortControllerRef.current = new AbortController()
+    const controller = new AbortController()
+    abortControllerRef.current = controller
 
-    try {
-      const token = getSessionToken()
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-      }
-      if (token) {
-        const credentials = btoa(`${token}:`)
-        headers['Authorization'] = `Basic ${credentials}`
-      }
+    let accumulated = ''
 
-      const response = await fetch(`/api/projects/${id}/chapters/${currentChapter.chapter_number}/generate`, {
+    await createSSEStream(
+      {
+        url: `/api/projects/${id}/chapters/${currentChapter.chapter_number}/generate`,
         method: 'POST',
-        headers,
-        signal: abortControllerRef.current.signal,
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: '生成失败' }))
-        throw new Error(errorData.detail || `HTTP ${response.status}`)
-      }
-
-      const reader = response.body?.getReader()
-      if (!reader) throw new Error('无法获取数据流')
-
-      const decoder = new TextDecoder()
-      let accumulated = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        const chunk = decoder.decode(value)
-
-        // Parse SSE events properly
-        const lines = chunk.split('\n')
-        for (const line of lines) {
-          if (line.startsWith('data:')) {
-            const data = line.slice(5).trim()
-            if (data && data !== '[DONE]') {
-              // Decode JSON to preserve newlines from backend
-              try {
-                const decoded = JSON.parse(data)
-                accumulated += decoded
-              } catch {
-                accumulated += data
-              }
-              // Store as plain text for preview
-              setContent(accumulated)
-              setWordCount(accumulated.length)
-            }
-          } else if (line.startsWith('event:')) {
-            // Handle event type (done, error, etc.)
-            const eventType = line.slice(6).trim()
-            if (eventType === 'done') {
-              // Generation complete
-            }
-          } else if (!line.startsWith(':') && line.trim()) {
-            // Plain text chunk (fallback for non-SSE format)
-            accumulated += line
-            setContent(accumulated)
-            setWordCount(accumulated.length)
-          }
+        signal: controller.signal,
+      },
+      (type, data) => {
+        if (type === 'message' || !type || type === 'chunk')
+        {
+          const decoded = typeof data === 'string' ? data : ''
+          accumulated += decoded
+          setContent(accumulated)
+          setWordCount(accumulated.length)
         }
+        else if (type === 'done')
+        {
+          chapterOutlinesApi.list(parseInt(id!)).then(chaptersData => {
+            setChapterOutlines(chaptersData)
+          }).catch(() => {})
+        }
+      },
+      (err) => {
+        setError(err)
+        setIsGenerating(false)
       }
+    )
 
-      // Refresh chapter list to update has_content status
-      const chaptersData = await chapterOutlinesApi.list(parseInt(id))
-      setChapterOutlines(chaptersData)
-    } catch (err) {
-      if ((err as Error).name !== 'AbortError') {
-        console.error('Failed to generate:', err)
-        setError(err instanceof Error ? err.message : '生成失败')
-      }
-    } finally {
-      setIsGenerating(false)
-    }
+    setIsGenerating(false)
   }
 
   const handleStop = () => {
@@ -239,12 +192,32 @@ export default function Writing() {
       <div className="flex min-h-[calc(100vh-80px)]">
         {/* 左侧章节列表 */}
         <div className="w-[200px] border-r bg-background shrink-0">
-          <ChapterList
-            chapters={chapterOutlines}
-            selectedChapter={currentChapter}
-            onSelectChapter={handleChapterSelect}
-          />
+        <div className="p-4 border-b">
+          <h2 className="font-semibold text-sm">章节列表</h2>
         </div>
+        <div className="overflow-y-auto max-h-[calc(100vh-140px)]">
+          {chapterOutlines.map((chapter) => (
+            <div
+              key={chapter.id}
+              onClick={() => handleChapterSelect(chapter)}
+              className={`px-4 py-3 text-sm cursor-pointer border-b ${
+                currentChapter.id === chapter.id
+                  ? 'bg-secondary font-medium'
+                  : 'hover:bg-muted'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="truncate">
+                  第{chapter.chapter_number}章：{chapter.title || '未命名'}
+                </span>
+                {chapter.has_content && (
+                  <span className="text-green-600 text-xs ml-1">✓</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* 右侧区域 */}
       <div className="flex-1 flex flex-col">
