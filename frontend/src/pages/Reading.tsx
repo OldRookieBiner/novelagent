@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ChevronLeft, ChevronRight, Check, X } from 'lucide-react'
 import ChapterList from '@/components/project/ChapterList'
 import StepNavigation from '@/components/project/StepNavigation'
+import LoadingSpinner from '@/components/ui/LoadingSpinner'
+import { toast } from 'sonner'
 import { projectsApi, chapterOutlinesApi, chaptersApi, workflowApi } from '@/lib/api'
 import type { ProjectDetail, ChapterOutline, Chapter } from '@/types'
 
@@ -69,6 +71,7 @@ export default function Reading() {
       setReviewResult(null)
     } catch (err) {
       console.error('Failed to fetch data:', err)
+      toast.error('加载数据失败')
     }
   }
 
@@ -83,6 +86,7 @@ export default function Reading() {
       setReviewResult(result)
     } catch (err) {
       console.error('Failed to review:', err)
+      toast.error('审核失败')
     } finally {
       setIsReviewing(false)
     }
@@ -101,6 +105,7 @@ export default function Reading() {
       setCurrentOutline(outline || null)
     } catch (err) {
       console.error('Failed to confirm chapter outline:', err)
+      toast.error('确认章节大纲失败')
     }
   }
 
@@ -113,7 +118,7 @@ export default function Reading() {
   const hasNext = currentIndex < chapterOutlines.length - 1
 
   if (!project || !chapter) {
-    return <div className="text-center py-10">加载中...</div>
+    return <LoadingSpinner fullPage />
   }
 
   return (

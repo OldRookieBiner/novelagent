@@ -130,32 +130,35 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
     }
   }, [targetReader])
 
-  // 自动保存草稿
+  // 自动保存草稿（防抖）
   useEffect(() => {
-    const data: InspirationData = {
-      novelType,
-      targetWords,
-      coreTheme,
-      worldSetting,
-      customWorldSetting,
-      era,
-      genre,
-      customGenre,
-      maleLead,
-      customMaleLead,
-      femaleLead,
-      customFemaleLead,
-      stylePreference,
-      targetReader,
-      wordsPerChapter,
-      customWordsPerChapter,
-      narrative,
-      goldFinger,
-      customGoldFinger,
-    }
-    if (novelType || targetWords || coreTheme || targetReader) {
-      saveInspirationDraft(data)
-    }
+    const timer = setTimeout(() => {
+      const data: InspirationData = {
+        novelType,
+        targetWords,
+        coreTheme,
+        worldSetting,
+        customWorldSetting,
+        era,
+        genre,
+        customGenre,
+        maleLead,
+        customMaleLead,
+        femaleLead,
+        customFemaleLead,
+        stylePreference,
+        targetReader,
+        wordsPerChapter,
+        customWordsPerChapter,
+        narrative,
+        goldFinger,
+        customGoldFinger,
+      }
+      if (novelType || targetWords || coreTheme || targetReader) {
+        saveInspirationDraft(data)
+      }
+    }, 500)
+    return () => clearTimeout(timer)
   }, [novelType, targetWords, coreTheme, worldSetting, customWorldSetting, era, genre, customGenre, maleLead, customMaleLead, femaleLead, customFemaleLead, stylePreference, targetReader, wordsPerChapter, customWordsPerChapter, narrative, goldFinger, customGoldFinger])
 
   // 加载可用模型列表
@@ -255,7 +258,7 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
     <div className="space-y-8">
       {/* 目标读者：独占一行，卡片选择 */}
       <div>
-        <div className="text-sm font-medium text-gray-700 mb-3">
+        <div className="text-sm font-medium text-foreground mb-3">
           目标读者 <span className="text-red-500">*</span>
         </div>
         <div className="grid grid-cols-2 gap-4 max-w-md">
@@ -268,13 +271,13 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
               }}
               className={`border-2 rounded-lg p-5 text-center cursor-pointer transition-all ${
                 targetReader === opt.value
-                  ? 'border-blue-500 bg-blue-50 shadow-sm'
-                  : 'border-gray-200 hover:border-blue-300 hover:shadow-sm'
+                  ? 'border-primary bg-primary/10 shadow-sm'
+                  : 'border-border hover:border-primary/50 hover:shadow-sm'
               }`}
             >
               <div className="text-3xl mb-2">{TARGET_READER_ICONS[opt.value]}</div>
               <div className="font-medium text-base">{opt.label}</div>
-              <div className="text-xs text-gray-500 mt-1">{TARGET_READER_DESC[opt.value]}</div>
+              <div className="text-xs text-muted-foreground mt-1">{TARGET_READER_DESC[opt.value]}</div>
             </div>
           ))}
         </div>
@@ -282,18 +285,18 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
       </div>
 
       {/* 分隔线 */}
-      <div className="border-t border-gray-200" />
+      <div className="border-t border-border" />
 
       {/* 基本设定 */}
       <div>
         <div className="flex items-center gap-2 mb-4">
-          <span className="text-sm font-semibold text-gray-700">基本设定</span>
+          <span className="text-sm font-semibold text-foreground">基本设定</span>
           <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded">必填</span>
         </div>
 
         {/* 小说类型：卡片选择 */}
         <div className="mb-6">
-          <div className="text-sm font-medium text-gray-700 mb-3">
+          <div className="text-sm font-medium text-foreground mb-3">
             小说类型 <span className="text-red-500">*</span>
           </div>
           <div className="grid grid-cols-6 gap-2">
@@ -306,8 +309,8 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
                 }}
                 className={`border-2 rounded-lg p-3 text-center cursor-pointer transition-all ${
                   novelType === opt.value
-                    ? 'border-blue-500 bg-blue-50 shadow-sm'
-                    : 'border-gray-200 hover:border-blue-300 hover:shadow-sm'
+                    ? 'border-primary bg-primary/10 shadow-sm'
+                    : 'border-border hover:border-primary/50 hover:shadow-sm'
                 }`}
               >
                 <div className="text-lg mb-1">{NOVEL_TYPE_ICONS[opt.value]}</div>
@@ -320,7 +323,7 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
 
         {/* 年代：卡片选择 */}
         <div className="mb-6">
-          <div className="text-sm font-medium text-gray-700 mb-3">
+          <div className="text-sm font-medium text-foreground mb-3">
             年代 <span className="text-red-500">*</span>
           </div>
           <div className="grid grid-cols-4 gap-2 max-w-lg">
@@ -333,8 +336,8 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
                 }}
                 className={`border-2 rounded-lg p-3 text-center cursor-pointer transition-all ${
                   era === opt.value
-                    ? 'border-blue-500 bg-blue-50 shadow-sm'
-                    : 'border-gray-200 hover:border-blue-300 hover:shadow-sm'
+                    ? 'border-primary bg-primary/10 shadow-sm'
+                    : 'border-border hover:border-primary/50 hover:shadow-sm'
                 }`}
               >
                 <div className="text-lg mb-1">{ERA_ICONS[opt.value]}</div>
@@ -348,13 +351,13 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
         {/* 下拉框选项：目标字数、每章字数 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <div className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
+            <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-1">
               目标字数
               <span className="text-red-500">*</span>
               {/* Tips 图标 */}
               <div className="relative group ml-1">
                 <svg
-                  className="w-4 h-4 text-gray-400 cursor-help hover:text-blue-500"
+                  className="w-4 h-4 text-muted-foreground cursor-help hover:text-primary"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -388,18 +391,18 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
                 placeholder="输入目标字数"
                 className={`flex-1 h-11 ${errors.targetWords ? 'border-red-500' : ''}`}
               />
-              <span className="text-sm text-gray-500">字</span>
+              <span className="text-sm text-muted-foreground">字</span>
             </div>
             {errors.targetWords && <p className="text-red-500 text-xs mt-1">{errors.targetWords}</p>}
           </div>
 
           <div>
-            <div className="text-sm font-medium text-gray-700 mb-2">
+            <div className="text-sm font-medium text-foreground mb-2">
               每章字数 <span className="text-red-500">*</span>
             </div>
             <select
-              className={`w-full h-11 px-3 rounded-lg border-2 bg-white text-sm ${
-                errors.wordsPerChapter ? 'border-red-500' : 'border-gray-200'
+              className={`w-full h-11 px-3 rounded-lg border-2 bg-background text-sm ${
+                errors.wordsPerChapter ? 'border-red-500' : 'border-border'
               }`}
               value={wordsPerChapter}
               onChange={(e) => {
@@ -423,7 +426,7 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
         {wordsPerChapter === 'custom' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
             <div>
-              <div className="text-sm font-medium text-gray-700 mb-2">自定义每章字数</div>
+              <div className="text-sm font-medium text-foreground mb-2">自定义每章字数</div>
               <Input
                 type="number"
                 value={customWordsPerChapter || ''}
@@ -437,19 +440,19 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
       </div>
 
       {/* 分隔线 */}
-      <div className="border-t border-gray-200" />
+      <div className="border-t border-border" />
 
       {/* 进阶设定 */}
       <div>
         <div className="flex items-center gap-2 mb-4">
-          <span className="text-sm font-semibold text-gray-700">进阶设定</span>
-          <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">选填</span>
+          <span className="text-sm font-semibold text-foreground">进阶设定</span>
+          <span className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded">选填</span>
         </div>
 
         <div className="space-y-6">
           {/* 叙事视角 */}
           <div>
-            <div className="text-sm font-medium text-gray-700 mb-2">叙事视角</div>
+            <div className="text-sm font-medium text-foreground mb-2">叙事视角</div>
             <div className="flex gap-2">
               {INSPIRATION_OPTIONS.narrative.map((opt) => (
                 <span
@@ -457,8 +460,8 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
                   onClick={() => setNarrative(opt.value)}
                   className={`px-5 py-2 rounded-full border-2 text-sm cursor-pointer transition-all ${
                     narrative === opt.value
-                      ? 'bg-blue-500 text-white border-blue-500'
-                      : 'border-gray-200 hover:border-blue-300'
+                      ? 'bg-primary/100 text-white border-primary'
+                      : 'border-border hover:border-primary/50'
                   }`}
                 >
                   {opt.label}
@@ -469,7 +472,7 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
 
           {/* 核心主题 */}
           <div>
-            <div className="text-sm font-medium text-gray-700 mb-2">
+            <div className="text-sm font-medium text-foreground mb-2">
               核心主题 <span className="text-red-500">*</span>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -482,8 +485,8 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
                   }}
                   className={`px-4 py-2 rounded-full border-2 text-sm cursor-pointer transition-all ${
                     coreTheme === opt.value
-                      ? 'bg-blue-500 text-white border-blue-500'
-                      : 'border-gray-200 hover:border-blue-300'
+                      ? 'bg-primary/100 text-white border-primary'
+                      : 'border-border hover:border-primary/50'
                   }`}
                 >
                   {opt.label}
@@ -495,7 +498,7 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
 
           {/* 世界观设定 */}
           <div>
-            <div className="text-sm font-medium text-gray-700 mb-2">世界观设定</div>
+            <div className="text-sm font-medium text-foreground mb-2">世界观设定</div>
             <div className="flex flex-wrap gap-2">
               {INSPIRATION_OPTIONS.worldSettings.map((opt) => (
                 <span
@@ -503,8 +506,8 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
                   onClick={() => setWorldSetting(opt.value)}
                   className={`px-4 py-2 rounded-full border-2 text-sm cursor-pointer transition-all ${
                     worldSetting === opt.value
-                      ? 'bg-blue-500 text-white border-blue-500'
-                      : 'border-gray-200 hover:border-blue-300'
+                      ? 'bg-primary/100 text-white border-primary'
+                      : 'border-border hover:border-primary/50'
                   }`}
                 >
                   {opt.label}
@@ -525,7 +528,7 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
           {/* 流派（男频专属） */}
           {targetReader === 'male' && (
             <div>
-              <div className="text-sm font-medium text-gray-700 mb-2">流派</div>
+              <div className="text-sm font-medium text-foreground mb-2">流派</div>
               <div className="flex flex-wrap gap-2">
                 {MALE_OPTIONS.genre.map((opt) => (
                   <span
@@ -533,8 +536,8 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
                     onClick={() => setGenre(opt.value)}
                     className={`px-4 py-2 rounded-full border-2 text-sm cursor-pointer transition-all ${
                       genre === opt.value
-                        ? 'bg-blue-500 text-white border-blue-500'
-                        : 'border-gray-200 hover:border-blue-300'
+                        ? 'bg-primary/100 text-white border-primary'
+                        : 'border-border hover:border-primary/50'
                     }`}
                   >
                     {opt.label}
@@ -556,7 +559,7 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
           {/* 男主人设（男频专属） */}
           {targetReader === 'male' && (
             <div>
-              <div className="text-sm font-medium text-gray-700 mb-2">
+              <div className="text-sm font-medium text-foreground mb-2">
                 男主人设 <span className="text-red-500">*</span>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -569,8 +572,8 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
                     }}
                     className={`px-4 py-2 rounded-full border-2 text-sm cursor-pointer transition-all ${
                       maleLead === opt.value
-                        ? 'bg-blue-500 text-white border-blue-500'
-                        : 'border-gray-200 hover:border-blue-300'
+                        ? 'bg-primary/100 text-white border-primary'
+                        : 'border-border hover:border-primary/50'
                     }`}
                   >
                     {opt.label}
@@ -593,7 +596,7 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
           {/* 女主人设（女频专属） */}
           {targetReader === 'female' && (
             <div>
-              <div className="text-sm font-medium text-gray-700 mb-2">
+              <div className="text-sm font-medium text-foreground mb-2">
                 女主人设 <span className="text-red-500">*</span>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -606,8 +609,8 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
                     }}
                     className={`px-4 py-2 rounded-full border-2 text-sm cursor-pointer transition-all ${
                       femaleLead === opt.value
-                        ? 'bg-blue-500 text-white border-blue-500'
-                        : 'border-gray-200 hover:border-blue-300'
+                        ? 'bg-primary/100 text-white border-primary'
+                        : 'border-border hover:border-primary/50'
                     }`}
                   >
                     {opt.label}
@@ -630,15 +633,15 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
           {/* 未选择目标读者时提示 */}
           {!targetReader && (
             <div>
-              <div className="text-sm font-medium text-gray-700 mb-2">主角设定</div>
-              <p className="text-sm text-gray-400">请先选择目标读者</p>
+              <div className="text-sm font-medium text-foreground mb-2">主角设定</div>
+              <p className="text-sm text-muted-foreground">请先选择目标读者</p>
             </div>
           )}
 
           {/* 金手指设定（男频专属） */}
           {targetReader === 'male' && (
             <div>
-              <div className="text-sm font-medium text-gray-700 mb-2">金手指设定</div>
+              <div className="text-sm font-medium text-foreground mb-2">金手指设定</div>
               <div className="flex flex-wrap gap-2">
                 {MALE_OPTIONS.goldFinger.map((opt) => (
                   <span
@@ -646,8 +649,8 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
                     onClick={() => setGoldFinger(opt.value)}
                     className={`px-4 py-2 rounded-full border-2 text-sm cursor-pointer transition-all ${
                       goldFinger === opt.value
-                        ? 'bg-blue-500 text-white border-blue-500'
-                        : 'border-gray-200 hover:border-blue-300'
+                        ? 'bg-primary/100 text-white border-primary'
+                        : 'border-border hover:border-primary/50'
                     }`}
                   >
                     {opt.label}
@@ -668,7 +671,7 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
 
           {/* 风格偏好 */}
           <div>
-            <div className="text-sm font-medium text-gray-700 mb-2">风格偏好</div>
+            <div className="text-sm font-medium text-foreground mb-2">风格偏好</div>
             <div className="flex flex-wrap gap-2">
               {INSPIRATION_OPTIONS.stylePreferences.map((opt) => (
                 <span
@@ -676,8 +679,8 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
                   onClick={() => setStylePreference(opt.value)}
                   className={`px-4 py-2 rounded-full border-2 text-sm cursor-pointer transition-all ${
                     stylePreference === opt.value
-                      ? 'bg-blue-500 text-white border-blue-500'
-                      : 'border-gray-200 hover:border-blue-300'
+                      ? 'bg-primary/100 text-white border-primary'
+                      : 'border-border hover:border-primary/50'
                   }`}
                 >
                   {opt.label}
@@ -689,15 +692,15 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
       </div>
 
       {/* 分隔线 */}
-      <div className="border-t border-gray-200" />
+      <div className="border-t border-border" />
 
       {/* 模型选择 */}
       <div>
-        <div className="text-sm font-medium text-gray-700 mb-2">
+        <div className="text-sm font-medium text-foreground mb-2">
           生成模型
         </div>
         <select
-          className="w-full h-11 px-3 rounded-lg border-2 border-gray-200 bg-white text-sm focus:border-blue-500 focus:outline-none"
+          className="w-full h-11 px-3 rounded-lg border-2 border-border bg-background text-sm focus:border-primary focus:outline-none"
           value={selectedModelId || ''}
           onChange={(e) => setSelectedModelId(Number(e.target.value) || null)}
         >
@@ -711,7 +714,7 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
             ))
           )}
         </select>
-        <p className="text-xs text-gray-500 mt-1">
+        <p className="text-xs text-muted-foreground mt-1">
           选择用于生成内容的 AI 模型
         </p>
       </div>

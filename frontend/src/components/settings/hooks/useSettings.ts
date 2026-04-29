@@ -35,6 +35,7 @@ export function useSettings()
   const [maxRewriteCount, setMaxRewriteCount] = useState(3)
 
   // 工作流模式状态
+  const setSettings = useSettingsStore((state) => state.setSettings)
   const workflowMode = useSettingsStore((state) => state.workflowMode)
   const setWorkflowMode = useSettingsStore((state) => state.setWorkflowMode)
 
@@ -62,7 +63,7 @@ export function useSettings()
         {
           setReviewMode('manual')
         }
-        useSettingsStore.getState().setSettings(data)
+        setSettings(data)
       }
       catch (err)
       {
@@ -189,7 +190,7 @@ export function useSettings()
         review_strictness: 'standard',
       }
       const updated = await settingsApi.update(update)
-      useSettingsStore.getState().setSettings(updated)
+      setSettings(updated)
       setSaved(true)
     }
     catch (err)
