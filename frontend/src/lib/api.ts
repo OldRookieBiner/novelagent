@@ -101,7 +101,7 @@ interface RequestOptions {
  * @param options - 请求选项
  * @returns 响应数据
  */
-async function request<T>(
+export async function request<T>(
   endpoint: string,
   options: RequestOptions = {}
 ): Promise<T> {
@@ -442,6 +442,8 @@ export interface CollectedInfoUpdate {
   main_characters?: string;
   world_setting?: string;
   style_preference?: string;
+  /** 自定义字段，用于灵感采集面板保存更多数据 */
+  [key: string]: unknown;
 }
 
 export const collectedInfoApi = {
