@@ -39,6 +39,16 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          {/* 首页使用独立全屏布局 */}
+          <Route
+            path="/"
+            element={
+              <PrivateRoute>
+                <Home />
+              </PrivateRoute>
+            }
+            index
+          />
           {/* 工作台页面使用独立布局（全屏） */}
           <Route
             path="/project/:id/workbench"
@@ -48,7 +58,7 @@ function App() {
               </PrivateRoute>
             }
           />
-          {/* 其他页面使用 Layout */}
+          {/* Settings 和项目重定向使用 Layout */}
           <Route
             path="/"
             element={
@@ -57,7 +67,6 @@ function App() {
               </PrivateRoute>
             }
           >
-            <Route index element={<Home />} />
             <Route path="project/:id" element={<RedirectToWorkbench />} />
             <Route path="settings" element={<Settings />} />
           </Route>

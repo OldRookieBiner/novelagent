@@ -92,78 +92,96 @@ export default function Home() {
     setDeleteTarget({ id: project.id, name: project.name })
   }
 
+  // 加载状态 - 全屏骨架屏
   if (loading) {
     return (
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <ProjectCardSkeleton key={i} />
-        ))}
+      <div className="flex flex-col h-screen bg-gray-50">
+        {/* 顶部栏 */}
+        <header className="h-14 border-b bg-white flex items-center justify-between px-6 shrink-0">
+          <h1 className="text-xl font-semibold">我的项目</h1>
+          <Button disabled>
+            <Plus className="h-4 w-4 mr-2" />
+            新建项目
+          </Button>
+        </header>
+        {/* 主内容区 */}
+        <main className="flex-1 overflow-auto p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <ProjectCardSkeleton key={i} />
+            ))}
+          </div>
+        </main>
       </div>
     )
   }
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">我的项目</h1>
+    <div className="flex flex-col h-screen bg-gray-50">
+      {/* 顶部栏 */}
+      <header className="h-14 border-b bg-white flex items-center justify-between px-6 shrink-0">
+        <h1 className="text-xl font-semibold">我的项目</h1>
         <Button onClick={() => setShowNewProject(true)}>
           <Plus className="h-4 w-4 mr-2" />
           新建项目
         </Button>
-      </div>
+      </header>
 
-      {error && (
-        <div className="mb-6">
-          <ErrorMessage message={error} onRetry={fetchProjects} onDismiss={() => setError(null)} />
-        </div>
-      )}
+      {/* 主内容区 */}
+      <main className="flex-1 overflow-auto p-6">
+        {error && (
+          <div className="mb-6">
+            <ErrorMessage message={error} onRetry={fetchProjects} onDismiss={() => setError(null)} />
+          </div>
+        )}
 
-      {showNewProject && (
-        <Card className="mb-6">
-          <CardContent className="p-4">
-            {createError && (
-              <div className="mb-3">
-                <ErrorMessage message={createError} onDismiss={() => setCreateError(null)} />
+        {showNewProject && (
+          <Card className="mb-6">
+            <CardContent className="p-4">
+              {createError && (
+                <div className="mb-3">
+                  <ErrorMessage message={createError} onDismiss={() => setCreateError(null)} />
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Input
+                  placeholder="项目名称"
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleCreateProject()}
+                  maxLength={100}
+                />
+                <Button onClick={handleCreateProject} disabled={creating}>
+                  {creating ? '创建中...' : '创建'}
+                </Button>
+                <Button variant="outline" onClick={() => {
+                  setShowNewProject(false)
+                  setNewProjectName('')
+                  setCreateError(null)
+                }}>
+                  取消
+                </Button>
               </div>
-            )}
-            <div className="flex gap-2">
-              <Input
-                placeholder="项目名称"
-                value={newProjectName}
-                onChange={(e) => setNewProjectName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleCreateProject()}
-                maxLength={100}
-              />
-              <Button onClick={handleCreateProject} disabled={creating}>
-                {creating ? '创建中...' : '创建'}
-              </Button>
-              <Button variant="outline" onClick={() => {
-                setShowNewProject(false)
-                setNewProjectName('')
-                setCreateError(null)
-              }}>
-                取消
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            </CardContent>
+          </Card>
+        )}
 
-      {projects.length === 0 ? (
-        <div className="text-center py-20 text-muted-foreground">
-          <p>还没有项目，点击上方按钮创建第一个项目</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {projects.map((project) => (
-            <ProjectCard
-              key={project.id}
-              project={project}
-              onDelete={() => handleDeleteClick(project)}
-            />
-          ))}
-        </div>
-      )}
+        {projects.length === 0 ? (
+          <div className="text-center py-20 text-muted-foreground">
+            <p>还没有项目，点击上方按钮创建第一个项目</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {projects.map((project) => (
+              <ProjectCard
+                key={project.id}
+                project={project}
+                onDelete={() => handleDeleteClick(project)}
+              />
+            ))}
+          </div>
+        )}
+      </main>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
