@@ -121,6 +121,7 @@ export function RelationPanel({ projectId }: RelationPanelProps)
     catch (err)
     {
       console.error('Failed to load characters:', err)
+      toast.error('加载人物列表失败')
     }
     setDialogOpen(true)
   }
