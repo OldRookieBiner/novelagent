@@ -11,7 +11,6 @@ from app.models.user import User
 from app.models.project import Project
 from app.models.outline import Outline, ChapterOutline
 from app.models.chapter import Chapter
-from app.models.settings import UserSettings
 from app.schemas.chapter import (
     ChapterOutlineResponse,
     ChapterOutlineUpdate,
@@ -22,7 +21,7 @@ from app.schemas.chapter import (
 )
 from app.schemas.outline import ChapterOutlinesGenerateRequest
 from app.utils.auth import get_current_user
-from app.utils.llm import get_llm_for_user
+from app.utils.deps import get_user_settings_or_raise, get_llm_for_context
 from app.utils.project import get_project_for_user
 from app.utils.workflow import get_or_create_workflow_state
 from app.utils.error import format_sse_error
@@ -139,16 +138,7 @@ async def create_chapter_outlines(
             detail="Chapter outlines already exist. Delete them first to regenerate."
         )
 
-    # Get user settings for LLM
-    user_settings = db.query(UserSettings).filter(
-        UserSettings.user_id == current_user.id
-    ).first()
-
-    if not user_settings:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User settings not found"
-        )
+    user_settings = get_user_settings_or_raise(current_user, db)
 
     # 更新工作流状态
     workflow_state = get_or_create_workflow_state(db, project_id)
@@ -156,8 +146,7 @@ async def create_chapter_outlines(
     db.commit()
 
     # Get LLM service
-    llm_config_id = request.llm_config_id if request else None
-    llm = get_llm_for_user(current_user.id, user_settings, db, llm_config_id)
+    llm = get_llm_for_context(request, current_user, user_settings, db)
 
     # Prepare state for chapter outline generation
     state = {
@@ -608,19 +597,10 @@ async def generate_chapter(
         db.commit()
         db.refresh(chapter)
 
-    # Get user settings for LLM
-    user_settings = db.query(UserSettings).filter(
-        UserSettings.user_id == current_user.id
-    ).first()
-
-    if not user_settings:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User settings not found"
-        )
+    user_settings = get_user_settings_or_raise(current_user, db)
 
     # Get LLM service
-    llm = get_llm_for_user(current_user.id, user_settings, db)
+    llm = get_llm_for_context(request, current_user, user_settings, db)
 
     # Prepare state for generation
     state = {
@@ -721,19 +701,10 @@ async def review_chapter(
             detail="Chapter has no content to review"
         )
 
-    # Get user settings for LLM
-    user_settings = db.query(UserSettings).filter(
-        UserSettings.user_id == current_user.id
-    ).first()
-
-    if not user_settings:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User settings not found"
-        )
+    user_settings = get_user_settings_or_raise(current_user, db)
 
     # Get LLM service
-    llm = get_llm_for_user(current_user.id, user_settings, db)
+    llm = get_llm_for_context(request, current_user, user_settings, db)
 
     # Prepare state for review
     state = {

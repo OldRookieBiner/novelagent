@@ -13,10 +13,10 @@ from app.models.project import Project
 from app.models.outline import Outline
 from app.models.checkpoint import WorkflowCheckpoint
 from app.models.workflow_state import WorkflowState
-from app.models.settings import UserSettings
 from app.utils.auth import get_current_user
 from app.utils.project import get_project_for_user
 from app.utils.error import format_sse_error
+from app.utils.deps import get_user_settings_or_raise
 from app.agents.graph import create_novel_graph_with_checkpointer
 from app.agents.state import NovelState
 
@@ -223,16 +223,7 @@ async def run_workflow(
             detail="Outline not found"
         )
 
-    # 获取用户设置
-    user_settings = db.query(UserSettings).filter(
-        UserSettings.user_id == current_user.id
-    ).first()
-
-    if not user_settings:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User settings not found"
-        )
+    user_settings = get_user_settings_or_raise(current_user, db)
 
     # 获取或创建 WorkflowState
     workflow_state = db.query(WorkflowState).filter(
