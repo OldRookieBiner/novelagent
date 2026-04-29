@@ -330,9 +330,9 @@ export function WritingPanel({ projectId }: WritingPanelProps)
         projectId={projectId}
         chapterNumber={selectedChapter?.chapter_number}
         chapterContent={content}
-        onReviewComplete={(result) =>
+        onReviewComplete={() =>
         {
-          console.log('Review result:', result)
+          // 审核结果回调 - 后续可扩展
         }}
       />
     </div>
