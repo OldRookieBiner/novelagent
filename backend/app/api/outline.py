@@ -230,7 +230,7 @@ async def update_outline(
     return OutlineResponse.model_validate(outline)
 
 
-@router.post("/{project_id}/outline/confirm", response_model=OutlineResponse)
+@router.put("/{project_id}/outline/confirm", response_model=OutlineResponse)
 async def confirm_outline(
     project_id: int,
     db: Session = Depends(get_db),
@@ -292,7 +292,7 @@ async def confirm_outline(
     return OutlineResponse.model_validate(outline)
 
 
-@router.post("/{project_id}/outline/chapter-count", response_model=OutlineResponse)
+@router.put("/{project_id}/outline/chapter-count", response_model=OutlineResponse)
 async def set_chapter_count(
     project_id: int,
     request: ChapterCountRequest,

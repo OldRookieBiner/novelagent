@@ -1,7 +1,7 @@
 """Projects API routes"""
 
 import logging
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy.orm import Session
 
@@ -63,19 +63,27 @@ def get_project_detail(project: Project, db: Session) -> ProjectDetailResponse:
 
 @router.get("/", response_model=ProjectListResponse)
 async def list_projects(
+    limit: Optional[int] = None,
+    offset: int = 0,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
     列出当前用户的所有项目
     直接返回包含进度详情的项目列表，避免前端 N+1 请求
+    支持可选分页参数 limit 和 offset
     """
-    projects = db.query(Project).filter(Project.user_id == current_user.id).all()
+    projects = db.query(Project).filter(Project.user_id == current_user.id)
+    total = projects.count()
+    if limit is not None:
+        projects = projects.offset(offset).limit(limit).all()
+    else:
+        projects = projects.all()
     # 直接返回 ProjectDetailResponse 而不是 ProjectResponse，避免前端额外请求
     project_details = [get_project_detail(p, db) for p in projects]
     return ProjectListResponse(
         projects=project_details,
-        total=len(projects)
+        total=total
     )
 
 

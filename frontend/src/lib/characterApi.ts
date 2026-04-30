@@ -29,10 +29,14 @@ export const characterApi = {
    * @param projectId - 项目 ID
    * @param role - 可选的角色过滤（主角/核心反派/重要配角/配角）
    */
-  async list(projectId: number, role?: string): Promise<CharacterListResponse>
+  async list(projectId: number, role?: string, params?: { limit?: number; offset?: number }): Promise<CharacterListResponse>
   {
-    const params = role ? `?role=${encodeURIComponent(role)}` : ''
-    return request<CharacterListResponse>(`/api/projects/${projectId}/characters${params}`)
+    const searchParams = new URLSearchParams()
+    if (role) searchParams.set('role', encodeURIComponent(role))
+    if (params?.limit) searchParams.set('limit', params.limit.toString())
+    if (params?.offset) searchParams.set('offset', params.offset.toString())
+    const query = searchParams.toString()
+    return request<CharacterListResponse>(`/api/projects/${projectId}/characters${query ? '?' + query : ''}`)
   },
 
   /**

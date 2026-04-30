@@ -48,6 +48,8 @@ router = APIRouter()
 async def list_characters(
     project_id: int,
     role: Optional[str] = None,
+    limit: Optional[int] = None,
+    offset: int = 0,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -56,6 +58,8 @@ async def list_characters(
     Args:
         project_id: 项目 ID
         role: 可选的角色过滤（主角/核心反派/重要配角/配角）
+        limit: 可选的分页限制
+        offset: 分页偏移量（默认 0）
         db: 数据库会话
         current_user: 当前用户
 
@@ -78,11 +82,20 @@ async def list_characters(
         {value: i for i, value in enumerate(["主角", "核心反派", "重要配角", "配角"])},
         value=Character.role
     )
-    characters = query.order_by(role_order).all()
+    query = query.order_by(role_order)
+
+    # 计算总数（在分页前）
+    total = query.count()
+
+    # 可选分页
+    if limit is not None:
+        characters = query.offset(offset).limit(limit).all()
+    else:
+        characters = query.all()
 
     return CharacterListResponse(
         characters=[CharacterResponse.model_validate(c) for c in characters],
-        total=len(characters)
+        total=total
     )
 
 

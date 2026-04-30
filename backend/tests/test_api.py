@@ -253,7 +253,7 @@ class TestOutlineAPI:
         )
 
         # Confirm
-        response = client.post(
+        response = client.put(
             f"/api/projects/{project_with_outline}/outline/confirm",
             headers=auth_headers
         )
@@ -263,7 +263,7 @@ class TestOutlineAPI:
 
     def test_confirm_outline_without_title(self, client: TestClient, auth_headers: dict, project_with_outline: int):
         """Should not confirm outline without title"""
-        response = client.post(
+        response = client.put(
             f"/api/projects/{project_with_outline}/outline/confirm",
             headers=auth_headers
         )

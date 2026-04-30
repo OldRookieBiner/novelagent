@@ -186,8 +186,12 @@ export const authApi = {
 // ==================== Projects API ====================
 
 export const projectsApi = {
-  async list(): Promise<ProjectListResponse> {
-    return request<ProjectListResponse>("/api/projects/");
+  async list(params?: { limit?: number; offset?: number }): Promise<ProjectListResponse> {
+    const searchParams = new URLSearchParams()
+    if (params?.limit) searchParams.set('limit', params.limit.toString())
+    if (params?.offset) searchParams.set('offset', params.offset.toString())
+    const query = searchParams.toString()
+    return request<ProjectListResponse>(`/api/projects/${query ? '?' + query : ''}`);
   },
 
   async get(projectId: number): Promise<ProjectDetail> {
@@ -284,7 +288,7 @@ export const outlineApi = {
 
   async confirm(projectId: number): Promise<void> {
     return request(`/api/projects/${projectId}/outline/confirm`, {
-      method: "POST",
+      method: "PUT",
     });
   },
 
@@ -293,7 +297,7 @@ export const outlineApi = {
     data: ChapterCountRequest
   ): Promise<void> {
     return request(`/api/projects/${projectId}/outline/chapter-count`, {
-      method: "POST",
+      method: "PUT",
       body: data,
     });
   },
@@ -364,7 +368,7 @@ export const chapterOutlinesApi = {
   async confirm(projectId: number, chapterNum: number): Promise<void> {
     return request(
       `/api/projects/${projectId}/chapter-outlines/${chapterNum}/confirm`,
-      { method: "POST" }
+      { method: "PUT" }
     );
   },
 };

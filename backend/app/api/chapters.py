@@ -300,7 +300,7 @@ async def update_chapter_outline(
     )
 
 
-@router.post("/{project_id}/chapter-outlines/{chapter_num}/confirm", response_model=ChapterOutlineResponse)
+@router.put("/{project_id}/chapter-outlines/{chapter_num}/confirm", response_model=ChapterOutlineResponse)
 async def confirm_chapter_outline(
     project_id: int,
     chapter_num: int,
