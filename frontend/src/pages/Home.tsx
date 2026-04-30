@@ -83,7 +83,7 @@ export default function Home()
         <Header />
         <main className="flex-1 overflow-auto p-6">
           <h2 className="text-lg font-semibold mb-6">我的项目</h2>
-          <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
+          <div className="grid gap-4 max-w-[1600px] mx-auto" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
             {Array.from({ length: 6 }).map((_, i) => (
               <ProjectCardSkeleton key={i} />
             ))}
@@ -120,7 +120,7 @@ export default function Home()
             <p className="text-sm text-muted-foreground mt-4">创建你的第一个项目，开始写作之旅</p>
           </div>
         ) : (
-          <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
+          <div className="grid gap-4 max-w-[1600px] mx-auto" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
             {/* 占位新建卡片 */}
             <div
               className="border-2 border-dashed border-border rounded-lg p-4 flex flex-col items-center justify-center min-h-[180px] cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors"
