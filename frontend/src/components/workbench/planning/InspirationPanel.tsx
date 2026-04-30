@@ -11,9 +11,10 @@ import {
   COMMON_OPTIONS,
   MALE_OPTIONS,
   FEMALE_OPTIONS,
-  generateInspirationTemplate,
+generateInspirationTemplate,
   saveInspirationDraft,
   loadInspirationDraft,
+  clearInspirationDraft,
   type InspirationData,
 } from '@/lib/inspiration'
 import { collectedInfoApi } from '@/lib/api'
@@ -128,6 +129,16 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
     }
   }, [formData, templateManuallyEdited])
 
+  // 加载草稿或初始数据后，立即生成初始模板
+  useEffect(() =>
+  {
+    if (!template && !templateManuallyEdited)
+    {
+      const generated = generateInspirationTemplate(formData)
+      setTemplate(generated)
+    }
+  }, [formData, template, templateManuallyEdited])
+
   // 加载草稿
   useEffect(() =>
   {
@@ -213,11 +224,11 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
   }, [])
 
   // 重置模板（恢复自动同步）
-  const handleResetTemplate = useCallback(() =>
+  const handleResetTemplate = () =>
   {
     setTemplate(generateInspirationTemplate(formData))
     setTemplateManuallyEdited(false)
-  }, [formData])
+  }
 
   // 确认灵感，生成大纲
   const handleConfirm = async () =>
@@ -284,6 +295,7 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
 
       await collectedInfoApi.update(projectId, collectedInfoData)
       toast.success('灵感已确认')
+      clearInspirationDraft()
 
       // 切换到创作 Tab 的小说大纲
       setActiveTab('creation')
@@ -327,7 +339,7 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
                       onClick={() =>
                       {
                         setTargetReader(opt.value)
-                        if (errors.targetReader) setErrors({ ...errors, targetReader: '' })
+                        if (errors.targetReader) setErrors(prev => ({ ...prev, targetReader: '' }))
                       }}
                       className={`border-2 rounded-lg p-4 text-center cursor-pointer transition-all ${
                         targetReader === opt.value
@@ -366,7 +378,7 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
                         onClick={() =>
                         {
                           setNovelType(opt.value)
-                          if (errors.novelType) setErrors({ ...errors, novelType: '' })
+                          if (errors.novelType) setErrors(prev => ({ ...prev, novelType: '' }))
                         }}
                         className={`border-2 rounded-lg p-2 text-center cursor-pointer transition-all ${
                           novelType === opt.value
@@ -394,7 +406,7 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
                         onClick={() =>
                         {
                           setEra(opt.value)
-                          if (errors.era) setErrors({ ...errors, era: '' })
+                          if (errors.era) setErrors(prev => ({ ...prev, era: '' }))
                         }}
                         className={`border-2 rounded-lg p-2 text-center cursor-pointer transition-all ${
                           era === opt.value
@@ -423,7 +435,7 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
                         onChange={(e) =>
                         {
                           setTargetWords(parseInt(e.target.value) || 0)
-                          if (errors.targetWords) setErrors({ ...errors, targetWords: '' })
+                          if (errors.targetWords) setErrors(prev => ({ ...prev, targetWords: '' }))
                         }}
                         placeholder="输入目标字数"
                         className={errors.targetWords ? 'border-red-500' : ''}
@@ -443,7 +455,7 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
                       onChange={(e) =>
                       {
                         setWordsPerChapter(e.target.value)
-                        if (errors.wordsPerChapter) setErrors({ ...errors, wordsPerChapter: '' })
+                        if (errors.wordsPerChapter) setErrors(prev => ({ ...prev, wordsPerChapter: '' }))
                       }}
                     >
                       <option value="">请选择</option>
@@ -513,7 +525,7 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
                         onClick={() =>
                         {
                           setCoreTheme(opt.value)
-                          if (errors.coreTheme) setErrors({ ...errors, coreTheme: '' })
+                          if (errors.coreTheme) setErrors(prev => ({ ...prev, coreTheme: '' }))
                         }}
                         className={`px-3 py-1.5 rounded-full border-2 text-sm cursor-pointer transition-all ${
                           coreTheme === opt.value
@@ -601,7 +613,7 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
                           onClick={() =>
                           {
                             setMaleLead(opt.value)
-                            if (errors.maleLead) setErrors({ ...errors, maleLead: '' })
+                            if (errors.maleLead) setErrors(prev => ({ ...prev, maleLead: '' }))
                           }}
                           className={`px-3 py-1.5 rounded-full border-2 text-sm cursor-pointer transition-all ${
                             maleLead === opt.value
@@ -639,7 +651,7 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
                           onClick={() =>
                           {
                             setFemaleLead(opt.value)
-                            if (errors.femaleLead) setErrors({ ...errors, femaleLead: '' })
+                            if (errors.femaleLead) setErrors(prev => ({ ...prev, femaleLead: '' }))
                           }}
                           className={`px-3 py-1.5 rounded-full border-2 text-sm cursor-pointer transition-all ${
                             femaleLead === opt.value
