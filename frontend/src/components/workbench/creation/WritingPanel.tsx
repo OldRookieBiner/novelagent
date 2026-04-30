@@ -1,11 +1,12 @@
 // frontend/src/components/workbench/creation/WritingPanel.tsx
 
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { Save, ChevronLeft, ChevronRight, Sparkles, Loader2 } from 'lucide-react'
+import { Save, ChevronLeft, ChevronRight, Sparkles, Loader2, Eye, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { chapterOutlinesApi, chaptersApi } from '@/lib/api'
 import { createSSEStream } from '@/lib/sseParser'
 import { AIAssistantPanel } from './AIAssistantPanel'
+import TipTapEditor from '@/components/common/TipTapEditor'
 import type { ChapterOutline, Chapter } from '@/types'
 import { toast } from 'sonner'
 
@@ -37,6 +38,7 @@ export function WritingPanel({ projectId }: WritingPanelProps)
   const [saving, setSaving] = useState(false)
   const [generating, setGenerating] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const [mode, setMode] = useState<'preview' | 'edit'>('preview')
 
   useEffect(() =>
   {
@@ -148,10 +150,12 @@ export function WritingPanel({ projectId }: WritingPanelProps)
     }
 
     setGenerating(true)
-    setContent('') // 清空内容准备生成
+    setContent('')
+    setMode('preview')
 
     const controller = new AbortController()
     abortControllerRef.current = controller
+    const accumulated: string[] = []
 
     try
     {
@@ -178,8 +182,15 @@ export function WritingPanel({ projectId }: WritingPanelProps)
           }
           else if (typeof data === 'string')
           {
-            // 流式文本内容
-            setContent(prev => prev + data)
+            // 流式文本内容 — 累积并转换为 HTML 段落
+            accumulated.push(data)
+            const fullText = accumulated.join('')
+            const html = fullText
+              .split('\n')
+              .filter(p => p.trim())
+              .map(p => `<p>${p}</p>`)
+              .join('')
+            setContent(html)
           }
         },
         (error) =>
@@ -267,10 +278,31 @@ export function WritingPanel({ projectId }: WritingPanelProps)
                       取消生成
                     </Button>
                   ) : (
-                    <Button size="sm" variant="outline" onClick={handleGenerate}>
-                      <Sparkles className="h-4 w-4 mr-2" />
-                      AI 生成
-                    </Button>
+                    <>
+                      <Button size="sm" variant="outline" onClick={handleGenerate}>
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        AI 生成
+                      </Button>
+                      {content && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setMode(mode === 'preview' ? 'edit' : 'preview')}
+                        >
+                          {mode === 'preview' ? (
+                            <>
+                              <Pencil className="h-4 w-4 mr-2" />
+                              编辑
+                            </>
+                          ) : (
+                            <>
+                              <Eye className="h-4 w-4 mr-2" />
+                              预览
+                            </>
+                          )}
+                        </Button>
+                      )}
+                    </>
                   )}
                   <Button size="sm" onClick={handleSave} disabled={saving || generating}>
                     {saving ? (
@@ -292,12 +324,22 @@ export function WritingPanel({ projectId }: WritingPanelProps)
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
               ) : (
-                <textarea
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  placeholder="开始写作..."
-                  className="w-full h-[calc(100vh-200px)] p-4 border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary"
-                />
+                mode === 'edit' ? (
+                  <TipTapEditor
+                    content={content}
+                    onChange={setContent}
+                    placeholder="开始写作..."
+                  />
+                ) : (
+                  <div
+                    className="w-full h-[calc(100vh-200px)] p-4 border rounded-lg overflow-auto prose max-w-none"
+                    dangerouslySetInnerHTML={{
+                      __html: content
+                        ? content
+                        : '<p class="text-muted-foreground">点击 AI 生成按钮开始创作</p>'
+                    }}
+                  />
+                )
               )}
             </div>
           ) : (
