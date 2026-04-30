@@ -2,7 +2,8 @@
 
 import { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { LayoutList } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import Header from '@/components/layout/Header'
 import { TabNavigation } from './TabNavigation'
 import { WorkbenchSidebar } from './WorkbenchSidebar'
@@ -24,19 +25,24 @@ export function WorkbenchLayout({ projectName, progress, children }: WorkbenchLa
       {/* 项目 Header */}
       <header className="h-14 border-b bg-white flex items-center justify-between px-6 shrink-0">
         <div className="flex items-center gap-4">
-          <Link to="/" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
-            <ArrowLeft className="h-4 w-4" />
-            <span>返回</span>
-          </Link>
           <h1 className="text-lg font-semibold">{projectName}</h1>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <div className="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
+            <div className="w-48 h-2 bg-gray-200 rounded-full overflow-hidden">
               <div
-                className="h-full bg-primary rounded-full transition-all"
+                className="h-full rounded-full transition-all bg-gradient-to-r from-indigo-500 to-purple-500"
                 style={{ width: `${progress}%` }}
               />
             </div>
+            <span className="text-xs font-medium text-indigo-600">{progress}%</span>
           </div>
+        </div>
+        <div>
+          <Button asChild className="gap-1.5">
+            <Link to="/">
+              <LayoutList className="h-4 w-4" />
+              项目列表
+            </Link>
+          </Button>
         </div>
       </header>
 
