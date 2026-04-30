@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -55,7 +55,8 @@ const TARGET_READER_DESC: Record<string, string> = {
   female: '言情、甜宠、逆袭',
 }
 
-export default function InspirationForm({ initialData, onSubmit }: InspirationFormProps) {
+export default React.memo(function InspirationForm({ initialData, onSubmit }: InspirationFormProps)
+{
   // 必填项状态
   const [targetReader, setTargetReader] = useState(initialData?.targetReader || '')
   const [novelType, setNovelType] = useState(initialData?.novelType || '')
@@ -728,4 +729,4 @@ export default function InspirationForm({ initialData, onSubmit }: InspirationFo
       </div>
     </div>
   )
-}
+})

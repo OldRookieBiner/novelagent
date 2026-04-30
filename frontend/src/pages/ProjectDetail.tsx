@@ -1,5 +1,5 @@
 // frontend/src/pages/ProjectDetail.tsx
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
@@ -95,26 +95,33 @@ export default function ProjectDetail() {
   }, [outline, inspirationData, inspirationTemplate])
 
   // 阶段变更处理
-  const handleStageChange = async (stage: string, skipRefresh = false) => {
+  const handleStageChange = useCallback(async (stage: string, skipRefresh = false) =>
+  {
     if (!project) return
-    try {
-      if (!skipRefresh) {
+    try
+    {
+      if (!skipRefresh)
+      {
         await workflowApi.updateStage(project.id, stage)
       }
       await refreshProject()
 
-      if (!skipRefresh) {
+      if (!skipRefresh)
+      {
         await refreshOutline()
       }
 
-      if (stage === 'chapter_outlines' || stage === 'writing') {
+      if (stage === 'chapter_outlines' || stage === 'writing')
+      {
         await refreshChapterOutlines()
       }
-    } catch (err) {
+    }
+    catch (err)
+    {
       console.error('Failed to update stage:', err)
       toast.error('切换阶段失败')
     }
-  }
+  }, [project, refreshProject, refreshOutline, refreshChapterOutlines])
 
   const handleOutlineUpdate = (updatedOutline: typeof outline) => {
     if (updatedOutline) {
@@ -122,51 +129,64 @@ export default function ProjectDetail() {
     }
   }
 
-  const handleConfirmChapterOutline = async (chapterNum: number) => {
+  const handleConfirmChapterOutline = useCallback(async (chapterNum: number) =>
+  {
     if (!projectId) return
-    try {
+    try
+    {
       await chapterOutlinesApi.confirm(projectId, chapterNum)
       await refreshChapterOutlines()
 
       // 检查是否全部确认
       const updatedChapters = await chapterOutlinesApi.list(projectId)
       const allConfirmed = updatedChapters.every(c => c.confirmed)
-      if (allConfirmed && project && project.workflow_state?.stage !== 'writing') {
+      if (allConfirmed && project && project.workflow_state?.stage !== 'writing')
+      {
         await workflowApi.updateStage(project.id, 'writing')
         await refreshProject()
       }
-    } catch (err) {
+    }
+    catch (err)
+    {
       console.error('Failed to confirm chapter outline:', err)
       toast.error('确认章节大纲失败')
     }
-  }
+  }, [projectId, refreshChapterOutlines, project])
 
   // 步骤导航
-  const handleViewStep = (stepIndex: number | null) => {
+  const handleViewStep = useCallback((stepIndex: number | null) =>
+  {
     setViewingStep(stepIndex)
-    if (stepIndex !== null) {
+    if (stepIndex !== null)
+    {
       setSearchParams({ viewStep: stepIndex.toString() })
-    } else {
+    }
+    else
+    {
       setSearchParams({})
     }
-  }
+  }, [setSearchParams])
 
-  const handleReturnToCurrent = () => {
+  const handleReturnToCurrent = useCallback(() =>
+  {
     setViewingStep(null)
-  }
+  }, [])
 
   // 灵感采集处理
-  const handleInspirationSubmit = (data: InspirationData, modelId?: number) => {
+  const handleInspirationSubmit = useCallback((data: InspirationData, modelId?: number) =>
+  {
     setInspirationData(data)
     setInspirationTemplate(generateInspirationTemplate(data))
     setSelectedModelId(modelId)
     setShowInspirationEditor(true)
-  }
+  }, [])
 
-  const handleInspirationConfirm = async () => {
+  const handleInspirationConfirm = useCallback(async () =>
+  {
     if (!inspirationData || !project) return
 
-    try {
+    try
+    {
       await outlineApi.update(project.id, {
         collected_info: inspirationData as unknown as CollectedInfo,
         inspiration_template: inspirationTemplate,
@@ -175,16 +195,20 @@ export default function ProjectDetail() {
       await refreshProject()
       await refreshOutline()
       setShowInspirationEditor(false)
-    } catch (err) {
+    }
+    catch (err)
+    {
       console.error('Failed to confirm inspiration:', err)
       toast.error('确认灵感失败')
     }
-  }
+  }, [inspirationData, project, inspirationTemplate, refreshProject, refreshOutline])
 
-  const handleInspirationUpdate = async (data: InspirationData) => {
+  const handleInspirationUpdate = useCallback(async (data: InspirationData) =>
+  {
     if (!project) return
 
-    try {
+    try
+    {
       await outlineApi.update(project.id, {
         collected_info: data as unknown as CollectedInfo,
         inspiration_template: generateInspirationTemplate(data),
@@ -197,11 +221,13 @@ export default function ProjectDetail() {
       await refreshOutline()
       setViewingStep(null)
       setSearchParams({})
-    } catch (err) {
+    }
+    catch (err)
+    {
       console.error('Failed to update inspiration:', err)
       toast.error('更新灵感失败')
     }
-  }
+  }, [project, refreshProject, refreshOutline])
 
   if (loading) {
     return <ProjectDetailSkeleton />
