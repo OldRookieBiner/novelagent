@@ -58,7 +58,7 @@ export interface ProjectDetail extends Project {
 }
 
 export interface ProjectListResponse {
-  projects: Project[]
+  projects: ProjectDetail[]
   total: number
 }
 
@@ -84,13 +84,19 @@ export interface CollectedInfo {
   protagonist?: string;
   customProtagonist?: string;
   stylePreference?: string;
-  // 新增字段
-  targetReader?: string;          // 'male' | 'female'
-  wordsPerChapter?: string;       // 每章字数
+  targetReader?: string;
+  wordsPerChapter?: string;
   customWordsPerChapter?: number;
-  narrative?: string;             // 'first' | 'third'
-  goldFinger?: string;            // 金手指类型
+  narrative?: string;
+  goldFinger?: string;
   customGoldFinger?: string;
+  era?: string;
+  genre?: string;
+  customGenre?: string;
+  maleLead?: string;
+  customMaleLead?: string;
+  femaleLead?: string;
+  customFemaleLead?: string;
 }
 
 // v0.6.1: 情节节点增强结构
@@ -405,12 +411,16 @@ export interface WorkflowStateResponse {
   updated_at: string | null
 }
 
+// SSE 数据类型（定义在 sseParser.ts，此处 re-export）
+export type { SSEData } from '@/lib/sseParser'
+import type { SSEData } from '@/lib/sseParser'
+
 /**
  * SSE 事件类型
  */
 export interface WorkflowSSEEvent {
   type: 'node_start' | 'node_done' | 'chunk' | 'checkpoint' | 'waiting' | 'done' | 'error'
-  data: unknown
+  data: SSEData
 }
 
 /**

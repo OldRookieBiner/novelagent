@@ -4,7 +4,7 @@
  */
 
 import { getSessionToken, StreamOptions } from './api'
-import { createSSEStream } from './sseParser'
+import { createSSEStream, type SSEData } from './sseParser'
 import type {
   WorkflowStateResponse,
   WorkflowMode,
@@ -107,35 +107,35 @@ export const workflowApi = {
   ): Promise<void>
   {
     // 事件处理函数
-    const handleEvent = (eventType: string, data: unknown) =>
+    const handleEvent = (eventType: string, data: SSEData) =>
     {
       switch (eventType)
       {
         case 'node_start':
-          callbacks.onNodeStart?.(data as string)
+          callbacks.onNodeStart?.(data as unknown as string)
           break
 
         case 'node_done':
           {
-            const nodeData = data as { node: string; data: unknown }
+            const nodeData = data as unknown as { node: string; data: unknown }
             callbacks.onNodeDone?.(nodeData.node, nodeData.data)
           }
           break
 
         case 'chunk':
-          callbacks.onChunk?.(data as string)
+          callbacks.onChunk?.(data as unknown as string)
           break
 
         case 'checkpoint':
-          callbacks.onCheckpoint?.(data as WorkflowStateResponse)
+          callbacks.onCheckpoint?.(data as unknown as WorkflowStateResponse)
           break
 
         case 'waiting':
-          callbacks.onWaiting?.(data as string)
+          callbacks.onWaiting?.(data as unknown as string)
           break
 
         case 'done':
-          callbacks.onDone?.(data as { stage: string; chapters: WrittenChapter[] })
+          callbacks.onDone?.(data as unknown as { stage: string; chapters: WrittenChapter[] })
           break
 
         case 'error':

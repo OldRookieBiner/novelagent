@@ -265,7 +265,7 @@ export const outlineApi = {
       },
       (type, data) => {
         if (type === 'done') {
-          callbacks.onDone(data as OutlineStreamResult)
+          callbacks.onDone(data as unknown as OutlineStreamResult)
         } else if (type !== 'error') {
           // chunk 事件
           callbacks.onChunk(typeof data === 'string' ? data : String(data))

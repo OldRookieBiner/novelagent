@@ -4,6 +4,11 @@
  */
 
 /**
+ * SSE 数据类型
+ */
+export type SSEData = string | Record<string, unknown> | unknown[]
+
+/**
  * SSE 事件结构
  */
 export interface SSEEvent
@@ -86,7 +91,7 @@ export function processSSEBuffer(
  * @param data - data 字段的原始值
  * @returns 解析后的数据
  */
-export function parseSSEData(data: string): unknown
+export function parseSSEData(data: string): SSEData
 {
   // 尝试 JSON 解析
   try
@@ -120,7 +125,7 @@ export interface SSEStreamOptions
  */
 export async function createSSEStream(
   options: SSEStreamOptions,
-  onEvent: (type: string, data: unknown) => void,
+  onEvent: (type: string, data: SSEData) => void,
   onError: (error: string) => void
 ): Promise<void>
 {

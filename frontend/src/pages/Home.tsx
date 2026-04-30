@@ -40,7 +40,7 @@ export default function Home() {
     try {
       const response = await projectsApi.list()
       // 后端现在直接返回 ProjectDetail 列表
-      setProjects(response.projects as ProjectDetail[])
+      setProjects(response.projects)
     } catch (err) {
       console.error('Failed to fetch projects:', err)
       setError(err instanceof Error ? err.message : '加载项目列表失败')

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@/test/utils'
 import Home from '@/pages/Home'
 
@@ -46,7 +46,7 @@ describe('Home', () => {
 
   it('shows empty state when no projects exist', async () => {
     mockIsAuthenticated.mockReturnValue(true)
-    vi.mocked(projectsApi.list).mockResolvedValueOnce({ projects: [] })
+    vi.mocked(projectsApi.list).mockResolvedValueOnce({ projects: [], total: 0 })
 
     render(<Home />)
 

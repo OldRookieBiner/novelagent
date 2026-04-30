@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@/test/utils'
+import { render, screen } from '@/test/utils'
 import Settings from '@/pages/Settings'
 
 // mock useSettings hook

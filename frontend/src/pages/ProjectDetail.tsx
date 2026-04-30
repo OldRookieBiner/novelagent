@@ -84,7 +84,7 @@ export default function ProjectDetail() {
   // 灵感数据回显
   useEffect(() => {
     if (outline?.collected_info && !inspirationData) {
-      const info = outline.collected_info as unknown as InspirationData
+      const info = outline.collected_info as InspirationData
       if (info.novelType) {
         setInspirationData(info)
       }
@@ -188,7 +188,7 @@ export default function ProjectDetail() {
     try
     {
       await outlineApi.update(project.id, {
-        collected_info: inspirationData as unknown as CollectedInfo,
+        collected_info: inspirationData as CollectedInfo,
         inspiration_template: inspirationTemplate,
       })
       await workflowApi.updateStage(project.id, 'outline')
@@ -210,7 +210,7 @@ export default function ProjectDetail() {
     try
     {
       await outlineApi.update(project.id, {
-        collected_info: data as unknown as CollectedInfo,
+        collected_info: data as CollectedInfo,
         inspiration_template: generateInspirationTemplate(data),
         title: '',
         summary: '',
