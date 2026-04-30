@@ -29,21 +29,19 @@ export function WorkbenchLayout({ projectName, progress, children }: WorkbenchLa
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <div className="w-48 h-2 bg-gray-200 rounded-full overflow-hidden">
               <div
-                className="h-full rounded-full transition-all bg-gradient-to-r from-indigo-500 to-purple-500"
+                className="h-full rounded-full transition-all bg-primary"
                 style={{ width: `${progress}%` }}
               />
             </div>
-            <span className="text-xs font-medium text-indigo-600">{progress}%</span>
+            <span className="text-xs font-medium text-muted-foreground">{progress}%</span>
           </div>
         </div>
-        <div>
-          <Button asChild className="gap-1.5">
+        <Button asChild className="gap-1.5">
             <Link to="/">
               <LayoutList className="h-4 w-4" />
               项目列表
             </Link>
           </Button>
-        </div>
       </header>
 
       {/* Tab 导航 */}
