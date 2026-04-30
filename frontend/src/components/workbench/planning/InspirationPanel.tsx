@@ -1,7 +1,7 @@
 // frontend/src/components/workbench/planning/InspirationPanel.tsx
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Lightbulb, RotateCcw, ArrowRight, Check } from 'lucide-react'
+import { Lightbulb, RotateCcw, ArrowRight, Check, ChevronDown, ChevronUp, Copy, Zap } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -18,6 +18,7 @@ generateInspirationTemplate,
   type InspirationData,
 } from '@/lib/inspiration'
 import { collectedInfoApi } from '@/lib/api'
+import { QUICK_TEMPLATES } from '@/lib/inspiration'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
 import { toast } from 'sonner'
 
@@ -86,6 +87,7 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
   const [goldFinger, setGoldFinger] = useState('')
   const [customGoldFinger, setCustomGoldFinger] = useState('')
   const [stylePreference, setStylePreference] = useState('')
+  const [advancedExpanded, setAdvancedExpanded] = useState(false)
 
   // 模板相关状态
   const [template, setTemplate] = useState('')
@@ -230,6 +232,43 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
     setTemplateManuallyEdited(false)
   }
 
+  const handleCopyTemplate = () =>
+  {
+    navigator.clipboard.writeText(template).then(() =>
+    {
+      toast.success('Prompt 已复制到剪贴板')
+    }).catch(() =>
+    {
+      toast.error('复制失败')
+    })
+  }
+
+  const handleApplyQuickTemplate = (tpl: typeof QUICK_TEMPLATES[number]) =>
+  {
+    const d = tpl.data
+    if (d.novelType) setNovelType(d.novelType)
+    if (d.targetWords) setTargetWords(d.targetWords)
+    if (d.coreTheme) setCoreTheme(d.coreTheme)
+    if (d.worldSetting) setWorldSetting(d.worldSetting)
+    if (d.customWorldSetting) setCustomWorldSetting(d.customWorldSetting)
+    if (d.era) setEra(d.era)
+    if (d.targetReader) setTargetReader(d.targetReader)
+    if (d.wordsPerChapter) setWordsPerChapter(d.wordsPerChapter)
+    if (d.customWordsPerChapter) setCustomWordsPerChapter(d.customWordsPerChapter)
+    if (d.narrative) setNarrative(d.narrative)
+    if (d.genre) setGenre(d.genre)
+    if (d.customGenre) setCustomGenre(d.customGenre)
+    if (d.maleLead) setMaleLead(d.maleLead)
+    if (d.customMaleLead) setCustomMaleLead(d.customMaleLead)
+    if (d.femaleLead) setFemaleLead(d.femaleLead)
+    if (d.customFemaleLead) setCustomFemaleLead(d.customFemaleLead)
+    if (d.goldFinger) setGoldFinger(d.goldFinger)
+    if (d.customGoldFinger) setCustomGoldFinger(d.customGoldFinger)
+    if (d.stylePreference) setStylePreference(d.stylePreference)
+    setAdvancedExpanded(true)
+    toast.success(`已应用「${tpl.label}」模板`)
+  }
+
   // 确认灵感，生成大纲
   const handleConfirm = async () =>
   {
@@ -314,18 +353,30 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
 
   return (
     <div className="flex h-full">
-      {/* 左侧：表单选择区 */}
-      <div className="flex-1 flex flex-col">
+      {/* 左侧：表单选择区 (70%) */}
+      <div className="flex-[7] flex flex-col">
         <div className="flex items-center justify-between px-6 py-3 border-b bg-white">
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <Lightbulb className="h-5 w-5" />
             灵感采集
           </h2>
+          {/* 步骤引导 */}
+          <div className="flex items-center gap-2 text-xs">
+            <div className="flex items-center gap-1.5 text-indigo-600 font-medium">
+              <span className="w-5 h-5 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">1</span>
+              必填信息 (7)
+            </div>
+            <span className="text-gray-300">→</span>
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <span className="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center text-muted-foreground">2</span>
+              高级设定
+            </div>
+          </div>
         </div>
         <div className="flex-1 p-6 overflow-auto">
-          <div className="max-w-2xl space-y-6">
+          <div className="max-w-2xl space-y-5">
             {/* 目标读者 */}
-            <Card>
+            <Card className="border-2 border-indigo-200">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm">
                   目标读者 <span className="text-red-500">*</span>
@@ -357,11 +408,12 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
               </CardContent>
             </Card>
 
-            {/* 基本设定 */}
+            {/* 核心设定 */}
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center gap-2">
-                  基本设定
+                  <span className="text-indigo-500">📋</span>
+                  核心设定
                   <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded">必填</span>
                 </CardTitle>
               </CardHeader>
@@ -422,7 +474,7 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
                   {errors.era && <p className="text-red-500 text-xs mt-2">{errors.era}</p>}
                 </div>
 
-                {/* 目标字数、每章字数 */}
+                {/* 字数设定 */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-sm text-muted-foreground mb-2 block">
@@ -444,7 +496,6 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
                     </div>
                     {errors.targetWords && <p className="text-red-500 text-xs mt-1">{errors.targetWords}</p>}
                   </div>
-
                   <div>
                     <label className="text-sm text-muted-foreground mb-2 block">
                       每章字数 <span className="text-red-500">*</span>
@@ -460,16 +511,12 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
                     >
                       <option value="">请选择</option>
                       {INSPIRATION_OPTIONS.wordsPerChapter.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}{opt.desc ? `（${opt.desc}）` : ''}
-                        </option>
+                        <option key={opt.value} value={opt.value}>{opt.label}{opt.desc ? `（${opt.desc}）` : ''}</option>
                       ))}
                     </select>
                     {errors.wordsPerChapter && <p className="text-red-500 text-xs mt-1">{errors.wordsPerChapter}</p>}
                   </div>
                 </div>
-
-                {/* 自定义每章字数 */}
                 {wordsPerChapter === 'custom' && (
                   <div>
                     <label className="text-sm text-muted-foreground mb-2 block">自定义每章字数</label>
@@ -484,290 +531,315 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
               </CardContent>
             </Card>
 
-            {/* 进阶设定 */}
+            {/* 核心主题 */}
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center gap-2">
-                  进阶设定
-                  <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">选填</span>
+                  <span className="text-amber-500">🎯</span>
+                  核心主题
+                  <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded">必填</span>
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                {/* 叙事视角 */}
-                <div>
-                  <label className="text-sm text-muted-foreground mb-2 block">叙事视角</label>
-                  <div className="flex gap-2">
-                    {INSPIRATION_OPTIONS.narrative.map((opt) => (
-                      <span
-                        key={opt.value}
-                        onClick={() => setNarrative(opt.value)}
-                        className={`px-4 py-1.5 rounded-full border-2 text-sm cursor-pointer transition-all ${
-                          narrative === opt.value
-                            ? 'bg-primary text-white border-primary'
-                            : 'border-gray-200 hover:border-primary/50'
-                        }`}
-                      >
-                        {opt.label}
-                      </span>
-                    ))}
-                  </div>
+              <CardContent>
+                <div className="flex flex-wrap gap-2">
+                  {INSPIRATION_OPTIONS.coreThemes.map((opt) => (
+                    <span
+                      key={opt.value}
+                      onClick={() =>
+                      {
+                        setCoreTheme(opt.value)
+                        if (errors.coreTheme) setErrors(prev => ({ ...prev, coreTheme: '' }))
+                      }}
+                      className={`px-3 py-1.5 rounded-full border-2 text-sm cursor-pointer transition-all ${
+                        coreTheme === opt.value
+                          ? 'bg-primary text-white border-primary'
+                          : 'border-gray-200 hover:border-primary/50'
+                      }`}
+                    >
+                      {opt.label}
+                    </span>
+                  ))}
                 </div>
-
-                {/* 核心主题 */}
-                <div>
-                  <label className="text-sm text-muted-foreground mb-2 block">
-                    核心主题 <span className="text-red-500">*</span>
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {INSPIRATION_OPTIONS.coreThemes.map((opt) => (
-                      <span
-                        key={opt.value}
-                        onClick={() =>
-                        {
-                          setCoreTheme(opt.value)
-                          if (errors.coreTheme) setErrors(prev => ({ ...prev, coreTheme: '' }))
-                        }}
-                        className={`px-3 py-1.5 rounded-full border-2 text-sm cursor-pointer transition-all ${
-                          coreTheme === opt.value
-                            ? 'bg-primary text-white border-primary'
-                            : 'border-gray-200 hover:border-primary/50'
-                        }`}
-                      >
-                        {opt.label}
-                      </span>
-                    ))}
-                  </div>
-                  {errors.coreTheme && <p className="text-red-500 text-xs mt-2">{errors.coreTheme}</p>}
-                </div>
-
-                {/* 世界观设定 */}
-                <div>
-                  <label className="text-sm text-muted-foreground mb-2 block">世界观设定</label>
-                  <div className="flex flex-wrap gap-2">
-                    {INSPIRATION_OPTIONS.worldSettings.map((opt) => (
-                      <span
-                        key={opt.value}
-                        onClick={() => setWorldSetting(opt.value)}
-                        className={`px-3 py-1.5 rounded-full border-2 text-sm cursor-pointer transition-all ${
-                          worldSetting === opt.value
-                            ? 'bg-primary text-white border-primary'
-                            : 'border-gray-200 hover:border-primary/50'
-                        }`}
-                      >
-                        {opt.label}
-                      </span>
-                    ))}
-                  </div>
-                  {worldSetting === 'custom' && (
-                    <Input
-                      type="text"
-                      value={customWorldSetting || ''}
-                      onChange={(e) => setCustomWorldSetting(e.target.value)}
-                      placeholder="输入自定义世界观设定"
-                      className="mt-2 max-w-md"
-                    />
-                  )}
-                </div>
-
-                {/* 流派（男频专属） */}
-                {targetReader === 'male' && (
-                  <div>
-                    <label className="text-sm text-muted-foreground mb-2 block">流派</label>
-                    <div className="flex flex-wrap gap-2">
-                      {MALE_OPTIONS.genre.map((opt) => (
-                        <span
-                          key={opt.value}
-                          onClick={() => setGenre(opt.value)}
-                          className={`px-3 py-1.5 rounded-full border-2 text-sm cursor-pointer transition-all ${
-                            genre === opt.value
-                              ? 'bg-primary text-white border-primary'
-                              : 'border-gray-200 hover:border-primary/50'
-                          }`}
-                        >
-                          {opt.label}
-                        </span>
-                      ))}
-                    </div>
-                    {genre === 'custom' && (
-                      <Input
-                        type="text"
-                        value={customGenre || ''}
-                        onChange={(e) => setCustomGenre(e.target.value)}
-                        placeholder="输入自定义流派"
-                        className="mt-2 max-w-md"
-                      />
-                    )}
-                  </div>
-                )}
-
-                {/* 男主人设（男频专属） */}
-                {targetReader === 'male' && (
-                  <div>
-                    <label className="text-sm text-muted-foreground mb-2 block">
-                      男主人设 <span className="text-red-500">*</span>
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {MALE_OPTIONS.maleLead.map((opt) => (
-                        <span
-                          key={opt.value}
-                          onClick={() =>
-                          {
-                            setMaleLead(opt.value)
-                            if (errors.maleLead) setErrors(prev => ({ ...prev, maleLead: '' }))
-                          }}
-                          className={`px-3 py-1.5 rounded-full border-2 text-sm cursor-pointer transition-all ${
-                            maleLead === opt.value
-                              ? 'bg-primary text-white border-primary'
-                              : 'border-gray-200 hover:border-primary/50'
-                          }`}
-                        >
-                          {opt.label}
-                        </span>
-                      ))}
-                    </div>
-                    {maleLead === 'custom' && (
-                      <Input
-                        type="text"
-                        value={customMaleLead || ''}
-                        onChange={(e) => setCustomMaleLead(e.target.value)}
-                        placeholder="输入自定义男主人设"
-                        className="mt-2 max-w-md"
-                      />
-                    )}
-                    {errors.maleLead && <p className="text-red-500 text-xs mt-2">{errors.maleLead}</p>}
-                  </div>
-                )}
-
-                {/* 女主人设（女频专属） */}
-                {targetReader === 'female' && (
-                  <div>
-                    <label className="text-sm text-muted-foreground mb-2 block">
-                      女主人设 <span className="text-red-500">*</span>
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {FEMALE_OPTIONS.femaleLead.map((opt) => (
-                        <span
-                          key={opt.value}
-                          onClick={() =>
-                          {
-                            setFemaleLead(opt.value)
-                            if (errors.femaleLead) setErrors(prev => ({ ...prev, femaleLead: '' }))
-                          }}
-                          className={`px-3 py-1.5 rounded-full border-2 text-sm cursor-pointer transition-all ${
-                            femaleLead === opt.value
-                              ? 'bg-primary text-white border-primary'
-                              : 'border-gray-200 hover:border-primary/50'
-                          }`}
-                        >
-                          {opt.label}
-                        </span>
-                      ))}
-                    </div>
-                    {femaleLead === 'custom' && (
-                      <Input
-                        type="text"
-                        value={customFemaleLead || ''}
-                        onChange={(e) => setCustomFemaleLead(e.target.value)}
-                        placeholder="输入自定义女主人设"
-                        className="mt-2 max-w-md"
-                      />
-                    )}
-                    {errors.femaleLead && <p className="text-red-500 text-xs mt-2">{errors.femaleLead}</p>}
-                  </div>
-                )}
-
-                {/* 未选择目标读者时提示 */}
-                {!targetReader && (
-                  <div>
-                    <label className="text-sm text-muted-foreground mb-2 block">主角设定</label>
-                    <p className="text-sm text-muted-foreground">请先选择目标读者</p>
-                  </div>
-                )}
-
-                {/* 金手指设定（男频专属） */}
-                {targetReader === 'male' && (
-                  <div>
-                    <label className="text-sm text-muted-foreground mb-2 block">金手指设定</label>
-                    <div className="flex flex-wrap gap-2">
-                      {MALE_OPTIONS.goldFinger.map((opt) => (
-                        <span
-                          key={opt.value}
-                          onClick={() => setGoldFinger(opt.value)}
-                          className={`px-3 py-1.5 rounded-full border-2 text-sm cursor-pointer transition-all ${
-                            goldFinger === opt.value
-                              ? 'bg-primary text-white border-primary'
-                              : 'border-gray-200 hover:border-primary/50'
-                          }`}
-                        >
-                          {opt.label}
-                        </span>
-                      ))}
-                    </div>
-                    {goldFinger === 'custom' && (
-                      <Input
-                        type="text"
-                        value={customGoldFinger || ''}
-                        onChange={(e) => setCustomGoldFinger(e.target.value)}
-                        placeholder="输入自定义金手指设定"
-                        className="mt-2 max-w-md"
-                      />
-                    )}
-                  </div>
-                )}
-
-                {/* 风格偏好 */}
-                <div>
-                  <label className="text-sm text-muted-foreground mb-2 block">风格偏好</label>
-                  <div className="flex flex-wrap gap-2">
-                    {INSPIRATION_OPTIONS.stylePreferences.map((opt) => (
-                      <span
-                        key={opt.value}
-                        onClick={() => setStylePreference(opt.value)}
-                        className={`px-3 py-1.5 rounded-full border-2 text-sm cursor-pointer transition-all ${
-                          stylePreference === opt.value
-                            ? 'bg-primary text-white border-primary'
-                            : 'border-gray-200 hover:border-primary/50'
-                        }`}
-                      >
-                        {opt.label}
-                      </span>
-                    ))}
-                  </div>
-                </div>
+                {errors.coreTheme && <p className="text-red-500 text-xs mt-2">{errors.coreTheme}</p>}
               </CardContent>
+            </Card>
+
+            {/* 高级设定（可折叠） */}
+            <Card>
+              <button
+                onClick={() => setAdvancedExpanded(!advancedExpanded)}
+                className="w-full flex items-center justify-between p-4 hover:bg-muted/30 transition-colors text-left"
+              >
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <span className="text-gray-500">📝</span>
+                  高级设定
+                  <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">选填</span>
+                  {(narrative || worldSetting || genre || maleLead || femaleLead || goldFinger || stylePreference) && (
+                    <span className="text-[10px] text-indigo-500 font-normal">
+                      · 已填 {[narrative, worldSetting, genre, maleLead, femaleLead, goldFinger, stylePreference].filter(Boolean).length} 项
+                    </span>
+                  )}
+                </CardTitle>
+                {advancedExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground flex-shrink-0" /> : <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />}
+              </button>
+              {advancedExpanded && (
+                <CardContent className="space-y-4 pt-0">
+                  {/* 叙事视角 */}
+                  <div>
+                    <label className="text-sm text-muted-foreground mb-2 block">叙事视角</label>
+                    <div className="flex flex-wrap gap-2">
+                      {INSPIRATION_OPTIONS.narrative.map((opt) => (
+                        <span
+                          key={opt.value}
+                          onClick={() => setNarrative(opt.value)}
+                          className={`px-4 py-1.5 rounded-full border-2 text-sm cursor-pointer transition-all ${
+                            narrative === opt.value
+                              ? 'bg-primary text-white border-primary'
+                              : 'border-gray-200 hover:border-primary/50'
+                          }`}
+                        >
+                          {opt.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 世界观设定 */}
+                  <div>
+                    <label className="text-sm text-muted-foreground mb-2 block">世界观设定</label>
+                    <div className="flex flex-wrap gap-2">
+                      {INSPIRATION_OPTIONS.worldSettings.map((opt) => (
+                        <span
+                          key={opt.value}
+                          onClick={() => setWorldSetting(opt.value)}
+                          className={`px-3 py-1.5 rounded-full border-2 text-sm cursor-pointer transition-all ${
+                            worldSetting === opt.value
+                              ? 'bg-primary text-white border-primary'
+                              : 'border-gray-200 hover:border-primary/50'
+                          }`}
+                        >
+                          {opt.label}
+                        </span>
+                      ))}
+                    </div>
+                    {worldSetting === 'custom' && (
+                      <Input
+                        type="text"
+                        value={customWorldSetting || ''}
+                        onChange={(e) => setCustomWorldSetting(e.target.value)}
+                        placeholder="输入自定义世界观设定"
+                        className="mt-2 max-w-md"
+                      />
+                    )}
+                  </div>
+
+                  {/* 流派（男频专属） */}
+                  {targetReader === 'male' && (
+                    <div>
+                      <label className="text-sm text-muted-foreground mb-2 block">流派</label>
+                      <div className="flex flex-wrap gap-2">
+                        {MALE_OPTIONS.genre.map((opt) => (
+                          <span
+                            key={opt.value}
+                            onClick={() => setGenre(opt.value)}
+                            className={`px-3 py-1.5 rounded-full border-2 text-sm cursor-pointer transition-all ${
+                              genre === opt.value
+                                ? 'bg-primary text-white border-primary'
+                                : 'border-gray-200 hover:border-primary/50'
+                            }`}
+                          >
+                            {opt.label}
+                          </span>
+                        ))}
+                      </div>
+                      {genre === 'custom' && (
+                        <Input
+                          type="text"
+                          value={customGenre || ''}
+                          onChange={(e) => setCustomGenre(e.target.value)}
+                          placeholder="输入自定义流派"
+                          className="mt-2 max-w-md"
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  {/* 男主人设（男频专属） */}
+                  {targetReader === 'male' && (
+                    <div>
+                      <label className="text-sm text-muted-foreground mb-2 block">
+                        男主人设 <span className="text-red-500">*</span>
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        {MALE_OPTIONS.maleLead.map((opt) => (
+                          <span
+                            key={opt.value}
+                            onClick={() =>
+                            {
+                              setMaleLead(opt.value)
+                              if (errors.maleLead) setErrors(prev => ({ ...prev, maleLead: '' }))
+                            }}
+                            className={`px-3 py-1.5 rounded-full border-2 text-sm cursor-pointer transition-all ${
+                              maleLead === opt.value
+                                ? 'bg-primary text-white border-primary'
+                                : 'border-gray-200 hover:border-primary/50'
+                            }`}
+                          >
+                            {opt.label}
+                          </span>
+                        ))}
+                      </div>
+                      {maleLead === 'custom' && (
+                        <Input
+                          type="text"
+                          value={customMaleLead || ''}
+                          onChange={(e) => setCustomMaleLead(e.target.value)}
+                          placeholder="输入自定义男主人设"
+                          className="mt-2 max-w-md"
+                        />
+                      )}
+                      {errors.maleLead && <p className="text-red-500 text-xs mt-2">{errors.maleLead}</p>}
+                    </div>
+                  )}
+
+                  {/* 女主人设（女频专属） */}
+                  {targetReader === 'female' && (
+                    <div>
+                      <label className="text-sm text-muted-foreground mb-2 block">
+                        女主人设 <span className="text-red-500">*</span>
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        {FEMALE_OPTIONS.femaleLead.map((opt) => (
+                          <span
+                            key={opt.value}
+                            onClick={() =>
+                            {
+                              setFemaleLead(opt.value)
+                              if (errors.femaleLead) setErrors(prev => ({ ...prev, femaleLead: '' }))
+                            }}
+                            className={`px-3 py-1.5 rounded-full border-2 text-sm cursor-pointer transition-all ${
+                              femaleLead === opt.value
+                                ? 'bg-primary text-white border-primary'
+                                : 'border-gray-200 hover:border-primary/50'
+                            }`}
+                          >
+                            {opt.label}
+                          </span>
+                        ))}
+                      </div>
+                      {femaleLead === 'custom' && (
+                        <Input
+                          type="text"
+                          value={customFemaleLead || ''}
+                          onChange={(e) => setCustomFemaleLead(e.target.value)}
+                          placeholder="输入自定义女主人设"
+                          className="mt-2 max-w-md"
+                        />
+                      )}
+                      {errors.femaleLead && <p className="text-red-500 text-xs mt-2">{errors.femaleLead}</p>}
+                    </div>
+                  )}
+
+                  {/* 未选择目标读者时提示 */}
+                  {!targetReader && (
+                    <div>
+                      <label className="text-sm text-muted-foreground mb-2 block">主角设定</label>
+                      <p className="text-sm text-muted-foreground">请先选择目标读者</p>
+                    </div>
+                  )}
+
+                  {/* 金手指设定（男频专属） */}
+                  {targetReader === 'male' && (
+                    <div>
+                      <label className="text-sm text-muted-foreground mb-2 block">金手指设定</label>
+                      <div className="flex flex-wrap gap-2">
+                        {MALE_OPTIONS.goldFinger.map((opt) => (
+                          <span
+                            key={opt.value}
+                            onClick={() => setGoldFinger(opt.value)}
+                            className={`px-3 py-1.5 rounded-full border-2 text-sm cursor-pointer transition-all ${
+                              goldFinger === opt.value
+                                ? 'bg-primary text-white border-primary'
+                                : 'border-gray-200 hover:border-primary/50'
+                            }`}
+                          >
+                            {opt.label}
+                          </span>
+                        ))}
+                      </div>
+                      {goldFinger === 'custom' && (
+                        <Input
+                          type="text"
+                          value={customGoldFinger || ''}
+                          onChange={(e) => setCustomGoldFinger(e.target.value)}
+                          placeholder="输入自定义金手指设定"
+                          className="mt-2 max-w-md"
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  {/* 风格偏好 */}
+                  <div>
+                    <label className="text-sm text-muted-foreground mb-2 block">风格偏好</label>
+                    <div className="flex flex-wrap gap-2">
+                      {INSPIRATION_OPTIONS.stylePreferences.map((opt) => (
+                        <span
+                          key={opt.value}
+                          onClick={() => setStylePreference(opt.value)}
+                          className={`px-3 py-1.5 rounded-full border-2 text-sm cursor-pointer transition-all ${
+                            stylePreference === opt.value
+                              ? 'bg-primary text-white border-primary'
+                              : 'border-gray-200 hover:border-primary/50'
+                          }`}
+                        >
+                          {opt.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </CardContent>
+              )}
             </Card>
           </div>
         </div>
 
-        {/* 底部：确认按钮 */}
-        <div className="border-t bg-white px-6 py-3 flex justify-end">
-          <Button onClick={handleConfirm} disabled={confirming}>
+        {/* 底部：确认按钮（居中） */}
+        <div className="border-t bg-white px-6 py-4 flex flex-col items-center gap-1.5">
+          <Button onClick={handleConfirm} disabled={confirming} className="px-8">
             {confirming ? (
               <>保存中...</>
             ) : (
               <>
                 <Check className="h-4 w-4 mr-2" />
-                确认，生成大纲
+                确认灵感，生成大纲
                 <ArrowRight className="h-4 w-4 ml-2" />
               </>
             )}
           </Button>
+          <p className="text-xs text-muted-foreground">确认后自动跳转到大纲生成</p>
         </div>
       </div>
 
-      {/* 右侧：Prompt 模板区 */}
-      <div className="flex-1 border-l bg-white flex flex-col">
+      {/* 右侧：Prompt 模板区 (30%, ~280px) */}
+      <div className="flex-[3] border-l bg-white flex flex-col max-w-[280px]">
         <div className="flex items-center justify-between px-4 py-3 border-b">
           <h3 className="text-sm font-medium flex items-center gap-2">
             <Lightbulb className="h-4 w-4" />
             创作 Prompt
           </h3>
-          {templateManuallyEdited && (
-            <Button variant="ghost" size="sm" onClick={handleResetTemplate}>
-              <RotateCcw className="h-4 w-4 mr-1" />
-              重置模板
+          <div className="flex gap-1">
+            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleCopyTemplate}>
+              <Copy className="h-3 w-3 mr-1" />
+              复制
             </Button>
-          )}
+            {templateManuallyEdited && (
+              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleResetTemplate}>
+                <RotateCcw className="h-3 w-3 mr-1" />
+                重置
+              </Button>
+            )}
+          </div>
         </div>
         {templateManuallyEdited && (
           <div className="px-4 py-2 bg-yellow-50 border-b text-xs text-yellow-700">
@@ -781,6 +853,25 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
             placeholder="选择灵感选项后，此处将自动生成创作 Prompt..."
             className="w-full h-full font-mono text-sm leading-relaxed resize-none border-none shadow-none focus-visible:ring-0"
           />
+        </div>
+        {/* 快捷填充模板 */}
+        <div className="border-t p-3">
+          <div className="flex items-center gap-1 mb-2">
+            <Zap className="h-3 w-3 text-amber-500" />
+            <span className="text-[11px] font-medium text-muted-foreground">快捷填充模板</span>
+          </div>
+          <div className="space-y-1.5">
+            {QUICK_TEMPLATES.map((tpl) => (
+              <button
+                key={tpl.id}
+                onClick={() => handleApplyQuickTemplate(tpl)}
+                className="w-full text-left px-2.5 py-2 rounded-md text-xs border hover:bg-indigo-50 hover:border-indigo-200 transition-colors"
+              >
+                <span className="mr-1.5">{tpl.icon}</span>
+                {tpl.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </div>

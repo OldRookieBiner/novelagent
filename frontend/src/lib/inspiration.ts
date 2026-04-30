@@ -432,3 +432,69 @@ export function clearInspirationDraft(): void {
     console.error('Failed to clear draft:', e)
   }
 }
+
+/** 快捷填充模板 */
+export interface QuickTemplate
+{
+  id: string
+  label: string
+  icon: string
+  data: Partial<InspirationData>
+}
+
+export const QUICK_TEMPLATES: QuickTemplate[] = [
+  {
+    id: 'wuxia',
+    label: '废柴逆袭（男频玄幻）',
+    icon: '🗡️',
+    data: {
+      novelType: 'xuanhuan',
+      targetWords: 500000,
+      coreTheme: 'nixi',
+      worldSetting: 'xiuzhen',
+      era: 'ancient',
+      targetReader: 'male',
+      wordsPerChapter: 'option_3000',
+      narrative: 'third_person',
+      genre: 'feichai',
+      maleLead: 'lengmian',
+      goldFinger: 'jueshi_gongfa',
+      stylePreference: 'shuangwen',
+    },
+  },
+  {
+    id: 'romance',
+    label: '甜宠逆袭（女频言情）',
+    icon: '💕',
+    data: {
+      novelType: 'yanqing',
+      targetWords: 300000,
+      coreTheme: 'nixi',
+      era: 'modern',
+      targetReader: 'female',
+      wordsPerChapter: 'option_2500',
+      narrative: 'first_person',
+      femaleLead: 'zongcai',
+      stylePreference: 'wenxin',
+    },
+  },
+  {
+    id: 'scifi',
+    label: '星际科幻',
+    icon: '🚀',
+    data: {
+      novelType: 'kehuan',
+      targetWords: 400000,
+      coreTheme: 'chengzhang',
+      worldSetting: 'kehuan',
+      era: 'future',
+      targetReader: 'male',
+      wordsPerChapter: 'option_3000',
+      narrative: 'third_person',
+      genre: 'yinghan',
+      maleLead: 'lenghan',
+      goldFinger: 'zhinao',
+      stylePreference: 'jinsong',
+    },
+  },
+]
