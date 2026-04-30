@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { Save, ChevronLeft, ChevronRight, Sparkles, Loader2, Eye, Pencil } from 'lucide-react'
+import DOMPurify from 'dompurify'
 import { Button } from '@/components/ui/button'
 import { chapterOutlinesApi, chaptersApi } from '@/lib/api'
 import { createSSEStream } from '@/lib/sseParser'
@@ -15,12 +16,23 @@ interface WritingPanelProps
   projectId: number
 }
 
+function stripHtml(html: string): string
+{
+  if (!html) return ''
+  // Remove HTML tags but keep their text content
+  const div = document.createElement('div')
+  div.innerHTML = html
+  return div.textContent || div.innerText || ''
+}
+
 // 正确的字数统计：中文字符 + 英文单词
 function getWordCount(text: string): number
 {
   if (!text) return 0
-  const chineseChars = (text.match(/[\u4e00-\u9fa5]/g) || []).length
-  const englishWords = text
+  // Strip HTML tags to count only visible text
+  const plainText = /<[a-zA-Z][^>]*>/.test(text) ? stripHtml(text) : text
+  const chineseChars = (plainText.match(/[\u4e00-\u9fa5]/g) || []).length
+  const englishWords = plainText
     .replace(/[\u4e00-\u9fa5]/g, '')
     .split(/\s+/)
     .filter(w => w.length > 0).length
@@ -326,6 +338,7 @@ export function WritingPanel({ projectId }: WritingPanelProps)
               ) : (
                 mode === 'edit' ? (
                   <TipTapEditor
+                    key={selectedChapter?.id}
                     content={content}
                     onChange={setContent}
                     placeholder="开始写作..."
@@ -335,7 +348,7 @@ export function WritingPanel({ projectId }: WritingPanelProps)
                     className="w-full h-[calc(100vh-200px)] p-4 border rounded-lg overflow-auto prose max-w-none"
                     dangerouslySetInnerHTML={{
                       __html: content
-                        ? content
+                        ? DOMPurify.sanitize(content)
                         : '<p class="text-muted-foreground">点击 AI 生成按钮开始创作</p>'
                     }}
                   />
