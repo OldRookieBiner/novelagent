@@ -3,6 +3,7 @@
 import { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
+import Header from '@/components/layout/Header'
 import { TabNavigation } from './TabNavigation'
 import { WorkbenchSidebar } from './WorkbenchSidebar'
 
@@ -17,8 +18,11 @@ export function WorkbenchLayout({ projectName, progress, children }: WorkbenchLa
 {
   return (
     <div className="flex flex-col h-screen bg-gray-50">
-      {/* 顶部栏 */}
-      <header className="h-14 border-b bg-white flex items-center justify-between px-6">
+      {/* 全局 Header */}
+      <Header />
+
+      {/* 项目 Header */}
+      <header className="h-14 border-b bg-white flex items-center justify-between px-6 shrink-0">
         <div className="flex items-center gap-4">
           <Link to="/" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
             <ArrowLeft className="h-4 w-4" />
@@ -32,7 +36,6 @@ export function WorkbenchLayout({ projectName, progress, children }: WorkbenchLa
                 style={{ width: `${progress}%` }}
               />
             </div>
-            <span>{progress}%</span>
           </div>
         </div>
       </header>
