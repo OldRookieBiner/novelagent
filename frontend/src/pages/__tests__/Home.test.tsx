@@ -51,7 +51,7 @@ describe('Home', () => {
     render(<Home />)
 
     await waitFor(() => {
-      expect(screen.getByText('还没有项目，点击上方按钮创建第一个项目')).toBeInTheDocument()
+      expect(screen.getByText('创建你的第一个项目，开始写作之旅')).toBeInTheDocument()
     })
   })
 })
