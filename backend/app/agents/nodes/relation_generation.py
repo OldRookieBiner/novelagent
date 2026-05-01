@@ -10,7 +10,7 @@ from app.utils.llm import get_llm_from_state_async
 
 # 预编译正则：解析 - 角色A | 角色B | 关系类型 | 信任度 | 描述 | 发展方向
 RE_RELATION_LINE = re.compile(
-    r"[-•]\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(-?\d+)\s*\|\s*(.+?)\s*\|\s*(.+?)(?:\n|$)"
+    r"[-•]\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)(?:\n|$)"
 )
 
 
