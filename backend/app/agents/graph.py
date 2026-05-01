@@ -107,20 +107,25 @@ def route_after_relations(state: NovelState) -> Literal["wait_confirm", "chapter
     return "chapter_outlines"
 
 
-def create_novel_graph():
+def create_novel_graph(checkpointer=None):
     """
     创建小说创作工作流图。
 
     节点流程：
     1. 灵感收集（前端表单） → 生成大纲
-    2. 生成大纲 → 等待确认（条件）
-    3. 生成章节大纲 → 等待确认（条件）
-    4. 生成章节正文 → 审核
-    5. 审核通过 → 下一章或完成
-    6. 审核不通过 → 重写或等待用户决定
+    2. 生成大纲 → 提取角色
+    3. 提取角色 → 等待确认（条件）
+    4. 生成关系 → 等待确认（条件）
+    5. 生成章节大纲 → 等待确认（条件）
+    6. 生成章节正文 → 审核
+    7. 审核通过 → 下一章或完成
+    8. 审核不通过 → 重写或等待用户决定
+
+    Args:
+        checkpointer: 可选的检查点保存器
 
     Returns:
-        StateGraph 实例
+        CompiledStateGraph 实例
     """
     # 创建图
     graph = StateGraph(NovelState)
@@ -195,7 +200,7 @@ def create_novel_graph():
     # 重写 → 审核
     graph.add_edge("rewrite_chapter", "review_chapter")
 
-    return graph.compile()
+    return graph.compile(checkpointer=checkpointer)
 
 
 def create_novel_graph_with_checkpointer(
@@ -219,10 +224,9 @@ def create_novel_graph_with_checkpointer(
     """
     from app.agents.checkpointer import get_checkpoint_saver
 
-    graph = create_novel_graph()
     checkpointer = get_checkpoint_saver(project_id, thread_id, db)
 
-    return graph.with_checkpointer(checkpointer)
+    return create_novel_graph(checkpointer=checkpointer)
 
 
 # 导出的公共 API
