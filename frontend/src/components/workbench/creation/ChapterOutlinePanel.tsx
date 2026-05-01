@@ -1,7 +1,7 @@
 // frontend/src/components/workbench/creation/ChapterOutlinePanel.tsx
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Save, Sparkles, Check, X } from 'lucide-react'
+import { Save, Sparkles, Check, X, ChevronLeft, ChevronRight, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
@@ -33,6 +33,7 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
   const [editingTargetWords, setEditingTargetWords] = useState(3000)
   const [saving, setSaving] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [rightCollapsed, setRightCollapsed] = useState(false)
   const [progress, setProgress] = useState<{ current: number; total: number; currentTitle?: string; completed?: string[] } | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const completedTitlesRef = useRef<string[]>([])
@@ -421,44 +422,60 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
       </div>
 
       {/* 右侧详情面板 */}
-      <div className="w-56 border-l bg-white p-3">
-        <h3 className="text-xs font-medium mb-3">章节详情</h3>
-        {selectedChapter ? (
-          <div className="space-y-3">
-            <Card>
-              <CardContent className="pt-3 pb-3">
-                <div className="text-xs">
-                  <span className="text-muted-foreground">状态：</span>
-                  <span className={selectedChapter.confirmed ? 'text-green-600 font-medium' : 'text-amber-600'}>
-                    {selectedChapter.confirmed ? '已确认' : '草稿'}
-                  </span>
+      <div className={`border-l bg-white shrink-0 transition-all duration-300 ${rightCollapsed ? 'w-12' : 'w-[360px]'} relative ${rightCollapsed ? '' : 'p-3'}`}>
+        {/* 收缩展开按钮 */}
+        <button
+          onClick={() => setRightCollapsed(!rightCollapsed)}
+          className="absolute left-[-14px] top-1/2 -translate-y-1/2 z-10 w-7 h-7 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center shadow-md transition-colors"
+        >
+          {rightCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
+        </button>
+        {!rightCollapsed && (
+          <>
+            <h3 className="text-xs font-medium mb-3">章节详情</h3>
+            {selectedChapter ? (
+              <div className="space-y-3">
+                <Card>
+                  <CardContent className="pt-3 pb-3">
+                    <div className="text-xs">
+                      <span className="text-muted-foreground">状态：</span>
+                      <span className={selectedChapter.confirmed ? 'text-green-600 font-medium' : 'text-amber-600'}>
+                        {selectedChapter.confirmed ? '已确认' : '草稿'}
+                      </span>
+                    </div>
+                    {selectedChapter.has_content && (
+                      <div className="text-xs mt-1">
+                        <span className="text-muted-foreground">已写正文：</span>
+                        <span className="text-blue-600 font-medium">是</span>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <div className="p-3 bg-blue-50 rounded-md border border-blue-200 text-xs space-y-1.5">
+                  <div className="font-medium text-blue-800">📊 章节大纲统计</div>
+                  <div className="text-blue-700">已确认：{confirmedCount} / {chapters.length}</div>
+                  <div className="text-blue-700">已写正文：{hasContentCount} 章</div>
+                  <div className="text-blue-700">总目标字数：{totalTargetWords.toLocaleString()}</div>
                 </div>
-                {selectedChapter.has_content && (
-                  <div className="text-xs mt-1">
-                    <span className="text-muted-foreground">已写正文：</span>
-                    <span className="text-blue-600 font-medium">是</span>
+
+                {selectedChapter.confirmed && (
+                  <div className="p-2.5 bg-green-50 rounded-md border border-green-200 text-xs">
+                    <p className="font-medium text-green-700">章节已确认</p>
+                    <p className="text-green-600 mt-1">可以进行章节写作</p>
                   </div>
                 )}
-              </CardContent>
-            </Card>
-
-            <div className="p-3 bg-blue-50 rounded-md border border-blue-200 text-xs space-y-1.5">
-              <div className="font-medium text-blue-800">📊 章节大纲统计</div>
-              <div className="text-blue-700">已确认：{confirmedCount} / {chapters.length}</div>
-              <div className="text-blue-700">已写正文：{hasContentCount} 章</div>
-              <div className="text-blue-700">总目标字数：{totalTargetWords.toLocaleString()}</div>
-            </div>
-
-            {selectedChapter.confirmed && (
-              <div className="p-2.5 bg-green-50 rounded-md border border-green-200 text-xs">
-                <p className="font-medium text-green-700">章节已确认</p>
-                <p className="text-green-600 mt-1">可以进行章节写作</p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-32 text-center">
+                <p className="text-xs text-muted-foreground">选择章节查看详情</p>
               </div>
             )}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center h-32 text-center">
-            <p className="text-xs text-muted-foreground">选择章节查看详情</p>
+          </>
+        )}
+        {rightCollapsed && (
+          <div className="flex flex-col items-center pt-4 gap-3">
+            <FileText className="h-4 w-4 text-muted-foreground" />
           </div>
         )}
       </div>

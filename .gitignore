@@ -1,35 +1,28 @@
-# 环境变量 (包含 API Key，不要提交)
-.env
 
-# Python
+# AI 辅助开发工具文档（临时文件）
+.claude/
+# Claude Code 配置（本地）
+data/projects/*.json
+*.egg-info/
+.eggs/
+.env
+frontend/dist/
+frontend/node_modules/
+# Git worktrees
+# IDE
+.idea/
+*.log
+# Node.js / 前端
+node_modules/
 __pycache__/
 *.py[cod]
 *.pyo
 .pytest_cache/
-*.egg-info/
-.eggs/
-
-# Node.js / 前端
-node_modules/
-frontend/dist/
-frontend/node_modules/
-
-# IDE
-.idea/
-.vscode/
-*.swp
-
-# 项目数据
-data/projects/*.json
-
-# Claude Code 配置（本地）
-.claude/
+# Python
 .superpowers/
-
-# 构建产物
-*.log
-
-# AI 辅助开发工具文档（临时文件）
-
-# Git worktrees
+*.swp
+.vscode/
 .worktrees/
+# 构建产物
+# 环境变量 (包含 API Key，不要提交)
+# 项目数据

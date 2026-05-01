@@ -15,7 +15,7 @@ export default function ProjectWorkbench()
 {
   const { id } = useParams<{ id: string }>()
   const projectId = id ? parseInt(id) : null
-  const { activeMenuItem } = useWorkbenchStore()
+  const { activeTab, activeMenuItem } = useWorkbenchStore()
   const { project, loading } = useProjectData(projectId)
 
   if (loading || !project)
@@ -23,25 +23,33 @@ export default function ProjectWorkbench()
     return <div className="flex items-center justify-center h-screen">加载中...</div>
   }
 
-  // 渲染当前菜单对应的面板
+  // 渲染当前 Tab/菜单对应的面板
   const renderContent = () =>
   {
-    switch (activeMenuItem)
+    switch (activeTab)
     {
-      // 规划
-      case 'inspiration':
-        return <InspirationPanel projectId={projectId!} />
-      case 'characters':
-        return <CharacterPanel projectId={projectId!} />
-      case 'relations':
-        return <RelationPanel projectId={projectId!} />
-      // 创作
-      case 'outline':
-        return <OutlinePanel projectId={projectId!} />
+      // 章节大纲和章节正文是独立 Tab，直接渲染面板
       case 'chapter_outlines':
         return <ChapterOutlinePanel projectId={projectId!} />
       case 'writing':
         return <WritingPanel projectId={projectId!} />
+
+      // 规划 Tab 按侧边栏菜单项渲染
+      case 'planning':
+        switch (activeMenuItem)
+        {
+          case 'inspiration':
+            return <InspirationPanel projectId={projectId!} />
+          case 'outline':
+            return <OutlinePanel projectId={projectId!} />
+          case 'characters':
+            return <CharacterPanel projectId={projectId!} />
+          case 'relations':
+            return <RelationPanel projectId={projectId!} />
+          default:
+            return null
+        }
+
       default:
         return null
     }

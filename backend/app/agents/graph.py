@@ -132,73 +132,73 @@ def create_novel_graph(checkpointer=None):
 
     # 添加节点
     # 所有节点已适配 LangGraph 签名 (state) -> state
-    graph.add_node("generate_outline", outline_generation_node)
-    graph.add_node("generate_chapter_outlines", chapter_outlines_node)
-    graph.add_node("generate_chapter_content", generate_chapter_content_node)
-    graph.add_node("review_chapter", review_node)
-    graph.add_node("rewrite_chapter", rewrite_node)
-    graph.add_node("create_characters_from_outline", create_characters_from_outline_node)
-    graph.add_node("generate_relations", generate_relations_node)
+    graph.add_node("outline_generation_node", outline_generation_node)
+    graph.add_node("chapter_outlines_node", chapter_outlines_node)
+    graph.add_node("generate_chapter_content_node", generate_chapter_content_node)
+    graph.add_node("review_node", review_node)
+    graph.add_node("rewrite_node", rewrite_node)
+    graph.add_node("create_characters_from_outline_node", create_characters_from_outline_node)
+    graph.add_node("generate_relations_node", generate_relations_node)
 
     # 设置入口点
-    graph.set_entry_point("generate_outline")
+    graph.set_entry_point("outline_generation_node")
 
     # 添加边
-    # 大纲 → 章节大纲（条件路由）
+    # 大纲 → 角色提取（条件路由）
     graph.add_conditional_edges(
-        "generate_outline",
+        "outline_generation_node",
         route_after_outline,
         {
             "wait_confirm": END,
-            "create_characters": "create_characters_from_outline"
+            "create_characters": "create_characters_from_outline_node"
         }
     )
 
     graph.add_conditional_edges(
-        "create_characters_from_outline",
+        "create_characters_from_outline_node",
         route_after_characters,
         {
             "wait_confirm": END,
-            "generate_relations": "generate_relations"
+            "generate_relations": "generate_relations_node"
         }
     )
 
     graph.add_conditional_edges(
-        "generate_relations",
+        "generate_relations_node",
         route_after_relations,
         {
             "wait_confirm": END,
-            "chapter_outlines": "generate_chapter_outlines"
+            "chapter_outlines": "chapter_outlines_node"
         }
     )
 
     # 章节大纲 → 章节正文（条件路由）
     graph.add_conditional_edges(
-        "generate_chapter_outlines",
+        "chapter_outlines_node",
         route_after_chapter_outlines,
         {
             "wait_confirm": END,
-            "chapter_content": "generate_chapter_content"
+            "chapter_content": "generate_chapter_content_node"
         }
     )
 
     # 章节正文 → 审核
-    graph.add_edge("generate_chapter_content", "review_chapter")
+    graph.add_edge("generate_chapter_content_node", "review_node")
 
     # 审核 → 重写/下一章/完成（条件路由）
     graph.add_conditional_edges(
-        "review_chapter",
+        "review_node",
         route_after_review,
         {
-            "rewrite": "rewrite_chapter",
-            "next_chapter": "generate_chapter_content",  # 回到章节正文生成
+            "rewrite": "rewrite_node",
+            "next_chapter": "generate_chapter_content_node",
             "wait_confirm": END,
             "end": END
         }
     )
 
     # 重写 → 审核
-    graph.add_edge("rewrite_chapter", "review_chapter")
+    graph.add_edge("rewrite_node", "review_node")
 
     return graph.compile(checkpointer=checkpointer)
 

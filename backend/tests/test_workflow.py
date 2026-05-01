@@ -26,10 +26,10 @@ class TestWorkflowGraph:
         # 验证节点存在
         # LangGraph 编译后的图通过 nodes 属性获取节点
         node_names = list(graph.nodes.keys())
-        assert "generate_outline" in node_names
-        assert "generate_chapter_outlines" in node_names
-        assert "generate_chapter_content" in node_names
-        assert "review_chapter" in node_names
+        assert "outline_generation_node" in node_names
+        assert "chapter_outlines_node" in node_names
+        assert "generate_chapter_content_node" in node_names
+        assert "review_node" in node_names
 
 
 class TestCheckpointSaver:

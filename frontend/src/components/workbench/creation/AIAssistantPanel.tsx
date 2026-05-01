@@ -1,7 +1,7 @@
 // frontend/src/components/workbench/creation/AIAssistantPanel.tsx
 
 import { useState } from 'react'
-import { AlertCircle, RefreshCw, ShieldCheck } from 'lucide-react'
+import { AlertCircle, RefreshCw, ShieldCheck, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { chaptersApi } from '@/lib/api'
 import { toast } from 'sonner'
@@ -13,9 +13,11 @@ interface AIAssistantPanelProps
   chapterNumber?: number
   chapterContent?: string
   onReviewComplete?: (result: ReviewResponse) => void
+  collapsed?: boolean
+  onToggleCollapse?: () => void
 }
 
-export function AIAssistantPanel({ projectId, chapterNumber, chapterContent, onReviewComplete }: AIAssistantPanelProps)
+export function AIAssistantPanel({ projectId, chapterNumber, chapterContent, onReviewComplete, collapsed, onToggleCollapse }: AIAssistantPanelProps)
 {
   const [reviewing, setReviewing] = useState(false)
   const [reviewResult, setReviewResult] = useState<ReviewResponse | null>(null)
@@ -51,7 +53,16 @@ export function AIAssistantPanel({ projectId, chapterNumber, chapterContent, onR
   }
 
   return (
-    <div className="w-[240px] border-l bg-white flex flex-col h-full shrink-0">
+    <div className={`border-l bg-white flex flex-col h-full shrink-0 transition-all duration-300 ${collapsed ? 'w-12' : 'w-[360px]'} relative`}>
+      {/* 收缩展开按钮 */}
+      <button
+        onClick={onToggleCollapse}
+        className="absolute left-[-14px] top-1/2 -translate-y-1/2 z-10 w-7 h-7 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center shadow-md transition-colors"
+      >
+        {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
+      </button>
+      {!collapsed && (
+        <>
       {/* 标题栏 */}
       <div className="flex items-center gap-2 px-4 py-3 border-b flex-shrink-0">
         <ShieldCheck className="h-4 w-4 text-primary" />
@@ -138,6 +149,13 @@ export function AIAssistantPanel({ projectId, chapterNumber, chapterContent, onR
           </div>
         )}
       </div>
+        </>
+      )}
+      {collapsed && (
+        <div className="flex flex-col items-center pt-4 gap-3">
+          <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+        </div>
+      )}
     </div>
   )
 }

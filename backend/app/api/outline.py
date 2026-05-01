@@ -88,9 +88,14 @@ async def generate_outline(
     llm = get_llm_for_context(request, current_user, user_settings, db)
 
     # Prepare state for outline generation
+    # 优先从 inspiration_template 列读取，回退到 collected_info 字典中的 inspiration_template
+    inspiration_template = outline.inspiration_template or ""
+    if not inspiration_template:
+        inspiration_template = (outline.collected_info or {}).get("inspiration_template", "")
+
     state = {
         "collected_info": outline.collected_info or {},
-        "inspiration_template": outline.inspiration_template or "",
+        "inspiration_template": inspiration_template,
         "outline_title": outline.title,
         "outline_summary": outline.summary,
         "outline_plot_points": outline.plot_points or [],
@@ -348,7 +353,7 @@ async def update_collected_info(
         )
 
     # Update collected info
-    current_info = outline.collected_info or {}
+    current_info = dict(outline.collected_info or {})  # 拷贝以触发 SQLAlchemy 变更检测
     if request.genre is not None:
         current_info["genre"] = request.genre
     if request.theme is not None:
@@ -360,11 +365,35 @@ async def update_collected_info(
     if request.style_preference is not None:
         current_info["style_preference"] = request.style_preference
 
+    # 处理新增灵感采集字段
+    new_fields = [
+        'novelType', 'targetWords', 'coreTheme', 'targetReader', 'era',
+        'wordsPerChapter', 'customWordsPerChapter', 'maleLead', 'customMaleLead',
+        'femaleLead', 'customFemaleLead', 'protagonist', 'narrative',
+        'goldFinger', 'customGoldFinger', 'customGenre', 'customWorldSetting',
+        'inspiration_template',
+    ]
+    for field in new_fields:
+        value = getattr(request, field, None)
+        if value is not None:
+            current_info[field] = value
+
     outline.collected_info = current_info
 
-    # Check if all required info is provided
-    required_fields = ["genre", "main_characters", "world_setting"]
-    if all(field in current_info and current_info[field] for field in required_fields):
+    # 同步 inspiration_template 到 independent 列，确保 generate_outline 能读取
+    if request.inspiration_template is not None:
+        outline.inspiration_template = request.inspiration_template
+
+    # Check if all required info is provided (use new field names)
+    target_reader = current_info.get("targetReader")
+    has_genre = bool(current_info.get("genre") or current_info.get("customGenre"))
+    has_world = bool(current_info.get("world_setting") or current_info.get("worldSetting") or current_info.get("customWorldSetting"))
+    has_protagonist = bool(
+        current_info.get("protagonist") or
+        current_info.get("maleLead") or current_info.get("customMaleLead") or
+        current_info.get("femaleLead") or current_info.get("customFemaleLead")
+    )
+    if has_genre and has_world and has_protagonist:
         workflow_state = get_or_create_workflow_state(db, project_id)
         workflow_state.stage = STAGE_OUTLINE
 

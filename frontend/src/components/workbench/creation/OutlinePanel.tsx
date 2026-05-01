@@ -1,7 +1,7 @@
 // frontend/src/components/workbench/creation/OutlinePanel.tsx
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { FileText, Sparkles, Save, Plus, X, Check, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
+import { FileText, Sparkles, Save, Plus, X, Check, ChevronDown, ChevronUp, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
@@ -33,6 +33,7 @@ export function OutlinePanel({ projectId }: OutlinePanelProps)
   const [aiPanelCollapsed, setAiPanelCollapsed] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
   const [analysisResult, setAnalysisResult] = useState<{ type: string; content: string }[] | null>(null)
+  const [rightCollapsed, setRightCollapsed] = useState(false)
 
   useEffect(() =>
   {
@@ -376,7 +377,17 @@ export function OutlinePanel({ projectId }: OutlinePanelProps)
       </div>
 
       {/* 右侧 AI 分析区 */}
-      <div className="w-[240px] border-l bg-white flex flex-col">
+      <div className={`border-l bg-white flex flex-col shrink-0 transition-all duration-300 ${rightCollapsed ? 'w-12' : 'w-[360px]'} relative`}>
+        {/* 收缩展开按钮 */}
+        <button
+          onClick={() => setRightCollapsed(!rightCollapsed)}
+          className="absolute left-[-14px] top-1/2 -translate-y-1/2 z-10 w-7 h-7 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center shadow-md transition-colors"
+        >
+          {rightCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
+        </button>
+
+        {!rightCollapsed && (
+          <>
         <button
           onClick={() => setAiPanelCollapsed(!aiPanelCollapsed)}
           className="flex items-center justify-between px-3 py-2.5 border-b hover:bg-muted/50 transition-colors"
@@ -453,6 +464,13 @@ export function OutlinePanel({ projectId }: OutlinePanelProps)
                 <p className="text-[10px] text-muted-foreground">分析情节/角色/世界观等</p>
               </div>
             )}
+          </div>
+        )}
+          </>
+        )}
+        {rightCollapsed && (
+          <div className="flex flex-col items-center pt-4 gap-3">
+            <Sparkles className="h-4 w-4 text-muted-foreground" />
           </div>
         )}
       </div>

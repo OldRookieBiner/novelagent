@@ -3,7 +3,7 @@
 import { Lightbulb, Users, Link, FileText, BookOpen, PenTool, ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
-import { PLANNING_MENUS, CREATION_MENUS } from '@/types/workbench'
+import { PLANNING_MENUS } from '@/types/workbench'
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Lightbulb,
@@ -18,7 +18,13 @@ export function WorkbenchSidebar()
 {
   const { activeTab, activeMenuItem, setActiveMenuItem, sidebarCollapsed, toggleSidebar } = useWorkbenchStore()
 
-  const menus = activeTab === 'planning' ? PLANNING_MENUS : CREATION_MENUS
+  // 仅在规划 Tab 显示侧边栏菜单
+  if (activeTab !== 'planning')
+  {
+    return null
+  }
+
+  const menus = PLANNING_MENUS
 
   return (
     <div className={cn(

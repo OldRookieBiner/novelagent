@@ -97,12 +97,32 @@ class ChatResponse(BaseModel):
 
 
 class CollectedInfoUpdate(BaseModel):
-    """Update collected info directly"""
+    """灵感收集信息更新"""
+    # 原有字段
     genre: Optional[str] = None
     theme: Optional[str] = None
     main_characters: Optional[str] = None
     world_setting: Optional[str] = None
     style_preference: Optional[str] = None
+    # 新增灵感采集字段
+    novelType: Optional[str] = None
+    targetWords: Optional[int] = None
+    coreTheme: Optional[str] = None
+    targetReader: Optional[str] = None
+    era: Optional[str] = None
+    wordsPerChapter: Optional[str] = None
+    customWordsPerChapter: Optional[int] = None
+    maleLead: Optional[str] = None
+    customMaleLead: Optional[str] = None
+    femaleLead: Optional[str] = None
+    customFemaleLead: Optional[str] = None
+    protagonist: Optional[str] = None
+    narrative: Optional[str] = None
+    goldFinger: Optional[str] = None
+    customGoldFinger: Optional[str] = None
+    customGenre: Optional[str] = None
+    customWorldSetting: Optional[str] = None
+    inspiration_template: Optional[str] = None
 
 
 class OutlineGenerateRequest(BaseModel):

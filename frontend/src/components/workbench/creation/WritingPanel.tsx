@@ -87,6 +87,7 @@ export function WritingPanel({ projectId }: WritingPanelProps)
   const [mode, setMode] = useState<'preview' | 'edit'>('preview')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [generatingChapterId, setGeneratingChapterId] = useState<number | null>(null)
+  const [rightCollapsed, setRightCollapsed] = useState(false)
 
   useEffect(() =>
   {
@@ -528,6 +529,8 @@ export function WritingPanel({ projectId }: WritingPanelProps)
         {
           // 审核结果回调
         }}
+        collapsed={rightCollapsed}
+        onToggleCollapse={() => setRightCollapsed(!rightCollapsed)}
       />
     </div>
   )

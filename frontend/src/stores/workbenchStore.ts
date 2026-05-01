@@ -40,11 +40,18 @@ const initialState = {
 export const useWorkbenchStore = create<WorkbenchState>((set) => ({
   ...initialState,
 
-  setActiveTab: (tab) => set({
-    activeTab: tab,
-    // 切换 Tab 时重置菜单项到第一个
-    activeMenuItem: tab === 'planning' ? 'inspiration' : 'outline'
-  }),
+  setActiveTab: (tab) =>
+  {
+    // 切换到规划 Tab 时重置菜单项为灵感
+    if (tab === 'planning')
+    {
+      set({ activeTab: tab, activeMenuItem: 'inspiration' })
+    }
+    else
+    {
+      set({ activeTab: tab })
+    }
+  },
 
   setActiveMenuItem: (item) => set({ activeMenuItem: item }),
 

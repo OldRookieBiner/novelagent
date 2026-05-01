@@ -1,12 +1,13 @@
 // frontend/src/components/workbench/TabNavigation.tsx
 
-import { Lightbulb, PenTool } from 'lucide-react'
+import { Lightbulb, BookOpen, PenTool } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
 
 const TABS = [
   { key: 'planning' as const, label: '规划', icon: Lightbulb },
-  { key: 'creation' as const, label: '创作', icon: PenTool },
+  { key: 'chapter_outlines' as const, label: '章节大纲', icon: BookOpen },
+  { key: 'writing' as const, label: '章节正文', icon: PenTool },
 ]
 
 export function TabNavigation()
