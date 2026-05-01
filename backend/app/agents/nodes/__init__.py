@@ -20,6 +20,14 @@ from app.agents.nodes.rewrite import (
     rewrite_chapter_node,
     rewrite_with_retry
 )
+from app.agents.nodes.character_generation import (
+    create_characters_from_outline_node,
+    extract_characters_from_outline
+)
+from app.agents.nodes.relation_generation import (
+    generate_relations_node,
+    parse_relations_response
+)
 
 __all__ = [
     # Outline
@@ -39,4 +47,10 @@ __all__ = [
     # Rewrite
     "rewrite_chapter_node",
     "rewrite_with_retry",
+    # Character generation
+    "create_characters_from_outline_node",
+    "extract_characters_from_outline",
+    # Relation generation
+    "generate_relations_node",
+    "parse_relations_response",
 ]

@@ -28,7 +28,7 @@ def wait_for_confirmation(state: NovelState) -> Literal["wait", "continue"]:
 
     # hybrid 模式：大纲和章节大纲需要确认
     elif workflow_mode == "hybrid":
-        if confirmation_type in ["outline", "chapter_outlines"]:
+        if confirmation_type in ["outline", "characters", "relations", "chapter_outlines"]:
             return "wait"
 
     # auto 模式：只有审核不通过需要确认

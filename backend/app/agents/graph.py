@@ -17,9 +17,11 @@ from app.agents.nodes.chapter_generation import chapter_outlines_node, generate_
 from app.agents.nodes.review import review_node
 from app.agents.nodes.rewrite import rewrite_node
 from app.agents.nodes.wait_confirm import wait_for_confirmation, set_waiting_state
+from app.agents.nodes.character_generation import create_characters_from_outline_node
+from app.agents.nodes.relation_generation import generate_relations_node
 
 
-def route_after_outline(state: NovelState) -> Literal["wait_confirm", "chapter_outlines"]:
+def route_after_outline(state: NovelState) -> Literal["wait_confirm", "create_characters"]:
     """大纲生成后的路由
 
     根据 review_mode 决定是否等待用户确认。
@@ -34,7 +36,7 @@ def route_after_outline(state: NovelState) -> Literal["wait_confirm", "chapter_o
     decision = wait_for_confirmation(state)
     if decision == "wait":
         return "wait_confirm"
-    return "chapter_outlines"
+    return "create_characters"
 
 
 def route_after_chapter_outlines(state: NovelState) -> Literal["wait_confirm", "chapter_content"]:
@@ -89,6 +91,22 @@ def route_after_review(state: NovelState) -> Literal["rewrite", "next_chapter", 
     return "rewrite"
 
 
+def route_after_characters(state: NovelState) -> Literal["wait_confirm", "generate_relations"]:
+    """角色创建后的路由"""
+    decision = wait_for_confirmation(state)
+    if decision == "wait":
+        return "wait_confirm"
+    return "generate_relations"
+
+
+def route_after_relations(state: NovelState) -> Literal["wait_confirm", "chapter_outlines"]:
+    """关系生成后的路由"""
+    decision = wait_for_confirmation(state)
+    if decision == "wait":
+        return "wait_confirm"
+    return "chapter_outlines"
+
+
 def create_novel_graph():
     """
     创建小说创作工作流图。
@@ -114,6 +132,8 @@ def create_novel_graph():
     graph.add_node("generate_chapter_content", generate_chapter_content_node)
     graph.add_node("review_chapter", review_node)
     graph.add_node("rewrite_chapter", rewrite_node)
+    graph.add_node("create_characters_from_outline", create_characters_from_outline_node)
+    graph.add_node("generate_relations", generate_relations_node)
 
     # 设置入口点
     graph.set_entry_point("generate_outline")
@@ -124,7 +144,25 @@ def create_novel_graph():
         "generate_outline",
         route_after_outline,
         {
-            "wait_confirm": END,  # 等待确认时结束，用户确认后从下一个节点继续
+            "wait_confirm": END,
+            "create_characters": "create_characters_from_outline"
+        }
+    )
+
+    graph.add_conditional_edges(
+        "create_characters_from_outline",
+        route_after_characters,
+        {
+            "wait_confirm": END,
+            "generate_relations": "generate_relations"
+        }
+    )
+
+    graph.add_conditional_edges(
+        "generate_relations",
+        route_after_relations,
+        {
+            "wait_confirm": END,
             "chapter_outlines": "generate_chapter_outlines"
         }
     )
@@ -192,6 +230,8 @@ __all__ = [
     "create_novel_graph",
     "create_novel_graph_with_checkpointer",
     "route_after_outline",
+    "route_after_characters",
     "route_after_chapter_outlines",
+    "route_after_relations",
     "route_after_review",
 ]
