@@ -1,5 +1,6 @@
 """LangGraph checkpointer using PostgreSQL"""
 
+import asyncio
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, Iterator, Union
@@ -241,6 +242,16 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
             logger.info(f"Cleaned up {deleted_count} old checkpoints for project_id={self.project_id}, thread_id={thread_id}")
 
         return deleted_count
+
+    async def aget_tuple(self, config: dict) -> Optional[CheckpointTuple]:
+        """异步获取检查点（LangGraph v1 要求）"""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.get_tuple, config)
+
+    async def aput(self, config: dict, checkpoint: dict, metadata: dict) -> dict:
+        """异步保存检查点（LangGraph v1 要求）"""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.put, config, checkpoint, metadata)
 
     def list(self, config: dict) -> Iterator[CheckpointTuple]:
         """
