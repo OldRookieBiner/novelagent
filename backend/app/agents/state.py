@@ -102,7 +102,7 @@ class NovelState(TypedDict):
 
     # ========== 工作流控制 ==========
     waiting_for_confirmation: bool
-    confirmation_type: Optional[str]  # outline | chapter_outlines | review_failed
+    confirmation_type: Optional[str]  # outline | characters | relations | chapter_outlines | review_failed
 
     # ========== LLM 服务 ==========
     llm_config_id: Optional[int]  # 使用的模型配置 ID

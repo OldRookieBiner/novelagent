@@ -45,7 +45,7 @@ def set_waiting_state(state: NovelState, confirmation_type: str) -> NovelState:
 
     Args:
         state: 当前状态
-        confirmation_type: 确认类型（outline | chapter_outlines | review_failed）
+        confirmation_type: 确认类型（outline | characters | relations | chapter_outlines | review_failed）
 
     Returns:
         更新后的状态

@@ -31,7 +31,7 @@ def route_after_outline(state: NovelState) -> Literal["wait_confirm", "create_ch
 
     Returns:
         "wait_confirm" - 等待用户确认
-        "chapter_outlines" - 继续生成章节大纲
+        "create_characters" - 继续提取角色
     """
     decision = wait_for_confirmation(state)
     if decision == "wait":
