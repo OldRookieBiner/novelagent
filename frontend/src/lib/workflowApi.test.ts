@@ -193,7 +193,7 @@ describe('WorkflowApi', () =>
     it('处理 node_start 事件', async () =>
     {
       const events = [
-        { type: 'node_start', data: 'generate_outline' },
+        { type: 'node_start', data: { node: 'generate_outline' } },
         { type: 'done', data: { stage: 'outline', chapters: [] } },
       ]
 
@@ -215,7 +215,7 @@ describe('WorkflowApi', () =>
       const events = [
         {
           type: 'node_done',
-          data: { node: 'generate_outline', data: { title: '测试小说' } },
+          data: { node: 'generate_outline', state: { title: '测试小说' } },
         },
         { type: 'done', data: { stage: 'outline', chapters: [] } },
       ]
@@ -256,7 +256,7 @@ describe('WorkflowApi', () =>
     it('处理 waiting 事件', async () =>
     {
       const events = [
-        { type: 'waiting', data: 'outline' },
+        { type: 'waiting', data: { node: 'generate_outline', confirmation_type: 'outline' } },
       ]
 
       mockFetch.mockResolvedValueOnce({

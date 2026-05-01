@@ -112,13 +112,16 @@ export const workflowApi = {
       switch (eventType)
       {
         case 'node_start':
-          callbacks.onNodeStart?.(data as unknown as string)
+          {
+            const nodeData = data as unknown as { node: string; message?: string }
+            callbacks.onNodeStart?.(nodeData.node)
+          }
           break
 
         case 'node_done':
           {
-            const nodeData = data as unknown as { node: string; data: unknown }
-            callbacks.onNodeDone?.(nodeData.node, nodeData.data)
+            const nodeData = data as unknown as { node: string; state: unknown }
+            callbacks.onNodeDone?.(nodeData.node, nodeData.state)
           }
           break
 
@@ -131,7 +134,10 @@ export const workflowApi = {
           break
 
         case 'waiting':
-          callbacks.onWaiting?.(data as unknown as string)
+          {
+            const waitingData = data as unknown as { node: string; confirmation_type: string }
+            callbacks.onWaiting?.(waitingData.confirmation_type)
+          }
           break
 
         case 'done':
