@@ -791,60 +791,126 @@ async def list_evolution_records(
     )
 
 
-# ==================== AI 生成端点（占位符）====================
+# ==================== AI 生成端点 ====================
 
-@router.post("/{project_id}/characters/generate", status_code=status.HTTP_501_NOT_IMPLEMENTED)
+@router.post("/{project_id}/characters/generate", status_code=status.HTTP_201_CREATED)
 async def generate_characters(
     project_id: int,
     request: CharacterGenerateRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """AI 批量生成人物（暂未实现）
+    """AI 批量生成人物
+
+    从大纲中提取角色信息创建 Character 实体。
 
     Args:
         project_id: 项目 ID
-        request: 生成请求
+        request: 生成请求（count/roles/additional_context）
         db: 数据库会话
         current_user: 当前用户
 
     Returns:
-        501 NOT IMPLEMENTED
+        创建的人物列表
     """
-    # 验证项目权限
+    from app.models.outline import Outline
+    from app.agents.nodes.character_generation import extract_characters_from_outline
+
     get_project_for_user(project_id, current_user.id, db)
 
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="AI character generation is not implemented yet"
-    )
+    outline = db.query(Outline).filter(
+        Outline.project_id == project_id
+    ).first()
+
+    if not outline or not outline.characters:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No outline characters found. Generate an outline first."
+        )
+
+    state = {
+        "project_id": project_id,
+        "outline_characters": outline.characters,
+    }
+
+    characters = extract_characters_from_outline(state)
+
+    if not characters:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create characters from outline"
+        )
+
+    return {
+        "message": f"Created {len(characters)} characters",
+        "characters": characters,
+    }
 
 
-@router.post("/{project_id}/relations/generate", status_code=status.HTTP_501_NOT_IMPLEMENTED)
+@router.post("/{project_id}/relations/generate", status_code=status.HTTP_201_CREATED)
 async def generate_relations(
     project_id: int,
     request: RelationGenerateRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """AI 生成关系规划（暂未实现）
+    """AI 生成关系规划
+
+    基于已有角色调用 LLM 生成关系网络。
 
     Args:
         project_id: 项目 ID
-        request: 生成请求
+        request: 生成请求（character_ids/relation_types/additional_context）
         db: 数据库会话
         current_user: 当前用户
 
     Returns:
-        501 NOT IMPLEMENTED
+        创建的关系列表
     """
-    # 验证项目权限
+    from app.models.character import Character
+    from app.models.outline import Outline
+    from app.agents.nodes.relation_generation import generate_relations_node
+
     get_project_for_user(project_id, current_user.id, db)
 
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="AI relation generation is not implemented yet"
-    )
+    characters = db.query(Character).filter(
+        Character.project_id == project_id
+    ).all()
+
+    if len(characters) < 2:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Need at least 2 characters to generate relations"
+        )
+
+    outline = db.query(Outline).filter(
+        Outline.project_id == project_id
+    ).first()
+
+    state = {
+        "project_id": project_id,
+        "characters": [
+            {
+                "id": c.id,
+                "name": c.name,
+                "role": c.role,
+                "personality": c.personality or "",
+                "core_motivation": c.core_motivation or "",
+            }
+            for c in characters
+        ],
+        "outline_world_setting": outline.world_setting if outline else {},
+        "outline_summary": outline.summary if outline else "",
+    }
+
+    result_state = await generate_relations_node(state)
+
+    relations = result_state.get("relations", [])
+
+    return {
+        "message": f"Created {len(relations)} relations",
+        "relations": relations,
+    }
 
 
 @router.post("/{project_id}/characters/{character_id}/optimize", status_code=status.HTTP_501_NOT_IMPLEMENTED)
@@ -855,22 +921,9 @@ async def optimize_character(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """AI 优化单个人物（暂未实现）
-
-    Args:
-        project_id: 项目 ID
-        character_id: 人物 ID
-        request: 优化请求
-        db: 数据库会话
-        current_user: 当前用户
-
-    Returns:
-        501 NOT IMPLEMENTED
-    """
-    # 验证项目权限
+    """AI 优化单个人物（将在方案 B 中实现）"""
     get_project_for_user(project_id, current_user.id, db)
 
-    # 验证人物存在
     character = db.query(Character).filter(
         Character.id == character_id,
         Character.project_id == project_id
@@ -884,5 +937,5 @@ async def optimize_character(
 
     raise HTTPException(
         status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="AI character optimization is not implemented yet"
+        detail="AI character optimization will be implemented in plan B"
     )
