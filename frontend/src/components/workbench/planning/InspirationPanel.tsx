@@ -1,7 +1,7 @@
 // frontend/src/components/workbench/planning/InspirationPanel.tsx
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Lightbulb, RotateCcw, ArrowRight, Check, ChevronDown, ChevronUp, Copy, Zap } from 'lucide-react'
+import { Lightbulb, RotateCcw, ArrowRight, Check, ChevronDown, ChevronUp, Copy, Zap, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,12 +14,12 @@ import {
 generateInspirationTemplate,
   saveInspirationDraft,
   loadInspirationDraft,
-  clearInspirationDraft,
   type InspirationData,
 } from '@/lib/inspiration'
 import { collectedInfoApi } from '@/lib/api'
 import { QUICK_TEMPLATES } from '@/lib/inspiration'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
+import { OutlineProgressDialog } from './OutlineProgressDialog'
 import { toast } from 'sonner'
 
 interface InspirationPanelProps
@@ -95,8 +95,10 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
   const [confirming, setConfirming] = useState(false)
 
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [rightCollapsed, setRightCollapsed] = useState(false)
+  const [showProgressDialog, setShowProgressDialog] = useState(false)
 
-  const { setActiveTab, setActiveMenuItem } = useWorkbenchStore()
+  const { setActiveMenuItem } = useWorkbenchStore()
 
   // 构建完整的表单数据对象（用于生成模板）
   const formData = useMemo((): InspirationData => ({
@@ -319,6 +321,10 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
 
       if (targetReader === 'male')
       {
+        // 保存原始 maleLead 字段（含 custom），供后端 fallback 使用
+        if (maleLead) collectedInfoData.maleLead = maleLead
+        if (customMaleLead) collectedInfoData.customMaleLead = customMaleLead
+
         const lead = maleLead === 'custom' ? customMaleLead : maleLead
         if (lead) collectedInfoData.protagonist = lead
         const genreVal = genre === 'custom' ? customGenre : genre
@@ -328,17 +334,20 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
       }
       else if (targetReader === 'female')
       {
+        // 保存原始 femaleLead 字段（含 custom），供后端 fallback 使用
+        if (femaleLead) collectedInfoData.femaleLead = femaleLead
+        if (customFemaleLead) collectedInfoData.customFemaleLead = customFemaleLead
+
         const lead = femaleLead === 'custom' ? customFemaleLead : femaleLead
         if (lead) collectedInfoData.protagonist = lead
       }
 
       await collectedInfoApi.update(projectId, collectedInfoData)
       toast.success('灵感已确认')
-      clearInspirationDraft()
+      // 不清空草稿 — 数据已保存到数据库，草稿作为本地缓存保留
 
-      // 切换到创作 Tab 的小说大纲
-      setActiveTab('creation')
-      setActiveMenuItem('outline')
+      // 弹出进度弹窗，不跳转
+      setShowProgressDialog(true)
     }
     catch (err)
     {
@@ -817,63 +826,92 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
               </>
             )}
           </Button>
-          <p className="text-xs text-muted-foreground">确认后自动跳转到大纲生成</p>
+          <p className="text-xs text-muted-foreground">确认后自动生成小说大纲</p>
         </div>
       </div>
 
-      {/* 右侧：Prompt 模板区 (30%, ~280px) */}
-      <div className="flex-[3] border-l bg-white flex flex-col max-w-[280px]">
-        <div className="flex items-center justify-between px-4 py-3 border-b">
-          <h3 className="text-sm font-medium flex items-center gap-2">
-            <Lightbulb className="h-4 w-4" />
-            创作 Prompt
-          </h3>
-          <div className="flex gap-1">
-            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleCopyTemplate}>
-              <Copy className="h-3 w-3 mr-1" />
-              复制
-            </Button>
+      {/* 右侧：Prompt 模板区 */}
+      <div className={`border-l bg-white flex flex-col shrink-0 transition-all duration-300 ${rightCollapsed ? 'w-12' : 'w-[360px]'} relative`}>
+        {/* 收缩展开按钮 */}
+        <button
+          onClick={() => setRightCollapsed(!rightCollapsed)}
+          className="absolute left-[-14px] top-1/2 -translate-y-1/2 z-10 w-7 h-7 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center shadow-md transition-colors"
+        >
+          {rightCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
+        </button>
+        {!rightCollapsed && (
+          <>
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <h3 className="text-sm font-medium flex items-center gap-2">
+                <Lightbulb className="h-4 w-4" />
+                创作 Prompt
+              </h3>
+              <div className="flex gap-1">
+                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleCopyTemplate}>
+                  <Copy className="h-3 w-3 mr-1" />
+                  复制
+                </Button>
+                {templateManuallyEdited && (
+                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleResetTemplate}>
+                    <RotateCcw className="h-3 w-3 mr-1" />
+                    重置
+                  </Button>
+                )}
+              </div>
+            </div>
             {templateManuallyEdited && (
-              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleResetTemplate}>
-                <RotateCcw className="h-3 w-3 mr-1" />
-                重置
-              </Button>
+              <div className="px-4 py-2 bg-yellow-50 border-b text-xs text-yellow-700">
+                手动编辑模式 — 表单修改不再自动更新模板
+              </div>
             )}
-          </div>
-        </div>
-        {templateManuallyEdited && (
-          <div className="px-4 py-2 bg-yellow-50 border-b text-xs text-yellow-700">
-            手动编辑模式 — 表单修改不再自动更新模板
+            <div className="flex-1 p-4">
+              <Textarea
+                value={template}
+                onChange={(e) => handleTemplateChange(e.target.value)}
+                placeholder="选择灵感选项后，此处将自动生成创作 Prompt..."
+                className="w-full h-full font-mono text-sm leading-relaxed resize-none border-none shadow-none focus-visible:ring-0"
+              />
+            </div>
+            {/* 快捷填充模板 */}
+            <div className="border-t p-3">
+              <div className="flex items-center gap-1 mb-2">
+                <Zap className="h-3 w-3 text-amber-500" />
+                <span className="text-[11px] font-medium text-muted-foreground">快捷填充模板</span>
+              </div>
+              <div className="space-y-1.5">
+                {QUICK_TEMPLATES.map((tpl) => (
+                  <button
+                    key={tpl.id}
+                    onClick={() => handleApplyQuickTemplate(tpl)}
+                    className="w-full text-left px-2.5 py-2 rounded-md text-xs border hover:bg-indigo-50 hover:border-indigo-200 transition-colors"
+                  >
+                    <span className="mr-1.5">{tpl.icon}</span>
+                    {tpl.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+        {rightCollapsed && (
+          <div className="flex flex-col items-center pt-4 gap-3">
+            <Lightbulb className="h-4 w-4 text-muted-foreground" />
+            <Copy className="h-4 w-4 text-muted-foreground" />
           </div>
         )}
-        <div className="flex-1 p-4">
-          <Textarea
-            value={template}
-            onChange={(e) => handleTemplateChange(e.target.value)}
-            placeholder="选择灵感选项后，此处将自动生成创作 Prompt..."
-            className="w-full h-full font-mono text-sm leading-relaxed resize-none border-none shadow-none focus-visible:ring-0"
-          />
-        </div>
-        {/* 快捷填充模板 */}
-        <div className="border-t p-3">
-          <div className="flex items-center gap-1 mb-2">
-            <Zap className="h-3 w-3 text-amber-500" />
-            <span className="text-[11px] font-medium text-muted-foreground">快捷填充模板</span>
-          </div>
-          <div className="space-y-1.5">
-            {QUICK_TEMPLATES.map((tpl) => (
-              <button
-                key={tpl.id}
-                onClick={() => handleApplyQuickTemplate(tpl)}
-                className="w-full text-left px-2.5 py-2 rounded-md text-xs border hover:bg-indigo-50 hover:border-indigo-200 transition-colors"
-              >
-                <span className="mr-1.5">{tpl.icon}</span>
-                {tpl.label}
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
+      {/* 大纲生成进度弹窗 */}
+      <OutlineProgressDialog
+        open={showProgressDialog}
+        onClose={() => setShowProgressDialog(false)}
+        projectId={projectId}
+        onComplete={() => {}}
+        onViewOutline={() =>
+        {
+          setShowProgressDialog(false)
+          setActiveMenuItem('outline')
+        }}
+      />
     </div>
   )
 }

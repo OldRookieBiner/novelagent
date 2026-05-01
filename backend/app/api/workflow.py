@@ -102,8 +102,9 @@ def build_initial_state(
         "stage": workflow_state.stage,
 
         # 灵感/输入
+        # 优先从 inspiration_template 列读取，回退到 collected_info 字典中的 inspiration_template
         "collected_info": outline.collected_info or {},
-        "inspiration_template": outline.inspiration_template,
+        "inspiration_template": outline.inspiration_template or (outline.collected_info or {}).get("inspiration_template"),
 
         # 大纲
         "outline_title": outline.title,
@@ -286,6 +287,11 @@ async def run_workflow(
                             return  # 停止流
                         else:
                             yield f"event: node_done\ndata: {json.dumps({'node': node_name, 'state': output})}\n\n"
+
+                    # 关系生成节点完成后，发送 done 并停止（不再继续到章节大纲）
+                    if node_name == "generate_relations_node":
+                        yield f"event: done\ndata: {json.dumps({'message': 'Generation completed'})}\n\n"
+                        return
 
                 elif event_type == "on_chat_model_stream":
                     # LLM 流式输出

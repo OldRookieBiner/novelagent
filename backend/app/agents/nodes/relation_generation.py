@@ -172,15 +172,10 @@ async def generate_relations_node(state: NovelState) -> NovelState:
     project_id = state["project_id"]
     relations = write_relations_to_db(project_id, relations_data)
 
-    review_mode = state.get("review_mode", "hybrid")
-    should_wait = review_mode in ("step_by_step", "hybrid")
-
     new_state: NovelState = {
         **state,
         "relations": relations,
         "stage": STAGE_RELATIONS,
-        "waiting_for_confirmation": should_wait,
-        "confirmation_type": "relations" if should_wait else None,
     }
 
     return new_state

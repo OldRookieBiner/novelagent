@@ -86,15 +86,10 @@ def create_characters_from_outline_node(state: NovelState) -> NovelState:
     """
     characters = extract_characters_from_outline(state)
 
-    review_mode = state.get("review_mode", "hybrid")
-    should_wait = review_mode in ("step_by_step", "hybrid")
-
     new_state: NovelState = {
         **state,
         "characters": characters,
         "stage": STAGE_CHARACTERS,
-        "waiting_for_confirmation": should_wait,
-        "confirmation_type": "characters" if should_wait else None,
     }
 
     return new_state
