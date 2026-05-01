@@ -112,38 +112,4 @@ export function ChapterDetailSkeleton()
   )
 }
 
-/**
- * 项目详情页面骨架屏
- */
-export function ProjectDetailSkeleton()
-{
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-10 w-24" />
-      </div>
-      <div className="flex gap-6">
-        <Skeleton className="h-4 w-32" />
-        <Skeleton className="h-4 w-24" />
-        <Skeleton className="h-4 w-20" />
-      </div>
-
-      {/* Step Navigation */}
-      <div className="flex gap-2">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <Skeleton key={i} className="h-10 w-24" />
-        ))}
-      </div>
-
-      {/* Content */}
-      <div className="flex gap-6">
-        <ChapterListSkeleton />
-        <ChapterDetailSkeleton />
-      </div>
-    </div>
-  )
-}
-
 export default Skeleton

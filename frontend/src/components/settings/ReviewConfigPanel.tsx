@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { ReviewModeSelect } from '@/components/project/ReviewModeSelect'
+import { ReviewModeSelect } from '@/components/settings/ReviewModeSelect'
 import type { WorkflowMode } from '@/types'
 
 interface ReviewConfigPanelProps

@@ -4,7 +4,7 @@ import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import Header from '@/components/layout/Header'
 import ProjectCard from '@/components/common/ProjectCard'
-import CreateProjectDialog from '@/components/project/CreateProjectDialog'
+import CreateProjectDialog from '@/components/common/CreateProjectDialog'
 import ErrorMessage from '@/components/common/ErrorMessage'
 import { ProjectCardSkeleton } from '@/components/ui/skeleton'
 import {
