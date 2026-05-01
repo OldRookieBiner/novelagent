@@ -32,9 +32,9 @@ interface OutlineProgressDialogProps
 }
 
 const STEPS: Step[] = [
-  { key: 'outline', label: '生成大纲', status: 'pending', nodeName: 'generate_outline' },
-  { key: 'characters', label: '生成人物', status: 'pending', nodeName: 'create_characters_from_outline' },
-  { key: 'relations', label: '生成关系', status: 'pending', nodeName: 'generate_relations' },
+  { key: 'outline', label: '生成大纲', status: 'pending', nodeName: 'outline_generation_node' },
+  { key: 'characters', label: '生成人物', status: 'pending', nodeName: 'create_characters_from_outline_node' },
+  { key: 'relations', label: '生成关系', status: 'pending', nodeName: 'generate_relations_node' },
 ]
 
 export function OutlineProgressDialog({
