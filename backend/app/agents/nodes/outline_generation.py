@@ -503,6 +503,11 @@ async def outline_generation_node(state: NovelState) -> NovelState:
 
     prompt, chapter_count = prepare_outline_prompt(state)
 
+    # 使用流式 API，框架自动捕获 on_chat_model_stream 事件
+    response = ""
+    async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
+        response += chunk
+
     outline = parse_outline(response)
 
     import logging
