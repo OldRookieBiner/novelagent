@@ -288,17 +288,17 @@ async def run_workflow(
                         else:
                             yield f"event: node_done\ndata: {json.dumps({'node': node_name, 'state': output})}\n\n"
 
+                    # 关系生成节点完成后，发送 done 并停止（规划阶段完成，后续步骤由用户手动触发）
+                    if node_name == "generate_relations_node":
+                        yield f"event: done\ndata: {json.dumps({'message': 'Generation completed'})}\n\n"
+                        return
+
                 elif event_type == "on_chat_model_stream":
                     # LLM 流式输出
                     chunk = event_data.get("chunk")
                     if chunk:
                         content = getattr(chunk, "content", str(chunk))
                         yield f"event: chunk\ndata: {json.dumps({'content': content})}\n\n"
-
-                    # 关系生成节点完成后，发送 done 并停止（规划阶段完成，后续步骤由用户手动触发）
-                    if node_name == "generate_relations_node":
-                        yield f"event: done\ndata: {json.dumps({'message': 'Generation completed'})}\n\n"
-                        return
 
             # 工作流完成
             yield f"event: done\ndata: {json.dumps({'message': 'Workflow completed'})}\n\n"
