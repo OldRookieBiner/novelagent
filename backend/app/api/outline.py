@@ -147,8 +147,6 @@ async def generate_outline(
 
             # Parse the final outline
             parsed = parse_outline(accumulated_content)
-
-            # Update outline with generated content
             outline.title = parsed["title"]
             outline.summary = parsed["summary"]
             outline.plot_points = parsed["plot_points"]

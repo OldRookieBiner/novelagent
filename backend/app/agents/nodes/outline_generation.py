@@ -508,13 +508,14 @@ async def outline_generation_node(state: NovelState) -> NovelState:
     async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
         response += chunk
 
-    outline = parse_outline(response)
+outline = parse_outline(response)
 
     import logging
-    logging.getLogger(__name__).info(
+    logger = logging.getLogger(__name__)
+    logger.info(
         f"outline parsed: title='{outline.get('title', '')}', "
-        f"chars={len(outline.get('characters', []))}, "
-        f"plots={len(outline.get('plot_points', []))}"
+        f"char={len(outline.get('characters', []))}, "
+        f"plot={len(outline.get('plot_points', []))}"
     )
 
     new_state: NovelState = {
