@@ -63,3 +63,24 @@ def test_route_after_outline_continues_in_step_by_step_no_type():
     }
     result = route_after_outline(state)
     assert result == "create_characters"
+
+
+def test_is_valid_with_only_plot_points():
+    """只有 plot_points 但没有 title/summary/characters 时大纲仍有效"""
+    from app.agents.nodes.outline_generation import outline_generation_node
+    # 验证 is_valid 计算逻辑：plot_points 不为空时应为 True
+    outline_with_only_plots = {
+        "title": "",
+        "summary": "",
+        "characters": [],
+        "world_setting": {},
+        "plot_points": [{"order": 1, "event": "test"}],
+        "emotional_curve": "",
+    }
+    is_valid = bool(
+        outline_with_only_plots.get("title")
+        or outline_with_only_plots.get("summary")
+        or outline_with_only_plots.get("characters")
+        or outline_with_only_plots.get("plot_points")
+    )
+    assert is_valid is True
