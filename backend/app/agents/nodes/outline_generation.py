@@ -11,9 +11,14 @@ from app.utils.llm import get_llm_from_state_async
 
 # 预编译正则表达式，提升性能
 # 标题匹配模式：支持多种格式
+# 1. "标题：《xxx》"
+# 2. "# 一、标题\n《xxx》"
+# 3. "# 小说大纲：xxx"
+# 4. "# 《xxx》"
 RE_TITLE = re.compile(r"(?:##\s*)?(?:\*\*)?标题(?:\*\*)?[：:]\s*(.+?)(?:\n|$)")
 RE_TITLE_OUTLINE = re.compile(r"#\s*小说大纲[：:]\s*(.+?)(?:\n|$)")
 RE_TITLE_BRACKET = re.compile(r"#\s*《(.+?)》")
+RE_TITLE_CHAPTER = re.compile(r"#\s*[一二三四五六七八九十]+[、.].*\n《(.+?)》")  # 新增：# 一、标题 后面跟《xxx》
 
 # 概述匹配模式：支持 “三、人物设定” / “# 三、人物设定” 等后续标题格式
 RE_SUMMARY = re.compile(
@@ -24,10 +29,19 @@ RE_SUMMARY_MD = re.compile(
     r"(?:##\s*)?(?:\*\*)?概述(?:\*\*)?\s*\n+(.+?)(?=(?:\n[#]*\s*(?:[一二三四五六七八九十]+[、.])?\s*)?(?:人物设定|世界观|主要情节节点|情节节点)|$)",
     re.DOTALL,
 )
+# 新增：支持 # 二、概述 后面直接跟内容的格式
+RE_SUMMARY_CHAPTER = re.compile(
+    r"#\s*[一二三四五六七八九十]+[、.].*\n概述\s*\n+(.+?)(?=(?:\n#|\n##)|$)",
+    re.DOTALL,
+)
 
-# 情节节点匹配模式
+# 情节节点匹配模式 - 支持多种格式
+# 1. "1. 开篇：... | ..."
+# 2. "1. **开篇：...**"
+# 3. "## 第一章：...\n1. 开篇：..."
 RE_PLOT_BOLD = re.compile(r"\d+\.\s*(?:\*\*)?(.+?)(?:\*\*)?\s*\n", re.DOTALL)
 RE_PLOT_FALLBACK = re.compile(r"\d+\.\s*(.+?)(?=\n\d+\.|$)", re.DOTALL)
+RE_PLOT_CHAPTER = re.compile(r"\d+\.\s*\*\*?([^|*]+)\*\*?[：:]*\s*(.+?)(?=\n\d+\.|$)", re.DOTALL)  # 支持带章节名的情况
 
 # 章节数匹配模式
 RE_CHAPTER_COUNT = re.compile(r"建议章节数[：:]\s*(\d+)")
@@ -93,6 +107,8 @@ def parse_outline(response: str) -> Dict[str, Any]:
         title_match = RE_TITLE_OUTLINE.search(response)
     if not title_match:
         title_match = RE_TITLE_BRACKET.search(response)
+    if not title_match:
+        title_match = RE_TITLE_CHAPTER.search(response)  # 新增
     if title_match:
         title = title_match.group(1).strip()
         # 清理标题 - 移除书名号
@@ -100,10 +116,12 @@ def parse_outline(response: str) -> Dict[str, Any]:
             title = title[1:-1]
         outline["title"] = title
 
-    # 提取概述
+    # 提取概述 - 支持多种格式
     summary_match = RE_SUMMARY.search(response)
     if not summary_match:
         summary_match = RE_SUMMARY_MD.search(response)
+    if not summary_match:
+        summary_match = RE_SUMMARY_CHAPTER.search(response)  # 新增
     if summary_match:
         outline["summary"] = summary_match.group(1).strip()
 
@@ -227,7 +245,10 @@ def _parse_characters_section(response: str, outline: Dict[str, Any]):
 
             parts = [p.strip() for p in content_after_colon.split('|')]
             name = parts[0] if parts else ''
+            # 清理 name 中的粗体标记
+            name = re.sub(r'\*\*', '', name).strip()
             personality = parts[1] if len(parts) > 1 else ''
+            personality = re.sub(r'\*\*', '', personality).strip()  # 清理 personality
             motivation = ''
             arc = ''
 
@@ -508,10 +529,14 @@ async def outline_generation_node(state: NovelState) -> NovelState:
     async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
         response += chunk
 
-    outline = parse_outline(response)
-
     import logging
     logger = logging.getLogger(__name__)
+    # 保存 AI 原始输出到日志
+    logger.info(f"AI response (first 1500 chars): {response[:1500]}")
+    logger.info(f"AI response total length: {len(response)}")
+
+    outline = parse_outline(response)
+
     logger.info(
         f"outline parsed: title='{outline.get('title', '')}', "
         f"char={len(outline.get('characters', []))}, "
