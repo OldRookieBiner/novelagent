@@ -1,7 +1,7 @@
 // frontend/src/components/workbench/planning/OutlineProgressDialog.tsx
 
 import { useState, useEffect, useRef } from 'react'
-import { Sparkles, Check, Loader2, PartyPopper, AlertCircle, RefreshCw, Eye } from 'lucide-react'
+import { Sparkles, Check, Loader2, PartyPopper, AlertCircle, RefreshCw } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -48,7 +48,6 @@ export function OutlineProgressDialog({
   const [steps, setSteps] = useState<Step[]>(STEPS.map(s => ({ ...s })))
   const [error, setError] = useState<string | null>(null)
   const [completed, setCompleted] = useState(false)
-  const [waitingFor, setWaitingFor] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const startedRef = useRef(false)
 
@@ -86,7 +85,6 @@ export function OutlineProgressDialog({
   {
     setError(null)
     setCompleted(false)
-    setWaitingFor(null)
     setSteps(STEPS.map(s => ({ ...s, status: s.key === 'outline' ? 'active' : 'pending' })))
 
     const controller = new AbortController()
@@ -110,15 +108,6 @@ export function OutlineProgressDialog({
           onChunk: () =>
           {
             // 大纲流式输出中的文本块，进度条不需要处理
-          },
-          onWaiting: (confirmationType: string) =>
-          {
-            abortRef.current = null
-            setWaitingFor(confirmationType)
-            setSteps(prev => prev.map(s =>
-              s.status === 'active' ? { ...s, status: 'done' } : s
-            ))
-            setCompleted(true)
           },
           onDone: () =>
           {
@@ -211,15 +200,10 @@ export function OutlineProgressDialog({
       }}>
         <DialogHeader>
           <DialogTitle className="flex items-center justify-center gap-2 text-center">
-            {completed && !waitingFor ? (
+            {completed ? (
               <>
                 <PartyPopper className="h-5 w-5 text-green-500" />
-                {error ? '生成失败' : '规划已完成'}
-              </>
-            ) : waitingFor ? (
-              <>
-                <Eye className="h-5 w-5 text-amber-500" />
-                等待确认
+                规划已完成
               </>
             ) : error ? (
               <>
@@ -234,13 +218,11 @@ export function OutlineProgressDialog({
             )}
           </DialogTitle>
           <DialogDescription className="text-center">
-            {completed && !waitingFor
+            {completed
               ? '小说大纲、人物和关系已全部生成完毕'
-              : waitingFor
-                ? '请查看并确认生成的内容后继续'
-                : error
-                  ? '生成过程中出现错误'
-                  : 'AI 正在基于你的灵感构思角色和关系...'}
+              : error
+                ? '生成过程中出现错误'
+                : 'AI 正在基于你的灵感构思角色和关系...'}
           </DialogDescription>
         </DialogHeader>
 

@@ -546,10 +546,10 @@ async def outline_generation_node(state: NovelState) -> NovelState:
         **state,
         "outline_title": outline.get("title", ""),
         "outline_summary": outline["summary"],
-        "outline_characters": outline["characters"],  # 新增：人物设定
-        "outline_world_setting": outline["world_setting"],  # 新增：世界观
+        "outline_characters": outline["characters"],
+        "outline_world_setting": outline["world_setting"],
         "outline_plot_points": outline["plot_points"],
-        "outline_emotional_curve": outline["emotional_curve"],  # 新增：情感曲线
+        "outline_emotional_curve": outline["emotional_curve"],
         "chapter_count": chapter_count,
         "stage": STAGE_OUTLINE,
     }

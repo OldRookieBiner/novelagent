@@ -112,6 +112,10 @@ async def create_chapter_outlines(
     project = get_project_for_user(project_id, current_user.id, db)
     outline = get_outline_for_project(project_id, db)
 
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"create_chapter_outlines: project_id={project_id}, outline.confirmed={outline.confirmed}, outline.chapter_count_confirmed={outline.chapter_count_confirmed}")
+
     # Check if outline is confirmed and chapter count is set
     if not outline.confirmed:
         raise HTTPException(

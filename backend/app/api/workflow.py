@@ -280,13 +280,8 @@ async def run_workflow(
                     node_name = event_name
                     output = event_data.get("output", {})
 
-                    # 检查是否等待确认
                     if isinstance(output, dict):
-                        if output.get("waiting_for_confirmation"):
-                            yield f"event: waiting\ndata: {json.dumps({'node': node_name, 'confirmation_type': output.get('confirmation_type')})}\n\n"
-                            return  # 停止流
-                        else:
-                            yield f"event: node_done\ndata: {json.dumps({'node': node_name, 'state': output})}\n\n"
+                        yield f"event: node_done\ndata: {json.dumps({'node': node_name, 'state': output})}\n\n"
 
                     # 大纲生成节点完成后，将结果持久化到 outlines 表
                     if node_name == "outline_generation_node" and isinstance(output, dict):
@@ -299,8 +294,14 @@ async def run_workflow(
                         outline.chapter_count_suggested = output.get("chapter_count")
                         db.commit()
 
-                    # 关系生成节点完成后，发送 done 并停止（规划阶段完成，后续步骤由用户手动触发）
+                    # 关系生成节点完成后，自动确认大纲并停止（规划阶段完成）
                     if node_name == "generate_relations_node":
+                        # 自动确认大纲，允许用户后续生成章节大纲
+                        outline.confirmed = True
+                        outline.chapter_count_confirmed = True
+                        db.commit()
+                        import logging
+                        logging.getLogger(__name__).info(f"workflow: auto-confirmed outline for project {project_id}")
                         yield f"event: done\ndata: {json.dumps({'message': 'Generation completed'})}\n\n"
                         return
 
@@ -394,12 +395,15 @@ async def confirm_workflow(
         record.checkpoint = checkpoint_data
 
     # 同步更新大纲和项目
+    import logging
+    logger = logging.getLogger(__name__)
     if confirmation_type == "outline":
         outline = db.query(Outline).filter(Outline.project_id == project_id).first()
         if outline:
             outline.title = checkpoint_state.get("outline_title", outline.title)
             outline.summary = checkpoint_state.get("outline_summary", outline.summary)
             outline.confirmed = True
+            logger.info(f"confirm_workflow: setting outline.confirmed=True for project {project_id}")
 
     # 提交所有数据库更改
     db.commit()
@@ -424,11 +428,7 @@ async def confirm_workflow(
                 elif event_type == "on_chain_end":
                     output = event_data.get("output", {})
                     if isinstance(output, dict):
-                        if output.get("waiting_for_confirmation"):
-                            yield f"event: waiting\ndata: {json.dumps({'node': event_name, 'confirmation_type': output.get('confirmation_type')})}\n\n"
-                            return
-                        else:
-                            yield f"event: node_done\ndata: {json.dumps({'node': event_name, 'state': output})}\n\n"
+                        yield f"event: node_done\ndata: {json.dumps({'node': event_name, 'state': output})}\n\n"
 
                 elif event_type == "on_chat_model_stream":
                     chunk = event_data.get("chunk")

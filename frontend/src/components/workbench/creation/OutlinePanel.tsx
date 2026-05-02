@@ -1,6 +1,6 @@
 // frontend/src/components/workbench/creation/OutlinePanel.tsx
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { FileText, Sparkles, Save, Plus, X, Check, ChevronDown, ChevronUp, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -26,9 +26,6 @@ export function OutlinePanel({ projectId }: OutlinePanelProps)
   const [chapterCount, setChapterCount] = useState(10)
   // 操作状态
   const [saving, setSaving] = useState(false)
-  const [generating, setGenerating] = useState(false)
-  // SSE 流式请求控制器
-  const abortControllerRef = useRef<AbortController | null>(null)
   // AI 分析面板状态
   const [aiPanelCollapsed, setAiPanelCollapsed] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
@@ -60,19 +57,6 @@ export function OutlinePanel({ projectId }: OutlinePanelProps)
     }
     fetchOutline()
   }, [projectId])
-
-  // 组件卸载时取消进行中的 SSE 请求
-  useEffect(() =>
-  {
-    return () =>
-    {
-      if (abortControllerRef.current)
-      {
-        abortControllerRef.current.abort()
-        abortControllerRef.current = null
-      }
-    }
-  }, [])
 
   const addPlotPoint = () =>
   {
@@ -119,53 +103,6 @@ export function OutlinePanel({ projectId }: OutlinePanelProps)
       setSaving(false)
     }
   }, [outline, title, summary, plotPoints, chapterCount, projectId])
-
-  // AI 生成大纲（SSE 流式）
-  const handleGenerate = async () =>
-  {
-    setGenerating(true)
-    // 创建 AbortController 用于取消请求
-    const controller = new AbortController()
-    abortControllerRef.current = controller
-    try
-    {
-      await outlineApi.createStream(
-        projectId,
-        {
-          onChunk: () => {},
-          onDone: (result) =>
-          {
-            // 更新本地状态
-            if (result.outline.title) setTitle(result.outline.title)
-            if (result.outline.summary) setSummary(result.outline.summary)
-            if (result.outline.plot_points)
-            {
-              setPlotPoints(result.outline.plot_points.map(p =>
-                typeof p === 'string' ? p : p.event
-              ))
-            }
-            if (result.outline.chapter_count_suggested) setChapterCount(result.outline.chapter_count_suggested)
-            setGenerating(false)
-            abortControllerRef.current = null
-            toast.success('AI 生成完成')
-          },
-          onError: (error) =>
-          {
-            setGenerating(false)
-            abortControllerRef.current = null
-            toast.error(`生成失败: ${error}`)
-          }
-        },
-        { signal: controller.signal }
-      )
-    }
-    catch (err)
-    {
-      setGenerating(false)
-      abortControllerRef.current = null
-      toast.error('生成失败')
-    }
-  }
 
   // 确认大纲
   const handleConfirm = async () =>
@@ -255,10 +192,6 @@ export function OutlinePanel({ projectId }: OutlinePanelProps)
               )}
             </div>
             <div className="flex gap-2 items-center">
-              <Button variant="outline" size="sm" onClick={handleGenerate} disabled={generating}>
-                <Sparkles className="h-4 w-4 mr-1.5" />
-                {generating ? '生成中...' : 'AI 生成'}
-              </Button>
               <Button size="sm" onClick={handleSave} disabled={saving} title="Ctrl+S">
                 <Save className="h-4 w-4 mr-1.5" />
                 {saving ? '保存中...' : '保存'}
