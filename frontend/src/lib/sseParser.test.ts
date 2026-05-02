@@ -144,4 +144,48 @@ describe('SSE Parser', () =>
       expect(events).toHaveLength(0) // 没有 data 的事件被忽略
     })
   })
+
+  describe('error event data format', () =>
+  {
+    it('解析 error 事件的 JSON 对象 data', () =>
+    {
+      const buffer = ''
+
+      // 后端发送的格式：event: error\ndata: {"error": "大纲生成失败"}\n\n
+      const data = 'event: error\ndata: {"error": "大纲生成失败，请重试"}\n\n'
+      const [remaining, events] = processSSEBuffer(buffer, data)
+
+      expect(remaining).toBe('')
+      expect(events).toHaveLength(1)
+      expect(events[0].type).toBe('error')
+      const parsed = parseSSEData(events[0].data)
+      expect(parsed).toEqual({ error: '大纲生成失败，请重试' })
+    })
+
+    it('解析 error 事件的纯字符串 data', () =>
+    {
+      const buffer = ''
+      const data = 'event: error\ndata: some plain error message\n\n'
+      const [remaining, events] = processSSEBuffer(buffer, data)
+
+      expect(remaining).toBe('')
+      expect(events).toHaveLength(1)
+      expect(events[0].type).toBe('error')
+      const parsed = parseSSEData(events[0].data)
+      expect(parsed).toBe('some plain error message')
+    })
+
+    it('解析 error 事件的网络错误数据', () =>
+    {
+      const buffer = ''
+      const data = 'event: error\ndata: {"error": "connection refused"}\n\n'
+      const [remaining, events] = processSSEBuffer(buffer, data)
+
+      expect(remaining).toBe('')
+      expect(events).toHaveLength(1)
+      expect(events[0].type).toBe('error')
+      const parsed = parseSSEData(events[0].data)
+      expect(parsed).toEqual({ error: 'connection refused' })
+    })
+  })
 })
