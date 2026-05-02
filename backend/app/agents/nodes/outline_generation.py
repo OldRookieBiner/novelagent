@@ -532,14 +532,10 @@ async def outline_generation_node(state: NovelState) -> NovelState:
     async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
         response += chunk
 
-    import logging
-    logger = logging.getLogger(__name__)
-    # 保存 AI 原始输出到日志
-    logger.info(f"AI response (first 1500 chars): {response[:1500]}")
-    logger.info(f"AI response total length: {len(response)}")
-
     outline = parse_outline(response)
 
+    import logging
+    logger = logging.getLogger(__name__)
     logger.info(
         f"outline parsed: title='{outline.get('title', '')}', "
         f"char={len(outline.get('characters', []))}, "
