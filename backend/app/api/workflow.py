@@ -300,7 +300,7 @@ async def run_workflow(
                         new_characters = output.get("outline_characters", [])
                         new_plot_points = output.get("outline_plot_points", [])
 
-                        if not new_title and not new_summary and not new_characters:
+                        if not new_title and not new_summary and not new_characters and not new_plot_points:
                             logger.warning(f"workflow: outline_generation_node returned empty data for project {project_id}")
                             yield f"event: error\ndata: {json.dumps({'error': '大纲生成失败，AI 返回数据为空，请重试'})}\n\n"
                             return
