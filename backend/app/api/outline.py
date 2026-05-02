@@ -134,9 +134,13 @@ async def generate_outline(
         accumulated_content = ""
 
         try:
+            event_count = 0
+            data_event_count = 0
             async for sse_event in stream_node_events(graph, graph_state, config):
+                event_count += 1
                 # 解析 chunk 内容用于 accumulated_content
                 if sse_event.startswith("data: "):
+                    data_event_count += 1
                     try:
                         chunk_content = json.loads(sse_event[6:].strip())
                         if isinstance(chunk_content, str):
@@ -145,14 +149,24 @@ async def generate_outline(
                         pass
                 yield sse_event
 
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"outline stream: total events={event_count}, data events={data_event_count}, content_len={len(accumulated_content)}")
+
             # Parse the final outline
             parsed = parse_outline(accumulated_content)
-            outline.title = parsed["title"]
-            outline.summary = parsed["summary"]
-            outline.plot_points = parsed["plot_points"]
-            outline.characters = parsed.get("characters", [])
-            outline.world_setting = parsed.get("world_setting", {})
-            outline.emotional_curve = parsed.get("emotional_curve")
+            
+            # 只有当累积内容不为空时才更新，否则保留原有数据
+            if len(accumulated_content) > 0 and parsed.get("title"):
+                outline.title = parsed["title"]
+                outline.summary = parsed["summary"]
+                outline.plot_points = parsed["plot_points"]
+                outline.characters = parsed.get("characters", [])
+                outline.world_setting = parsed.get("world_setting", {})
+                outline.emotional_curve = parsed.get("emotional_curve")
+                logger.info(f"outline updated: title='{parsed.get('title', '')}'")
+            else:
+                logger.info(f"accumulated_content is empty, skipping update to preserve existing data")
 
             # 更新工作流状态
             workflow_state = get_or_create_workflow_state(db, project_id)

@@ -33,7 +33,7 @@ async def stream_node_events(
         config: LangGraph 配置，如 {"configurable": {"thread_id": "..."}}
 
     Yields:
-        SSE 格式字符串，每个 event 以 \\n\\n 结尾
+        SSE 格式字符串，每个 event 以 \n\n 结尾
     """
     try:
         yield f"event: node_start\ndata: {json.dumps({'message': 'Starting generation'})}\n\n"
