@@ -41,9 +41,7 @@ def extract_characters_from_outline(state: NovelState) -> list[dict]:
     db = SessionLocal()
     try:
         # 删除已有角色（重新生成场景，避免重复）
-        db.query(Character).filter(
-            Character.project_id == project_id
-        ).delete()
+        db.query(Character).filter(Character.project_id == project_id).delete()
 
         created = []
         for oc in outline_characters:
@@ -57,14 +55,16 @@ def extract_characters_from_outline(state: NovelState) -> list[dict]:
             )
             db.add(char)
             db.flush()  # 获取 id
-            created.append({
-                "id": char.id,
-                "name": char.name,
-                "role": char.role,
-                "personality": char.personality,
-                "core_motivation": char.core_motivation,
-                "growth_arc": char.growth_arc,
-            })
+            created.append(
+                {
+                    "id": char.id,
+                    "name": char.name,
+                    "role": char.role,
+                    "personality": char.personality,
+                    "core_motivation": char.core_motivation,
+                    "growth_arc": char.growth_arc,
+                }
+            )
 
         db.commit()
         return created

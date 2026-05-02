@@ -12,7 +12,18 @@ from app.models.system_config import SystemConfig
 from app.models.character import Character, Relation, EvolutionPlan, EvolutionRecord
 
 __all__ = [
-    "User", "UserSettings", "Project", "Outline", "ChapterOutline", "Chapter",
-    "ModelConfig", "WorkflowCheckpoint", "WorkflowState", "SystemConfig",
-    "Character", "Relation", "EvolutionPlan", "EvolutionRecord",
+    "User",
+    "UserSettings",
+    "Project",
+    "Outline",
+    "ChapterOutline",
+    "Chapter",
+    "ModelConfig",
+    "WorkflowCheckpoint",
+    "WorkflowState",
+    "SystemConfig",
+    "Character",
+    "Relation",
+    "EvolutionPlan",
+    "EvolutionRecord",
 ]

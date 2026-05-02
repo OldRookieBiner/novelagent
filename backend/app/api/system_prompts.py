@@ -41,24 +41,24 @@ async def get_system_prompts(db: Session = Depends(get_db)):
         content = config.value if config else DEFAULT_PROMPTS.get(agent_type, "")
         updated_at = config.updated_at if config else None
 
-        prompts.append(SystemPromptResponse(
-            agent_type=agent_type,
-            agent_name=meta["name"],
-            description=meta["description"],
-            prompt_content=content,
-            variables=meta["variables"],
-            variable_descriptions=meta["variable_descriptions"],
-            updated_at=updated_at
-        ))
+        prompts.append(
+            SystemPromptResponse(
+                agent_type=agent_type,
+                agent_name=meta["name"],
+                description=meta["description"],
+                prompt_content=content,
+                variables=meta["variables"],
+                variable_descriptions=meta["variable_descriptions"],
+                updated_at=updated_at,
+            )
+        )
 
     return SystemPromptListResponse(prompts=prompts)
 
 
 @router.put("/{agent_type}", response_model=SystemPromptResponse)
 async def update_system_prompt(
-    agent_type: str,
-    request: SystemPromptUpdate,
-    db: Session = Depends(get_db)
+    agent_type: str, request: SystemPromptUpdate, db: Session = Depends(get_db)
 ):
     """更新系统提示词"""
     if agent_type not in AGENT_TYPES:
@@ -84,7 +84,7 @@ async def update_system_prompt(
         prompt_content=config.value,
         variables=meta["variables"],
         variable_descriptions=meta["variable_descriptions"],
-        updated_at=config.updated_at
+        updated_at=config.updated_at,
     )
 
 
@@ -116,5 +116,5 @@ async def reset_system_prompt(agent_type: str, db: Session = Depends(get_db)):
         prompt_content=config.value,
         variables=meta["variables"],
         variable_descriptions=meta["variable_descriptions"],
-        updated_at=config.updated_at
+        updated_at=config.updated_at,
     )

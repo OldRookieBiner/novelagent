@@ -1,5 +1,4 @@
 # backend/tests/test_chapter_content_clean.py
-import pytest
 from app.agents.nodes.chapter_generation import clean_chapter_content
 
 

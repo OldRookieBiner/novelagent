@@ -8,14 +8,13 @@ from app.models.settings import UserSettings
 
 def get_user_settings_or_raise(user: User, db: Session) -> UserSettings:
     """获取用户设置，如果不存在则抛出 400 错误"""
-    user_settings = db.query(UserSettings).filter(
-        UserSettings.user_id == user.id
-    ).first()
+    user_settings = (
+        db.query(UserSettings).filter(UserSettings.user_id == user.id).first()
+    )
 
     if not user_settings:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User settings not found"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="User settings not found"
         )
 
     return user_settings

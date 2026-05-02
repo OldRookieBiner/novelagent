@@ -20,9 +20,18 @@ class User(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    projects = relationship("Project", back_populates="user", cascade="all, delete-orphan")
-    settings = relationship("UserSettings", back_populates="user", uselist=False, cascade="all, delete-orphan")
-    model_configs = relationship("ModelConfig", back_populates="user", cascade="all, delete-orphan")
+    projects = relationship(
+        "Project", back_populates="user", cascade="all, delete-orphan"
+    )
+    settings = relationship(
+        "UserSettings",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    model_configs = relationship(
+        "ModelConfig", back_populates="user", cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
         return f"<User {self.username}>"

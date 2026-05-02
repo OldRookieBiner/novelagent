@@ -5,7 +5,7 @@ from typing import Dict, Any
 from app.agents.state import NovelState, STAGE_WRITING
 from app.services.prompt_loader import get_system_prompt
 from app.database import SessionLocal
-from app.services.llm import LLMService, get_llm_service_from_config, get_llm_service
+from app.services.llm import LLMService
 from app.utils.llm import get_llm_from_state_async
 from app.agents.nodes.utils import _format_chapter_outline_str, format_characters_info
 
@@ -15,7 +15,7 @@ async def rewrite_chapter_node(
     chapter_outline: dict,
     original_content: str,
     review_feedback: str,
-    llm: LLMService
+    llm: LLMService,
 ) -> str:
     """根据审核反馈重写章节
 
@@ -44,7 +44,8 @@ async def rewrite_chapter_node(
         review_feedback=review_feedback,
         genre=info.get("novelType", "未指定"),
         main_characters=chars_str,
-        world_setting=info.get("customWorldSetting") or info.get("worldSetting", "未指定")
+        world_setting=info.get("customWorldSetting")
+        or info.get("worldSetting", "未指定"),
     )
 
     response = await llm.chat([{"role": "user", "content": prompt}])
@@ -58,7 +59,7 @@ async def rewrite_with_retry(
     chapter_outline: dict,
     original_content: str,
     llm: LLMService,
-    max_retries: int = 3
+    max_retries: int = 3,
 ) -> Dict[str, Any]:
     """带重试的重写流程
 
@@ -80,10 +81,7 @@ async def rewrite_with_retry(
     for attempt in range(max_retries + 1):
         # 审核当前内容
         review_result = await review_chapter_node(
-            state,
-            current_content,
-            chapter_outline,
-            llm
+            state, current_content, chapter_outline, llm
         )
 
         if check_review_passed(review_result):
@@ -91,18 +89,14 @@ async def rewrite_with_retry(
                 "content": current_content,
                 "review_result": review_result,
                 "rewrite_count": rewrite_count,
-                "passed": True
+                "passed": True,
             }
 
         # 如果还有重试机会，进行重写
         if attempt < max_retries:
             feedback = review_result.get("raw_response", "")
             current_content = await rewrite_chapter_node(
-                state,
-                chapter_outline,
-                current_content,
-                feedback,
-                llm
+                state, chapter_outline, current_content, feedback, llm
             )
             rewrite_count += 1
 
@@ -111,11 +105,12 @@ async def rewrite_with_retry(
         "content": current_content,
         "review_result": review_result,
         "rewrite_count": rewrite_count,
-        "passed": False
+        "passed": False,
     }
 
 
 # ==================== LangGraph 兼容节点 ====================
+
 
 async def rewrite_node(state: NovelState) -> NovelState:
     """
@@ -137,7 +132,6 @@ async def rewrite_node(state: NovelState) -> NovelState:
     written_chapters = state.get("written_chapters", [])
     chapter_outlines = state.get("chapter_outlines", [])
     rewrite_count = state.get("rewrite_count", 0)
-    max_rewrite_count = state.get("max_rewrite_count", 3)
 
     # 获取审核反馈
     review_feedback = review_result.get("raw_response", "")
@@ -147,7 +141,9 @@ async def rewrite_node(state: NovelState) -> NovelState:
     # 找到当前章节的内容
     chapter_content = None
     for chapter in written_chapters:
-        if chapter.get("chapter_number") == current_chapter - 1:  # current_chapter 已递增
+        if (
+            chapter.get("chapter_number") == current_chapter - 1
+        ):  # current_chapter 已递增
             chapter_content = chapter.get("content", "")
             break
 
@@ -159,39 +155,42 @@ async def rewrite_node(state: NovelState) -> NovelState:
                 break
 
     if not chapter_content:
-        raise ValueError(f"Chapter content not found for rewrite")
+        raise ValueError("Chapter content not found for rewrite")
 
     # 找到当前章节的大纲
     chapter_outline = None
     for outline in chapter_outlines:
-        if outline.get("chapter_number") == current_chapter - 1 or outline.get("chapter_number") == current_chapter:
+        if (
+            outline.get("chapter_number") == current_chapter - 1
+            or outline.get("chapter_number") == current_chapter
+        ):
             chapter_outline = outline
             break
 
     if not chapter_outline:
-        raise ValueError(f"Chapter outline not found for rewrite")
+        raise ValueError("Chapter outline not found for rewrite")
 
     # 调用现有的重写函数
     rewritten_content = await rewrite_chapter_node(
-        state,
-        chapter_outline,
-        chapter_content,
-        review_feedback,
-        llm
+        state, chapter_outline, chapter_content, review_feedback, llm
     )
 
     # 创建重写后的章节
     rewritten_chapter = {
-        "chapter_number": current_chapter - 1 if current_chapter > 1 else current_chapter,
+        "chapter_number": current_chapter - 1
+        if current_chapter > 1
+        else current_chapter,
         "title": chapter_outline.get("title", ""),
         "content": rewritten_content,
-        "word_count": len(rewritten_content)
+        "word_count": len(rewritten_content),
     }
 
     # 更新状态
     new_state: NovelState = {
         **state,
-        "written_chapters": [rewritten_chapter],  # 使用 Annotated[List, add] 会自动追加/替换
+        "written_chapters": [
+            rewritten_chapter
+        ],  # 使用 Annotated[List, add] 会自动追加/替换
         "rewrite_count": rewrite_count + 1,
         "stage": STAGE_WRITING,
     }

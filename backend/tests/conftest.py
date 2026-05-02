@@ -46,6 +46,7 @@ def db() -> Generator:
 @pytest.fixture(scope="function")
 def client(db) -> TestClient:
     """Create a test client with database override"""
+
     def override_get_db():
         try:
             yield db
@@ -61,10 +62,7 @@ def client(db) -> TestClient:
 @pytest.fixture(scope="function")
 def test_user(db) -> User:
     """Create a test user"""
-    user = User(
-        username="testuser",
-        password_hash=hash_password("testpassword123")
-    )
+    user = User(username="testuser", password_hash=hash_password("testpassword123"))
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -87,5 +85,6 @@ def test_user_token(test_user) -> str:
 def auth_headers(test_user_token) -> dict:
     """Get authorization headers for test user"""
     import base64
+
     credentials = base64.b64encode(f"{test_user_token}:".encode()).decode()
     return {"Authorization": f"Basic {credentials}"}

@@ -6,6 +6,7 @@ from typing import TypedDict, Optional
 
 class ProviderConfig(TypedDict):
     """提供商配置"""
+
     name: str  # 显示名称
     base_url: str  # API 基础地址
     provider_type: str  # "single" | "coding_plan"
@@ -21,7 +22,7 @@ PRESET_PROVIDERS: dict[str, ProviderConfig] = {
         "provider_type": "single",
         "default_model": "deepseek-chat",
         "models_api": None,
-        "auth_type": "bearer"
+        "auth_type": "bearer",
     },
     "baidu": {
         "name": "百度千帆",
@@ -29,7 +30,7 @@ PRESET_PROVIDERS: dict[str, ProviderConfig] = {
         "provider_type": "coding_plan",
         "default_model": None,
         "models_api": "/models",
-        "auth_type": "access_token"
+        "auth_type": "access_token",
     },
     "volcengine": {
         "name": "火山方舟",
@@ -37,7 +38,7 @@ PRESET_PROVIDERS: dict[str, ProviderConfig] = {
         "provider_type": "coding_plan",
         "default_model": None,
         "models_api": "/models",
-        "auth_type": "bearer"
+        "auth_type": "bearer",
     },
     "unicom": {
         "name": "联通云",
@@ -45,7 +46,7 @@ PRESET_PROVIDERS: dict[str, ProviderConfig] = {
         "provider_type": "coding_plan",
         "default_model": None,
         "models_api": "/v1/models",
-        "auth_type": "bearer"
+        "auth_type": "bearer",
     },
     "custom": {
         "name": "自定义",
@@ -53,8 +54,8 @@ PRESET_PROVIDERS: dict[str, ProviderConfig] = {
         "provider_type": "single",
         "default_model": "",
         "models_api": "/v1/models",
-        "auth_type": "bearer"
-    }
+        "auth_type": "bearer",
+    },
 }
 
 
@@ -77,6 +78,5 @@ def get_all_providers() -> list[dict]:
         提供商列表，包含 id 和 name
     """
     return [
-        {"id": key, "name": config["name"]}
-        for key, config in PRESET_PROVIDERS.items()
+        {"id": key, "name": config["name"]} for key, config in PRESET_PROVIDERS.items()
     ]

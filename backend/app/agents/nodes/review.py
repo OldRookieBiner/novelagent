@@ -13,12 +13,7 @@ from app.agents.nodes.utils import _format_chapter_outline_str, format_character
 
 def parse_review_result(response: str) -> Dict[str, Any]:
     """解析审核结果"""
-    result = {
-        "passed": False,
-        "scores": {},
-        "issues": [],
-        "suggestions": ""
-    }
+    result = {"passed": False, "scores": {}, "issues": [], "suggestions": ""}
 
     # 解析是否通过
     result["passed"] = "【审核结果】通过" in response
@@ -29,7 +24,7 @@ def parse_review_result(response: str) -> Dict[str, Any]:
         "character_consistency": r"人物一致性[：:]\s*(\d+)/10",
         "writing_quality": r"文笔质量[：:]\s*(\d+)/10",
         "emotional_tension": r"情感张力[：:]\s*(\d+)/10",
-        "ai_flavor": r"AI味程度[：:]\s*(\d+)/10"
+        "ai_flavor": r"AI味程度[：:]\s*(\d+)/10",
     }
 
     for key, pattern in score_patterns.items():
@@ -41,7 +36,13 @@ def parse_review_result(response: str) -> Dict[str, Any]:
     issues_match = re.search(r"【问题列表】(.+?)【修改建议】", response, re.DOTALL)
     if issues_match:
         issues_text = issues_match.group(1)
-        issues = [i.strip() for i in re.findall(r"\d+\.\s*(.+?)(?=\n\d+\.|无|$)", issues_text, re.DOTALL) if i.strip()]
+        issues = [
+            i.strip()
+            for i in re.findall(
+                r"\d+\.\s*(.+?)(?=\n\d+\.|无|$)", issues_text, re.DOTALL
+            )
+            if i.strip()
+        ]
         if issues_text.strip() != "无":
             result["issues"] = issues
 
@@ -60,7 +61,7 @@ async def review_chapter_node(
     chapter_content: str,
     chapter_outline: dict,
     llm: LLMService,
-    strictness: str = "standard"
+    strictness: str = "standard",
 ) -> Dict[str, Any]:
     """审核章节内容
 
@@ -89,7 +90,7 @@ async def review_chapter_node(
         chapter_content=chapter_content,
         genre=info.get("novelType", "未指定"),
         main_characters=chars_str,
-        style_preference=info.get("stylePreference", "未指定")
+        style_preference=info.get("stylePreference", "未指定"),
     )
 
     response = await llm.chat([{"role": "user", "content": prompt}])
@@ -110,7 +111,12 @@ def check_review_passed(review_result: Dict[str, Any]) -> bool:
     """
     scores = review_result.get("scores", {})
 
-    for key in ["plot_consistency", "character_consistency", "writing_quality", "emotional_tension"]:
+    for key in [
+        "plot_consistency",
+        "character_consistency",
+        "writing_quality",
+        "emotional_tension",
+    ]:
         if scores.get(key, 0) < 6:
             return False
 
@@ -121,6 +127,7 @@ def check_review_passed(review_result: Dict[str, Any]) -> bool:
 
 
 # ==================== LangGraph 兼容节点 ====================
+
 
 async def review_node(state: NovelState) -> NovelState:
     """
@@ -144,7 +151,9 @@ async def review_node(state: NovelState) -> NovelState:
     # 找到当前章节的内容
     chapter_content = None
     for chapter in written_chapters:
-        if chapter.get("chapter_number") == current_chapter - 1:  # current_chapter 已递增
+        if (
+            chapter.get("chapter_number") == current_chapter - 1
+        ):  # current_chapter 已递增
             chapter_content = chapter.get("content", "")
             break
 
@@ -156,24 +165,24 @@ async def review_node(state: NovelState) -> NovelState:
                 break
 
     if not chapter_content:
-        raise ValueError(f"Chapter content not found for review")
+        raise ValueError("Chapter content not found for review")
 
     # 找到当前章节的大纲
     chapter_outline = None
     for outline in chapter_outlines:
-        if outline.get("chapter_number") == current_chapter - 1 or outline.get("chapter_number") == current_chapter:
+        if (
+            outline.get("chapter_number") == current_chapter - 1
+            or outline.get("chapter_number") == current_chapter
+        ):
             chapter_outline = outline
             break
 
     if not chapter_outline:
-        raise ValueError(f"Chapter outline not found for review")
+        raise ValueError("Chapter outline not found for review")
 
     # 调用现有的审核函数
     review_result = await review_chapter_node(
-        state,
-        chapter_content,
-        chapter_outline,
-        llm
+        state, chapter_content, chapter_outline, llm
     )
 
     # 更新状态

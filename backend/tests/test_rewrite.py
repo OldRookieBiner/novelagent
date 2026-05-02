@@ -16,7 +16,7 @@ class TestRewriteChapterNode:
 
         state = {
             "collected_info": {"novelType": "玄幻"},
-            "outline_characters": [{"name": "林风", "personality": "坚韧"}]
+            "outline_characters": [{"name": "林风", "personality": "坚韧"}],
         }
         chapter_outline = {
             "title": "第一章",
@@ -24,17 +24,13 @@ class TestRewriteChapterNode:
             "characters": "林风",
             "plot": "少年觉醒",
             "conflict": "内外交困",
-            "hook": "神秘老人出现"
+            "hook": "神秘老人出现",
         }
         original_content = "原始章节内容..."
         review_feedback = "情节过于平淡，需要增加冲突"
 
         result = await rewrite_chapter_node(
-            state,
-            chapter_outline,
-            original_content,
-            review_feedback,
-            mock_llm
+            state, chapter_outline, original_content, review_feedback, mock_llm
         )
 
         assert result == "这是重写后的章节内容..."
@@ -50,19 +46,15 @@ class TestRewriteChapterNode:
             "collected_info": {},
             "outline_characters": [
                 {"name": "张三", "personality": "豪爽"},
-                {"name": "李四", "personality": "阴险"}
-            ]
+                {"name": "李四", "personality": "阴险"},
+            ],
         }
         chapter_outline = {"title": "测试章节"}
         original_content = "原始内容"
         review_feedback = "反馈"
 
         await rewrite_chapter_node(
-            state,
-            chapter_outline,
-            original_content,
-            review_feedback,
-            mock_llm
+            state, chapter_outline, original_content, review_feedback, mock_llm
         )
 
         # 验证调用参数包含人物信息
@@ -80,20 +72,16 @@ class TestRewriteChapterNode:
         state = {
             "collected_info": {
                 "protagonist": "主角名称",
-                "customProtagonist": "自定义主角描述"
+                "customProtagonist": "自定义主角描述",
             },
-            "outline_characters": []
+            "outline_characters": [],
         }
         chapter_outline = {"title": "测试章节"}
         original_content = "原始内容"
         review_feedback = "反馈"
 
         await rewrite_chapter_node(
-            state,
-            chapter_outline,
-            original_content,
-            review_feedback,
-            mock_llm
+            state, chapter_outline, original_content, review_feedback, mock_llm
         )
 
         call_args = mock_llm.chat.call_args
@@ -108,7 +96,8 @@ class TestRewriteWithRetry:
     async def test_pass_on_first_review(self):
         """Should pass without rewrite if first review passes"""
         mock_llm = Mock()
-        mock_llm.chat = AsyncMock(return_value="""
+        mock_llm.chat = AsyncMock(
+            return_value="""
 【审核结果】通过
 情节一致性：8/10
 人物一致性：8/10
@@ -118,18 +107,15 @@ AI味程度：2/10
 【问题列表】无
 【修改建议】无
 ---
-""")
+"""
+        )
 
         state = {}
         chapter_outline = {"title": "测试章节"}
         original_content = "原始内容"
 
         result = await rewrite_with_retry(
-            state,
-            chapter_outline,
-            original_content,
-            mock_llm,
-            max_retries=3
+            state, chapter_outline, original_content, mock_llm, max_retries=3
         )
 
         assert result["passed"] is True
@@ -179,11 +165,7 @@ AI味程度：2/10
         original_content = "原始内容"
 
         result = await rewrite_with_retry(
-            state,
-            chapter_outline,
-            original_content,
-            mock_llm,
-            max_retries=3
+            state, chapter_outline, original_content, mock_llm, max_retries=3
         )
 
         assert result["passed"] is True
@@ -194,7 +176,8 @@ AI味程度：2/10
     async def test_max_retries_exceeded(self):
         """Should fail after max retries"""
         mock_llm = Mock()
-        mock_llm.chat = AsyncMock(return_value="""
+        mock_llm.chat = AsyncMock(
+            return_value="""
 【审核结果】不通过
 情节一致性：5/10
 人物一致性：8/10
@@ -204,18 +187,15 @@ AI味程度：2/10
 【问题列表】情节问题
 【修改建议】增加冲突
 ---
-""")
+"""
+        )
 
         state = {}
         chapter_outline = {"title": "测试章节"}
         original_content = "原始内容"
 
         result = await rewrite_with_retry(
-            state,
-            chapter_outline,
-            original_content,
-            mock_llm,
-            max_retries=2
+            state, chapter_outline, original_content, mock_llm, max_retries=2
         )
 
         assert result["passed"] is False
@@ -252,21 +232,23 @@ class TestRewriteNodeIntegration:
             "outline_characters": [],
             "review_result": {
                 "raw_response": "需要修改情节",
-                "suggestions": "增加冲突"
+                "suggestions": "增加冲突",
             },
             "current_chapter": 2,
             "written_chapters": [
                 {"chapter_number": 1, "content": "第一章内容"},
-                {"chapter_number": 2, "content": "原始第二章内容"}
+                {"chapter_number": 2, "content": "原始第二章内容"},
             ],
             "chapter_outlines": [
                 {"chapter_number": 1, "title": "第一章"},
-                {"chapter_number": 2, "title": "第二章", "scene": "测试"}
+                {"chapter_number": 2, "title": "第二章", "scene": "测试"},
             ],
-            "rewrite_count": 0
+            "rewrite_count": 0,
         }
 
-        with patch('app.agents.nodes.rewrite.get_llm_from_state_async', return_value=mock_llm):
+        with patch(
+            "app.agents.nodes.rewrite.get_llm_from_state_async", return_value=mock_llm
+        ):
             result = await rewrite_node(state)
 
             assert "written_chapters" in result

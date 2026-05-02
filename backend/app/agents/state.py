@@ -1,10 +1,11 @@
 """LangGraph agent state definitions"""
 
 from typing import TypedDict, Optional, Annotated, Any
-from operator import add
 
 
-def replace_or_append_chapters(existing: list[dict], new_items: list[dict]) -> list[dict]:
+def replace_or_append_chapters(
+    existing: list[dict], new_items: list[dict]
+) -> list[dict]:
     """
     自定义 reducer：替换同章节号的章节或追加新章节
 
@@ -29,24 +30,25 @@ def replace_or_append_chapters(existing: list[dict], new_items: list[dict]) -> l
 
 class CollectedInfo(TypedDict, total=False):
     """用户收集的信息（v0.5.0 灵感数据，v0.7.x 扩展）"""
+
     # 必填项
     novelType: str
     targetWords: int
     coreTheme: str
     targetReader: str
-    era: str                    # v0.7.x: 年代设定
+    era: str  # v0.7.x: 年代设定
     wordsPerChapter: str
     customWordsPerChapter: int
     # 主角设定（根据 targetReader 选择）
-    maleLead: str               # v0.7.x: 男主人设
+    maleLead: str  # v0.7.x: 男主人设
     customMaleLead: str
-    femaleLead: str             # v0.7.x: 女主人设
+    femaleLead: str  # v0.7.x: 女主人设
     customFemaleLead: str
     # 选填项
     worldSetting: str
     customWorldSetting: str
-    genre: str                  # v0.7.x: 流派
-    customGenre: str            # v0.7.x: 自定义流派
+    genre: str  # v0.7.x: 流派
+    customGenre: str  # v0.7.x: 自定义流派
     narrative: str
     goldFinger: str
     customGoldFinger: str
@@ -70,19 +72,23 @@ class NovelState(TypedDict):
     outline_title: Optional[str]
     outline_summary: Optional[str]
     outline_plot_points: list[dict]  # [{order, event, conflict, hook}]
-    outline_characters: list[dict]   # [{name, role, personality, motivation, arc}]
+    outline_characters: list[dict]  # [{name, role, personality, motivation, arc}]
     outline_world_setting: Optional[dict]  # {era, core_rules, power_system}
     outline_emotional_curve: Optional[str]
     outline_confirmed: bool
 
     # ========== 人物设定（v0.8.0）==========
-    characters: list[dict]           # [{name, role, age, appearance, personality, background, skills, goals, conflicts}]
-    relations: list[dict]            # [{character1, character2, relationship_type, description, development}]
-    evolution_plans: list[dict]      # [{chapter_number, character_name, changes}]
-    evolution_records: list[dict]    # [{chapter_number, character_name, actual_changes}]
+    characters: list[
+        dict
+    ]  # [{name, role, age, appearance, personality, background, skills, goals, conflicts}]
+    relations: list[
+        dict
+    ]  # [{character1, character2, relationship_type, description, development}]
+    evolution_plans: list[dict]  # [{chapter_number, character_name, changes}]
+    evolution_records: list[dict]  # [{chapter_number, character_name, actual_changes}]
 
     # ========== 小说规格 ==========
-    novel_length: str                # short | medium | long
+    novel_length: str  # short | medium | long
 
     # ========== 章节大纲 ==========
     chapter_count: int
@@ -91,7 +97,9 @@ class NovelState(TypedDict):
 
     # ========== 章节正文（累积）==========
     # Annotated[List, add] 表示新内容会追加到列表
-    written_chapters: Annotated[list[dict], replace_or_append_chapters]  # [{chapter_number, content, word_count}]
+    written_chapters: Annotated[
+        list[dict], replace_or_append_chapters
+    ]  # [{chapter_number, content, word_count}]
     current_chapter: int
 
     # ========== 审核/重写 ==========
@@ -102,7 +110,9 @@ class NovelState(TypedDict):
 
     # ========== 工作流控制 ==========
     waiting_for_confirmation: bool
-    confirmation_type: Optional[str]  # outline | characters | relations | chapter_outlines | review_failed
+    confirmation_type: Optional[
+        str
+    ]  # outline | characters | relations | chapter_outlines | review_failed
 
     # ========== LLM 服务 ==========
     llm_config_id: Optional[int]  # 使用的模型配置 ID
@@ -111,8 +121,8 @@ class NovelState(TypedDict):
 # ========== 阶段常量 ==========
 STAGE_INSPIRATION = "inspiration"
 STAGE_OUTLINE = "outline"
-STAGE_CHARACTERS = "characters"        # v0.8.0: 人物设定
-STAGE_RELATIONS = "relations"          # v0.8.0: 人物关系
+STAGE_CHARACTERS = "characters"  # v0.8.0: 人物设定
+STAGE_RELATIONS = "relations"  # v0.8.0: 人物关系
 STAGE_CHAPTER_OUTLINES = "chapter_outlines"
 STAGE_WRITING = "writing"
 STAGE_REVIEW = "review"

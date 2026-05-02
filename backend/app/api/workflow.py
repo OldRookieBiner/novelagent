@@ -288,11 +288,6 @@ async def run_workflow(
                         else:
                             yield f"event: node_done\ndata: {json.dumps({'node': node_name, 'state': output})}\n\n"
 
-                    # 关系生成节点完成后，发送 done 并停止（不再继续到章节大纲）
-                    if node_name == "generate_relations_node":
-                        yield f"event: done\ndata: {json.dumps({'message': 'Generation completed'})}\n\n"
-                        return
-
                 elif event_type == "on_chat_model_stream":
                     # LLM 流式输出
                     chunk = event_data.get("chunk")
@@ -393,11 +388,52 @@ async def confirm_workflow(
     # 提交所有数据库更改
     db.commit()
 
-    return {
-        "message": "Confirmation received",
-        "confirmation_type": confirmation_type,
-        "next_stage": checkpoint_state.get("stage")
-    }
+    # 通过 LangGraph 恢复执行
+    graph = create_novel_graph_with_checkpointer(project_id, "default", db)
+    config = {"configurable": {"thread_id": "default"}}
+
+    async def stream_generator():
+        """LangGraph 工作流恢复执行 SSE 流生成器"""
+        try:
+            yield f"event: node_start\ndata: {json.dumps({'node': 'workflow_resume', 'message': 'Resuming workflow'})}\n\n"
+
+            async for event in graph.astream_events(None, config, version="v2"):
+                event_type = event.get("event")
+                event_name = event.get("name", "")
+                event_data = event.get("data", {})
+
+                if event_type == "on_chain_start":
+                    yield f"event: node_start\ndata: {json.dumps({'node': event_name})}\n\n"
+
+                elif event_type == "on_chain_end":
+                    output = event_data.get("output", {})
+                    if isinstance(output, dict):
+                        if output.get("waiting_for_confirmation"):
+                            yield f"event: waiting\ndata: {json.dumps({'node': event_name, 'confirmation_type': output.get('confirmation_type')})}\n\n"
+                            return
+                        else:
+                            yield f"event: node_done\ndata: {json.dumps({'node': event_name, 'state': output})}\n\n"
+
+                elif event_type == "on_chat_model_stream":
+                    chunk = event_data.get("chunk")
+                    if chunk:
+                        content = getattr(chunk, "content", str(chunk))
+                        yield f"event: chunk\ndata: {json.dumps({'content': content})}\n\n"
+
+            yield f"event: done\ndata: {json.dumps({'message': 'Workflow completed'})}\n\n"
+
+        except Exception as e:
+            yield format_sse_error(e)
+
+    return StreamingResponse(
+        stream_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/{project_id}/workflow/state", response_model=WorkflowStateResponse)

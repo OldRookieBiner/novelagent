@@ -10,7 +10,16 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
 from app.database import engine, Base
-from app.api import auth, projects, outline, chapters, settings as settings_api, model_configs, workflow, characters
+from app.api import (
+    auth,
+    projects,
+    outline,
+    chapters,
+    settings as settings_api,
+    model_configs,
+    workflow,
+    characters,
+)
 from app.api.system_prompts import router as system_prompts_router
 from app.utils.logger import setup_logging, get_logger
 from app.utils.exceptions import (
@@ -18,7 +27,7 @@ from app.utils.exceptions import (
     api_error_handler,
     http_exception_handler,
     validation_exception_handler,
-    general_exception_handler
+    general_exception_handler,
 )
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -47,7 +56,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         # Clean old requests
         self.requests[client_ip] = [
-            t for t in self.requests[client_ip]
+            t
+            for t in self.requests[client_ip]
             if current_time - t < self.window_seconds
         ]
 
@@ -56,7 +66,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             logger.warning(f"Rate limit exceeded for IP: {client_ip}")
             return JSONResponse(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                content={"detail": "Too many login attempts. Please try again later."}
+                content={"detail": "Too many login attempts. Please try again later."},
             )
 
         # Record request
@@ -76,6 +86,7 @@ async def lifespan(app: FastAPI):
 
     # Create default user if not exists
     from app.utils.auth import create_default_user
+
     create_default_user()
     logger.info("Default user initialized")
 
@@ -89,7 +100,7 @@ app = FastAPI(
     title="NovelAgent API",
     description="AI Novel Creation Assistant API",
     version="0.7.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # 注册异常处理器
@@ -102,7 +113,7 @@ app.add_exception_handler(Exception, general_exception_handler)
 app.add_middleware(
     RateLimitMiddleware,
     requests_limit=settings.auth_rate_limit_requests,
-    window_seconds=settings.auth_rate_limit_seconds
+    window_seconds=settings.auth_rate_limit_seconds,
 )
 
 # CORS middleware
@@ -120,10 +131,14 @@ app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
 app.include_router(outline.router, prefix="/api/projects", tags=["outline"])
 app.include_router(chapters.router, prefix="/api/projects", tags=["chapters"])
 app.include_router(settings_api.router, prefix="/api/settings", tags=["settings"])
-app.include_router(model_configs.router, prefix="/api/model_configs", tags=["model-configs"])
+app.include_router(
+    model_configs.router, prefix="/api/model_configs", tags=["model-configs"]
+)
 app.include_router(workflow.router, prefix="/api/projects", tags=["workflow"])
 app.include_router(characters.router, prefix="/api/projects", tags=["characters"])
-app.include_router(system_prompts_router, prefix="/api/system/prompts", tags=["system-prompts"])
+app.include_router(
+    system_prompts_router, prefix="/api/system/prompts", tags=["system-prompts"]
+)
 
 
 @app.get("/")

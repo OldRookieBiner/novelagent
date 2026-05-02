@@ -8,6 +8,7 @@ from app.database import Base
 
 class SystemConfig(Base):
     """System-wide configuration key-value store"""
+
     __tablename__ = "system_config"
 
     key = Column(String, primary_key=True)

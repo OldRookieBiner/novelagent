@@ -1,8 +1,11 @@
 """Tests for PostgreSQL checkpoint saver"""
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-from app.agents.checkpointer import PostgresCheckpointSaver, MAX_CHECKPOINTS_PER_PROJECT, CLEANUP_INTERVAL
+from unittest.mock import Mock, patch
+from app.agents.checkpointer import (
+    PostgresCheckpointSaver,
+    MAX_CHECKPOINTS_PER_PROJECT,
+    CLEANUP_INTERVAL,
+)
 
 
 class TestPostgresCheckpointSaver:
@@ -19,9 +22,7 @@ class TestPostgresCheckpointSaver:
         """Should initialize with custom values"""
         mock_db = Mock()
         saver = PostgresCheckpointSaver(
-            project_id=2,
-            thread_id="custom_thread",
-            db=mock_db
+            project_id=2, thread_id="custom_thread", db=mock_db
         )
         assert saver.project_id == 2
         assert saver.thread_id == "custom_thread"
@@ -32,7 +33,7 @@ class TestPostgresCheckpointSaver:
         saver = PostgresCheckpointSaver(project_id=1)
         config = {"configurable": {"thread_id": "default"}}
 
-        with patch.object(saver, '_get_db') as mock_get_db:
+        with patch.object(saver, "_get_db") as mock_get_db:
             mock_db = Mock()
             mock_db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
             mock_get_db.return_value = mock_db
@@ -47,7 +48,7 @@ class TestPostgresCheckpointSaver:
         checkpoint = {"channel_values": {"stage": "writing"}}
         metadata = {"step": 1}
 
-        with patch.object(saver, '_get_db') as mock_get_db:
+        with patch.object(saver, "_get_db") as mock_get_db:
             mock_db = Mock()
             mock_db.add = Mock()
             mock_db.commit = Mock()
@@ -67,7 +68,7 @@ class TestPostgresCheckpointSaver:
         # 创建模拟的检查点列表
         mock_checkpoints = [Mock() for _ in range(MAX_CHECKPOINTS_PER_PROJECT + 5)]
 
-        with patch.object(saver, '_get_db') as mock_get_db:
+        with patch.object(saver, "_get_db") as mock_get_db:
             mock_db = Mock()
             mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = mock_checkpoints
             mock_db.delete = Mock()
@@ -86,7 +87,7 @@ class TestPostgresCheckpointSaver:
         # 创建检查点，第一个是最新的
         mock_checkpoints = [Mock(id=i) for i in range(25)]
 
-        with patch.object(saver, '_get_db') as mock_get_db:
+        with patch.object(saver, "_get_db") as mock_get_db:
             mock_db = Mock()
             mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = mock_checkpoints
             mock_db.delete = Mock()
@@ -109,7 +110,7 @@ class TestPostgresCheckpointSaver:
             "ts": "2024-01-01T00:00:00Z",
             "channel_values": {"stage": "writing"},
             "channel_versions": {},
-            "versions_seen": {}
+            "versions_seen": {},
         }
 
         config = {"configurable": {"thread_id": "default"}}

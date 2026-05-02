@@ -14,9 +14,13 @@ class WorkflowCheckpoint(Base):
     __tablename__ = "workflow_checkpoints"
 
     id = Column(Integer, primary_key=True, index=True)
-    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    project_id = Column(
+        Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
     thread_id = Column(String(100), nullable=False, index=True)  # LangGraph thread ID
-    checkpoint_id = Column(String(36), nullable=True, index=True)  # UUID 格式的检查点 ID
+    checkpoint_id = Column(
+        String(36), nullable=True, index=True
+    )  # UUID 格式的检查点 ID
     checkpoint = Column(JSON, nullable=False)  # Complete State JSON
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -25,4 +29,6 @@ class WorkflowCheckpoint(Base):
     project = relationship("Project", backref="checkpoints")
 
     def __repr__(self):
-        return f"<WorkflowCheckpoint project_id={self.project_id} thread={self.thread_id}>"
+        return (
+            f"<WorkflowCheckpoint project_id={self.project_id} thread={self.thread_id}>"
+        )

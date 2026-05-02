@@ -869,7 +869,6 @@ async def generate_relations(
     """
     from app.models.character import Character
     from app.models.outline import Outline
-    from app.agents.nodes.relation_generation import generate_relations_node
 
     get_project_for_user(project_id, current_user.id, db)
 
@@ -887,7 +886,10 @@ async def generate_relations(
         Outline.project_id == project_id
     ).first()
 
-    state = {
+    from app.agents.streaming import create_single_node_graph
+    from app.agents.nodes.relation_generation import generate_relations_node
+
+    graph_state = {
         "project_id": project_id,
         "characters": [
             {
@@ -903,7 +905,10 @@ async def generate_relations(
         "outline_summary": outline.summary if outline else "",
     }
 
-    result_state = await generate_relations_node(state)
+    graph = create_single_node_graph(generate_relations_node)
+    config = {"configurable": {"thread_id": f"relations-{project_id}"}}
+
+    result_state = await graph.ainvoke(graph_state, config)
 
     relations = result_state.get("relations", [])
 

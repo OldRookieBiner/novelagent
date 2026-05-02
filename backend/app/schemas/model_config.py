@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 class ModelItem(BaseModel):
     """Coding Plan 中的单个模型"""
+
     id: str
     name: str
     is_enabled: bool = True
@@ -15,6 +16,7 @@ class ModelItem(BaseModel):
 
 class ModelConfigBase(BaseModel):
     """模型配置基础"""
+
     name: str
     provider: str
     provider_type: str = "single"
@@ -26,11 +28,13 @@ class ModelConfigBase(BaseModel):
 
 class ModelConfigCreate(ModelConfigBase):
     """创建模型配置"""
+
     pass
 
 
 class ModelConfigUpdate(BaseModel):
     """更新模型配置"""
+
     name: Optional[str] = None
     base_url: Optional[str] = None
     model_name: Optional[str] = None
@@ -42,6 +46,7 @@ class ModelConfigUpdate(BaseModel):
 
 class ModelConfigResponse(BaseModel):
     """模型配置响应"""
+
     id: int
     name: str
     provider: str
@@ -64,11 +69,13 @@ class ModelConfigResponse(BaseModel):
 
 class ModelConfigListResponse(BaseModel):
     """模型配置列表响应"""
+
     models: list[ModelConfigResponse]
 
 
 class HealthCheckResponse(BaseModel):
     """健康检查响应"""
+
     status: str  # "healthy" | "unhealthy"
     latency: Optional[int] = None
     error: Optional[str] = None
@@ -76,6 +83,7 @@ class HealthCheckResponse(BaseModel):
 
 class FetchModelsRequest(BaseModel):
     """获取模型列表请求"""
+
     provider: str
     base_url: str
     api_key: str
@@ -83,6 +91,7 @@ class FetchModelsRequest(BaseModel):
 
 class FetchModelsResponse(BaseModel):
     """获取模型列表响应"""
+
     models: list[dict]  # [{"id": str, "name": str}]
     error: Optional[str] = None
     allow_manual: bool = False
@@ -90,6 +99,7 @@ class FetchModelsResponse(BaseModel):
 
 class ProviderInfo(BaseModel):
     """提供商信息"""
+
     id: str
     name: str
     provider_type: str
@@ -98,4 +108,5 @@ class ProviderInfo(BaseModel):
 
 class ProvidersListResponse(BaseModel):
     """提供商列表响应"""
+
     providers: list[ProviderInfo]

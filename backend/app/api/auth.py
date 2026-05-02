@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.models.user import User
-from app.models.settings import UserSettings
 from app.schemas.user import LoginRequest, LoginResponse, UserResponse
 from app.utils.auth import verify_password, create_session_token, get_current_user
 
@@ -14,7 +13,9 @@ router = APIRouter()
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login(request: LoginRequest, response: Response, db: Session = Depends(get_db)):
+async def login(
+    request: LoginRequest, response: Response, db: Session = Depends(get_db)
+):
     """Login with username and password"""
     # Find user
     user = db.query(User).filter(User.username == request.username).first()
@@ -22,14 +23,14 @@ async def login(request: LoginRequest, response: Response, db: Session = Depends
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username or password"
+            detail="Invalid username or password",
         )
 
     # Verify password
     if not verify_password(request.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username or password"
+            detail="Invalid username or password",
         )
 
     # Create session token
@@ -43,13 +44,13 @@ async def login(request: LoginRequest, response: Response, db: Session = Depends
         secure=False,  # 开发环境设为 True
         samesite="lax",
         max_age=settings.session_expire_seconds,
-        path="/"
+        path="/",
     )
 
     return LoginResponse(
         success=True,
         user=UserResponse.model_validate(user),
-        session_token=session_token  # 兼容旧版前端
+        session_token=session_token,  # 兼容旧版前端
     )
 
 

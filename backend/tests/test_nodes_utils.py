@@ -1,6 +1,5 @@
 """节点共享工具函数的单元测试"""
 
-import pytest
 from app.agents.nodes.utils import (
     _format_chapter_outline_str,
     format_characters_info,
@@ -101,9 +100,7 @@ class TestFormatCharactersInfo:
 
     def test_detailed_characters_default_role(self):
         """详细人物设定缺少角色时应默认为配角"""
-        state = {
-            "characters": [{"name": "路人甲"}]
-        }
+        state = {"characters": [{"name": "路人甲"}]}
         result = format_characters_info(state)
 
         assert "路人甲（配角）" in result
@@ -125,18 +122,14 @@ class TestFormatCharactersInfo:
 
     def test_collected_info_custom_protagonist(self):
         """无人物设定时，应回退到灵感采集的自定义主角"""
-        state = {
-            "collected_info": {"customProtagonist": "自定义主角描述"}
-        }
+        state = {"collected_info": {"customProtagonist": "自定义主角描述"}}
         result = format_characters_info(state)
 
         assert result == "自定义主角描述"
 
     def test_collected_info_protagonist_fallback(self):
         """自定义主角为空时，应回退到 protagonist"""
-        state = {
-            "collected_info": {"protagonist": "主角描述"}
-        }
+        state = {"collected_info": {"protagonist": "主角描述"}}
         result = format_characters_info(state)
 
         assert result == "主角描述"
@@ -194,8 +187,17 @@ class TestFormatRelationsInfo:
         """多条人物关系都应格式化"""
         state = {
             "relations": [
-                {"character1": "林风", "character2": "苏瑶", "relationship_type": "师徒"},
-                {"character1": "林风", "character2": "魔尊", "relationship_type": "仇敌", "description": "杀父之仇"},
+                {
+                    "character1": "林风",
+                    "character2": "苏瑶",
+                    "relationship_type": "师徒",
+                },
+                {
+                    "character1": "林风",
+                    "character2": "魔尊",
+                    "relationship_type": "仇敌",
+                    "description": "杀父之仇",
+                },
             ]
         }
         result = format_relations_info(state, 1)
@@ -307,18 +309,14 @@ class TestFormatWorldSetting:
 
     def test_fallback_to_custom_world_setting(self):
         """无大纲世界观时，应回退到自定义世界观"""
-        state = {
-            "collected_info": {"customWorldSetting": "自定义世界观描述"}
-        }
+        state = {"collected_info": {"customWorldSetting": "自定义世界观描述"}}
         result = format_world_setting(state)
 
         assert result == "自定义世界观描述"
 
     def test_fallback_to_world_setting(self):
         """自定义世界观为空时，应回退到 worldSetting"""
-        state = {
-            "collected_info": {"worldSetting": "修仙世界"}
-        }
+        state = {"collected_info": {"worldSetting": "修仙世界"}}
         result = format_world_setting(state)
 
         assert result == "修仙世界"

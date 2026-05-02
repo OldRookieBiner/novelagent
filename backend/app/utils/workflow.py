@@ -6,9 +6,7 @@ from app.models.workflow_state import WorkflowState
 
 
 def get_or_create_workflow_state(
-    db: Session,
-    project_id: int,
-    thread_id: str = "main"
+    db: Session, project_id: int, thread_id: str = "main"
 ) -> WorkflowState:
     """获取或创建工作流状态
 
@@ -20,10 +18,13 @@ def get_or_create_workflow_state(
     Returns:
         WorkflowState 实例
     """
-    state = db.query(WorkflowState).filter(
-        WorkflowState.project_id == project_id,
-        WorkflowState.thread_id == thread_id
-    ).first()
+    state = (
+        db.query(WorkflowState)
+        .filter(
+            WorkflowState.project_id == project_id, WorkflowState.thread_id == thread_id
+        )
+        .first()
+    )
 
     if not state:
         state = WorkflowState(project_id=project_id, thread_id=thread_id)

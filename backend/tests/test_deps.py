@@ -48,29 +48,27 @@ class TestGetLlmForContext:
         mock_request.llm_config_id = 42
 
         # 获取用户设置
-        user_settings = db.query(UserSettings).filter(
-            UserSettings.user_id == test_user.id
-        ).first()
+        user_settings = (
+            db.query(UserSettings).filter(UserSettings.user_id == test_user.id).first()
+        )
 
         result = get_llm_for_context(mock_request, test_user, user_settings, db)
 
-        mock_get_llm.assert_called_once_with(
-            test_user.id, user_settings, db, 42
-        )
+        mock_get_llm.assert_called_once_with(test_user.id, user_settings, db, 42)
         assert result == mock_get_llm.return_value
 
     @patch("app.utils.llm.get_llm_for_user")
-    def test_calls_get_llm_for_user_with_none_request(self, mock_get_llm, db, test_user):
+    def test_calls_get_llm_for_user_with_none_request(
+        self, mock_get_llm, db, test_user
+    ):
         """当请求为 None 时，llm_config_id 应为 None"""
         mock_get_llm.return_value = MagicMock()
 
-        user_settings = db.query(UserSettings).filter(
-            UserSettings.user_id == test_user.id
-        ).first()
+        user_settings = (
+            db.query(UserSettings).filter(UserSettings.user_id == test_user.id).first()
+        )
 
         result = get_llm_for_context(None, test_user, user_settings, db)
 
-        mock_get_llm.assert_called_once_with(
-            test_user.id, user_settings, db, None
-        )
+        mock_get_llm.assert_called_once_with(test_user.id, user_settings, db, None)
         assert result == mock_get_llm.return_value

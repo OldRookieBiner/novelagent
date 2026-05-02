@@ -1,6 +1,5 @@
 """Application configuration"""
 
-import os
 import secrets
 import warnings
 from pathlib import Path
@@ -47,7 +46,11 @@ class Settings(BaseSettings):
     # App settings
     debug: bool = False  # Secure by default
     log_level: str = "INFO"  # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
-    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173", "http://localhost:3001"]
+    cors_origins: list[str] = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:3001",
+    ]
 
     # Rate limiting
     auth_rate_limit_requests: int = 5
@@ -67,7 +70,7 @@ class Settings(BaseSettings):
                 warnings.warn(
                     "SECRET_KEY not set. Using random key. Sessions will be invalidated on restart. "
                     "Set SECRET_KEY environment variable for production.",
-                    UserWarning
+                    UserWarning,
                 )
 
         # Generate default credentials if not provided
@@ -80,7 +83,7 @@ class Settings(BaseSettings):
             warnings.warn(
                 f"DEFAULT_PASSWORD not set. Generated random password saved to: {password_file} "
                 "Set DEFAULT_PASSWORD environment variable for production.",
-                UserWarning
+                UserWarning,
             )
 
 

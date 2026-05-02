@@ -4,8 +4,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.database import SessionLocal
-from app.models.system_config import SystemConfig
 
 
 @pytest.fixture
@@ -18,8 +16,7 @@ def client():
 def auth_header(client):
     """Get authentication header"""
     response = client.post(
-        "/api/auth/login",
-        json={"username": "admin", "password": "admin123"}
+        "/api/auth/login", json={"username": "admin", "password": "admin123"}
     )
     assert response.status_code == 200
     token = response.json()["session_token"]
@@ -53,7 +50,7 @@ class TestSystemPromptsAPI:
         response = client.put(
             "/api/system/prompts/outline_generation",
             headers=auth_header,
-            json={"prompt_content": new_content}
+            json={"prompt_content": new_content},
         )
         assert response.status_code == 200
 
@@ -66,7 +63,7 @@ class TestSystemPromptsAPI:
         response = client.put(
             "/api/system/prompts/unknown_type",
             headers=auth_header,
-            json={"prompt_content": "test"}
+            json={"prompt_content": "test"},
         )
         assert response.status_code == 404
         assert "Unknown agent type" in response.json()["detail"]
@@ -77,14 +74,11 @@ class TestSystemPromptsAPI:
         client.put(
             "/api/system/prompts/review",
             headers=auth_header,
-            json={"prompt_content": "Modified content"}
+            json={"prompt_content": "Modified content"},
         )
 
         # Then reset it
-        response = client.post(
-            "/api/system/prompts/review/reset",
-            headers=auth_header
-        )
+        response = client.post("/api/system/prompts/review/reset", headers=auth_header)
         assert response.status_code == 200
 
         data = response.json()
@@ -94,8 +88,7 @@ class TestSystemPromptsAPI:
     def test_reset_unknown_agent_type(self, client, auth_header):
         """Test resetting with unknown agent type"""
         response = client.post(
-            "/api/system/prompts/unknown_type/reset",
-            headers=auth_header
+            "/api/system/prompts/unknown_type/reset", headers=auth_header
         )
         assert response.status_code == 404
         assert "Unknown agent type" in response.json()["detail"]

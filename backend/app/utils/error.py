@@ -7,23 +7,23 @@ from typing import Union
 SENSITIVE_PATTERNS = [
     # API Keys
     re.compile(r'(api[_-]?key["\s:=]+["\']?)([a-zA-Z0-9_-]{20,})', re.IGNORECASE),
-    re.compile(r'(Bearer\s+)([a-zA-Z0-9_-]{20,})', re.IGNORECASE),
+    re.compile(r"(Bearer\s+)([a-zA-Z0-9_-]{20,})", re.IGNORECASE),
     # Database connection strings
-    re.compile(r'(postgresql://[^:]+:)([^@]+)(@)'),
-    re.compile(r'(mysql://[^:]+:)([^@]+)(@)'),
-    re.compile(r'(mongodb://[^:]+:)([^@]+)(@)'),
+    re.compile(r"(postgresql://[^:]+:)([^@]+)(@)"),
+    re.compile(r"(mysql://[^:]+:)([^@]+)(@)"),
+    re.compile(r"(mongodb://[^:]+:)([^@]+)(@)"),
     # Passwords in connection strings
     re.compile(r'(password["\s:=]+["\']?)([^\s"\']+)["\']?', re.IGNORECASE),
     # Secret keys
     re.compile(r'(secret[_-]?key["\s:=]+["\']?)([a-zA-Z0-9_-]{16,})', re.IGNORECASE),
     # JWT tokens
-    re.compile(r'(eyJ[a-zA-Z0-9_-]*\.eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*)'),
+    re.compile(r"(eyJ[a-zA-Z0-9_-]*\.eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*)"),
     # Email addresses (partial redaction)
-    re.compile(r'([a-zA-Z0-9._%+-]+@)([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})'),
+    re.compile(r"([a-zA-Z0-9._%+-]+@)([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})"),
     # File paths that might reveal system info
-    re.compile(r'(/(?:home|root|etc|var|usr)/[^\s]+)'),
+    re.compile(r"(/(?:home|root|etc|var|usr)/[^\s]+)"),
     # IP addresses
-    re.compile(r'\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b'),
+    re.compile(r"\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b"),
 ]
 
 # 用户友好的错误映射
@@ -68,9 +68,9 @@ def sanitize_error_message(error: Union[str, Exception]) -> str:
     for pattern in SENSITIVE_PATTERNS:
         if pattern.groups > 1:
             # 保留部分信息，隐藏敏感部分
-            message = pattern.sub(r'\1***REDACTED***', message)
+            message = pattern.sub(r"\1***REDACTED***", message)
         else:
-            message = pattern.sub('***REDACTED***', message)
+            message = pattern.sub("***REDACTED***", message)
 
     # 如果错误消息过长，截断并添加省略号
     if len(message) > 200:
@@ -94,5 +94,6 @@ def format_sse_error(error: Union[str, Exception]) -> str:
         格式化的 SSE 错误事件字符串
     """
     import json
+
     safe_message = sanitize_error_message(error)
     return f"event: error\ndata: {json.dumps({'error': safe_message})}\n\n"

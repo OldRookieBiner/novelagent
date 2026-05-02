@@ -14,7 +14,7 @@ def get_encryption_key(user_id: int) -> bytes:
     每个用户使用不同的Salt，增强安全性
     """
     # 使用用户ID作为Salt的一部分，使每个用户的加密密钥不同
-    salt = f'novelagent_{user_id}'.encode()
+    salt = f"novelagent_{user_id}".encode()
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,

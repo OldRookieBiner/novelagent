@@ -291,13 +291,33 @@ async def generate_outline_stream(
 
 async def outline_generation_node(state: NovelState) -> NovelState:
     """
-    LangGraph 兼容的大纲生成节点
+    LangGraph 兼容的大纲生成节点（流式版本）
 
-    此节点从状态获取 LLM 服务，生成大纲，并返回更新后的状态。
+    使用 llm.chat_stream() 确保 astream_events 能捕获逐字流式内容。
     签名：(state: NovelState) -> NovelState
     """
     # 获取 LLM 服务（异步）
     llm = await get_llm_from_state_async(state)
 
-    # 调用现有的大纲生成函数
-    return await generate_outline_node(state, llm)
+    prompt, chapter_count = prepare_outline_prompt(state)
+
+    # 使用流式 API，框架自动捕获 on_chat_model_stream 事件
+    response = ""
+    async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
+        response += chunk
+
+    outline = parse_outline(response)
+
+    new_state: NovelState = {
+        **state,
+        "outline_title": outline["title"],
+        "outline_summary": outline["summary"],
+        "outline_characters": outline["characters"],  # 新增：人物设定
+        "outline_world_setting": outline["world_setting"],  # 新增：世界观
+        "outline_plot_points": outline["plot_points"],
+        "outline_emotional_curve": outline["emotional_curve"],  # 新增：情感曲线
+        "chapter_count": chapter_count,
+        "stage": STAGE_OUTLINE,
+    }
+
+    return new_state

@@ -192,7 +192,9 @@ async def generate_single_chapter_outline(
         previous_chapters_info=previous_info
     )
 
-    response = await llm.chat([{"role": "user", "content": prompt}])
+    response = ""
+    async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
+        response += chunk
 
     return parse_single_chapter_outline(response, chapter_number)
 
@@ -390,8 +392,10 @@ async def generate_chapter_content_node(state: NovelState) -> NovelState:
         target_words=target_words
     )
 
-    # 调用 LLM 生成内容
-    content = await llm.chat([{"role": "user", "content": prompt}])
+    # 调用 LLM 流式生成内容（框架自动捕获 on_chat_model_stream）
+    content = ""
+    async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
+        content += chunk
 
     # 后处理：移除结尾的纯数字（可能是 LLM 自动添加的字数）
     content = clean_chapter_content(content)

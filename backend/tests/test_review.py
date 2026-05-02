@@ -114,7 +114,7 @@ class TestCheckReviewPassed:
                 "character_consistency": 7,
                 "writing_quality": 6,
                 "emotional_tension": 7,
-                "ai_flavor": 2
+                "ai_flavor": 2,
             }
         }
         assert check_review_passed(result) is True
@@ -127,7 +127,7 @@ class TestCheckReviewPassed:
                 "character_consistency": 8,
                 "writing_quality": 8,
                 "emotional_tension": 8,
-                "ai_flavor": 2
+                "ai_flavor": 2,
             }
         }
         assert check_review_passed(result) is False
@@ -140,18 +140,14 @@ class TestCheckReviewPassed:
                 "character_consistency": 8,
                 "writing_quality": 8,
                 "emotional_tension": 8,
-                "ai_flavor": 5
+                "ai_flavor": 5,
             }
         }
         assert check_review_passed(result) is False
 
     def test_fail_on_missing_scores(self):
         """Should fail when scores are missing"""
-        result = {
-            "scores": {
-                "plot_consistency": 8
-            }
-        }
+        result = {"scores": {"plot_consistency": 8}}
         assert check_review_passed(result) is False
 
     def test_pass_at_boundary(self):
@@ -162,7 +158,7 @@ class TestCheckReviewPassed:
                 "character_consistency": 6,
                 "writing_quality": 6,
                 "emotional_tension": 6,
-                "ai_flavor": 3
+                "ai_flavor": 3,
             }
         }
         assert check_review_passed(result) is True
@@ -175,7 +171,7 @@ class TestCheckReviewPassed:
                 "character_consistency": 6,
                 "writing_quality": 6,
                 "emotional_tension": 6,
-                "ai_flavor": 3
+                "ai_flavor": 3,
             }
         }
         assert check_review_passed(result) is False

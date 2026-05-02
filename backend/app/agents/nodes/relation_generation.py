@@ -58,14 +58,16 @@ def parse_relations_response(response: str, characters: list[dict]) -> list[dict
         except ValueError:
             trust_level = 50
 
-        relations.append({
-            "character_a_id": char_a_id,
-            "character_b_id": char_b_id,
-            "relation_type": rel_type,
-            "trust_level": trust_level,
-            "current_status": description,
-            "direction": "双向",
-        })
+        relations.append(
+            {
+                "character_a_id": char_a_id,
+                "character_b_id": char_b_id,
+                "relation_type": rel_type,
+                "trust_level": trust_level,
+                "current_status": description,
+                "direction": "双向",
+            }
+        )
 
     return relations
 
@@ -86,9 +88,7 @@ def write_relations_to_db(project_id: int, relations_data: list[dict]) -> list[d
     db = SessionLocal()
     try:
         # 删除已有关系
-        db.query(Relation).filter(
-            Relation.project_id == project_id
-        ).delete()
+        db.query(Relation).filter(Relation.project_id == project_id).delete()
 
         created = []
         for r in relations_data:
@@ -103,15 +103,17 @@ def write_relations_to_db(project_id: int, relations_data: list[dict]) -> list[d
             )
             db.add(rel)
             db.flush()
-            created.append({
-                "id": rel.id,
-                "character_a_id": rel.character_a_id,
-                "character_b_id": rel.character_b_id,
-                "relation_type": rel.relation_type,
-                "trust_level": rel.trust_level,
-                "current_status": rel.current_status,
-                "direction": rel.direction,
-            })
+            created.append(
+                {
+                    "id": rel.id,
+                    "character_a_id": rel.character_a_id,
+                    "character_b_id": rel.character_b_id,
+                    "relation_type": rel.relation_type,
+                    "trust_level": rel.trust_level,
+                    "current_status": rel.current_status,
+                    "direction": rel.direction,
+                }
+            )
 
         db.commit()
         return created
@@ -156,7 +158,7 @@ async def generate_relations_node(state: NovelState) -> NovelState:
         prompt = get_system_prompt(db, "relation_generation").format(
             characters_text=characters_text,
             world_era=world_era,
-            outline_summary=outline_summary
+            outline_summary=outline_summary,
         )
     finally:
         db.close()

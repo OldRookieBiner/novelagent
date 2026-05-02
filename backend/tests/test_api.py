@@ -5,7 +5,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.models.user import User
-from app.models.project import Project
 from app.models.outline import Outline
 
 
@@ -16,7 +15,7 @@ class TestAuthAPI:
         """Successful login should return token"""
         response = client.post(
             "/api/auth/login",
-            json={"username": "testuser", "password": "testpassword123"}
+            json={"username": "testuser", "password": "testpassword123"},
         )
 
         assert response.status_code == 200
@@ -29,7 +28,7 @@ class TestAuthAPI:
         """Wrong password should return 401"""
         response = client.post(
             "/api/auth/login",
-            json={"username": "testuser", "password": "wrongpassword"}
+            json={"username": "testuser", "password": "wrongpassword"},
         )
 
         assert response.status_code == 401
@@ -38,8 +37,7 @@ class TestAuthAPI:
     def test_login_nonexistent_user(self, client: TestClient):
         """Non-existent user should return 401"""
         response = client.post(
-            "/api/auth/login",
-            json={"username": "nonexistent", "password": "password"}
+            "/api/auth/login", json={"username": "nonexistent", "password": "password"}
         )
 
         assert response.status_code == 401
@@ -75,14 +73,12 @@ class TestProjectsAPI:
         assert data["total"] == 0
         assert data["projects"] == []
 
-    def test_list_projects_with_workflow_state(self, client: TestClient, auth_headers: dict):
+    def test_list_projects_with_workflow_state(
+        self, client: TestClient, auth_headers: dict
+    ):
         """Should include workflow_state in project list"""
         # Create a project
-        client.post(
-            "/api/projects/",
-            json={"name": "Test Novel"},
-            headers=auth_headers
-        )
+        client.post("/api/projects/", json={"name": "Test Novel"}, headers=auth_headers)
 
         # List projects
         response = client.get("/api/projects/", headers=auth_headers)
@@ -100,7 +96,7 @@ class TestProjectsAPI:
         response = client.post(
             "/api/projects/",
             json={"name": "Test Novel", "target_words": 50000},
-            headers=auth_headers
+            headers=auth_headers,
         )
 
         assert response.status_code == 201
@@ -120,9 +116,7 @@ class TestProjectsAPI:
     def test_create_project_name_required(self, client: TestClient, auth_headers: dict):
         """Should require project name"""
         response = client.post(
-            "/api/projects/",
-            json={"target_words": 50000},
-            headers=auth_headers
+            "/api/projects/", json={"target_words": 50000}, headers=auth_headers
         )
 
         assert response.status_code == 422  # Validation error
@@ -131,9 +125,7 @@ class TestProjectsAPI:
         """Should get project details with workflow_state"""
         # Create project first
         create_response = client.post(
-            "/api/projects/",
-            json={"name": "Test Novel"},
-            headers=auth_headers
+            "/api/projects/", json={"name": "Test Novel"}, headers=auth_headers
         )
         project_id = create_response.json()["id"]
 
@@ -156,9 +148,7 @@ class TestProjectsAPI:
         """Should update project"""
         # Create project
         create_response = client.post(
-            "/api/projects/",
-            json={"name": "Original Name"},
-            headers=auth_headers
+            "/api/projects/", json={"name": "Original Name"}, headers=auth_headers
         )
         project_id = create_response.json()["id"]
 
@@ -166,7 +156,7 @@ class TestProjectsAPI:
         response = client.put(
             f"/api/projects/{project_id}",
             json={"name": "Updated Name"},
-            headers=auth_headers
+            headers=auth_headers,
         )
 
         assert response.status_code == 200
@@ -176,9 +166,7 @@ class TestProjectsAPI:
         """Should delete project"""
         # Create project
         create_response = client.post(
-            "/api/projects/",
-            json={"name": "To Delete"},
-            headers=auth_headers
+            "/api/projects/", json={"name": "To Delete"}, headers=auth_headers
         )
         project_id = create_response.json()["id"]
 
@@ -203,17 +191,16 @@ class TestOutlineAPI:
     def project_with_outline(self, client: TestClient, auth_headers: dict) -> int:
         """Create a project and return its ID"""
         response = client.post(
-            "/api/projects/",
-            json={"name": "Test Novel"},
-            headers=auth_headers
+            "/api/projects/", json={"name": "Test Novel"}, headers=auth_headers
         )
         return response.json()["id"]
 
-    def test_get_outline(self, client: TestClient, auth_headers: dict, project_with_outline: int):
+    def test_get_outline(
+        self, client: TestClient, auth_headers: dict, project_with_outline: int
+    ):
         """Should get outline for project"""
         response = client.get(
-            f"/api/projects/{project_with_outline}/outline",
-            headers=auth_headers
+            f"/api/projects/{project_with_outline}/outline", headers=auth_headers
         )
 
         assert response.status_code == 200
@@ -221,7 +208,9 @@ class TestOutlineAPI:
         assert data["project_id"] == project_with_outline
         assert data["confirmed"] is False
 
-    def test_update_outline(self, client: TestClient, auth_headers: dict, project_with_outline: int):
+    def test_update_outline(
+        self, client: TestClient, auth_headers: dict, project_with_outline: int
+    ):
         """Should update outline"""
         # v0.6.1: plot_points 使用增强的字典格式
         response = client.put(
@@ -232,10 +221,10 @@ class TestOutlineAPI:
                 "plot_points": [
                     {"order": 1, "event": "Beginning"},
                     {"order": 2, "event": "Middle"},
-                    {"order": 3, "event": "End"}
-                ]
+                    {"order": 3, "event": "End"},
+                ],
             },
-            headers=auth_headers
+            headers=auth_headers,
         )
 
         assert response.status_code == 200
@@ -243,29 +232,33 @@ class TestOutlineAPI:
         assert data["title"] == "My Novel"
         assert data["summary"] == "A great story"
 
-    def test_confirm_outline(self, client: TestClient, auth_headers: dict, project_with_outline: int):
+    def test_confirm_outline(
+        self, client: TestClient, auth_headers: dict, project_with_outline: int
+    ):
         """Should confirm outline"""
         # Update outline first
         client.put(
             f"/api/projects/{project_with_outline}/outline",
             json={"title": "My Novel", "summary": "A story"},
-            headers=auth_headers
+            headers=auth_headers,
         )
 
         # Confirm
         response = client.put(
             f"/api/projects/{project_with_outline}/outline/confirm",
-            headers=auth_headers
+            headers=auth_headers,
         )
 
         assert response.status_code == 200
         assert response.json()["confirmed"] is True
 
-    def test_confirm_outline_without_title(self, client: TestClient, auth_headers: dict, project_with_outline: int):
+    def test_confirm_outline_without_title(
+        self, client: TestClient, auth_headers: dict, project_with_outline: int
+    ):
         """Should not confirm outline without title"""
         response = client.put(
             f"/api/projects/{project_with_outline}/outline/confirm",
-            headers=auth_headers
+            headers=auth_headers,
         )
 
         assert response.status_code == 400
@@ -292,9 +285,9 @@ class TestSettingsAPI:
             json={
                 "model_provider": "openai",
                 "review_enabled": False,
-                "review_strictness": "loose"
+                "review_strictness": "loose",
             },
-            headers=auth_headers
+            headers=auth_headers,
         )
 
         assert response.status_code == 200
@@ -307,7 +300,7 @@ class TestSettingsAPI:
         response = client.put(
             "/api/settings/",
             json={"api_key": "sk-test-key-12345"},
-            headers=auth_headers
+            headers=auth_headers,
         )
 
         assert response.status_code == 200

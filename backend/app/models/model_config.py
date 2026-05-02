@@ -1,7 +1,16 @@
 """模型配置数据模型"""
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, JSON
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    Text,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    JSON,
+)
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -13,12 +22,18 @@ class ModelConfig(Base):
     __tablename__ = "model_configs"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
     name = Column(String(100), nullable=False)  # 显示名称
-    provider = Column(String(50), nullable=False)  # 预设标识：deepseek, baidu, volcengine, unicom, custom
+    provider = Column(
+        String(50), nullable=False
+    )  # 预设标识：deepseek, baidu, volcengine, unicom, custom
     provider_type = Column(String(20), default="single")  # "single" | "coding_plan"
     base_url = Column(String(500), nullable=False)  # API 基础地址
-    model_name = Column(String(100), nullable=True)  # 单模型时使用，coding_plan 时可为空
+    model_name = Column(
+        String(100), nullable=True
+    )  # 单模型时使用，coding_plan 时可为空
     models = Column(JSON, nullable=True)  # coding_plan 类型存储模型列表
     api_key_encrypted = Column(Text, nullable=True)  # 加密的 API Key
     is_enabled = Column(Boolean, default=True)  # 是否启用

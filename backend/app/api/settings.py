@@ -22,9 +22,7 @@ DEFAULT_MODEL_NAMES = {
 
 def get_or_create_settings(db: Session, user_id: int) -> UserSettings:
     """Get existing settings or create default settings for user."""
-    settings = db.query(UserSettings).filter(
-        UserSettings.user_id == user_id
-    ).first()
+    settings = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
 
     if not settings:
         # Create default settings
@@ -33,7 +31,7 @@ def get_or_create_settings(db: Session, user_id: int) -> UserSettings:
             model_provider="deepseek",
             model_name="deepseek-chat",
             review_enabled=True,
-            review_strictness="standard"
+            review_strictness="standard",
         )
         db.add(settings)
         db.commit()
@@ -44,8 +42,7 @@ def get_or_create_settings(db: Session, user_id: int) -> UserSettings:
 
 @router.get("/", response_model=SettingsResponse)
 async def get_settings(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """Get user settings.
 
@@ -59,7 +56,7 @@ async def get_settings(
         model_name=settings.model_name,
         has_api_key=bool(settings.api_key_encrypted),
         review_enabled=settings.review_enabled,
-        review_strictness=settings.review_strictness
+        review_strictness=settings.review_strictness,
     )
 
 
@@ -67,7 +64,7 @@ async def get_settings(
 async def update_settings(
     request: SettingsUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Update user settings.
 
@@ -82,8 +79,7 @@ async def update_settings(
         settings.model_provider = request.model_provider
         # Update model_name based on provider
         settings.model_name = DEFAULT_MODEL_NAMES.get(
-            request.model_provider,
-            request.model_name or settings.model_name
+            request.model_provider, request.model_name or settings.model_name
         )
     elif request.model_name is not None:
         settings.model_name = request.model_name
@@ -110,5 +106,5 @@ async def update_settings(
         model_name=settings.model_name,
         has_api_key=bool(settings.api_key_encrypted),
         review_enabled=settings.review_enabled,
-        review_strictness=settings.review_strictness
+        review_strictness=settings.review_strictness,
     )

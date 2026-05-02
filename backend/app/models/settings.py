@@ -13,12 +13,16 @@ class UserSettings(Base):
     __tablename__ = "user_settings"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
     model_provider = Column(String(50), default="deepseek")
     model_name = Column(String(100), default="deepseek-chat")
     api_key_encrypted = Column(Text, nullable=True)
     review_enabled = Column(Boolean, default=True)
-    review_strictness = Column(String(20), default="standard")  # loose, standard, strict
+    review_strictness = Column(
+        String(20), default="standard"
+    )  # loose, standard, strict
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

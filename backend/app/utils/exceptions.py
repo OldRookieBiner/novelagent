@@ -14,6 +14,7 @@ class APIError(Exception):
         message: 错误消息
         status_code: HTTP 状态码
     """
+
     def __init__(self, code: str, message: str, status_code: int = 400):
         self.code = code
         self.message = message
@@ -23,6 +24,7 @@ class APIError(Exception):
 
 class APIErrorCode:
     """预定义错误代码"""
+
     # 认证相关
     UNAUTHORIZED = "unauthorized"
     INVALID_CREDENTIALS = "invalid_credentials"
@@ -53,12 +55,14 @@ async def api_error_handler(request: Request, exc: APIError) -> JSONResponse:
             "code": exc.code,
             "detail": exc.message,  # 使用 detail 保持与 FastAPI 默认格式一致
             "message": exc.message,
-            "path": str(request.url.path)
-        }
+            "path": str(request.url.path),
+        },
     )
 
 
-async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+async def http_exception_handler(
+    request: Request, exc: StarletteHTTPException
+) -> JSONResponse:
     """处理 HTTP 异常"""
     # 转换状态码为错误代码
     code_map = {
@@ -76,20 +80,24 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
             "code": code_map.get(exc.status_code, APIErrorCode.INTERNAL_ERROR),
             "detail": exc.detail,  # 使用 detail 保持与 FastAPI 默认格式一致
             "message": exc.detail,
-            "path": str(request.url.path)
-        }
+            "path": str(request.url.path),
+        },
     )
 
 
-async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
     """处理请求验证错误"""
     errors = []
     for error in exc.errors():
-        errors.append({
-            "field": ".".join(str(loc) for loc in error["loc"]),
-            "message": error["msg"],
-            "type": error["type"]
-        })
+        errors.append(
+            {
+                "field": ".".join(str(loc) for loc in error["loc"]),
+                "message": error["msg"],
+                "type": error["type"],
+            }
+        )
 
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -97,8 +105,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "code": APIErrorCode.INVALID_INPUT,
             "message": "请求参数验证失败",
             "errors": errors,
-            "path": str(request.url.path)
-        }
+            "path": str(request.url.path),
+        },
     )
 
 
@@ -106,6 +114,7 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
     """处理未捕获的异常"""
     # 记录日志
     import logging
+
     logger = logging.getLogger(__name__)
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
 
@@ -114,6 +123,6 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
         content={
             "code": APIErrorCode.INTERNAL_ERROR,
             "message": "服务器内部错误",
-            "path": str(request.url.path)
-        }
+            "path": str(request.url.path),
+        },
     )

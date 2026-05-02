@@ -5,13 +5,14 @@ Revises: 8d29d8d632e5
 Create Date: 2026-04-26
 
 """
+
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy import text
 
 # revision identifiers
-revision = '20260426_system_prompts'
-down_revision = '8d29d8d632e5'
+revision = "20260426_system_prompts"
+down_revision = "8d29d8d632e5"
 branch_labels = None
 depends_on = None
 
@@ -19,15 +20,18 @@ depends_on = None
 def upgrade():
     # 1. 创建 system_config 表
     op.create_table(
-        'system_config',
-        sa.Column('key', sa.String(), nullable=False),
-        sa.Column('value', sa.Text(), nullable=True),
-        sa.Column('updated_at', sa.DateTime(), nullable=True, server_default=sa.text('NOW()')),
-        sa.PrimaryKeyConstraint('key')
+        "system_config",
+        sa.Column("key", sa.String(), nullable=False),
+        sa.Column("value", sa.Text(), nullable=True),
+        sa.Column(
+            "updated_at", sa.DateTime(), nullable=True, server_default=sa.text("NOW()")
+        ),
+        sa.PrimaryKeyConstraint("key"),
     )
 
     # 2. 插入默认提示词（使用单引号避免转义问题）
-    op.execute(text("""
+    op.execute(
+        text("""
         INSERT INTO system_config (key, value, updated_at) VALUES
         ('prompt_outline_generation', '你是一个专业的小说大纲策划师。根据用户提供的创作灵感，生成一份结构化的小说大纲。
 
@@ -291,41 +295,42 @@ N. 结局：[事件] | [冲突解决] | [情感落点]
 
 请直接输出重写后的章节正文。
 ', NOW())
-    """))
+    """)
+    )
 
     # 3. 删除 project_agent_prompts 表
-    op.drop_table('project_agent_prompts')
+    op.drop_table("project_agent_prompts")
 
     # 4. 删除 agent_prompts 表
-    op.drop_table('agent_prompts')
+    op.drop_table("agent_prompts")
 
 
 def downgrade():
     # 重新创建 agent_prompts 表
     op.create_table(
-        'agent_prompts',
-        sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('user_id', sa.Integer(), nullable=False),
-        sa.Column('agent_type', sa.String(50), nullable=False),
-        sa.Column('prompt_content', sa.Text(), nullable=False),
-        sa.Column('updated_at', sa.DateTime(), nullable=True),
-        sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
-        sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('user_id', 'agent_type', name='uq_user_agent_type')
+        "agent_prompts",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.Column("agent_type", sa.String(50), nullable=False),
+        sa.Column("prompt_content", sa.Text(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(), nullable=True),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("user_id", "agent_type", name="uq_user_agent_type"),
     )
 
     # 重新创建 project_agent_prompts 表
     op.create_table(
-        'project_agent_prompts',
-        sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('project_id', sa.Integer(), nullable=False),
-        sa.Column('agent_type', sa.String(50), nullable=False),
-        sa.Column('prompt_content', sa.Text(), nullable=False),
-        sa.Column('updated_at', sa.DateTime(), nullable=True),
-        sa.ForeignKeyConstraint(['project_id'], ['projects.id'], ondelete='CASCADE'),
-        sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('project_id', 'agent_type', name='uq_project_agent_type')
+        "project_agent_prompts",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("project_id", sa.Integer(), nullable=False),
+        sa.Column("agent_type", sa.String(50), nullable=False),
+        sa.Column("prompt_content", sa.Text(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(), nullable=True),
+        sa.ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("project_id", "agent_type", name="uq_project_agent_type"),
     )
 
     # 删除 system_config 表
-    op.drop_table('system_config')
+    op.drop_table("system_config")

@@ -1,6 +1,5 @@
 """Tests for Agent node functions"""
 
-import pytest
 from app.agents.nodes.outline_generation import (
     parse_outline,
     parse_chapter_count,
@@ -102,8 +101,7 @@ class TestPromptTemplates:
 """
 
         prompt = OUTLINE_GENERATION_PROMPT.format(
-            inspiration_template=inspiration_template,
-            chapter_count=40
+            inspiration_template=inspiration_template, chapter_count=40
         )
 
         assert "玄幻" in prompt
@@ -121,7 +119,7 @@ class TestPromptTemplates:
             genre="都市",
             main_characters="张三",
             world_setting="现代都市",
-            style_preference="轻松幽默"
+            style_preference="轻松幽默",
         )
 
         assert "第1章" in prompt

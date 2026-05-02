@@ -1,10 +1,6 @@
 """Tests for WorkflowState model"""
 
-import pytest
-from datetime import datetime
 from app.models.workflow_state import WorkflowState
-from app.models.project import Project
-from app.models.user import User
 
 
 def test_workflow_state_defaults():
@@ -15,15 +11,19 @@ def test_workflow_state_defaults():
     assert state.workflow_mode == "hybrid"
     assert state.max_rewrite_count == 3
     assert state.current_chapter == 1
-    assert state.waiting_for_confirmation == False
-    assert state.confirmation_type == None
+    assert not state.waiting_for_confirmation
+    assert state.confirmation_type is None
 
 
 def test_workflow_state_stage_values():
     """Test valid stage values"""
     valid_stages = [
-        "inspiration", "outline", "chapter_outlines",
-        "writing", "review", "complete"
+        "inspiration",
+        "outline",
+        "chapter_outlines",
+        "writing",
+        "review",
+        "complete",
     ]
     for stage in valid_stages:
         state = WorkflowState(project_id=1, stage=stage)

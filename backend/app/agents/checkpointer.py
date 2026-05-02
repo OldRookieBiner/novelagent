@@ -3,8 +3,8 @@
 import asyncio
 import uuid
 from datetime import datetime, timezone
-from typing import Optional, Iterator, Union
-from sqlalchemy import func, and_
+from typing import Optional, Iterator
+from sqlalchemy import and_
 
 from langgraph.checkpoint.base import BaseCheckpointSaver, CheckpointTuple
 from sqlalchemy.orm import Session
@@ -31,10 +31,7 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
     """
 
     def __init__(
-        self,
-        project_id: int,
-        thread_id: str = "default",
-        db: Optional[Session] = None
+        self, project_id: int, thread_id: str = "default", db: Optional[Session] = None
     ):
         """
         初始化检查点保存器。
@@ -86,7 +83,7 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
 
             query = db.query(WorkflowCheckpoint).filter(
                 WorkflowCheckpoint.project_id == self.project_id,
-                WorkflowCheckpoint.thread_id == thread_id
+                WorkflowCheckpoint.thread_id == thread_id,
             )
 
             # 如果指定了 checkpoint_id，按 ID 查找
@@ -104,7 +101,9 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
         finally:
             self._close_db()
 
-    def _record_to_tuple(self, record: WorkflowCheckpoint, config: dict) -> CheckpointTuple:
+    def _record_to_tuple(
+        self, record: WorkflowCheckpoint, config: dict
+    ) -> CheckpointTuple:
         """
         将数据库记录转换为 CheckpointTuple。
 
@@ -122,7 +121,9 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
         # 构建检查点数据，使用 LangGraph 要求的格式
         checkpoint = {
             "v": record.checkpoint.get("v", 3),  # 版本号
-            "ts": record.checkpoint.get("ts", datetime.now(timezone.utc).isoformat()),  # 时间戳
+            "ts": record.checkpoint.get(
+                "ts", datetime.now(timezone.utc).isoformat()
+            ),  # 时间戳
             "id": checkpoint_id,  # UUID 字符串
             "channel_values": record.checkpoint.get("channel_values", {}),
             "channel_versions": record.checkpoint.get("channel_versions", {}),
@@ -141,7 +142,7 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
             "configurable": {
                 "thread_id": thread_id,
                 "checkpoint_ns": "",
-                "checkpoint_id": checkpoint_id
+                "checkpoint_id": checkpoint_id,
             }
         }
 
@@ -150,7 +151,7 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
             checkpoint=checkpoint,
             metadata=metadata,
             parent_config=None,  # 简化实现，暂不追踪父检查点
-            pending_writes=[]
+            pending_writes=[],
         )
 
     def put(self, config: dict, checkpoint: dict, metadata: dict) -> dict:
@@ -181,7 +182,7 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
                 "channel_values": checkpoint.get("channel_values", {}),
                 "channel_versions": checkpoint.get("channel_versions", {}),
                 "versions_seen": checkpoint.get("versions_seen", {}),
-                "metadata": metadata
+                "metadata": metadata,
             }
 
             # 创建新记录
@@ -189,11 +190,13 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
                 project_id=self.project_id,
                 thread_id=thread_id,
                 checkpoint_id=checkpoint_id,
-                checkpoint=checkpoint_data
+                checkpoint=checkpoint_data,
             )
             db.add(record)
             db.commit()
-            logger.debug(f"Checkpoint saved: project_id={self.project_id}, thread_id={thread_id}, checkpoint_id={checkpoint_id}")
+            logger.debug(
+                f"Checkpoint saved: project_id={self.project_id}, thread_id={thread_id}, checkpoint_id={checkpoint_id}"
+            )
 
             # 定期清理旧检查点
             self._put_count += 1
@@ -205,7 +208,7 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
                 "configurable": {
                     "thread_id": thread_id,
                     "checkpoint_ns": "",
-                    "checkpoint_id": checkpoint_id
+                    "checkpoint_id": checkpoint_id,
                 }
             }
         finally:
@@ -223,12 +226,17 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
             删除的记录数
         """
         # 获取该组合的所有记录，按创建时间倒序
-        all_checkpoints = db.query(WorkflowCheckpoint).filter(
-            and_(
-                WorkflowCheckpoint.project_id == self.project_id,
-                WorkflowCheckpoint.thread_id == thread_id
+        all_checkpoints = (
+            db.query(WorkflowCheckpoint)
+            .filter(
+                and_(
+                    WorkflowCheckpoint.project_id == self.project_id,
+                    WorkflowCheckpoint.thread_id == thread_id,
+                )
             )
-        ).order_by(WorkflowCheckpoint.created_at.desc()).all()
+            .order_by(WorkflowCheckpoint.created_at.desc())
+            .all()
+        )
 
         deleted_count = 0
 
@@ -239,7 +247,9 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
                 db.delete(checkpoint)
             deleted_count = len(to_delete)
             db.commit()
-            logger.info(f"Cleaned up {deleted_count} old checkpoints for project_id={self.project_id}, thread_id={thread_id}")
+            logger.info(
+                f"Cleaned up {deleted_count} old checkpoints for project_id={self.project_id}, thread_id={thread_id}"
+            )
 
         return deleted_count
 
@@ -268,10 +278,15 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
             configurable = config.get("configurable", {})
             thread_id = configurable.get("thread_id", self.thread_id)
 
-            records = db.query(WorkflowCheckpoint).filter(
-                WorkflowCheckpoint.project_id == self.project_id,
-                WorkflowCheckpoint.thread_id == thread_id
-            ).order_by(WorkflowCheckpoint.created_at.desc()).all()
+            records = (
+                db.query(WorkflowCheckpoint)
+                .filter(
+                    WorkflowCheckpoint.project_id == self.project_id,
+                    WorkflowCheckpoint.thread_id == thread_id,
+                )
+                .order_by(WorkflowCheckpoint.created_at.desc())
+                .all()
+            )
 
             for record in records:
                 yield self._record_to_tuple(record, config)
@@ -295,10 +310,7 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
         finally:
             self._close_db()
 
-    def cleanup_old_checkpoints(
-        self,
-        keep_latest: int = 10
-    ) -> int:
+    def cleanup_old_checkpoints(self, keep_latest: int = 10) -> int:
         """
         清理旧检查点，保留最新的 N 个记录
 
@@ -313,35 +325,31 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
         db = self._get_db()
         try:
             # 获取需要清理的项目/线程组合
-            from sqlalchemy import func, and_
-
-            # 找出每个 project_id + thread_id 组合中，超出保留数量的记录
-            subquery = db.query(
-                WorkflowCheckpoint.project_id,
-                WorkflowCheckpoint.thread_id,
-                func.count(WorkflowCheckpoint.id).label('count')
-            ).group_by(
-                WorkflowCheckpoint.project_id,
-                WorkflowCheckpoint.thread_id
-            ).having(func.count(WorkflowCheckpoint.id) > keep_latest).subquery()
+            from sqlalchemy import and_
 
             # 对每个超标的组合，删除旧的记录
             deleted_count = 0
 
             # 获取所有 project_id + thread_id 组合
-            combinations = db.query(
-                WorkflowCheckpoint.project_id,
-                WorkflowCheckpoint.thread_id
-            ).distinct().all()
+            combinations = (
+                db.query(WorkflowCheckpoint.project_id, WorkflowCheckpoint.thread_id)
+                .distinct()
+                .all()
+            )
 
             for project_id, thread_id in combinations:
                 # 获取该组合的所有记录，按创建时间倒序
-                all_checkpoints = db.query(WorkflowCheckpoint).filter(
-                    and_(
-                        WorkflowCheckpoint.project_id == project_id,
-                        WorkflowCheckpoint.thread_id == thread_id
+                all_checkpoints = (
+                    db.query(WorkflowCheckpoint)
+                    .filter(
+                        and_(
+                            WorkflowCheckpoint.project_id == project_id,
+                            WorkflowCheckpoint.thread_id == thread_id,
+                        )
                     )
-                ).order_by(WorkflowCheckpoint.created_at.desc()).all()
+                    .order_by(WorkflowCheckpoint.created_at.desc())
+                    .all()
+                )
 
                 # 如果超过保留数量，删除旧的
                 if len(all_checkpoints) > keep_latest:
@@ -359,9 +367,7 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
 
 
 def get_checkpoint_saver(
-    project_id: int,
-    thread_id: str = "default",
-    db: Optional[Session] = None
+    project_id: int, thread_id: str = "default", db: Optional[Session] = None
 ) -> PostgresCheckpointSaver:
     """
     获取检查点保存器实例。

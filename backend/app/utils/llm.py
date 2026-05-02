@@ -7,17 +7,14 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.models.model_config import ModelConfig
-from app.services.llm import get_llm_service, get_llm_service_from_config
+from app.services.llm import LLMService, get_llm_service, get_llm_service_from_config
 
 # 线程池用于在 async 上下文中执行同步 DB 操作
 _db_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="db-")
 
 
 def get_llm_for_user(
-    user_id: int,
-    user_settings,
-    db: Session,
-    llm_config_id: Optional[int] = None
+    user_id: int, user_settings, db: Session, llm_config_id: Optional[int] = None
 ):
     """
     获取用户的 LLM 服务
@@ -38,23 +35,27 @@ def get_llm_for_user(
     """
     # 如果指定了模型配置 ID，验证并使用
     if llm_config_id:
-        config = db.query(ModelConfig).filter(
-            ModelConfig.id == llm_config_id,
-            ModelConfig.user_id == user_id
-        ).first()
+        config = (
+            db.query(ModelConfig)
+            .filter(ModelConfig.id == llm_config_id, ModelConfig.user_id == user_id)
+            .first()
+        )
         if config:
             return get_llm_service_from_config(config, user_id)
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Model config not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Model config not found"
         )
 
     # 否则使用默认模型配置
-    default_config = db.query(ModelConfig).filter(
-        ModelConfig.user_id == user_id,
-        ModelConfig.is_default == True,
-        ModelConfig.is_enabled == True
-    ).first()
+    default_config = (
+        db.query(ModelConfig)
+        .filter(
+            ModelConfig.user_id == user_id,
+            ModelConfig.is_default,
+            ModelConfig.is_enabled,
+        )
+        .first()
+    )
 
     if default_config:
         return get_llm_service_from_config(default_config, user_id)
@@ -93,16 +94,14 @@ def get_llm_from_state(state: dict) -> "LLMService":
             raise ValueError(f"Project {project_id} not found")
 
         user_id = project.user_id
-        user_settings = db.query(UserSettings).filter(
-            UserSettings.user_id == user_id
-        ).first()
+        user_settings = (
+            db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
+        )
 
         if not user_settings:
             raise ValueError(f"User settings not found for user {user_id}")
 
-        return get_llm_for_user(
-            user_id, user_settings, db, state.get("llm_config_id")
-        )
+        return get_llm_for_user(user_id, user_settings, db, state.get("llm_config_id"))
     finally:
         db.close()
 

@@ -17,7 +17,9 @@ class WorkflowState(Base):
     __tablename__ = "workflow_states"
 
     id = Column(Integer, primary_key=True, index=True)
-    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    project_id = Column(
+        Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
     thread_id = Column(String(50), nullable=False, default="main")
 
     # 工作流阶段（统一命名）

@@ -1,6 +1,5 @@
 """Tests for authentication utilities"""
 
-import pytest
 from app.utils.auth import (
     hash_password,
     verify_password,

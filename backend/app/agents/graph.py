@@ -5,23 +5,22 @@ from langgraph.graph import StateGraph, END
 
 from app.agents.state import (
     NovelState,
-    STAGE_INSPIRATION,
-    STAGE_OUTLINE,
-    STAGE_CHAPTER_OUTLINES,
-    STAGE_WRITING,
-    STAGE_REVIEW,
-    STAGE_COMPLETE,
 )
 from app.agents.nodes.outline_generation import outline_generation_node
-from app.agents.nodes.chapter_generation import chapter_outlines_node, generate_chapter_content_node
+from app.agents.nodes.chapter_generation import (
+    chapter_outlines_node,
+    generate_chapter_content_node,
+)
 from app.agents.nodes.review import review_node
 from app.agents.nodes.rewrite import rewrite_node
-from app.agents.nodes.wait_confirm import wait_for_confirmation, set_waiting_state
+from app.agents.nodes.wait_confirm import wait_for_confirmation
 from app.agents.nodes.character_generation import create_characters_from_outline_node
 from app.agents.nodes.relation_generation import generate_relations_node
 
 
-def route_after_outline(state: NovelState) -> Literal["wait_confirm", "create_characters"]:
+def route_after_outline(
+    state: NovelState,
+) -> Literal["wait_confirm", "create_characters"]:
     """大纲生成后的路由
 
     根据 review_mode 决定是否等待用户确认。
@@ -39,7 +38,9 @@ def route_after_outline(state: NovelState) -> Literal["wait_confirm", "create_ch
     return "create_characters"
 
 
-def route_after_chapter_outlines(state: NovelState) -> Literal["wait_confirm", "chapter_content"]:
+def route_after_chapter_outlines(
+    state: NovelState,
+) -> Literal["wait_confirm", "chapter_content"]:
     """章节大纲生成后的路由
 
     根据 review_mode 决定是否等待用户确认。
@@ -57,7 +58,9 @@ def route_after_chapter_outlines(state: NovelState) -> Literal["wait_confirm", "
     return "chapter_content"
 
 
-def route_after_review(state: NovelState) -> Literal["rewrite", "next_chapter", "wait_confirm", "end"]:
+def route_after_review(
+    state: NovelState,
+) -> Literal["rewrite", "next_chapter", "wait_confirm", "end"]:
     """审核后的路由
 
     根据审核结果和当前进度决定下一步：
@@ -91,7 +94,9 @@ def route_after_review(state: NovelState) -> Literal["rewrite", "next_chapter", 
     return "rewrite"
 
 
-def route_after_characters(state: NovelState) -> Literal["wait_confirm", "generate_relations"]:
+def route_after_characters(
+    state: NovelState,
+) -> Literal["wait_confirm", "generate_relations"]:
     """角色创建后的路由"""
     decision = wait_for_confirmation(state)
     if decision == "wait":
@@ -99,7 +104,9 @@ def route_after_characters(state: NovelState) -> Literal["wait_confirm", "genera
     return "generate_relations"
 
 
-def route_after_relations(state: NovelState) -> Literal["wait_confirm", "chapter_outlines"]:
+def route_after_relations(
+    state: NovelState,
+) -> Literal["wait_confirm", "chapter_outlines"]:
     """关系生成后的路由"""
     decision = wait_for_confirmation(state)
     if decision == "wait":
@@ -137,7 +144,9 @@ def create_novel_graph(checkpointer=None):
     graph.add_node("generate_chapter_content_node", generate_chapter_content_node)
     graph.add_node("review_node", review_node)
     graph.add_node("rewrite_node", rewrite_node)
-    graph.add_node("create_characters_from_outline_node", create_characters_from_outline_node)
+    graph.add_node(
+        "create_characters_from_outline_node", create_characters_from_outline_node
+    )
     graph.add_node("generate_relations_node", generate_relations_node)
 
     # 设置入口点
@@ -150,36 +159,27 @@ def create_novel_graph(checkpointer=None):
         route_after_outline,
         {
             "wait_confirm": END,
-            "create_characters": "create_characters_from_outline_node"
-        }
+            "create_characters": "create_characters_from_outline_node",
+        },
     )
 
     graph.add_conditional_edges(
         "create_characters_from_outline_node",
         route_after_characters,
-        {
-            "wait_confirm": END,
-            "generate_relations": "generate_relations_node"
-        }
+        {"wait_confirm": END, "generate_relations": "generate_relations_node"},
     )
 
     graph.add_conditional_edges(
         "generate_relations_node",
         route_after_relations,
-        {
-            "wait_confirm": END,
-            "chapter_outlines": "chapter_outlines_node"
-        }
+        {"wait_confirm": END, "chapter_outlines": "chapter_outlines_node"},
     )
 
     # 章节大纲 → 章节正文（条件路由）
     graph.add_conditional_edges(
         "chapter_outlines_node",
         route_after_chapter_outlines,
-        {
-            "wait_confirm": END,
-            "chapter_content": "generate_chapter_content_node"
-        }
+        {"wait_confirm": END, "chapter_content": "generate_chapter_content_node"},
     )
 
     # 章节正文 → 审核
@@ -193,8 +193,8 @@ def create_novel_graph(checkpointer=None):
             "rewrite": "rewrite_node",
             "next_chapter": "generate_chapter_content_node",
             "wait_confirm": END,
-            "end": END
-        }
+            "end": END,
+        },
     )
 
     # 重写 → 审核
@@ -204,9 +204,7 @@ def create_novel_graph(checkpointer=None):
 
 
 def create_novel_graph_with_checkpointer(
-    project_id: int,
-    thread_id: str = "default",
-    db=None
+    project_id: int, thread_id: str = "default", db=None
 ):
     """
     创建带检查点的小说创作工作流图。

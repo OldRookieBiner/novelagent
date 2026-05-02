@@ -14,7 +14,9 @@ def wait_for_confirmation(state: NovelState) -> Literal["wait", "continue"]:
         "wait" - 需要等待用户确认
         "continue" - 可以继续执行
     """
-    workflow_mode = state.get("review_mode", "hybrid")  # 使用 review_mode 作为工作流模式
+    workflow_mode = state.get(
+        "review_mode", "hybrid"
+    )  # 使用 review_mode 作为工作流模式
     confirmation_type = state.get("confirmation_type")
 
     # 如果已经在等待确认，返回 wait
@@ -28,7 +30,12 @@ def wait_for_confirmation(state: NovelState) -> Literal["wait", "continue"]:
 
     # hybrid 模式：大纲和章节大纲需要确认
     elif workflow_mode == "hybrid":
-        if confirmation_type in ["outline", "characters", "relations", "chapter_outlines"]:
+        if confirmation_type in [
+            "outline",
+            "characters",
+            "relations",
+            "chapter_outlines",
+        ]:
             return "wait"
 
     # auto 模式：只有审核不通过需要确认
@@ -53,7 +60,7 @@ def set_waiting_state(state: NovelState, confirmation_type: str) -> NovelState:
     return {
         **state,
         "waiting_for_confirmation": True,
-        "confirmation_type": confirmation_type
+        "confirmation_type": confirmation_type,
     }
 
 
@@ -67,8 +74,4 @@ def clear_waiting_state(state: NovelState) -> NovelState:
     Returns:
         更新后的状态
     """
-    return {
-        **state,
-        "waiting_for_confirmation": False,
-        "confirmation_type": None
-    }
+    return {**state, "waiting_for_confirmation": False, "confirmation_type": None}

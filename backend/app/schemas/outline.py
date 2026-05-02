@@ -1,12 +1,13 @@
 """Outline schemas"""
 
 from datetime import datetime
-from typing import Optional, Any
+from typing import Optional
 from pydantic import BaseModel
 
 
 class CollectedInfo(BaseModel):
     """Collected information from user"""
+
     genre: Optional[str] = None
     theme: Optional[str] = None
     main_characters: Optional[str] = None
@@ -17,6 +18,7 @@ class CollectedInfo(BaseModel):
 # v0.6.1: 情节节点增强结构
 class PlotPoint(BaseModel):
     """情节节点"""
+
     order: int = 0
     event: str = ""
     conflict: Optional[str] = None
@@ -26,6 +28,7 @@ class PlotPoint(BaseModel):
 # v0.6.1: 人物设定结构
 class Character(BaseModel):
     """人物设定"""
+
     name: str = ""
     role: str = ""
     personality: Optional[str] = None
@@ -36,6 +39,7 @@ class Character(BaseModel):
 # v0.6.1: 世界观设定结构
 class WorldSetting(BaseModel):
     """世界观设定"""
+
     era: Optional[str] = None
     core_rules: Optional[str] = None
     power_system: Optional[str] = None
@@ -86,11 +90,13 @@ class ChapterCountRequest(BaseModel):
 
 class ChatMessage(BaseModel):
     """Chat message for info collection"""
+
     message: str
 
 
 class ChatResponse(BaseModel):
     """Chat response from agent"""
+
     response: str
     collected_info: Optional[CollectedInfo] = None
     is_info_sufficient: bool = False
@@ -98,6 +104,7 @@ class ChatResponse(BaseModel):
 
 class CollectedInfoUpdate(BaseModel):
     """灵感收集信息更新"""
+
     # 原有字段
     genre: Optional[str] = None
     theme: Optional[str] = None
@@ -127,9 +134,11 @@ class CollectedInfoUpdate(BaseModel):
 
 class OutlineGenerateRequest(BaseModel):
     """Request body for outline generation"""
+
     llm_config_id: Optional[int] = None
 
 
 class ChapterOutlinesGenerateRequest(BaseModel):
     """Request body for chapter outlines generation"""
+
     llm_config_id: Optional[int] = None

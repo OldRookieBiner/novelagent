@@ -27,6 +27,7 @@ from app.agents.state import (
 from app.agents.nodes.outline_generation import (
     generate_outline_stream,
     parse_outline,
+    outline_generation_node,
     # 导入章节数计算常量
     DEFAULT_CHAPTER_COUNT,
     WORDS_THRESHOLD_SHORT,
@@ -93,24 +94,56 @@ async def generate_outline(
     if not inspiration_template:
         inspiration_template = (outline.collected_info or {}).get("inspiration_template", "")
 
-    state = {
+    # 导入 LangGraph 流式工具
+    from app.agents.streaming import create_single_node_graph, stream_node_events
+    from app.agents.nodes.outline_generation import outline_generation_node
+
+    # 构建完整的 NovelState
+    graph_state = {
+        "project_id": project_id,
+        "stage": "outline",
         "collected_info": outline.collected_info or {},
         "inspiration_template": inspiration_template,
         "outline_title": outline.title,
         "outline_summary": outline.summary,
         "outline_plot_points": outline.plot_points or [],
+        "outline_characters": outline.characters or [],
+        "outline_world_setting": outline.world_setting or {},
+        "outline_emotional_curve": outline.emotional_curve,
+        "chapter_count": outline.chapter_count_suggested or 0,
+        "chapter_outlines": [],
+        "chapter_outlines_confirmed": False,
+        "written_chapters": [],
+        "current_chapter": 1,
+        "review_mode": "hybrid",
+        "review_result": None,
+        "rewrite_count": 0,
+        "max_rewrite_count": 3,
+        "waiting_for_confirmation": False,
+        "confirmation_type": None,
+        "outline_confirmed": False,
+        "llm_config_id": request.llm_config_id if request else None,
     }
 
-    # Create async generator for SSE streaming
+    # 创建单节点 graph
+    graph = create_single_node_graph(outline_generation_node)
+    config = {"configurable": {"thread_id": f"outline-{project_id}"}}
+
     async def stream_generator():
-        """Generate outline and stream via SSE."""
+        """Generate outline via LangGraph and stream via SSE."""
         accumulated_content = ""
 
         try:
-            async for chunk in generate_outline_stream(state, llm):
-                accumulated_content += chunk
-                # Send chunk as SSE event (JSON encode to preserve newlines)
-                yield f"data: {json.dumps(chunk)}\n\n"
+            async for sse_event in stream_node_events(graph, graph_state, config):
+                # 解析 chunk 内容用于 accumulated_content
+                if sse_event.startswith("data: "):
+                    try:
+                        chunk_content = json.loads(sse_event[6:].strip())
+                        if isinstance(chunk_content, str):
+                            accumulated_content += chunk_content
+                    except json.JSONDecodeError:
+                        pass
+                yield sse_event
 
             # Parse the final outline
             parsed = parse_outline(accumulated_content)
@@ -119,7 +152,6 @@ async def generate_outline(
             outline.title = parsed["title"]
             outline.summary = parsed["summary"]
             outline.plot_points = parsed["plot_points"]
-            # v0.6.1: 保存增强字段
             outline.characters = parsed.get("characters", [])
             outline.world_setting = parsed.get("world_setting", {})
             outline.emotional_curve = parsed.get("emotional_curve")
@@ -150,43 +182,18 @@ async def generate_outline(
         except Exception as e:
             # 检查是否有已生成的内容（可能是用户中断）
             if accumulated_content and len(accumulated_content) > 50:
-                # 尝试解析已生成的内容
                 try:
                     parsed = parse_outline(accumulated_content)
                     if parsed["title"] or parsed["summary"]:
-                        # 保存已生成的内容
                         outline.title = parsed["title"]
                         outline.summary = parsed["summary"]
                         outline.plot_points = parsed["plot_points"]
-                        # v0.6.1: 保存增强字段
                         outline.characters = parsed.get("characters", [])
                         outline.world_setting = parsed.get("world_setting", {})
                         outline.emotional_curve = parsed.get("emotional_curve")
-                        workflow_state = get_or_create_workflow_state(db, project_id)
-                        workflow_state.stage = STAGE_OUTLINE
                         db.commit()
-
-                        # 发送中断完成事件
-                        completion_data = {
-                            "outline": {
-                                "title": parsed["title"],
-                                "summary": parsed["summary"],
-                                "plot_points": parsed["plot_points"],
-                                "characters": parsed.get("characters", []),
-                                "world_setting": parsed.get("world_setting", {}),
-                                "emotional_curve": parsed.get("emotional_curve"),
-                                "confirmed": False,
-                                "chapter_count_suggested": outline.chapter_count_suggested,
-                            },
-                            "stage": STAGE_OUTLINE,
-                            "interrupted": True,
-                        }
-                        yield f"event: done\ndata: {json.dumps(completion_data)}\n\n"
-                        return
                 except Exception:
                     pass
-
-            # Send error event (sanitized)
             yield format_sse_error(e)
 
     return StreamingResponse(

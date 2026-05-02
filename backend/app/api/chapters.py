@@ -2,7 +2,7 @@
 
 import json
 from typing import List
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -32,9 +32,7 @@ from app.agents.state import (
 from app.agents.nodes.chapter_generation import (
     generate_chapter_outlines_node,
     generate_chapter_outlines_stream,
-    generate_chapter_content_stream,
 )
-from app.agents.nodes.review import review_chapter_node
 
 router = APIRouter()
 
@@ -554,6 +552,7 @@ async def update_chapter_content(
 async def generate_chapter(
     project_id: int,
     chapter_num: int,
+    request: Request = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -628,25 +627,103 @@ async def generate_chapter(
 
     # Create async generator for SSE streaming
     async def stream_generator():
-        """Generate chapter content and stream via SSE."""
+        """Generate chapter content via LangGraph and stream via SSE."""
+        from app.agents.streaming import create_single_node_graph, stream_node_events
+        from app.agents.nodes.chapter_generation import generate_chapter_content_node, clean_chapter_content
+
+        # 获取上一章结尾
+        previous_ending = ""
+        if chapter_outline.chapter_number > 1:
+            prev_outline = (
+                db.query(ChapterOutline)
+                .filter(
+                    ChapterOutline.project_id == project_id,
+                    ChapterOutline.chapter_number == chapter_outline.chapter_number - 1,
+                )
+                .first()
+            )
+            if prev_outline and prev_outline.chapter and prev_outline.chapter.content:
+                prev_content = prev_outline.chapter.content
+                previous_ending = prev_content[-500:] if len(prev_content) > 500 else prev_content
+
+        # 获取章节大纲列表
+        chapter_outlines_list = [
+            {
+                "chapter_number": co.chapter_number,
+                "title": co.title,
+                "scene": co.scene,
+                "characters": co.characters,
+                "plot": co.plot,
+                "conflict": co.conflict,
+                "ending": co.ending,
+                "target_words": co.target_words,
+            }
+            for co in db.query(ChapterOutline)
+            .filter(ChapterOutline.project_id == project_id)
+            .order_by(ChapterOutline.chapter_number)
+            .all()
+        ]
+
+        # 获取已写章节
+        written_chapters_list = [
+            {
+                "chapter_number": co.chapter_number,
+                "content": co.chapter.content or "",
+                "word_count": co.chapter.word_count or 0,
+                "title": co.title,
+            }
+            for co in db.query(ChapterOutline)
+            .filter(ChapterOutline.project_id == project_id)
+            .order_by(ChapterOutline.chapter_number)
+            .all()
+            if co.chapter and co.chapter.content
+        ]
+
+        graph_state = {
+            **state,
+            "current_chapter": chapter_num,
+            "chapter_outlines": chapter_outlines_list,
+            "written_chapters": written_chapters_list,
+            "previous_ending": previous_ending,
+            "stage": "writing",
+        }
+
+        graph = create_single_node_graph(generate_chapter_content_node)
+        config = {"configurable": {"thread_id": f"chapter-{project_id}-{chapter_num}"}}
+
         accumulated_content = ""
-
         try:
-            async for chunk in generate_chapter_content_stream(state, chapter_outline_dict, llm):
-                accumulated_content += chunk
-                # Send chunk as SSE event (JSON encode to preserve newlines)
-                yield f"data: {json.dumps(chunk)}\n\n"
+            async for sse_event in stream_node_events(graph, graph_state, config):
+                if sse_event.startswith("data: "):
+                    try:
+                        chunk_content = json.loads(sse_event[6:].strip())
+                        if isinstance(chunk_content, str):
+                            accumulated_content += chunk_content
+                    except json.JSONDecodeError:
+                        pass
+                yield sse_event
 
-            # Update chapter content after streaming completes
-            chapter.content = accumulated_content
-            chapter.word_count = len(accumulated_content) if accumulated_content else 0
+            content = clean_chapter_content(accumulated_content) if accumulated_content else ""
+            if not content:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to generate chapter content",
+                )
+
+            word_count = len(content)
+            chapter.content = content
+            chapter.word_count = word_count
             db.commit()
 
-            # Send completion event
-            yield f"event: done\ndata: {chapter.word_count}\n\n"
+            chapter_response = {
+                "id": chapter.id,
+                "chapter_outline_id": chapter.chapter_outline_id,
+                "content": content,
+                "word_count": word_count,
+            }
+            yield f"event: done\ndata: {json.dumps({'chapter': chapter_response})}\n\n"
 
         except Exception as e:
-            # Send error event (sanitized)
             yield format_sse_error(e)
 
     return StreamingResponse(
@@ -728,31 +805,52 @@ async def review_chapter(
     # Get strictness from request
     strictness = request.strictness if request else "standard"
 
-    try:
-        # Perform review
-        review_result = await review_chapter_node(
-            state=state,
-            chapter_content=chapter.content,
-            chapter_outline=chapter_outline_dict,
-            llm=llm,
-            strictness=strictness
-        )
+    from app.agents.streaming import create_single_node_graph
+    from app.agents.nodes.review import review_node, check_review_passed
 
-        # Update chapter with review results
-        chapter.review_passed = review_result.get("passed", False)
-        chapter.review_feedback = review_result.get("feedback", "")
-        # v0.6.1: 保存完整的审核结果
+    graph_state = {
+        "project_id": project_id,
+        "current_chapter": chapter_num + 1,
+        "chapter_outlines": [
+            {
+                "chapter_number": co.chapter_number,
+                "title": co.title,
+                "scene": co.scene,
+                "characters": co.characters,
+                "plot": co.plot,
+                "conflict": co.conflict,
+                "ending": co.ending,
+                "target_words": co.target_words,
+            }
+            for co in db.query(ChapterOutline)
+            .filter(ChapterOutline.project_id == project_id)
+            .order_by(ChapterOutline.chapter_number)
+            .all()
+        ],
+        "written_chapters": [
+            {"chapter_number": chapter_num, "content": chapter.content}
+        ],
+        "collected_info": outline.collected_info or {},
+        "outline_characters": outline.characters or [],
+        "outline_world_setting": outline.world_setting or {},
+        "review_result": None,
+        "llm_config_id": request.llm_config_id if request else None,
+    }
+
+    graph = create_single_node_graph(review_node)
+    config = {"configurable": {"thread_id": f"review-{project_id}-{chapter_num}"}}
+
+    result = await graph.ainvoke(graph_state, config)
+
+    review_result = result.get("review_result", {})
+    if review_result:
+        chapter.review_passed = check_review_passed(review_result)
+        chapter.review_feedback = review_result.get("raw_response")
         chapter.review_result = review_result
         db.commit()
 
-        return ReviewResponse(
-            passed=review_result.get("passed", False),
-            feedback=review_result.get("feedback", ""),
-            issues=review_result.get("issues", [])
-        )
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to review chapter: {str(e)}"
-        )
+    return ReviewResponse(
+        passed=chapter.review_passed,
+        feedback=chapter.review_feedback or "",
+        issues=review_result.get("issues", []) if review_result else [],
+    )

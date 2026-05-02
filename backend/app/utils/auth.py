@@ -1,6 +1,6 @@
 """Authentication utilities"""
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional
 
 from passlib.context import CryptContext
@@ -52,13 +52,14 @@ def create_default_user():
     """Create default user if not exists"""
     from app.database import SessionLocal
     from app.models.settings import UserSettings
+
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.username == settings.default_username).first()
         if not user:
             user = User(
                 username=settings.default_username,
-                password_hash=hash_password(settings.default_password)
+                password_hash=hash_password(settings.default_password),
             )
             db.add(user)
             db.commit()
@@ -71,7 +72,7 @@ def create_default_user():
                 model_name="deepseek-chat",
                 api_key_encrypted=None,
                 review_enabled=True,
-                review_strictness="standard"
+                review_strictness="standard",
             )
             db.add(user_settings)
             db.commit()
@@ -81,8 +82,7 @@ def create_default_user():
 
 
 def get_current_user(
-    credentials: HTTPBasicCredentials = Depends(security),
-    db: Session = Depends(get_db)
+    credentials: HTTPBasicCredentials = Depends(security), db: Session = Depends(get_db)
 ) -> User:
     """Get current user from session"""
     # The username field contains the session token

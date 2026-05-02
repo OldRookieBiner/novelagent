@@ -27,7 +27,9 @@ class Character(Base):
     __tablename__ = "characters"
 
     id = Column(Integer, primary_key=True, index=True)
-    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    project_id = Column(
+        Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
     name = Column(String(100), nullable=False)
     role = Column(String(50), nullable=False)  # 主角/核心反派/重要配角/配角
     personality = Column(Text, nullable=True)  # 性格特征
@@ -49,14 +51,14 @@ class Character(Base):
         "Relation",
         foreign_keys="Relation.character_a_id",
         back_populates="character_a",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
     )
     # 作为关系中的 B 角色
     relations_b = relationship(
         "Relation",
         foreign_keys="Relation.character_b_id",
         back_populates="character_b",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
     )
 
     def __repr__(self):
@@ -76,11 +78,19 @@ class Relation(Base):
     __tablename__ = "relations"
 
     id = Column(Integer, primary_key=True, index=True)
-    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
-    character_a_id = Column(Integer, ForeignKey("characters.id", ondelete="CASCADE"), nullable=False)
-    character_b_id = Column(Integer, ForeignKey("characters.id", ondelete="CASCADE"), nullable=False)
+    project_id = Column(
+        Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    character_a_id = Column(
+        Integer, ForeignKey("characters.id", ondelete="CASCADE"), nullable=False
+    )
+    character_b_id = Column(
+        Integer, ForeignKey("characters.id", ondelete="CASCADE"), nullable=False
+    )
     relation_type = Column(String(50), nullable=False)  # 信任/敌对/感情/合作/利用/陌生
-    direction = Column(String(20), nullable=False, default="双向")  # 双向/单向A→B/单向B→A
+    direction = Column(
+        String(20), nullable=False, default="双向"
+    )  # 双向/单向A→B/单向B→A
     current_status = Column(Text, nullable=True)  # 当前状态描述
     trust_level = Column(Integer, default=50)  # 信任度 0-100
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -89,24 +99,16 @@ class Relation(Base):
     # Relationships
     project = relationship("Project", back_populates="relations")
     character_a = relationship(
-        "Character",
-        foreign_keys=[character_a_id],
-        back_populates="relations_a"
+        "Character", foreign_keys=[character_a_id], back_populates="relations_a"
     )
     character_b = relationship(
-        "Character",
-        foreign_keys=[character_b_id],
-        back_populates="relations_b"
+        "Character", foreign_keys=[character_b_id], back_populates="relations_b"
     )
     evolution_plans = relationship(
-        "EvolutionPlan",
-        back_populates="relation",
-        cascade="all, delete-orphan"
+        "EvolutionPlan", back_populates="relation", cascade="all, delete-orphan"
     )
     evolution_records = relationship(
-        "EvolutionRecord",
-        back_populates="relation",
-        cascade="all, delete-orphan"
+        "EvolutionRecord", back_populates="relation", cascade="all, delete-orphan"
     )
 
     def __repr__(self):
@@ -126,7 +128,9 @@ class EvolutionPlan(Base):
     __tablename__ = "evolution_plans"
 
     id = Column(Integer, primary_key=True, index=True)
-    relation_id = Column(Integer, ForeignKey("relations.id", ondelete="CASCADE"), nullable=False)
+    relation_id = Column(
+        Integer, ForeignKey("relations.id", ondelete="CASCADE"), nullable=False
+    )
     trigger_chapter = Column(Integer, nullable=False)  # 触发章节
     event_description = Column(Text, nullable=False)  # 事件描述
     status_before = Column(Text, nullable=True)  # 变化前状态
@@ -139,10 +143,7 @@ class EvolutionPlan(Base):
 
     # Relationships
     relation = relationship("Relation", back_populates="evolution_plans")
-    triggered_records = relationship(
-        "EvolutionRecord",
-        back_populates="triggered_plan"
-    )
+    triggered_records = relationship("EvolutionRecord", back_populates="triggered_plan")
 
     def __repr__(self):
         return f"<EvolutionPlan relation={self.relation_id} chapter={self.trigger_chapter}>"
@@ -162,12 +163,16 @@ class EvolutionRecord(Base):
     __tablename__ = "evolution_records"
 
     id = Column(Integer, primary_key=True, index=True)
-    relation_id = Column(Integer, ForeignKey("relations.id", ondelete="CASCADE"), nullable=False)
+    relation_id = Column(
+        Integer, ForeignKey("relations.id", ondelete="CASCADE"), nullable=False
+    )
     chapter_number = Column(Integer, nullable=False)  # 章节号
     content = Column(Text, nullable=False)  # 变化内容
     status_change = Column(Text, nullable=True)  # 状态变化
     trust_change = Column(Integer, nullable=True)  # 信任度变化（正负值）
-    triggered_plan_id = Column(Integer, ForeignKey("evolution_plans.id", ondelete="SET NULL"), nullable=True)
+    triggered_plan_id = Column(
+        Integer, ForeignKey("evolution_plans.id", ondelete="SET NULL"), nullable=True
+    )
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
