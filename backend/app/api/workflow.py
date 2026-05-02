@@ -295,6 +295,11 @@ async def run_workflow(
                         content = getattr(chunk, "content", str(chunk))
                         yield f"event: chunk\ndata: {json.dumps({'content': content})}\n\n"
 
+                    # 关系生成节点完成后，发送 done 并停止（规划阶段完成，后续步骤由用户手动触发）
+                    if node_name == "generate_relations_node":
+                        yield f"event: done\ndata: {json.dumps({'message': 'Generation completed'})}\n\n"
+                        return
+
             # 工作流完成
             yield f"event: done\ndata: {json.dumps({'message': 'Workflow completed'})}\n\n"
 
