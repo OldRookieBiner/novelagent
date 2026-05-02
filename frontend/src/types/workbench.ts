@@ -19,7 +19,7 @@ export interface MenuConfig {
 /** 规划菜单配置 */
 export const PLANNING_MENUS: MenuConfig[] = [
   { key: 'inspiration', label: '灵感', icon: 'Lightbulb' },
-  { key: 'outline', label: '小说大纲', icon: 'FileText' },
+  { key: 'outline', label: '大纲', icon: 'FileText' },
   { key: 'characters', label: '人物', icon: 'Users' },
   { key: 'relations', label: '关系', icon: 'Link' },
 ]

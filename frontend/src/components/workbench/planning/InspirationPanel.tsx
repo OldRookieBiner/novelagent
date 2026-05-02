@@ -1,7 +1,7 @@
 // frontend/src/components/workbench/planning/InspirationPanel.tsx
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Lightbulb, RotateCcw, ArrowRight, Check, ChevronDown, ChevronUp, Copy, Zap, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Lightbulb, RotateCcw, ArrowRight, Check, ChevronDown, ChevronUp, Copy, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -17,7 +17,6 @@ generateInspirationTemplate,
   type InspirationData,
 } from '@/lib/inspiration'
 import { collectedInfoApi } from '@/lib/api'
-import { QUICK_TEMPLATES } from '@/lib/inspiration'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
 import { OutlineProgressDialog } from './OutlineProgressDialog'
 import { toast } from 'sonner'
@@ -243,32 +242,6 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
     {
       toast.error('复制失败')
     })
-  }
-
-  const handleApplyQuickTemplate = (tpl: typeof QUICK_TEMPLATES[number]) =>
-  {
-    const d = tpl.data
-    if (d.novelType) setNovelType(d.novelType)
-    if (d.targetWords) setTargetWords(d.targetWords)
-    if (d.coreTheme) setCoreTheme(d.coreTheme)
-    if (d.worldSetting) setWorldSetting(d.worldSetting)
-    if (d.customWorldSetting) setCustomWorldSetting(d.customWorldSetting)
-    if (d.era) setEra(d.era)
-    if (d.targetReader) setTargetReader(d.targetReader)
-    if (d.wordsPerChapter) setWordsPerChapter(d.wordsPerChapter)
-    if (d.customWordsPerChapter) setCustomWordsPerChapter(d.customWordsPerChapter)
-    if (d.narrative) setNarrative(d.narrative)
-    if (d.genre) setGenre(d.genre)
-    if (d.customGenre) setCustomGenre(d.customGenre)
-    if (d.maleLead) setMaleLead(d.maleLead)
-    if (d.customMaleLead) setCustomMaleLead(d.customMaleLead)
-    if (d.femaleLead) setFemaleLead(d.femaleLead)
-    if (d.customFemaleLead) setCustomFemaleLead(d.customFemaleLead)
-    if (d.goldFinger) setGoldFinger(d.goldFinger)
-    if (d.customGoldFinger) setCustomGoldFinger(d.customGoldFinger)
-    if (d.stylePreference) setStylePreference(d.stylePreference)
-    setAdvancedExpanded(true)
-    toast.success(`已应用「${tpl.label}」模板`)
   }
 
   // 确认灵感，生成大纲
@@ -821,12 +794,12 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
             ) : (
               <>
                 <Check className="h-4 w-4 mr-2" />
-                确认灵感，生成大纲
+开始规划
                 <ArrowRight className="h-4 w-4 ml-2" />
               </>
             )}
           </Button>
-          <p className="text-xs text-muted-foreground">确认后自动生成小说大纲</p>
+          <p className="text-xs text-muted-foreground">确认后自动开始规划</p>
         </div>
       </div>
 
@@ -872,26 +845,7 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
                 className="w-full h-full font-mono text-sm leading-relaxed resize-none border-none shadow-none focus-visible:ring-0"
               />
             </div>
-            {/* 快捷填充模板 */}
-            <div className="border-t p-3">
-              <div className="flex items-center gap-1 mb-2">
-                <Zap className="h-3 w-3 text-amber-500" />
-                <span className="text-[11px] font-medium text-muted-foreground">快捷填充模板</span>
-              </div>
-              <div className="space-y-1.5">
-                {QUICK_TEMPLATES.map((tpl) => (
-                  <button
-                    key={tpl.id}
-                    onClick={() => handleApplyQuickTemplate(tpl)}
-                    className="w-full text-left px-2.5 py-2 rounded-md text-xs border hover:bg-indigo-50 hover:border-indigo-200 transition-colors"
-                  >
-                    <span className="mr-1.5">{tpl.icon}</span>
-                    {tpl.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </>
+            </>
         )}
         {rightCollapsed && (
           <div className="flex flex-col items-center pt-4 gap-3">

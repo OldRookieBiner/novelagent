@@ -225,7 +225,7 @@ export function CharacterPanel({ projectId }: CharacterPanelProps)
       {/* 大卡片网格 */}
       <div className="grid grid-cols-2 gap-6">
         {characters.map((character) => (
-          <Card key={character.id} className="min-h-[280px]">
+          <Card key={character.id} className="min-h-[200px]">
             <CardHeader className="pb-2">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
@@ -241,7 +241,7 @@ export function CharacterPanel({ projectId }: CharacterPanelProps)
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-2.5">
               {character.personality && (
                 <div>
                   <span className="text-xs text-muted-foreground">性格</span>
@@ -258,6 +258,36 @@ export function CharacterPanel({ projectId }: CharacterPanelProps)
                 <div>
                   <span className="text-xs text-muted-foreground">口头禅</span>
                   <p className="text-sm italic">"{character.catchphrase}"</p>
+                </div>
+              )}
+              {character.habit_action && (
+                <div>
+                  <span className="text-xs text-muted-foreground">习惯动作</span>
+                  <p className="text-sm line-clamp-1">{character.habit_action}</p>
+                </div>
+              )}
+              {character.appearance && (
+                <div>
+                  <span className="text-xs text-muted-foreground">外貌</span>
+                  <p className="text-sm line-clamp-2">{character.appearance}</p>
+                </div>
+              )}
+              {character.backstory && (
+                <div>
+                  <span className="text-xs text-muted-foreground">背景故事</span>
+                  <p className="text-sm line-clamp-2">{character.backstory}</p>
+                </div>
+              )}
+              {character.deep_fear && (
+                <div>
+                  <span className="text-xs text-muted-foreground">深层恐惧</span>
+                  <p className="text-sm line-clamp-1">{character.deep_fear}</p>
+                </div>
+              )}
+              {character.growth_arc && (
+                <div>
+                  <span className="text-xs text-muted-foreground">成长弧线</span>
+                  <p className="text-sm line-clamp-2">{character.growth_arc}</p>
                 </div>
               )}
               <div className="flex items-center justify-between pt-2 border-t">
