@@ -15,9 +15,15 @@ RE_TITLE = re.compile(r"(?:##\s*)?(?:\*\*)?标题(?:\*\*)?[：:]\s*(.+?)(?:\n|$)
 RE_TITLE_OUTLINE = re.compile(r"#\s*小说大纲[：:]\s*(.+?)(?:\n|$)")
 RE_TITLE_BRACKET = re.compile(r"#\s*《(.+?)》")
 
-# 概述匹配模式
-RE_SUMMARY = re.compile(r"(?:##\s*)?(?:\*\*)?概述(?:\*\*)?[：:]\s*(.+?)(?=(?:##\s*)?(?:\*\*)?(?:主要情节节点|情节节点)|---|\n\d+\.)", re.DOTALL)
-RE_SUMMARY_MD = re.compile(r"(?:##\s*)?(?:\*\*)?概述(?:\*\*)?\s*\n+(.+?)(?=(?:##\s*)?(?:\*\*)?(?:主要情节节点|情节节点)|$)", re.DOTALL)
+# 概述匹配模式：支持 “三、人物设定” / “# 三、人物设定” 等后续标题格式
+RE_SUMMARY = re.compile(
+    r"(?:##\s*)?(?:\*\*)?概述(?:\*\*)?[：:]\s*(.+?)(?=(?:\n[#]*\s*(?:[一二三四五六七八九十]+[、.])?\s*)?(?:人物设定|世界观|主要情节节点|情节节点)|---|\n\d+\.)",
+    re.DOTALL,
+)
+RE_SUMMARY_MD = re.compile(
+    r"(?:##\s*)?(?:\*\*)?概述(?:\*\*)?\s*\n+(.+?)(?=(?:\n[#]*\s*(?:[一二三四五六七八九十]+[、.])?\s*)?(?:人物设定|世界观|主要情节节点|情节节点)|$)",
+    re.DOTALL,
+)
 
 # 情节节点匹配模式
 RE_PLOT_BOLD = re.compile(r"\d+\.\s*(?:\*\*)?(.+?)(?:\*\*)?\s*\n", re.DOTALL)
@@ -56,6 +62,11 @@ MIN_CHAPTERS_EPIC = 150
 
 def parse_outline(response: str) -> Dict[str, Any]:
     """从 AI 响应中解析大纲（增强版）
+
+    支持多种 LLM 输出格式：
+    - 格式 A：- 主角：叶辰 | 性格 | 动机 | 弧线
+    - 格式 B：### 主角 | 叶辰\\n- **核心性格**：xxx
+    - 格式 C：- **主角：叶辰 | 描述**\\n  - 口头禅：xxx\\n  - 核心动机：xxx
 
     返回结构：
     {
@@ -97,39 +108,216 @@ def parse_outline(response: str) -> Dict[str, Any]:
         outline["summary"] = summary_match.group(1).strip()
 
     # 提取人物设定
-    characters_section = re.search(r"人物设定[：:]\s*(.+?)(?=世界观|情节节点|情感曲线|---|$)", response, re.DOTALL)
-    if characters_section:
-        chars_text = characters_section.group(1)
-        # 匹配 "- 主角：xxx" 或 "- 配角1：xxx"
-        char_matches = re.findall(r"[-•]\s*(主角|配角\d*)[：:]\s*(.+?)(?=\n[-•]|\n\n|$)", chars_text, re.DOTALL)
-        for role, content in char_matches:
-            # 解析 "姓名 | 性格 | 动机 | 弧线" 格式
-            parts = [p.strip() for p in content.split("|")]
-            char = {
-                "name": parts[0] if len(parts) > 0 else "",
-                "role": role,
-                "personality": parts[1] if len(parts) > 1 else "",
-                "motivation": parts[2] if len(parts) > 2 else "",
-                "arc": parts[3] if len(parts) > 3 else ""
-            }
-            outline["characters"].append(char)
+    _parse_characters_section(response, outline)
 
     # 提取世界观
-    world_section = re.search(r"世界观[：:]\s*(.+?)(?=情节节点|情感曲线|---|$)", response, re.DOTALL)
-    if world_section:
-        world_text = world_section.group(1)
-        era_match = re.search(r"时代背景[：:]\s*(.+)", world_text)
-        rules_match = re.search(r"核心设定[：:]\s*(.+)", world_text)
-        power_match = re.search(r"力量体系[：:]\s*(.+)", world_text)
+    _parse_world_setting(response, outline)
 
-        outline["world_setting"] = {
-            "era": era_match.group(1).strip() if era_match else "",
-            "core_rules": rules_match.group(1).strip() if rules_match else "",
-            "power_system": power_match.group(1).strip() if power_match else ""
+    # 提取情节节点
+    _parse_plot_points(response, outline)
+
+    # 提取情感曲线
+    _parse_emotional_curve(response, outline)
+
+    return outline
+
+
+def _parse_characters_section(response: str, outline: Dict[str, Any]):
+    """从响应中提取人物设定，支持多种格式"""
+    # 匹配 "人物设定（xxx）" 或 "三、人物设定" 等变体
+    characters_section = re.search(
+        r"(?:[#]*\s*(?:[一二三四五六七八九十]+[、.])?\s*)?人物设定(?:[（(][^)）]*[)）])?[：:\s]*\n*(.+?)(?=(?:[#]*\s*(?:[一二三四五六七八九十]+[、.])?\s*)?(?:世界观|情节节点|情感曲线)|---|$)",
+        response,
+        re.DOTALL
+    )
+    if not characters_section:
+        return
+
+    chars_text = characters_section.group(1)
+
+    # 角色类型关键词
+    role_keywords = r"(主角|核心反派|重要配角\d*|配角\d*)"
+
+    # 找到所有角色行（支持 - **主角：xxx 或 - 主角：xxx 或 ### 主角 等格式）
+    role_line_pattern = re.compile(
+        r"(?:^|\n)[-•]\s*\*{0,2}\s*" + role_keywords + r"\s*[：:]"
+        r"|(?:^|\n)###\s*" + role_keywords,
+        re.MULTILINE
+    )
+    role_starts = list(role_line_pattern.finditer(chars_text))
+
+    if not role_starts:
+        return
+
+    for idx, m in enumerate(role_starts):
+        start = m.start()
+        # 如果匹配到换行符开头的，跳过换行符
+        if chars_text[start] == '\n':
+            start += 1
+
+        # 确定这个角色块的结束位置：下一个角色行的开始，或文本末尾
+        if idx + 1 < len(role_starts):
+            block_end = role_starts[idx + 1].start()
+        else:
+            block_end = len(chars_text)
+
+        block_text = chars_text[start:block_end]
+        lines = block_text.split('\n')
+
+        # 第一行是角色主行
+        first_line = lines[0]
+        role = m.group(1) or m.group(2)
+        role = role.strip()
+
+        # ### 格式（Format B）
+        if '###' in first_line:
+            # ### 主角：姓名 | 描述
+            after_hash = re.sub(r'^###\s*', '', first_line)
+            # 先去掉 ** 包裹
+            after_hash = after_hash.strip().rstrip('*').strip()
+            pipe_parts = [p.strip() for p in after_hash.split('|')]
+            # parts[0] = "主角：姓名" 或 "主角"
+            first_part = pipe_parts[0]
+            # 提取冒号后的名字
+            colon_match = re.search(r'[：:]\s*(.+)$', first_part)
+            if colon_match:
+                name = colon_match.group(1).strip()
+            else:
+                name = first_part.replace(role, '').strip().strip('：:').strip()
+            # parts[1] 作为 personality（如果有）
+            personality = pipe_parts[1] if len(pipe_parts) > 1 else ''
+            # parts[2] 作为补充描述（如果有）
+            if len(pipe_parts) > 2:
+                extra = pipe_parts[2].strip()
+                if personality and extra:
+                    personality = f"{personality}；{extra}"
+                elif extra:
+                    personality = extra
+            motivation = ''
+            arc = ''
+            for line in lines[1:]:
+                line = line.strip()
+                if not line:
+                    continue
+                clean = re.sub(r'^[-•]\s*\*{0,2}', '', line).strip()
+                clean = re.sub(r'\*{0,2}$', '', clean).strip()
+                if '核心性格' in clean or '性格' in clean:
+                    val = re.sub(r'.*?[：:]\s*', '', clean).strip()
+                    if val:
+                        personality = val
+                elif '口头禅' in clean:
+                    catchphrase = re.sub(r'.*?[：:]\s*', '', clean).strip()
+                    if personality and catchphrase:
+                        personality = f"{personality}；口头禅：{catchphrase}"
+                elif '深层恐惧' in clean or '弱点' in clean:
+                    fear = re.sub(r'.*?[：:]\s*', '', clean).strip()
+                    if motivation and fear:
+                        motivation = f"{motivation}；弱点：{fear}"
+                elif '核心动机' in clean or '动机' in clean:
+                    motivation = re.sub(r'.*?[：:]\s*', '', clean).strip()
+                elif '成长弧线' in clean or '弧线' in clean:
+                    arc = re.sub(r'.*?[：:]\s*', '', clean).strip()
+        else:
+            # Format A/C: - **主角：姓名 | 描述** 或 - 主角：姓名 | 描述
+            content_after_colon = re.sub(
+                r'^[-•]\s*\*{0,2}\s*' + role_keywords + r'\s*[：:]\s*',
+                '', first_line
+            )
+            content_after_colon = content_after_colon.strip().rstrip('*').strip()
+
+            parts = [p.strip() for p in content_after_colon.split('|')]
+            name = parts[0] if parts else ''
+            personality = parts[1] if len(parts) > 1 else ''
+            motivation = ''
+            arc = ''
+
+            # 从子行提取详细字段
+            for line in lines[1:]:
+                line = line.strip()
+                if not line:
+                    continue
+                clean = re.sub(r'^[-•]\s*\*{0,2}', '', line).strip()
+                clean = re.sub(r'\*{0,2}$', '', clean).strip()
+
+                if '核心性格' in clean or '性格' in clean:
+                    val = re.sub(r'.*?[：:]\s*', '', clean).strip()
+                    if not personality:
+                        personality = val
+                elif '核心动机' in clean or '动机' in clean:
+                    motivation = re.sub(r'.*?[：:]\s*', '', clean).strip()
+                elif '成长弧线' in clean or '弧线' in clean:
+                    arc = re.sub(r'.*?[：:]\s*', '', clean).strip()
+                elif '口头禅' in clean:
+                    catchphrase = re.sub(r'.*?[：:]\s*', '', clean).strip()
+                    if personality and catchphrase:
+                        personality = f"{personality}；口头禅：{catchphrase}"
+                elif '深层恐惧' in clean or '弱点' in clean:
+                    fear = re.sub(r'.*?[：:]\s*', '', clean).strip()
+                    if motivation and fear:
+                        motivation = f"{motivation}；弱点：{fear}"
+
+        char = {
+            "name": name,
+            "role": role,
+            "personality": personality[:500],
+            "motivation": motivation[:500],
+            "arc": arc[:500]
         }
+        outline["characters"].append(char)
 
-    # 提取情节节点（增强版，包含冲突和钩子）
-    plot_section = re.search(r"情节节点[：:]\s*(.+?)(?=情感曲线|---|$)", response, re.DOTALL)
+
+def _parse_world_setting(response: str, outline: Dict[str, Any]):
+    """从响应中提取世界观，支持粗体格式"""
+    world_section = re.search(
+        r"(?:[#]*\s*(?:[一二三四五六七八九十]+[、.])?\s*)?世界观(?:与势力)?(?:[（(][^)）]*[)）])?[：:\s]*\n*(.+?)(?=(?:[#]*\s*(?:[一二三四五六七八九十]+[、.])?\s*)?(?:情节节点|情感曲线)|---|$)",
+        response,
+        re.DOTALL
+    )
+    if not world_section:
+        return
+
+    world_text = world_section.group(1)
+
+    # 支持 "- **时代背景**：xxx" 和 "时代背景：xxx" 两种格式
+    era_match = re.search(r"(?:[-•]\s*\*{0,2})?\s*时代背景\s*\*{0,2}\s*[：:]\s*(.+)", world_text)
+    rules_match = re.search(r"(?:[-•]\s*\*{0,2})?\s*核心设定\s*\*{0,2}\s*[：:]\s*(.+)", world_text)
+    power_match = re.search(r"(?:[-•]\s*\*{0,2})?\s*力量体系\s*\*{0,2}\s*[：:]\s*(.+)", world_text)
+    # 社会结构/势力分布
+    structure_match = re.search(r"(?:[-•]\s*\*{0,2})?\s*(?:社会结构|势力分布|势力)\s*\*{0,2}\s*[：:]\s*(.+)", world_text)
+
+    era = era_match.group(1).strip() if era_match else ""
+    # 清理粗体尾部
+    era = re.sub(r"\*\*$", "", era).strip()
+
+    core_rules = rules_match.group(1).strip() if rules_match else ""
+    core_rules = re.sub(r"\*\*$", "", core_rules).strip()
+
+    power_system = power_match.group(1).strip() if power_match else ""
+    power_system = re.sub(r"\*\*$", "", power_system).strip()
+
+    # 如果有社会结构信息，附加到 core_rules
+    if structure_match:
+        structure = structure_match.group(1).strip()
+        structure = re.sub(r"\*\*$", "", structure).strip()
+        if core_rules:
+            core_rules = f"{core_rules}\n势力：{structure}"
+        else:
+            core_rules = f"势力：{structure}"
+
+    outline["world_setting"] = {
+        "era": era,
+        "core_rules": core_rules,
+        "power_system": power_system
+    }
+
+
+def _parse_plot_points(response: str, outline: Dict[str, Any]):
+    """从响应中提取情节节点，支持多种格式"""
+    plot_section = re.search(
+        r"(?:[#]*\s*(?:[一二三四五六七八九十]+[、.])?\s*)?情节节点(?:[（(][^)）]*[)）])?[：:\s]*\n*(.+?)(?=(?:[#]*\s*(?:[一二三四五六七八九十]+[、.])?\s*)?情感曲线|---|$)",
+        response,
+        re.DOTALL
+    )
     if plot_section:
         plot_text = plot_section.group(1)
         # 匹配 "N. xxx | xxx | xxx" 格式
@@ -151,14 +339,28 @@ def parse_outline(response: str) -> Dict[str, Any]:
             outline["plot_points"] = [{"order": i+1, "event": p.strip(), "conflict": "", "hook": ""} for i, p in enumerate(plot_matches)]
         else:
             plot_matches = RE_PLOT_FALLBACK.findall(response)
-            outline["plot_points"] = [{"order": i+1, "event": p.strip(), "conflict": "", "hook": ""} for i, p in enumerate(plot_matches)]
+            if plot_matches:
+                outline["plot_points"] = [{"order": i+1, "event": p.strip(), "conflict": "", "hook": ""} for i, p in enumerate(plot_matches)]
 
-    # 提取情感曲线
-    curve_match = re.search(r"情感曲线[：:]\s*(.+?)(?=---|$)", response, re.DOTALL)
+    # 尝试匹配 "- **1.** xxx" 或 "- **N.** xxx" 粗体编号格式
+    if not outline["plot_points"]:
+        plot_matches = re.findall(r"[-•]\s*\*{0,2}(\d+)[.、]\s*\*{0,2}\s*(.+?)(?=\n[-•]|\n\d+[.、]|\n\n|$)", response, re.DOTALL)
+        if plot_matches:
+            outline["plot_points"] = [
+                {"order": int(num), "event": content.strip(), "conflict": "", "hook": ""}
+                for num, content in plot_matches
+            ]
+
+
+def _parse_emotional_curve(response: str, outline: Dict[str, Any]):
+    """从响应中提取情感曲线"""
+    curve_match = re.search(
+        r"(?:[#]*\s*(?:[一二三四五六七八九十]+[、.])?\s*)?情感曲线(?:与节奏)?(?:[（(][^)）]*[)）])?[：:\s]*\n*(.+?)(?=---|$)",
+        response,
+        re.DOTALL
+    )
     if curve_match:
         outline["emotional_curve"] = curve_match.group(1).strip()
-
-    return outline
 
 
 def parse_chapter_count(response: str) -> int:
@@ -308,9 +510,16 @@ async def outline_generation_node(state: NovelState) -> NovelState:
 
     outline = parse_outline(response)
 
+    import logging
+    logging.getLogger(__name__).info(
+        f"outline parsed: title='{outline.get('title', '')}', "
+        f"chars={len(outline.get('characters', []))}, "
+        f"plots={len(outline.get('plot_points', []))}"
+    )
+
     new_state: NovelState = {
         **state,
-        "outline_title": outline["title"],
+        "outline_title": outline.get("title", ""),
         "outline_summary": outline["summary"],
         "outline_characters": outline["characters"],  # 新增：人物设定
         "outline_world_setting": outline["world_setting"],  # 新增：世界观

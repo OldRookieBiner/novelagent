@@ -4,15 +4,16 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.agents.prompts import DEFAULT_PROMPTS
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def client():
     """Create test client"""
     return TestClient(app)
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def auth_header(client):
     """Get authentication header"""
     response = client.post(
@@ -83,7 +84,7 @@ class TestSystemPromptsAPI:
 
         data = response.json()
         # The content should be back to default
-        assert "你是一个专业的小说编辑" in data["prompt_content"]
+        assert data["prompt_content"] == DEFAULT_PROMPTS["review"]
 
     def test_reset_unknown_agent_type(self, client, auth_header):
         """Test resetting with unknown agent type"""

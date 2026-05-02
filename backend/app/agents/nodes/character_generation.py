@@ -86,6 +86,11 @@ def create_characters_from_outline_node(state: NovelState) -> NovelState:
     """
     characters = extract_characters_from_outline(state)
 
+    import logging
+    logging.getLogger(__name__).info(
+        f"character_gen_node: outline_chars={len(state.get('outline_characters', []))}, created={len(characters)}"
+    )
+
     new_state: NovelState = {
         **state,
         "characters": characters,

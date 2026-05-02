@@ -48,6 +48,92 @@ class TestOutlineParsing:
         assert outline["summary"] == ""
         assert outline["plot_points"] == []
 
+    def test_parse_outline_deepseek_heading_characters(self):
+        """Should parse DeepSeek heading-style character blocks"""
+        response = """
+# 小说大纲：《后悔药》
+
+## 概述
+少年沈墨被废掉灵脉后绑定后悔药系统。
+
+# 三、人物设定
+
+### 主角：沈墨 | 表面嬉皮笑脸但内心敏感自卑
+- **核心动机**：证明废物也有存在的价值
+- **成长弧线**：自暴自弃 → 疯狂报复 → 走出第三条路
+
+### 核心反派：秦沧 | 曾经的挚友 | 被迫背叛主角
+- 行为合理性：妹妹被宗主扣作人质
+
+# 四、世界观与势力
+
+### 时代背景：苍玄大陆，修仙纪元3000年
+### 核心设定：灵脉决定一切
+
+# 五、情节节点（要求埋设伏笔）
+1. 沈墨绑定系统 | 冲突：寿命倒扣 | 钩子：系统来源
+2. 秦沧首次后悔 | 冲突：真相难辨 | 钩子：妹妹人质
+
+# 六、情感曲线与节奏
+低谷 → 反击 → 和解
+"""
+
+        outline = parse_outline(response)
+
+        assert "人物设定" not in outline["summary"]
+        assert len(outline["characters"]) == 2
+        assert outline["characters"][0]["name"] == "沈墨"
+        assert outline["characters"][0]["role"] == "主角"
+        assert "嬉皮笑脸" in outline["characters"][0]["personality"]
+        assert "存在的价值" in outline["characters"][0]["motivation"]
+        assert "第三条路" in outline["characters"][0]["arc"]
+        assert outline["characters"][1]["name"] == "秦沧"
+        assert "曾经的挚友" in outline["characters"][1]["personality"]
+        assert outline["world_setting"]["era"] == "苍玄大陆，修仙纪元3000年"
+        assert outline["world_setting"]["core_rules"] == "灵脉决定一切"
+        assert len(outline["plot_points"]) == 2
+
+    def test_parse_outline_bold_list_characters(self):
+        """Should parse bold list-style character blocks"""
+        response = """
+# 小说大纲：《师叔别浪了》
+
+## 概述
+林渊重生后绑定情绪值系统。
+
+# 三、人物设定
+- **主角：林渊 | 表面路痴呆萌、实则冷静算死草**
+  - 口头禅：我记得路
+  - 核心动机：让师姐尝遍前世痛苦
+  - 成长弧线：伪装复仇者 → 动摇 → 顿悟
+
+- **重要配角：凌霄 | 林渊师兄 | 良心警报器**
+  - 不可替代作用：提醒主角不要越过底线
+
+# 四、世界观与势力
+- **时代背景**：修仙界天道纪元
+- **核心设定**：情绪是毒
+
+# 五、情节节点（要求埋设伏笔）
+1. 林渊觉醒系统 | 冲突：身份暴露 | 钩子：系统代价
+
+# 六、情感曲线与节奏
+压抑 → 荒诞 → 释然
+"""
+
+        outline = parse_outline(response)
+
+        assert len(outline["characters"]) == 2
+        assert outline["characters"][0]["name"] == "林渊"
+        assert "路痴呆萌" in outline["characters"][0]["personality"]
+        assert "我记得路" in outline["characters"][0]["personality"]
+        assert "前世痛苦" in outline["characters"][0]["motivation"]
+        assert outline["characters"][1]["name"] == "凌霄"
+        assert "林渊师兄" in outline["characters"][1]["personality"]
+        assert outline["world_setting"]["era"] == "修仙界天道纪元"
+        assert outline["world_setting"]["core_rules"] == "情绪是毒"
+        assert len(outline["plot_points"]) == 1
+
     def test_parse_chapter_count_explicit(self):
         """Should parse explicit chapter count"""
         response = """
@@ -117,6 +203,7 @@ class TestPromptTemplates:
             chapter_outline="第1章：测试章节\n场景：城市",
             previous_ending="上一章的结尾...",
             genre="都市",
+            target_words=3000,
             main_characters="张三",
             world_setting="现代都市",
             style_preference="轻松幽默",

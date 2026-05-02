@@ -288,6 +288,17 @@ async def run_workflow(
                         else:
                             yield f"event: node_done\ndata: {json.dumps({'node': node_name, 'state': output})}\n\n"
 
+                    # 大纲生成节点完成后，将结果持久化到 outlines 表
+                    if node_name == "outline_generation_node" and isinstance(output, dict):
+                        outline.title = output.get("outline_title", outline.title)
+                        outline.summary = output.get("outline_summary", outline.summary)
+                        outline.plot_points = output.get("outline_plot_points", [])
+                        outline.characters = output.get("outline_characters", [])
+                        outline.world_setting = output.get("outline_world_setting", {})
+                        outline.emotional_curve = output.get("outline_emotional_curve")
+                        outline.chapter_count_suggested = output.get("chapter_count")
+                        db.commit()
+
                     # 关系生成节点完成后，发送 done 并停止（规划阶段完成，后续步骤由用户手动触发）
                     if node_name == "generate_relations_node":
                         yield f"event: done\ndata: {json.dumps({'message': 'Generation completed'})}\n\n"
