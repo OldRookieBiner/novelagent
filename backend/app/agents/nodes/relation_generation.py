@@ -127,9 +127,7 @@ def write_relations_to_db(project_id: int, relations_data: list[dict]) -> list[d
 async def generate_relations_node(state: NovelState) -> NovelState:
     """LangGraph 兼容的关系生成节点
 
-    签名： (state: NovelState) -> NovelState
-
-    从已创建的角色列表生成关系网络，调用 LLM 生成关系数据并写入 DB。
+    签名：(state: NovelState) -> NovelState
     """
     characters = state.get("characters", [])
     if len(characters) < 2:
