@@ -565,3 +565,15 @@ export const modelConfigsApi = {
 // 重新导出 workflowApi（定义在 workflowApi.ts）
 export { workflowApi } from './workflowApi'
 export type { WorkflowStreamCallbacks } from './workflowApi'
+
+// ==================== Workflow Cleanup API ====================
+
+export const workflowCleanupApi = {
+  async cleanup(projectId: number): Promise<{ message: string; deleted: number }>
+  {
+    return request<{ message: string; deleted: number }>(
+      `/api/projects/${projectId}/workflow/cleanup`,
+      { method: 'POST' }
+    )
+  },
+}

@@ -66,7 +66,7 @@ export function CharacterPanel({ projectId }: CharacterPanelProps)
       try
       {
         const data = await characterApi.list(projectId)
-        setCharacters(data.characters)
+        setCharacters(Array.isArray(data?.characters) ? data.characters : [])
       }
       catch (err)
       {

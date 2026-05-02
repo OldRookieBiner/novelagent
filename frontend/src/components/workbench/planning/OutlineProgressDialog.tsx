@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { workflowApi } from '@/lib/workflowApi'
+import { workflowCleanupApi, getSessionToken } from '@/lib/api'
 
 type StepStatus = 'pending' | 'active' | 'done'
 
@@ -89,6 +90,17 @@ export function OutlineProgressDialog({
 
     const controller = new AbortController()
     abortRef.current = controller
+
+    // 重试前先清除旧的 checkpoint，防止状态污染
+    try
+    {
+      await workflowCleanupApi.cleanup(projectId)
+    }
+    catch (cleanupErr)
+    {
+      console.warn('Failed to cleanup checkpoints before retry:', cleanupErr)
+      // 不阻塞重试：如果 cleanup 失败仍然尝试运行
+    }
 
     try
     {

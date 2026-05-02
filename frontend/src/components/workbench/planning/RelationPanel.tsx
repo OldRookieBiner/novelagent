@@ -62,7 +62,7 @@ export function RelationPanel({ projectId }: RelationPanelProps)
       try
       {
         const data = await relationApi.list(projectId)
-        setRelations(data.relations)
+        setRelations(Array.isArray(data?.relations) ? data.relations : [])
       }
       catch (err)
       {

@@ -145,7 +145,16 @@ export const workflowApi = {
           break
 
         case 'error':
-          callbacks.onError?.(data as string)
+          {
+            // 兼容后端两种 error data 格式：
+            // 1. 对象：{"error": "大纲生成失败，请重试"}
+            // 2. 字符串：直接的消息文本
+            const errorData = data as unknown as { error?: string } | string
+            const errorMsg = typeof errorData === 'object' && errorData !== null
+              ? (errorData.error || JSON.stringify(errorData))
+              : String(errorData)
+            callbacks.onError?.(errorMsg)
+          }
           break
 
         default:
