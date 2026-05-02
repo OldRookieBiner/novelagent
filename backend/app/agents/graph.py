@@ -20,18 +20,21 @@ from app.agents.nodes.relation_generation import generate_relations_node
 
 def route_after_outline(
     state: NovelState,
-) -> Literal["wait_confirm", "create_characters"]:
+) -> Literal["wait_confirm", "create_characters", "end"]:
     """大纲生成后的路由
 
-    根据 review_mode 决定是否等待用户确认。
+    大纲无效时直接终止工作流，避免空大纲导致后续节点崩溃和检查点污染。
 
     Args:
         state: 当前状态
 
     Returns:
+        "end" - 大纲无效，终止工作流
         "wait_confirm" - 等待用户确认
         "create_characters" - 继续提取角色
     """
+    if not state.get("outline_valid", False):
+        return "end"
     decision = wait_for_confirmation(state)
     if decision == "wait":
         return "wait_confirm"
@@ -160,6 +163,7 @@ def create_novel_graph(checkpointer=None):
         {
             "wait_confirm": END,
             "create_characters": "create_characters_from_outline_node",
+            "end": END,
         },
     )
 

@@ -115,6 +115,9 @@ def build_initial_state(
         "outline_emotional_curve": outline.emotional_curve,
         "outline_confirmed": outline.confirmed,
 
+        # 大纲有效性
+        "outline_valid": False,
+
         # 章节大纲
         "chapter_count": outline.chapter_count_suggested or 0,
         "chapter_outlines": chapter_outlines,
@@ -246,13 +249,16 @@ async def run_workflow(
     # 构建初始状态
     initial_state = build_initial_state(project, outline, workflow_state, llm_config_id)
 
-    # 创建带检查点的图（复用 db 会话）
-    graph = create_novel_graph_with_checkpointer(project_id, "default", db)
+    # 每次启动工作流使用新的 thread_id，避免从旧 checkpoint 恢复导致状态污染
+    import uuid
+    thread_id = str(uuid.uuid4())
+
+    graph = create_novel_graph_with_checkpointer(project_id, thread_id, db)
 
     # 配置
     config = {
         "configurable": {
-            "thread_id": "default"
+            "thread_id": thread_id
         }
     }
 
@@ -295,7 +301,9 @@ async def run_workflow(
                         new_plot_points = output.get("outline_plot_points", [])
 
                         if not new_title and not new_summary and not new_characters:
-                            logger.warning(f"workflow: outline_generation_node returned empty data, skipping persist for project {project_id}")
+                            logger.warning(f"workflow: outline_generation_node returned empty data for project {project_id}")
+                            yield f"event: error\ndata: {json.dumps({'error': '大纲生成失败，AI 返回数据为空，请重试'})}\n\n"
+                            return
                         else:
                             # 只有有效数据才更新
                             if new_title:
@@ -319,12 +327,6 @@ async def run_workflow(
                     if node_name == "generate_relations_node":
                         import logging
                         logger = logging.getLogger(__name__)
-
-                        # 检查大纲是否有效，如果无效则报错
-                        if not outline.title and not outline.summary:
-                            logger.error(f"workflow: outline is empty after generation for project {project_id}")
-                            yield f"event: error\ndata: {json.dumps({'error': '大纲生成失败，请重试'})}\n\n"
-                            return
 
                         # 自动确认大纲，允许用户后续生成章节大纲
                         outline.confirmed = True
@@ -560,6 +562,37 @@ async def cancel_workflow(
         "message": "Workflow cancelled",
         "deleted_checkpoints": deleted_count
     }
+
+
+@router.post("/{project_id}/workflow/cleanup")
+async def cleanup_workflow_checkpoints(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    清除工作流检查点，用于重试前清理状态。
+    """
+    project = get_project_for_user(project_id, current_user.id, db)
+
+    deleted = db.query(WorkflowCheckpoint).filter(
+        WorkflowCheckpoint.project_id == project_id
+    ).delete()
+
+    workflow_state = db.query(WorkflowState).filter(
+        WorkflowState.project_id == project_id
+    ).first()
+    if workflow_state:
+        workflow_state.stage = "inspiration"
+        workflow_state.waiting_for_confirmation = False
+        workflow_state.confirmation_type = None
+
+    db.commit()
+
+    import logging
+    logging.getLogger(__name__).info(f"Cleaned up {deleted} checkpoints for project {project_id}")
+
+    return {"message": "Checkpoints cleaned up", "deleted": deleted}
 
 
 class UpdateStageRequest(BaseModel):

@@ -76,6 +76,7 @@ class NovelState(TypedDict):
     outline_world_setting: Optional[dict]  # {era, core_rules, power_system}
     outline_emotional_curve: Optional[str]
     outline_confirmed: bool
+    outline_valid: bool  # 大纲是否有效（有标题或概述即有效）
 
     # ========== 人物设定（v0.8.0）==========
     characters: list[

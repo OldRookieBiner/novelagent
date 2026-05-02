@@ -542,6 +542,8 @@ async def outline_generation_node(state: NovelState) -> NovelState:
         f"plot={len(outline.get('plot_points', []))}"
     )
 
+    is_valid = bool(outline.get("title") or outline.get("summary") or outline.get("characters"))
+
     new_state: NovelState = {
         **state,
         "outline_title": outline.get("title", ""),
@@ -552,6 +554,7 @@ async def outline_generation_node(state: NovelState) -> NovelState:
         "outline_emotional_curve": outline["emotional_curve"],
         "chapter_count": chapter_count,
         "stage": STAGE_OUTLINE,
+        "outline_valid": is_valid,
     }
 
     return new_state
