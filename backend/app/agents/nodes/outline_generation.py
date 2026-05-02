@@ -202,8 +202,11 @@ def _parse_characters_section(response: str, outline: Dict[str, Any]):
                 name = colon_match.group(1).strip()
             else:
                 name = first_part.replace(role, '').strip().strip('：:').strip()
+            # 清理 name 中的 ** 标记
+            name = re.sub(r'\*\*', '', name).strip()
             # parts[1] 作为 personality（如果有）
             personality = pipe_parts[1] if len(pipe_parts) > 1 else ''
+            personality = re.sub(r'\*\*', '', personality).strip()
             # parts[2] 作为补充描述（如果有）
             if len(pipe_parts) > 2:
                 extra = pipe_parts[2].strip()
@@ -245,10 +248,10 @@ def _parse_characters_section(response: str, outline: Dict[str, Any]):
 
             parts = [p.strip() for p in content_after_colon.split('|')]
             name = parts[0] if parts else ''
-            # 清理 name 中的粗体标记
-            name = re.sub(r'\*\*', '', name).strip()
+            # 清理 name 中的所有 * 和 ** 标记
+            name = re.sub(r'\*+', '', name).strip()
             personality = parts[1] if len(parts) > 1 else ''
-            personality = re.sub(r'\*\*', '', personality).strip()  # 清理 personality
+            personality = re.sub(r'\*+', '', personality).strip()  # 清理 personality
             motivation = ''
             arc = ''
 
