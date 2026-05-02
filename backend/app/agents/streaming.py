@@ -52,7 +52,9 @@ async def stream_node_events(
             elif event_type == "on_chain_end":
                 output = event_data.get("output", {})
                 if isinstance(output, dict):
-                    yield f"event: node_done\ndata: {json.dumps({'state': output})}\n\n"
+                    yield f"event: done\ndata: {json.dumps({'state': output})}\n\n"
+                else:
+                    yield f"event: done\ndata: {json.dumps({'state': {'output': str(output)}})}\n\n"
 
     except Exception as e:
         error_msg = str(e)

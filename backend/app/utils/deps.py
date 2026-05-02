@@ -27,5 +27,7 @@ def get_llm_for_context(request, user: User, user_settings: UserSettings, db: Se
     """
     from app.utils.llm import get_llm_for_user
 
-    llm_config_id = request.llm_config_id if request else None
+    # 使用 getattr 安全访问，因为 request 可能是 Starlette Request（无 llm_config_id）
+    # 也可能是 Pydantic schema（有 llm_config_id）
+    llm_config_id = getattr(request, 'llm_config_id', None) if request else None
     return get_llm_for_user(user.id, user_settings, db, llm_config_id)

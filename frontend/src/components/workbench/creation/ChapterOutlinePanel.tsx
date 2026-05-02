@@ -186,30 +186,24 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
               currentTitle: chapter.title || `第${chapter.chapter_number}章`,
               completed: [...completedTitlesRef.current]
             })
-            setChapters(prev =>
-            {
-              const exists = prev.find(c => c.id === chapter.id)
-              if (exists) return prev
-              return [...prev, {
-                id: chapter.id,
-                project_id: projectId,
-                chapter_number: chapter.chapter_number,
-                title: chapter.title,
-                scene: '',
-                plot: '',
-                target_words: 3000,
-                confirmed: false,
-                created_at: new Date().toISOString(),
-                has_content: false
-              } as ChapterOutline]
-            })
           },
-          onDone: (total) =>
+          onDone: async (total) =>
           {
             setGenerating(false)
             setProgress(null)
             abortControllerRef.current = null
-            toast.success(`已生成 ${total} 个章节大纲`)
+            // 重新获取完整数据以确保显示正确
+            try
+            {
+              const data = await chapterOutlinesApi.list(projectId)
+              setChapters(data)
+              toast.success(`已生成 ${total} 个章节大纲`)
+            }
+            catch (err)
+            {
+              console.error('Failed to refresh chapter outlines:', err)
+              toast.success(`已生成 ${total} 个章节大纲，请刷新页面查看`)
+            }
           },
           onError: (error) =>
           {

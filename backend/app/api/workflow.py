@@ -285,23 +285,52 @@ async def run_workflow(
 
                     # 大纲生成节点完成后，将结果持久化到 outlines 表
                     if node_name == "outline_generation_node" and isinstance(output, dict):
-                        outline.title = output.get("outline_title", outline.title)
-                        outline.summary = output.get("outline_summary", outline.summary)
-                        outline.plot_points = output.get("outline_plot_points", [])
-                        outline.characters = output.get("outline_characters", [])
-                        outline.world_setting = output.get("outline_world_setting", {})
-                        outline.emotional_curve = output.get("outline_emotional_curve")
-                        outline.chapter_count_suggested = output.get("chapter_count")
+                        import logging
+                        logger = logging.getLogger(__name__)
+
+                        # 验证数据有效性，防止空数据覆盖
+                        new_title = output.get("outline_title", "")
+                        new_summary = output.get("outline_summary", "")
+                        new_characters = output.get("outline_characters", [])
+                        new_plot_points = output.get("outline_plot_points", [])
+
+                        if not new_title and not new_summary and not new_characters:
+                            logger.warning(f"workflow: outline_generation_node returned empty data, skipping persist for project {project_id}")
+                        else:
+                            # 只有有效数据才更新
+                            if new_title:
+                                outline.title = new_title
+                            if new_summary:
+                                outline.summary = new_summary
+                            if new_plot_points:
+                                outline.plot_points = new_plot_points
+                            if new_characters:
+                                outline.characters = new_characters
+
+                            outline.world_setting = output.get("outline_world_setting", outline.world_setting or {})
+                            outline.emotional_curve = output.get("outline_emotional_curve", outline.emotional_curve)
+                            outline.chapter_count_suggested = output.get("chapter_count", outline.chapter_count_suggested)
+
+                            logger.info(f"workflow: persisted outline for project {project_id}: title='{new_title}', char={len(new_characters)}, plot={len(new_plot_points)}")
+
                         db.commit()
 
                     # 关系生成节点完成后，自动确认大纲并停止（规划阶段完成）
                     if node_name == "generate_relations_node":
+                        import logging
+                        logger = logging.getLogger(__name__)
+
+                        # 检查大纲是否有效，如果无效则报错
+                        if not outline.title and not outline.summary:
+                            logger.error(f"workflow: outline is empty after generation for project {project_id}")
+                            yield f"event: error\ndata: {json.dumps({'error': '大纲生成失败，请重试'})}\n\n"
+                            return
+
                         # 自动确认大纲，允许用户后续生成章节大纲
                         outline.confirmed = True
                         outline.chapter_count_confirmed = True
                         db.commit()
-                        import logging
-                        logging.getLogger(__name__).info(f"workflow: auto-confirmed outline for project {project_id}")
+                        logger.info(f"workflow: auto-confirmed outline for project {project_id}")
                         yield f"event: done\ndata: {json.dumps({'message': 'Generation completed'})}\n\n"
                         return
 
