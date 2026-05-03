@@ -1,7 +1,7 @@
 """Tests for chapter rewrite node"""
 
 import pytest
-from unittest.mock import Mock, patch, AsyncMock
+from unittest.mock import Mock, patch
 from app.agents.nodes.rewrite import rewrite_chapter_node, rewrite_with_retry
 
 
@@ -12,7 +12,7 @@ class TestRewriteChapterNode:
     async def test_rewrite_returns_content(self):
         """Should return rewritten content"""
         mock_llm = Mock()
-        mock_llm.chat = AsyncMock(return_value="这是重写后的章节内容...")
+        mock_llm.chat_stream = _make_chat_stream("这是重写后的章节内容...")
 
         state = {
             "collected_info": {"novelType": "玄幻"},
@@ -34,13 +34,13 @@ class TestRewriteChapterNode:
         )
 
         assert result == "这是重写后的章节内容..."
-        mock_llm.chat.assert_called_once()
+        mock_llm.chat_stream.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_rewrite_uses_characters(self):
         """Should use character information in rewrite"""
         mock_llm = Mock()
-        mock_llm.chat = AsyncMock(return_value="重写内容")
+        mock_llm.chat_stream = _make_chat_stream("重写内容")
 
         state = {
             "collected_info": {},
@@ -58,7 +58,7 @@ class TestRewriteChapterNode:
         )
 
         # 验证调用参数包含人物信息
-        call_args = mock_llm.chat.call_args
+        call_args = mock_llm.chat_stream.call_args
         prompt = call_args[0][0][0]["content"]
         assert "张三" in prompt
         assert "李四" in prompt
@@ -67,7 +67,7 @@ class TestRewriteChapterNode:
     async def test_rewrite_falls_back_to_protagonist(self):
         """Should fall back to protagonist when no character outlines"""
         mock_llm = Mock()
-        mock_llm.chat = AsyncMock(return_value="重写内容")
+        mock_llm.chat_stream = _make_chat_stream("重写内容")
 
         state = {
             "collected_info": {
@@ -84,9 +84,16 @@ class TestRewriteChapterNode:
             state, chapter_outline, original_content, review_feedback, mock_llm
         )
 
-        call_args = mock_llm.chat.call_args
+        call_args = mock_llm.chat_stream.call_args
         prompt = call_args[0][0][0]["content"]
         assert "自定义主角描述" in prompt
+
+
+def _make_chat_stream(text):
+    """创建 chat_stream 的 async generator mock（支持 assert_called_once / call_args）"""
+    async def _stream(*args, **kwargs):
+        yield text
+    return Mock(side_effect=_stream)
 
 
 class TestRewriteWithRetry:
@@ -95,9 +102,7 @@ class TestRewriteWithRetry:
     @pytest.mark.asyncio
     async def test_pass_on_first_review(self):
         """Should pass without rewrite if first review passes"""
-        mock_llm = Mock()
-        mock_llm.chat = AsyncMock(
-            return_value="""
+        review_text = """
 【审核结果】通过
 情节一致性：8/10
 人物一致性：8/10
@@ -108,7 +113,9 @@ AI味程度：2/10
 【修改建议】无
 ---
 """
-        )
+        mock_llm = Mock()
+        # review_chapter_node 使用 chat_stream
+        mock_llm.chat_stream = _make_chat_stream(review_text)
 
         state = {}
         chapter_outline = {"title": "测试章节"}
@@ -127,11 +134,12 @@ AI味程度：2/10
         """Should retry until review passes"""
         call_count = [0]
 
-        async def mock_chat(messages):
+        async def mock_chat_stream(messages):
+            """根据调用次数返回不同结果（奇数次=审核，偶数次=重写）"""
             call_count[0] += 1
-            # 第一次审核不通过，第二次审核通过
             if call_count[0] == 1:
-                return """
+                # 第1次审核：不通过
+                text = """
 【审核结果】不通过
 情节一致性：5/10
 人物一致性：8/10
@@ -143,9 +151,11 @@ AI味程度：2/10
 ---
 """
             elif call_count[0] == 2:
-                return "重写后的内容"
-            else:
-                return """
+                # 第1次重写：返回重写内容
+                text = "重写后的内容"
+            elif call_count[0] == 3:
+                # 第2次审核：通过
+                text = """
 【审核结果】通过
 情节一致性：8/10
 人物一致性：8/10
@@ -156,9 +166,23 @@ AI味程度：2/10
 【修改建议】无
 ---
 """
+            else:
+                text = """
+【审核结果】通过
+情节一致性：8/10
+人物一致性：8/10
+文笔质量：8/10
+情感张力：8/10
+AI味程度：2/10
+【问题列表】无
+【修改建议】无
+---
+"""
+            yield text
 
         mock_llm = Mock()
-        mock_llm.chat = mock_chat
+        # review_chapter_node 和 rewrite_chapter_node 均使用 chat_stream
+        mock_llm.chat_stream = mock_chat_stream
 
         state = {}
         chapter_outline = {"title": "测试章节"}
@@ -175,9 +199,14 @@ AI味程度：2/10
     @pytest.mark.asyncio
     async def test_max_retries_exceeded(self):
         """Should fail after max retries"""
-        mock_llm = Mock()
-        mock_llm.chat = AsyncMock(
-            return_value="""
+        call_count = [0]
+
+        async def mock_chat_stream(messages):
+            """奇数次=审核（不通过），偶数次=重写"""
+            call_count[0] += 1
+            if call_count[0] % 2 == 1:
+                # 审核调用：始终不通过
+                text = """
 【审核结果】不通过
 情节一致性：5/10
 人物一致性：8/10
@@ -188,7 +217,14 @@ AI味程度：2/10
 【修改建议】增加冲突
 ---
 """
-        )
+            else:
+                # 重写调用
+                text = "重写后的内容"
+            yield text
+
+        mock_llm = Mock()
+        # review_chapter_node 和 rewrite_chapter_node 均使用 chat_stream
+        mock_llm.chat_stream = mock_chat_stream
 
         state = {}
         chapter_outline = {"title": "测试章节"}
@@ -225,7 +261,7 @@ class TestRewriteNodeIntegration:
         from app.agents.nodes.rewrite import rewrite_node
 
         mock_llm = Mock()
-        mock_llm.chat = AsyncMock(return_value="重写后的内容")
+        mock_llm.chat_stream = _make_chat_stream("重写后的内容")
 
         state = {
             "collected_info": {"novelType": "玄幻"},

@@ -93,13 +93,10 @@ N. 结局：[事件] | [冲突解决] | [情感落点] | [伏笔回收：所有�
 请直接输出大纲内容，不要添加任何总结性语句。"""
 
     op.execute(
-        text("""
-        UPDATE system_config
-        SET value = :prompt_value,
-            updated_at = NOW()
-        WHERE key = 'prompt_outline_generation'
-        """),
-        {"prompt_value": prompt_value}
+        text(
+            "UPDATE system_config SET value = :prompt_value, updated_at = NOW() "
+            "WHERE key = 'prompt_outline_generation'"
+        ).bindparams(prompt_value=prompt_value)
     )
 
 

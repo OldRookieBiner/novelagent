@@ -126,7 +126,15 @@ export const workflowApi = {
           break
 
         case 'chunk':
-          callbacks.onChunk?.(data as unknown as string)
+          {
+            // 后端发送 {"content": "文本"} 格式，提取 content 字段
+            const chunkData = data as unknown as { content: string } | string
+            const chunkText = typeof chunkData === 'string' ? chunkData : chunkData.content
+            if (chunkText)
+            {
+              callbacks.onChunk?.(chunkText)
+            }
+          }
           break
 
         case 'checkpoint':

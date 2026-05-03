@@ -236,6 +236,9 @@ async def generate_chapter_outlines_node(state: NovelState, llm: LLMService) -> 
     """Generate all chapter outlines (legacy synchronous version)"""
 
     chapter_count = state.get("chapter_count", 10)
+    if chapter_count <= 0:
+        return {**state, "chapter_outlines": [], "stage": STAGE_CHAPTER_OUTLINES}
+
     generated_chapters = []
 
     for chapter_num in range(1, chapter_count + 1):
@@ -345,7 +348,11 @@ async def generate_chapter_content_node(state: NovelState) -> NovelState:
             break
 
     if not chapter_outline:
-        raise ValueError(f"Chapter outline not found for chapter {current_chapter}")
+        chapter_count = state.get("chapter_count", 0)
+        raise ValueError(
+            f"章节大纲未找到：第 {current_chapter} 章（共 {chapter_count} 章，"
+            f"已生成 {len(chapter_outlines)} 个章节大纲）"
+        )
 
     # 获取上一章的结尾用于衔接
     previous_ending = ""

@@ -43,10 +43,11 @@ def route_after_outline(
 
 def route_after_chapter_outlines(
     state: NovelState,
-) -> Literal["wait_confirm", "chapter_content"]:
+) -> Literal["wait_confirm", "chapter_content", "end"]:
     """章节大纲生成后的路由
 
     根据 review_mode 决定是否等待用户确认。
+    如果章节大纲为空，直接结束以防止后续节点报错。
 
     Args:
         state: 当前状态
@@ -54,7 +55,10 @@ def route_after_chapter_outlines(
     Returns:
         "wait_confirm" - 等待用户确认
         "chapter_content" - 继续生成章节正文
+        "end" - 无章节大纲，结束工作流
     """
+    if not state.get("chapter_outlines"):
+        return "end"
     decision = wait_for_confirmation(state)
     if decision == "wait":
         return "wait_confirm"
@@ -109,8 +113,17 @@ def route_after_characters(
 
 def route_after_relations(
     state: NovelState,
-) -> Literal["wait_confirm", "chapter_outlines"]:
-    """关系生成后的路由"""
+) -> Literal["wait_confirm", "chapter_outlines", "end"]:
+    """关系生成后的路由
+
+    规划阶段的关系生成完成后不应继续执行章节大纲生成。
+    当 chapter_count 为 0（大纲未确认章节数）或 characters 为空时，
+    直接结束工作流，避免进入无意义的章节大纲生成并导致前端报错。
+    """
+    if state.get("chapter_count", 0) <= 0:
+        return "end"
+    if not state.get("characters"):
+        return "end"
     decision = wait_for_confirmation(state)
     if decision == "wait":
         return "wait_confirm"
@@ -176,14 +189,14 @@ def create_novel_graph(checkpointer=None):
     graph.add_conditional_edges(
         "generate_relations_node",
         route_after_relations,
-        {"wait_confirm": END, "chapter_outlines": "chapter_outlines_node"},
+        {"wait_confirm": END, "chapter_outlines": "chapter_outlines_node", "end": END},
     )
 
     # 章节大纲 → 章节正文（条件路由）
     graph.add_conditional_edges(
         "chapter_outlines_node",
         route_after_chapter_outlines,
-        {"wait_confirm": END, "chapter_content": "generate_chapter_content_node"},
+        {"wait_confirm": END, "chapter_content": "generate_chapter_content_node", "end": END},
     )
 
     # 章节正文 → 审核

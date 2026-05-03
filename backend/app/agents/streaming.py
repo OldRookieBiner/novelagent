@@ -47,7 +47,8 @@ async def stream_node_events(
                 if chunk:
                     content = getattr(chunk, "content", str(chunk))
                     if content:
-                        yield f"data: {json.dumps(content)}\n\n"
+                        # 统一 chunk 事件格式：event: chunk + data: {"content": "..."}
+                        yield f"event: chunk\ndata: {json.dumps({'content': content})}\n\n"
 
             elif event_type == "on_chain_end":
                 output = event_data.get("output", {})

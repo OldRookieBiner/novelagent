@@ -631,9 +631,24 @@ async def generate_chapter(
 
     # Create async generator for SSE streaming
     async def stream_generator():
-        """Generate chapter content via LangGraph and stream via SSE."""
-        from app.agents.streaming import create_single_node_graph, stream_node_events
-        from app.agents.nodes.chapter_generation import generate_chapter_content_node, clean_chapter_content
+        """直接调用 LLM 流式生成章节内容，绕过 LangGraph 事件系统
+
+        LangGraph 的 astream_events 无法捕获自定义 LLMService.chat_stream
+        的 on_chat_model_stream 事件（LLMService 不是 LangChain 组件），
+        因此直接使用 llm.chat_stream 生成内容并手动构建 SSE 事件。
+        """
+        from app.agents.nodes.chapter_generation import (
+            generate_chapter_content_stream,
+            clean_chapter_content,
+        )
+        from app.agents.nodes.utils import (
+            _format_chapter_outline_str,
+            format_characters_info,
+            format_relations_info,
+            format_evolution_info,
+            format_world_setting,
+        )
+        from app.agents.prompts import GENERATE_CHAPTER_CONTENT_PROMPT
 
         # 获取上一章结尾
         previous_ending = ""
@@ -650,68 +665,51 @@ async def generate_chapter(
                 prev_content = prev_outline.chapter.content
                 previous_ending = prev_content[-500:] if len(prev_content) > 500 else prev_content
 
-        # 获取章节大纲列表
-        chapter_outlines_list = [
-            {
-                "chapter_number": co.chapter_number,
-                "title": co.title,
-                "scene": co.scene,
-                "characters": co.characters,
-                "plot": co.plot,
-                "conflict": co.conflict,
-                "ending": co.ending,
-                "target_words": co.target_words,
-            }
-            for co in db.query(ChapterOutline)
-            .filter(ChapterOutline.project_id == project_id)
-            .order_by(ChapterOutline.chapter_number)
-            .all()
-        ]
-
-        # 获取已写章节
-        written_chapters_list = [
-            {
-                "chapter_number": co.chapter_number,
-                "content": co.chapter.content or "",
-                "word_count": co.chapter.word_count or 0,
-                "title": co.title,
-            }
-            for co in db.query(ChapterOutline)
-            .filter(ChapterOutline.project_id == project_id)
-            .order_by(ChapterOutline.chapter_number)
-            .all()
-            if co.chapter and co.chapter.content
-        ]
-
-        graph_state = {
-            **state,
-            "current_chapter": chapter_num,
-            "chapter_outlines": chapter_outlines_list,
-            "written_chapters": written_chapters_list,
-            "previous_ending": previous_ending,
-            "stage": "writing",
+        # 构建章节大纲 dict
+        chapter_outline_dict = {
+            "chapter_number": chapter_outline.chapter_number,
+            "title": chapter_outline.title or "",
+            "scene": chapter_outline.scene or "",
+            "characters": chapter_outline.characters or "",
+            "plot": chapter_outline.plot or "",
+            "conflict": chapter_outline.conflict or "",
+            "ending": chapter_outline.ending or "",
+            "target_words": chapter_outline.target_words or 3000,
         }
 
-        graph = create_single_node_graph(generate_chapter_content_node)
-        config = {"configurable": {"thread_id": f"chapter-{project_id}-{chapter_num}"}}
+        # 格式化 prompt 各部分
+        info = outline.collected_info or {}
+        outline_str = _format_chapter_outline_str(chapter_outline_dict)
+        chars_str = format_characters_info(state)
+        relations_str = format_relations_info(state, chapter_outline_dict.get("chapter_number", 1))
+        evolution_str, evolution_plans_str = format_evolution_info(state, chapter_outline_dict.get("chapter_number", 1))
+        world_str = format_world_setting(state)
+        combined_characters_str = chars_str + relations_str + evolution_str + evolution_plans_str
+        target_words = chapter_outline_dict.get("target_words", 3000)
+
+        prompt = GENERATE_CHAPTER_CONTENT_PROMPT.format(
+            chapter_outline=outline_str,
+            previous_ending=previous_ending,
+            genre=info.get("novelType", "未指定"),
+            main_characters=combined_characters_str,
+            world_setting=world_str,
+            style_preference=info.get("stylePreference", "未指定"),
+            target_words=target_words,
+        )
+
+        yield f"event: node_start\ndata: {json.dumps({'message': 'Starting generation'})}\n\n"
 
         accumulated_content = ""
         try:
-            async for sse_event in stream_node_events(graph, graph_state, config):
-                if sse_event.startswith("data: "):
-                    try:
-                        chunk_content = json.loads(sse_event[6:].strip())
-                        if isinstance(chunk_content, str):
-                            accumulated_content += chunk_content
-                    except json.JSONDecodeError:
-                        pass
-                yield sse_event
+            async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
+                accumulated_content += chunk
+                yield f"event: chunk\ndata: {json.dumps({'content': chunk})}\n\n"
 
             content = clean_chapter_content(accumulated_content) if accumulated_content else ""
             if not content:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to generate chapter content",
+                    detail="AI 返回内容为空，请重试",
                 )
 
             word_count = len(content)
@@ -725,8 +723,10 @@ async def generate_chapter(
                 "content": content,
                 "word_count": word_count,
             }
-            yield f"event: done\ndata: {json.dumps({'chapter': chapter_response})}\n\n"
+            yield f"event: done\ndata: {json.dumps(chapter_response)}\n\n"
 
+        except HTTPException:
+            raise
         except Exception as e:
             yield format_sse_error(e)
 

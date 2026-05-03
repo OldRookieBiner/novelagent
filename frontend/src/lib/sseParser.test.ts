@@ -188,4 +188,63 @@ describe('SSE Parser', () =>
       expect(parsed).toEqual({ error: 'connection refused' })
     })
   })
+
+  describe('chunk event format', () =>
+  {
+    it('解析带 event: chunk 前缀的 SSE 事件', () =>
+    {
+      const buffer = ''
+      const data = 'event: chunk\ndata: {"content": "测试文本"}\n\n'
+      const [remaining, events] = processSSEBuffer(buffer, data)
+
+      expect(remaining).toBe('')
+      expect(events).toHaveLength(1)
+      expect(events[0].type).toBe('chunk')
+      const parsed = parseSSEData(events[0].data)
+      expect(parsed).toEqual({ content: '测试文本' })
+    })
+
+    it('解析多个连续 chunk 事件', () =>
+    {
+      const buffer = ''
+      const data = 'event: chunk\ndata: {"content": "第一段"}\n\nevent: chunk\ndata: {"content": "第二段"}\n\n'
+      const [remaining, events] = processSSEBuffer(buffer, data)
+
+      expect(remaining).toBe('')
+      expect(events).toHaveLength(2)
+      expect(events[0].type).toBe('chunk')
+      expect(events[1].type).toBe('chunk')
+
+      const parsed0 = parseSSEData(events[0].data)
+      const parsed1 = parseSSEData(events[1].data)
+      expect(parsed0).toEqual({ content: '第一段' })
+      expect(parsed1).toEqual({ content: '第二段' })
+    })
+
+    it('解析 done 事件中的章节数据（word_count 在顶层）', () =>
+    {
+      const buffer = ''
+      const data = 'event: done\ndata: {"id": 1, "word_count": 3000, "content": "章节内容"}\n\n'
+      const [remaining, events] = processSSEBuffer(buffer, data)
+
+      expect(remaining).toBe('')
+      expect(events).toHaveLength(1)
+      expect(events[0].type).toBe('done')
+      const parsed = parseSSEData(events[0].data)
+      expect(parsed).toEqual({ id: 1, word_count: 3000, content: '章节内容' })
+    })
+
+    it('chunk 事件和 done 事件交替出现', () =>
+    {
+      const buffer = ''
+      const data = 'event: chunk\ndata: {"content": "文本1"}\n\nevent: chunk\ndata: {"content": "文本2"}\n\nevent: done\ndata: {"id": 1, "word_count": 500}\n\n'
+      const [remaining, events] = processSSEBuffer(buffer, data)
+
+      expect(remaining).toBe('')
+      expect(events).toHaveLength(3)
+      expect(events[0].type).toBe('chunk')
+      expect(events[1].type).toBe('chunk')
+      expect(events[2].type).toBe('done')
+    })
+  })
 })

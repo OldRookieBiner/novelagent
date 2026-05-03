@@ -10,7 +10,8 @@ from pydantic import BaseModel
 from app.database import get_db
 from app.models.user import User
 from app.models.project import Project
-from app.models.outline import Outline
+from app.models.outline import Outline, ChapterOutline
+from app.models.chapter import Chapter
 from app.models.checkpoint import WorkflowCheckpoint
 from app.models.workflow_state import WorkflowState
 from app.utils.auth import get_current_user
@@ -115,8 +116,8 @@ def build_initial_state(
         "outline_emotional_curve": outline.emotional_curve,
         "outline_confirmed": outline.confirmed,
 
-        # 大纲有效性
-        "outline_valid": False,
+        # 大纲有效性：有标题或概述即有效，避免路由到 end 导致工作流提前终止
+        "outline_valid": bool(outline.title or outline.summary),
 
         # 章节大纲
         "chapter_count": outline.chapter_count_suggested or 0,
@@ -144,7 +145,7 @@ def build_initial_state(
     return state
 
 
-def get_latest_checkpoint(project_id: int, thread_id: str = "default", db: Session = None) -> Optional[dict]:
+def get_latest_checkpoint(project_id: int, thread_id: str = "main", db: Session = None) -> Optional[dict]:
     """
     获取项目的最新检查点状态。
 
@@ -169,7 +170,7 @@ def get_latest_checkpoint(project_id: int, thread_id: str = "default", db: Sessi
     return None
 
 
-def delete_project_checkpoints(project_id: int, thread_id: str = "default", db: Session = None) -> int:
+def delete_project_checkpoints(project_id: int, thread_id: str = "main", db: Session = None) -> int:
     """
     删除项目的所有检查点。
 
@@ -249,9 +250,8 @@ async def run_workflow(
     # 构建初始状态
     initial_state = build_initial_state(project, outline, workflow_state, llm_config_id)
 
-    # 每次启动工作流使用新的 thread_id，避免从旧 checkpoint 恢复导致状态污染
-    import uuid
-    thread_id = str(uuid.uuid4())
+    # 使用固定 thread_id，确保 confirm/cancel/state 等操作能找到同一检查点
+    thread_id = "main"
 
     graph = create_novel_graph_with_checkpointer(project_id, thread_id, db)
 
@@ -333,8 +333,96 @@ async def run_workflow(
                         outline.chapter_count_confirmed = True
                         db.commit()
                         logger.info(f"workflow: auto-confirmed outline for project {project_id}")
+                        # 规划阶段已完成，发送 done 事件并终止流
                         yield f"event: done\ndata: {json.dumps({'message': 'Generation completed'})}\n\n"
                         return
+
+                    # 章节内容生成节点完成后，将结果持久化到 chapters 表
+                    if node_name == "generate_chapter_content_node" and isinstance(output, dict):
+                        import logging
+                        logger = logging.getLogger(__name__)
+
+                        written_chapters = output.get("written_chapters", [])
+                        for chapter_data in written_chapters:
+                            chapter_num = chapter_data.get("chapter_number")
+                            if not chapter_num:
+                                continue
+                            # 查找对应的 ChapterOutline
+                            chapter_outline = db.query(ChapterOutline).filter(
+                                ChapterOutline.project_id == project_id,
+                                ChapterOutline.chapter_number == chapter_num
+                            ).first()
+                            if not chapter_outline:
+                                continue
+                            # 查找或创建 Chapter 记录
+                            chapter = db.query(Chapter).filter(
+                                Chapter.chapter_outline_id == chapter_outline.id
+                            ).first()
+                            if not chapter:
+                                chapter = Chapter(
+                                    chapter_outline_id=chapter_outline.id,
+                                    content=chapter_data.get("content", ""),
+                                    word_count=chapter_data.get("word_count", 0),
+                                    review_passed=False,
+                                    review_feedback=None
+                                )
+                                db.add(chapter)
+                            else:
+                                chapter.content = chapter_data.get("content", chapter.content)
+                                chapter.word_count = chapter_data.get("word_count", chapter.word_count)
+                        db.commit()
+                        logger.info(f"workflow: persisted chapter content for project {project_id}")
+
+                    # 审核节点完成后，将审核结果持久化到 chapters 表
+                    if node_name == "review_node" and isinstance(output, dict):
+                        import logging
+                        logger = logging.getLogger(__name__)
+
+                        review_result = output.get("review_result", {})
+                        current_chapter = output.get("current_chapter", 1)
+                        # current_chapter 在 generate_chapter_content_node 中已递增，所以被审核的是 current_chapter - 1
+                        reviewed_chapter_num = current_chapter - 1
+                        chapter_outline = db.query(ChapterOutline).filter(
+                            ChapterOutline.project_id == project_id,
+                            ChapterOutline.chapter_number == reviewed_chapter_num
+                        ).first()
+                        if chapter_outline:
+                            chapter = db.query(Chapter).filter(
+                                Chapter.chapter_outline_id == chapter_outline.id
+                            ).first()
+                            if chapter:
+                                from app.agents.nodes.review import check_review_passed
+                                chapter.review_passed = check_review_passed(review_result)
+                                chapter.review_feedback = review_result.get("raw_response")
+                                chapter.review_result = review_result
+                                db.commit()
+                        logger.info(f"workflow: persisted review result for project {project_id}")
+
+                    # 重写节点完成后，将重写后的内容持久化到 chapters 表
+                    if node_name == "rewrite_node" and isinstance(output, dict):
+                        import logging
+                        logger = logging.getLogger(__name__)
+
+                        written_chapters = output.get("written_chapters", [])
+                        for chapter_data in written_chapters:
+                            chapter_num = chapter_data.get("chapter_number")
+                            if not chapter_num:
+                                continue
+                            chapter_outline = db.query(ChapterOutline).filter(
+                                ChapterOutline.project_id == project_id,
+                                ChapterOutline.chapter_number == chapter_num
+                            ).first()
+                            if not chapter_outline:
+                                continue
+                            chapter = db.query(Chapter).filter(
+                                Chapter.chapter_outline_id == chapter_outline.id
+                            ).first()
+                            if chapter:
+                                chapter.content = chapter_data.get("content", chapter.content)
+                                chapter.word_count = chapter_data.get("word_count", chapter.word_count)
+                                chapter.rewrite_count = output.get("rewrite_count", chapter.rewrite_count)
+                        db.commit()
+                        logger.info(f"workflow: persisted rewritten chapter for project {project_id}")
 
                 elif event_type == "on_chat_model_stream":
                     # LLM 流式输出
@@ -378,7 +466,7 @@ async def confirm_workflow(
     project = get_project_for_user(project_id, current_user.id, db)
 
     # 获取最新检查点
-    checkpoint_state = get_latest_checkpoint(project_id, "default", db)
+    checkpoint_state = get_latest_checkpoint(project_id, "main", db)
 
     if not checkpoint_state:
         raise HTTPException(
@@ -417,7 +505,7 @@ async def confirm_workflow(
     # 更新数据库中的检查点（使用传入的 db 会话）
     record = db.query(WorkflowCheckpoint).filter(
         WorkflowCheckpoint.project_id == project_id,
-        WorkflowCheckpoint.thread_id == "default"
+        WorkflowCheckpoint.thread_id == "main"
     ).order_by(WorkflowCheckpoint.updated_at.desc()).first()
 
     if record:
@@ -440,8 +528,8 @@ async def confirm_workflow(
     db.commit()
 
     # 通过 LangGraph 恢复执行
-    graph = create_novel_graph_with_checkpointer(project_id, "default", db)
-    config = {"configurable": {"thread_id": "default"}}
+    graph = create_novel_graph_with_checkpointer(project_id, "main", db)
+    config = {"configurable": {"thread_id": "main"}}
 
     async def stream_generator():
         """LangGraph 工作流恢复执行 SSE 流生成器"""
@@ -502,7 +590,7 @@ async def get_workflow_state(
     project = get_project_for_user(project_id, current_user.id, db)
 
     # 获取最新检查点
-    checkpoint_state = get_latest_checkpoint(project_id, "default", db)
+    checkpoint_state = get_latest_checkpoint(project_id, "main", db)
 
     if checkpoint_state:
         return WorkflowStateResponse(
@@ -556,7 +644,7 @@ async def cancel_workflow(
     project = get_project_for_user(project_id, current_user.id, db)
 
     # 删除检查点
-    deleted_count = delete_project_checkpoints(project_id, "default", db)
+    deleted_count = delete_project_checkpoints(project_id, "main", db)
 
     return {
         "message": "Workflow cancelled",

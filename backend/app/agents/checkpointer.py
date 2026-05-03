@@ -154,7 +154,7 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
             pending_writes=[],
         )
 
-    def put(self, config: dict, checkpoint: dict, metadata: dict) -> dict:
+    def put(self, config: dict, checkpoint: dict, metadata: dict, new_versions: dict = None) -> dict:
         """
         保存检查点（自动清理旧记录）
 
@@ -258,10 +258,10 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self.get_tuple, config)
 
-    async def aput(self, config: dict, checkpoint: dict, metadata: dict) -> dict:
-        """异步保存检查点（LangGraph v1 要求）"""
+    async def aput(self, config: dict, checkpoint: dict, metadata: dict, new_versions: dict = None) -> dict:
+        """异步保存检查点（LangGraph v1 要求，new_versions 为 channel 版本号）"""
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self.put, config, checkpoint, metadata)
+        return await loop.run_in_executor(None, self.put, config, checkpoint, metadata, new_versions)
 
     def list(self, config: dict) -> Iterator[CheckpointTuple]:
         """

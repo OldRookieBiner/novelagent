@@ -48,7 +48,10 @@ async def rewrite_chapter_node(
         or info.get("worldSetting", "未指定"),
     )
 
-    response = await llm.chat([{"role": "user", "content": prompt}])
+    # 流式调用 LLM，使 LangGraph 能捕获 on_chat_model_stream 事件实时推送给前端
+    response = ""
+    async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
+        response += chunk
 
     db.close()
     return response

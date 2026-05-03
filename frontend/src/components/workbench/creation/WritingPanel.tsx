@@ -215,9 +215,28 @@ export function WritingPanel({ projectId }: WritingPanelProps)
         },
         (type, data) =>
         {
-          if (type === 'done')
+          if (type === 'chunk')
           {
-            const wordCount = typeof data === 'number' ? data : (data as { word_count?: number })?.word_count
+            // 从 chunk 事件中提取 content 字段
+            const chunkData = data as { content: string } | string
+            const chunkText = typeof chunkData === 'string' ? chunkData : chunkData.content
+            if (chunkText)
+            {
+              accumulated.push(chunkText)
+              const fullText = accumulated.join('')
+              const html = fullText
+                .split('\n')
+                .filter(p => p.trim())
+                .map(p => `<p>${p}</p>`)
+                .join('')
+              setContent(html)
+            }
+          }
+          else if (type === 'done')
+          {
+            // 从 done 事件提取 word_count（word_count 在顶层）
+            const doneData = data as { word_count?: number; content?: string }
+            const wordCount = doneData?.word_count
             if (wordCount)
             {
               toast.success(`AI 生成完成，共 ${wordCount} 字`)
@@ -230,7 +249,17 @@ export function WritingPanel({ projectId }: WritingPanelProps)
               c.id === selectedChapter.id ? { ...c, has_content: true } : c
             ))
           }
-          else if (typeof data === 'string')
+          else if (type === 'error')
+          {
+            const errorData = data as { error?: string } | string
+            const errorMsg = typeof errorData === 'object' && errorData !== null
+              ? (errorData.error || JSON.stringify(errorData))
+              : String(errorData)
+            console.error('Generation error:', errorMsg)
+            toast.error(`生成失败: ${errorMsg}`)
+          }
+          // 兼容旧格式：无 event: 前缀的 message 事件（string data）
+          else if (type === 'message' && typeof data === 'string')
           {
             accumulated.push(data)
             const fullText = accumulated.join('')
@@ -248,6 +277,27 @@ export function WritingPanel({ projectId }: WritingPanelProps)
           toast.error('生成失败，已保留生成内容')
         }
       )
+
+      // 生成完成后刷新 API 数据，确保内容与持久化数据一致
+      try
+      {
+        const chapter = await chaptersApi.get(projectId, selectedChapter.chapter_number)
+        setChapterContent(chapter)
+        // 使用 API 返回的内容替换流式累积的内容，确保一致性
+        if (chapter.content)
+        {
+          const apiHtml = chapter.content
+            .split('\n')
+            .filter(p => p.trim())
+            .map(p => `<p>${p}</p>`)
+            .join('')
+          setContent(apiHtml)
+        }
+      }
+      catch
+      {
+        // 刷新失败不影响已显示的流式内容
+      }
     }
     finally
     {

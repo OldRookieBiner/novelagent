@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { workflowApi } from '@/lib/workflowApi'
-import { workflowCleanupApi, getSessionToken } from '@/lib/api'
+import { workflowCleanupApi } from '@/lib/api'
 
 type StepStatus = 'pending' | 'active' | 'done'
 

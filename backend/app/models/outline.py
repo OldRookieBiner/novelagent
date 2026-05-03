@@ -34,7 +34,7 @@ class Outline(Base):
     # v0.6.1 增强字段
     characters = Column(JSON, default=list)  # 人物设定列表
     world_setting = Column(JSON, default=dict)  # 世界观设定
-    emotional_curve = Column(String(500), nullable=True)  # 情感曲线描述
+    emotional_curve = Column(Text, nullable=True)  # 情感曲线描述
     collected_info = Column(JSON, default=dict)  # Collected information from user
     inspiration_template = Column(
         Text, nullable=True
