@@ -1,9 +1,18 @@
 """LLM service for interacting with AI models"""
 
+import asyncio
+import logging
 from typing import AsyncIterator
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, APIError
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+# 重试配置
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+MAX_RETRIES = 3
+BASE_DELAY = 1.0  # 秒
 
 
 class LLMService:
@@ -59,33 +68,78 @@ class LLMService:
 
         self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
 
+    def _should_retry(self, error: APIError, attempt: int) -> bool:
+        """判断是否应该重试"""
+        if attempt >= MAX_RETRIES:
+            return False
+        status_code = getattr(error, "status_code", None)
+        if status_code in RETRYABLE_STATUS_CODES:
+            return True
+        # 网络错误也重试
+        error_str = str(error).lower()
+        if any(
+            kw in error_str
+            for kw in ["timeout", "connection", "network", "reset"]
+        ):
+            return True
+        return False
+
     async def chat(
         self, messages: list[dict], temperature: float = 0.7, max_tokens: int = 4096
     ) -> str:
-        """Send a chat request and get response"""
-        response = await self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-        return response.choices[0].message.content
+        """Send a chat request and get response with retry"""
+        last_error = None
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                response = await self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+                return response.choices[0].message.content
+            except APIError as e:
+                last_error = e
+                if not self._should_retry(e, attempt):
+                    break
+                delay = BASE_DELAY * (2 ** attempt)
+                logger.warning(
+                    f"LLM chat attempt {attempt + 1} failed: {e}. "
+                    f"Retrying in {delay:.1f}s..."
+                )
+                await asyncio.sleep(delay)
+        raise last_error
 
     async def chat_stream(
         self, messages: list[dict], temperature: float = 0.7, max_tokens: int = 4096
     ) -> AsyncIterator[str]:
-        """Send a chat request and stream response"""
-        stream = await self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            stream=True,
-        )
+        """Send a chat request and stream response with retry"""
+        last_error = None
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                stream = await self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    stream=True,
+                )
 
-        async for chunk in stream:
-            if chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
+                async for chunk in stream:
+                    if chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
+                return  # 成功，退出
+            except APIError as e:
+                last_error = e
+                if not self._should_retry(e, attempt):
+                    break
+                delay = BASE_DELAY * (2 ** attempt)
+                logger.warning(
+                    f"LLM chat_stream attempt {attempt + 1} failed: {e}. "
+                    f"Retrying in {delay:.1f}s..."
+                )
+                await asyncio.sleep(delay)
+        raise last_error
 
     async def chat_with_system(
         self, system_prompt: str, messages: list[dict], temperature: float = 0.7
