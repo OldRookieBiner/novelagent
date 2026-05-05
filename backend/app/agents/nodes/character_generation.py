@@ -1,5 +1,6 @@
 """角色生成节点 - 从大纲提取角色并写入数据库"""
 
+import asyncio
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
@@ -93,7 +94,6 @@ async def create_characters_from_outline_node(state: NovelState) -> NovelState:
     读取 state["outline_characters"]，批量 INSERT 到 characters 表，
     然后更新 state["characters"] 和 state["stage"]。
     """
-    import asyncio
     loop = asyncio.get_event_loop()
     characters = await loop.run_in_executor(
         None, extract_characters_from_outline, state

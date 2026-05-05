@@ -1,6 +1,5 @@
 """Workflow API routes for LangGraph integration"""
 
-import json
 from typing import Optional
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.responses import StreamingResponse
@@ -25,7 +24,6 @@ from app.agents.sse_events import (
     format_node_done,
     format_chunk,
     format_done,
-    format_waiting,
     extract_chunk_from_event,
 )
 
