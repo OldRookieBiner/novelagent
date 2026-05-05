@@ -707,10 +707,8 @@ async def generate_chapter(
 
             content = clean_chapter_content(accumulated_content) if accumulated_content else ""
             if not content:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="AI 返回内容为空，请重试",
-                )
+                yield format_sse_error(ValueError("AI 返回内容为空，请重试"))
+                return
 
             word_count = len(content)
             chapter.content = content
@@ -725,8 +723,6 @@ async def generate_chapter(
             }
             yield f"event: done\ndata: {json.dumps(chapter_response)}\n\n"
 
-        except HTTPException:
-            raise
         except Exception as e:
             yield format_sse_error(e)
 
