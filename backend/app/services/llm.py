@@ -1,9 +1,18 @@
 """LLM service for interacting with AI models"""
 
+import asyncio
+import logging
 from typing import AsyncIterator
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, APIError
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+# 重试配置
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+MAX_RETRIES = 3
+BASE_DELAY = 1.0  # 秒
 
 
 class LLMService:
@@ -45,10 +54,10 @@ class LLMService:
             raise ValueError("API key is required")
 
         # 获取配置
-        if base_url and model:
-            # 使用自定义配置
+        if base_url:
+            # 使用了自定义配置的 base_url，优先使用（不依赖预设）
             self.base_url = base_url
-            self.model = model
+            self.model = model or settings.default_model
         else:
             # 使用预设配置
             config = self.MODEL_CONFIGS.get(
@@ -59,33 +68,78 @@ class LLMService:
 
         self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
 
+    def _should_retry(self, error: APIError, attempt: int) -> bool:
+        """判断是否应该重试"""
+        if attempt >= MAX_RETRIES:
+            return False
+        status_code = getattr(error, "status_code", None)
+        if status_code in RETRYABLE_STATUS_CODES:
+            return True
+        # 网络错误也重试
+        error_str = str(error).lower()
+        if any(
+            kw in error_str
+            for kw in ["timeout", "connection", "network", "reset"]
+        ):
+            return True
+        return False
+
     async def chat(
         self, messages: list[dict], temperature: float = 0.7, max_tokens: int = 4096
     ) -> str:
-        """Send a chat request and get response"""
-        response = await self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-        return response.choices[0].message.content
+        """Send a chat request and get response with retry"""
+        last_error = None
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                response = await self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+                return response.choices[0].message.content
+            except APIError as e:
+                last_error = e
+                if not self._should_retry(e, attempt):
+                    break
+                delay = BASE_DELAY * (2 ** attempt)
+                logger.warning(
+                    f"LLM chat attempt {attempt + 1} failed: {e}. "
+                    f"Retrying in {delay:.1f}s..."
+                )
+                await asyncio.sleep(delay)
+        raise last_error
 
     async def chat_stream(
         self, messages: list[dict], temperature: float = 0.7, max_tokens: int = 4096
     ) -> AsyncIterator[str]:
-        """Send a chat request and stream response"""
-        stream = await self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            stream=True,
-        )
+        """Send a chat request and stream response with retry"""
+        last_error = None
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                stream = await self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    stream=True,
+                )
 
-        async for chunk in stream:
-            if chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
+                async for chunk in stream:
+                    if chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
+                return  # 成功，退出
+            except APIError as e:
+                last_error = e
+                if not self._should_retry(e, attempt):
+                    break
+                delay = BASE_DELAY * (2 ** attempt)
+                logger.warning(
+                    f"LLM chat_stream attempt {attempt + 1} failed: {e}. "
+                    f"Retrying in {delay:.1f}s..."
+                )
+                await asyncio.sleep(delay)
+        raise last_error
 
     async def chat_with_system(
         self, system_prompt: str, messages: list[dict], temperature: float = 0.7
@@ -95,8 +149,14 @@ class LLMService:
         return await self.chat(full_messages, temperature)
 
 
-def get_llm_service_from_config(model_config, user_id: int) -> LLMService:
-    """从模型配置获取 LLM 服务"""
+def get_llm_service_from_config(model_config, user_id: int, model_override: str = None) -> LLMService:
+    """从模型配置获取 LLM 服务
+
+    Args:
+        model_config: 模型配置
+        user_id: 用户 ID
+        model_override: 可选，用户指定的模型名（覆盖 model_config.model_name）
+    """
     from app.services.crypto import decrypt_api_key
 
     api_key = (
@@ -108,11 +168,19 @@ def get_llm_service_from_config(model_config, user_id: int) -> LLMService:
     if not api_key:
         raise ValueError("API key not configured for this model")
 
+    # 确定模型名：优先使用 model_override > model_config.model_name > models 列表第一个启用模型
+    model = model_override or model_config.model_name
+    if not model and model_config.models:
+        for m in model_config.models:
+            if m.get("is_enabled", True):
+                model = m["name"]
+                break
+
     return LLMService(
         provider=model_config.provider,
         api_key=api_key,
         base_url=model_config.base_url,
-        model=model_config.model_name,
+        model=model,
     )
 
 

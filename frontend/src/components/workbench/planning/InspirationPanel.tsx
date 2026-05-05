@@ -1,7 +1,7 @@
 // frontend/src/components/workbench/planning/InspirationPanel.tsx
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Lightbulb, RotateCcw, ArrowRight, Check, ChevronDown, ChevronUp, Copy, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Lightbulb, RotateCcw, ArrowRight, Check, ChevronDown, ChevronUp, Copy, ChevronLeft, ChevronRight, Cpu } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -16,7 +16,16 @@ generateInspirationTemplate,
   loadInspirationDraft,
   type InspirationData,
 } from '@/lib/inspiration'
-import { collectedInfoApi } from '@/lib/api'
+import { collectedInfoApi, modelConfigsApi } from '@/lib/api'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
 import { OutlineProgressDialog } from './OutlineProgressDialog'
 import { toast } from 'sonner'
@@ -24,6 +33,16 @@ import { toast } from 'sonner'
 interface InspirationPanelProps
 {
   projectId: number
+}
+
+/** 扁平化后的模型选项 */
+interface ModelOption
+{
+  modelConfigId: number  // model_configs 表 ID
+  modelName: string      // 具体模型名
+  providerName: string   // 提供商显示名
+  provider: string       // 提供商标识
+  isDefault: boolean     // 是否为默认配置
 }
 
 // 小说类型图标
@@ -97,6 +116,11 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
   const [rightCollapsed, setRightCollapsed] = useState(false)
   const [showProgressDialog, setShowProgressDialog] = useState(false)
 
+  // 模型选择器状态
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>([])
+  const [selectedModelKey, setSelectedModelKey] = useState<string>('')
+  const [loadingModels, setLoadingModels] = useState(false)
+
   const { setActiveMenuItem } = useWorkbenchStore()
 
   // 构建完整的表单数据对象（用于生成模板）
@@ -168,6 +192,79 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
       if (draft.customGoldFinger) setCustomGoldFinger(draft.customGoldFinger)
       if (draft.stylePreference) setStylePreference(draft.stylePreference)
     }
+  }, [])
+
+  // 加载可用模型列表
+  useEffect(() =>
+  {
+    const loadModels = async () =>
+    {
+      setLoadingModels(true)
+      try
+      {
+        const response = await modelConfigsApi.list()
+        const options: ModelOption[] = []
+        // 提供商的显示名称映射
+        const providerNames: Record<string, string> = {
+          deepseek: 'DeepSeek (深度求索)',
+          openai: 'OpenAI',
+          anthropic: 'Anthropic',
+          baidu: '百度文心',
+          volcengine: '火山引擎',
+          unicom: '联通云',
+          custom: '自定义',
+        }
+        for (const config of response.models)
+        {
+          // 只显示已启用的配置
+          if (!config.is_enabled) continue
+          const providerDisplayName = providerNames[config.provider] || config.provider
+          if (config.provider_type === 'coding_plan' && config.models && config.models.length > 0)
+          {
+            // coding_plan 类型：展开 models 数组，每个 model 一个选项
+            for (const model of config.models)
+            {
+              if (!model.is_enabled) continue
+              options.push({
+                modelConfigId: config.id,
+                modelName: model.name,
+                providerName: providerDisplayName,
+                provider: config.provider,
+                isDefault: config.is_default,
+              })
+            }
+          }
+          else if (config.model_name)
+          {
+            // single 类型：一个配置一个选项
+            options.push({
+              modelConfigId: config.id,
+              modelName: config.model_name,
+              providerName: providerDisplayName,
+              provider: config.provider,
+              isDefault: config.is_default,
+            })
+          }
+        }
+        setModelOptions(options)
+        // 设置默认选中：优先 is_default === true 的配置
+        const defaultOption = options.find(o => o.isDefault) || options[0]
+        if (defaultOption)
+        {
+          // key 格式: "model_config_id:model_name"
+          setSelectedModelKey(`${defaultOption.modelConfigId}:${defaultOption.modelName}`)
+        }
+      }
+      catch (err)
+      {
+        console.error('Failed to load model options:', err)
+      }
+      finally
+      {
+        setLoadingModels(false)
+      }
+    }
+    loadModels()
   }, [])
 
   // 当目标读者切换时，清除不相关的字段
@@ -313,6 +410,20 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
 
         const lead = femaleLead === 'custom' ? customFemaleLead : femaleLead
         if (lead) collectedInfoData.protagonist = lead
+      }
+
+      // 解析选中的模型信息
+      if (selectedModelKey)
+      {
+        const [configIdStr, ...modelNameParts] = selectedModelKey.split(':')
+        const configId = parseInt(configIdStr)
+        // modelName 可能包含冒号，重新拼接
+        const modelName = modelNameParts.join(':')
+        if (!isNaN(configId) && modelName)
+        {
+          collectedInfoData.model_config_id = configId
+          collectedInfoData.model_name = modelName
+        }
       }
 
       await collectedInfoApi.update(projectId, collectedInfoData)
@@ -786,20 +897,70 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
           </div>
         </div>
 
-        {/* 底部：确认按钮（居中） */}
-        <div className="border-t bg-white px-6 py-4 flex flex-col items-center gap-1.5">
-          <Button onClick={handleConfirm} disabled={confirming} className="px-8">
-            {confirming ? (
-              <>保存中...</>
-            ) : (
-              <>
-                <Check className="h-4 w-4 mr-2" />
-开始规划
-                <ArrowRight className="h-4 w-4 ml-2" />
-              </>
-            )}
-          </Button>
-          <p className="text-xs text-muted-foreground">确认后自动开始规划</p>
+        {/* 底部：模型选择 + 确认按钮 */}
+        <div className="border-t bg-white px-6 py-4">
+          <div className="flex items-center gap-3 max-w-2xl mx-auto">
+            {/* AI 模型选择器 */}
+            <div className="flex-1 min-w-0">
+              <label className="text-xs text-muted-foreground mb-1.5 flex items-center gap-1" htmlFor="model-select-trigger">
+                <Cpu className="h-3 w-3" />
+                AI 模型
+              </label>
+              <Select value={selectedModelKey} onValueChange={setSelectedModelKey} disabled={loadingModels || modelOptions.length === 0}>
+                <SelectTrigger id="model-select-trigger" className="w-full h-9 text-sm">
+                  <SelectValue placeholder={loadingModels ? '加载中...' : '请选择模型'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {/* 按提供商分组 */}
+                  {(() =>
+                  {
+                    // 按 provider 分组
+                    const grouped = new Map<string, ModelOption[]>()
+                    for (const opt of modelOptions)
+                    {
+                      if (!grouped.has(opt.provider))
+                      {
+                        grouped.set(opt.provider, [])
+                      }
+                      grouped.get(opt.provider)!.push(opt)
+                    }
+                    return Array.from(grouped.entries()).map(([provider, options]) => (
+                      <SelectGroup key={provider}>
+                        <SelectLabel>{options[0].providerName}</SelectLabel>
+                        {options.map(opt => (
+                          <SelectItem
+                            key={`${opt.modelConfigId}:${opt.modelName}`}
+                            value={`${opt.modelConfigId}:${opt.modelName}`}
+                          >
+                            <span className="flex items-center gap-1.5">
+                              {opt.modelName}
+                              {opt.isDefault && (
+                                <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded">默认</span>
+                              )}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    ))
+                  })()}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* 确认按钮 */}
+            <Button onClick={handleConfirm} disabled={confirming} className="px-6 mt-[22px]">
+              {confirming ? (
+                <>保存中...</>
+              ) : (
+                <>
+                  <Check className="h-4 w-4 mr-2" />
+                  开始规划
+                  <ArrowRight className="h-4 w-4 ml-2" />
+                </>
+              )}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground text-center mt-1.5">确认后自动开始规划</p>
         </div>
       </div>
 
@@ -859,6 +1020,8 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
         open={showProgressDialog}
         onClose={() => setShowProgressDialog(false)}
         projectId={projectId}
+        modelConfigId={selectedModelKey ? parseInt(selectedModelKey.split(':')[0]) : undefined}
+        modelName={selectedModelKey ? selectedModelKey.split(':').slice(1).join(':') : undefined}
         onComplete={() => {}}
         onViewOutline={() =>
         {

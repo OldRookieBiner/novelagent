@@ -41,6 +41,7 @@ class Settings(BaseSettings):
 
     # Model defaults
     default_model_provider: str = "deepseek"
+    default_model: str = "deepseek-v3-241227"
     default_api_key: str = ""
 
     # App settings

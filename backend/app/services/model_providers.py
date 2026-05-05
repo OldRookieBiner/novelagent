@@ -45,7 +45,7 @@ PRESET_PROVIDERS: dict[str, ProviderConfig] = {
         "base_url": "",  # 待确认
         "provider_type": "coding_plan",
         "default_model": None,
-        "models_api": "/v1/models",
+        "models_api": "/models",
         "auth_type": "bearer",
     },
     "custom": {

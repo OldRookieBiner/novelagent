@@ -12,6 +12,7 @@ from app.schemas.system_prompt import (
     AGENT_TYPES,
 )
 from app.agents.prompts import DEFAULT_PROMPTS
+from app.services.prompt_loader import invalidate_prompt_cache
 
 router = APIRouter()
 
@@ -75,6 +76,7 @@ async def update_system_prompt(
 
     db.commit()
     db.refresh(config)
+    invalidate_prompt_cache(agent_type)
 
     meta = AGENT_TYPES[agent_type]
     return SystemPromptResponse(
@@ -107,6 +109,7 @@ async def reset_system_prompt(agent_type: str, db: Session = Depends(get_db)):
 
     db.commit()
     db.refresh(config)
+    invalidate_prompt_cache(agent_type)
 
     meta = AGENT_TYPES[agent_type]
     return SystemPromptResponse(

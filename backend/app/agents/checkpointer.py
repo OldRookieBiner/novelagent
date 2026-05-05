@@ -50,9 +50,17 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
     def _get_db(self) -> Session:
         """获取数据库会话，优先使用外部会话"""
         if self._external_db is not None:
+            logger.debug(
+                "Checkpointer: reusing external DB session for project %s",
+                self.project_id,
+            )
             return self._external_db
         if self._internal_db is None:
             self._internal_db = SessionLocal()
+            logger.debug(
+                "Checkpointer: created internal DB session for project %s",
+                self.project_id,
+            )
         return self._internal_db
 
     def _should_close_db(self) -> bool:
@@ -62,6 +70,10 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
     def _close_db(self):
         """关闭内部数据库会话，不影响外部会话"""
         if self._internal_db:
+            logger.debug(
+                "Checkpointer: closing internal DB session for project %s",
+                self.project_id,
+            )
             self._internal_db.close()
             self._internal_db = None
 

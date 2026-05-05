@@ -14,7 +14,8 @@ _db_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="db-")
 
 
 def get_llm_for_user(
-    user_id: int, user_settings, db: Session, llm_config_id: Optional[int] = None
+    user_id: int, user_settings, db: Session, llm_config_id: Optional[int] = None,
+    llm_model_name: Optional[str] = None
 ):
     """
     获取用户的 LLM 服务
@@ -26,6 +27,7 @@ def get_llm_for_user(
         user_settings: 用户设置
         db: 数据库会话
         llm_config_id: 可选的模型配置 ID
+        llm_model_name: 可选的模型名称（覆盖配置中的默认模型）
 
     Returns:
         LLMService 实例
@@ -41,7 +43,7 @@ def get_llm_for_user(
             .first()
         )
         if config:
-            return get_llm_service_from_config(config, user_id)
+            return get_llm_service_from_config(config, user_id, llm_model_name)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Model config not found"
         )
@@ -101,7 +103,7 @@ def get_llm_from_state(state: dict) -> "LLMService":
         if not user_settings:
             raise ValueError(f"User settings not found for user {user_id}")
 
-        return get_llm_for_user(user_id, user_settings, db, state.get("llm_config_id"))
+        return get_llm_for_user(user_id, user_settings, db, state.get("llm_config_id"), state.get("llm_model_name"))
     finally:
         db.close()
 

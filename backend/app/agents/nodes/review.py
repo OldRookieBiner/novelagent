@@ -3,6 +3,8 @@
 import re
 from typing import Dict, Any
 
+from sqlalchemy.orm import Session
+
 from app.agents.state import NovelState, STAGE_REVIEW
 from app.services.prompt_loader import get_system_prompt
 from app.database import SessionLocal
@@ -62,6 +64,7 @@ async def review_chapter_node(
     chapter_outline: dict,
     llm: LLMService,
     strictness: str = "standard",
+    db: Session | None = None,
 ) -> Dict[str, Any]:
     """审核章节内容
 
@@ -71,38 +74,45 @@ async def review_chapter_node(
         chapter_outline: 章节大纲
         llm: LLM 服务
         strictness: 审核严格度 (loose/standard/strict)
+        db: 可选的数据库会话，如果不传则内部创建
 
     Returns:
         审核结果字典
     """
-    db = SessionLocal()
-    info = state.get("collected_info", {})
+    should_close = False
+    if db is None:
+        db = SessionLocal()
+        should_close = True
+    try:
+        info = state.get("collected_info", {})
 
-    # 格式化章节大纲（使用共享工具函数）
-    outline_str = _format_chapter_outline_str(chapter_outline)
+        # 格式化章节大纲（使用共享工具函数）
+        outline_str = _format_chapter_outline_str(chapter_outline)
 
-    # 格式化人物设定（使用共享工具函数）
-    chars_str = format_characters_info(state)
+        # 格式化人物设定（使用共享工具函数）
+        chars_str = format_characters_info(state)
 
-    prompt = get_system_prompt(db, "review").format(
-        strictness=strictness,
-        chapter_outline=outline_str,
-        chapter_content=chapter_content,
-        genre=info.get("novelType", "未指定"),
-        main_characters=chars_str,
-        style_preference=info.get("stylePreference", "未指定"),
-    )
+        prompt = get_system_prompt(db, "review").format(
+            strictness=strictness,
+            chapter_outline=outline_str,
+            chapter_content=chapter_content,
+            genre=info.get("novelType", "未指定"),
+            main_characters=chars_str,
+            style_preference=info.get("stylePreference", "未指定"),
+        )
 
-    # 流式调用 LLM，使 LangGraph 能捕获 on_chat_model_stream 事件实时推送给前端
-    response = ""
-    async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
-        response += chunk
+        # 流式调用 LLM，使 LangGraph 能捕获 on_chat_model_stream 事件实时推送给前端
+        response = ""
+        async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
+            response += chunk
 
-    result = parse_review_result(response)
-    result["raw_response"] = response
+        result = parse_review_result(response)
+        result["raw_response"] = response
 
-    db.close()
-    return result
+        return result
+    finally:
+        if should_close:
+            db.close()
 
 
 def check_review_passed(review_result: Dict[str, Any]) -> bool:

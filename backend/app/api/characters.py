@@ -833,7 +833,8 @@ async def generate_characters(
         "outline_characters": outline.characters,
     }
 
-    characters = extract_characters_from_outline(state)
+    characters = extract_characters_from_outline(state, db)
+    db.commit()
 
     if not characters:
         raise HTTPException(
@@ -910,11 +911,28 @@ async def generate_relations(
 
     result_state = await graph.ainvoke(graph_state, config)
 
-    relations = result_state.get("relations", [])
+    # 从数据库重新查询，获取带有数据库 ID 的记录
+    # 因为 graph 返回的解析结果没有数据库生成的 id 字段
+    db_relations = (
+        db.query(Relation)
+        .filter(Relation.project_id == project_id)
+        .all()
+    )
 
     return {
-        "message": f"Created {len(relations)} relations",
-        "relations": relations,
+        "message": f"Created {len(db_relations)} relations",
+        "relations": [
+            {
+                "id": r.id,
+                "character_a_id": r.character_a_id,
+                "character_b_id": r.character_b_id,
+                "relation_type": r.relation_type,
+                "trust_level": r.trust_level,
+                "current_status": r.current_status,
+                "direction": r.direction,
+            }
+            for r in db_relations
+        ],
     }
 
 

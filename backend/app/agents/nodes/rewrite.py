@@ -2,6 +2,8 @@
 
 from typing import Dict, Any
 
+from sqlalchemy.orm import Session
+
 from app.agents.state import NovelState, STAGE_WRITING
 from app.services.prompt_loader import get_system_prompt
 from app.database import SessionLocal
@@ -16,6 +18,7 @@ async def rewrite_chapter_node(
     original_content: str,
     review_feedback: str,
     llm: LLMService,
+    db: Session | None = None,
 ) -> str:
     """根据审核反馈重写章节
 
@@ -25,36 +28,43 @@ async def rewrite_chapter_node(
         original_content: 原始章节内容
         review_feedback: 审核反馈
         llm: LLM 服务
+        db: 可选的数据库会话，如果不传则内部创建
 
     Returns:
         重写后的章节内容
     """
-    db = SessionLocal()
-    info = state.get("collected_info", {})
+    should_close = False
+    if db is None:
+        db = SessionLocal()
+        should_close = True
+    try:
+        info = state.get("collected_info", {})
 
-    # 格式化章节大纲（使用共享工具函数）
-    outline_str = _format_chapter_outline_str(chapter_outline)
+        # 格式化章节大纲（使用共享工具函数）
+        outline_str = _format_chapter_outline_str(chapter_outline)
 
-    # 格式化人物设定（使用共享工具函数）
-    chars_str = format_characters_info(state)
+        # 格式化人物设定（使用共享工具函数）
+        chars_str = format_characters_info(state)
 
-    prompt = get_system_prompt(db, "rewrite").format(
-        chapter_outline=outline_str,
-        original_content=original_content,
-        review_feedback=review_feedback,
-        genre=info.get("novelType", "未指定"),
-        main_characters=chars_str,
-        world_setting=info.get("customWorldSetting")
-        or info.get("worldSetting", "未指定"),
-    )
+        prompt = get_system_prompt(db, "rewrite").format(
+            chapter_outline=outline_str,
+            original_content=original_content,
+            review_feedback=review_feedback,
+            genre=info.get("novelType", "未指定"),
+            main_characters=chars_str,
+            world_setting=info.get("customWorldSetting")
+            or info.get("worldSetting", "未指定"),
+        )
 
-    # 流式调用 LLM，使 LangGraph 能捕获 on_chat_model_stream 事件实时推送给前端
-    response = ""
-    async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
-        response += chunk
+        # 流式调用 LLM，使 LangGraph 能捕获 on_chat_model_stream 事件实时推送给前端
+        response = ""
+        async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
+            response += chunk
 
-    db.close()
-    return response
+        return response
+    finally:
+        if should_close:
+            db.close()
 
 
 async def rewrite_with_retry(

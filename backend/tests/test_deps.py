@@ -54,7 +54,9 @@ class TestGetLlmForContext:
 
         result = get_llm_for_context(mock_request, test_user, user_settings, db)
 
-        mock_get_llm.assert_called_once_with(test_user.id, user_settings, db, 42)
+        mock_get_llm.assert_called_once_with(
+            test_user.id, user_settings, db, 42, mock_request.llm_model_name
+        )
         assert result == mock_get_llm.return_value
 
     @patch("app.utils.llm.get_llm_for_user")
@@ -70,5 +72,7 @@ class TestGetLlmForContext:
 
         result = get_llm_for_context(None, test_user, user_settings, db)
 
-        mock_get_llm.assert_called_once_with(test_user.id, user_settings, db, None)
+        mock_get_llm.assert_called_once_with(
+            test_user.id, user_settings, db, None, None
+        )
         assert result == mock_get_llm.return_value

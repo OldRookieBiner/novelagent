@@ -1,6 +1,5 @@
 """Outline API routes"""
 
-import json
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -26,7 +25,6 @@ from app.agents.state import (
 )
 from app.agents.nodes.outline_generation import (
     generate_outline_stream,
-    parse_outline,
     outline_generation_node,
     # 导入章节数计算常量
     DEFAULT_CHAPTER_COUNT,
@@ -45,6 +43,7 @@ from app.agents.nodes.outline_generation import (
     MIN_CHAPTERS_VERY_LONG,
     MIN_CHAPTERS_EPIC,
 )
+from app.agents.sse_events import format_done
 # info_collection_node 已移除，信息收集由前端表单处理
 
 router = APIRouter()
@@ -123,6 +122,7 @@ async def generate_outline(
         "confirmation_type": None,
         "outline_confirmed": False,
         "llm_config_id": request.llm_config_id if request else None,
+        "llm_model_name": getattr(request, 'llm_model_name', None) if request else None,
     }
 
     # 创建单节点 graph
@@ -131,42 +131,53 @@ async def generate_outline(
 
     async def stream_generator():
         """Generate outline via LangGraph and stream via SSE."""
-        accumulated_content = ""
-
         try:
             event_count = 0
             data_event_count = 0
             async for sse_event in stream_node_events(graph, graph_state, config):
                 event_count += 1
-                # 解析 chunk 内容用于 accumulated_content
-                if sse_event.startswith("data: "):
+                if sse_event.startswith("data:"):
                     data_event_count += 1
-                    try:
-                        chunk_content = json.loads(sse_event[6:].strip())
-                        if isinstance(chunk_content, str):
-                            accumulated_content += chunk_content
-                    except json.JSONDecodeError:
-                        pass
                 yield sse_event
 
             import logging
             logger = logging.getLogger(__name__)
-            logger.info(f"outline stream: total events={event_count}, data events={data_event_count}, content_len={len(accumulated_content)}")
+            logger.info(f"outline stream: total events={event_count}, data events={data_event_count}")
 
-            # Parse the final outline
-            parsed = parse_outline(accumulated_content)
-            
-            # 只有当累积内容不为空时才更新，否则保留原有数据
-            if len(accumulated_content) > 0 and parsed.get("title"):
+            # Get parsed state directly from graph (node already called parse_outline internally)
+            result_state = await graph.ainvoke(graph_state, config)
+
+            # 提取解析后的字段（节点已经在内部调用 parse_outline 并存储到 state 中）
+            parsed_title = result_state.get("outline_title", "")
+            parsed_summary = result_state.get("outline_summary", "")
+            parsed_plot_points = result_state.get("outline_plot_points", [])
+            parsed_characters = result_state.get("outline_characters", [])
+            parsed_world_setting = result_state.get("outline_world_setting", {})
+            parsed_emotional_curve = result_state.get("outline_emotional_curve")
+
+            parsed = {
+                "title": parsed_title,
+                "summary": parsed_summary,
+                "plot_points": parsed_plot_points,
+                "characters": parsed_characters,
+                "world_setting": parsed_world_setting,
+                "emotional_curve": parsed_emotional_curve,
+            }
+
+            # 检查解析结果是否有效
+            is_outline_valid = result_state.get("outline_valid", False)
+
+            # 只有当有有效内容时才更新数据库
+            if is_outline_valid and (parsed["title"] or parsed["summary"]):
                 outline.title = parsed["title"]
                 outline.summary = parsed["summary"]
                 outline.plot_points = parsed["plot_points"]
-                outline.characters = parsed.get("characters", [])
-                outline.world_setting = parsed.get("world_setting", {})
-                outline.emotional_curve = parsed.get("emotional_curve")
-                logger.info(f"outline updated: title='{parsed.get('title', '')}'")
+                outline.characters = parsed["characters"]
+                outline.world_setting = parsed["world_setting"]
+                outline.emotional_curve = parsed["emotional_curve"]
+                logger.info(f"outline updated: title='{parsed['title']}'")
             else:
-                logger.info(f"accumulated_content is empty, skipping update to preserve existing data")
+                logger.info(f"parsed result empty or invalid, skipping update to preserve existing data")
 
             # 更新工作流状态
             workflow_state = get_or_create_workflow_state(db, project_id)
@@ -181,31 +192,17 @@ async def generate_outline(
                     "title": parsed["title"],
                     "summary": parsed["summary"],
                     "plot_points": parsed["plot_points"],
-                    "characters": parsed.get("characters", []),
-                    "world_setting": parsed.get("world_setting", {}),
-                    "emotional_curve": parsed.get("emotional_curve"),
+                    "characters": parsed["characters"],
+                    "world_setting": parsed["world_setting"],
+                    "emotional_curve": parsed["emotional_curve"],
                     "confirmed": False,
                     "chapter_count_suggested": outline.chapter_count_suggested,
                 },
                 "stage": STAGE_OUTLINE,
             }
-            yield f"event: done\ndata: {json.dumps(completion_data)}\n\n"
+            yield format_done(extra=completion_data)
 
         except Exception as e:
-            # 检查是否有已生成的内容（可能是用户中断）
-            if accumulated_content and len(accumulated_content) > 50:
-                try:
-                    parsed = parse_outline(accumulated_content)
-                    if parsed["title"] or parsed["summary"]:
-                        outline.title = parsed["title"]
-                        outline.summary = parsed["summary"]
-                        outline.plot_points = parsed["plot_points"]
-                        outline.characters = parsed.get("characters", [])
-                        outline.world_setting = parsed.get("world_setting", {})
-                        outline.emotional_curve = parsed.get("emotional_curve")
-                        db.commit()
-                except Exception:
-                    pass
             yield format_sse_error(e)
 
     return StreamingResponse(

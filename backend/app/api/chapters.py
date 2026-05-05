@@ -33,6 +33,7 @@ from app.agents.nodes.chapter_generation import (
     generate_chapter_outlines_node,
     generate_chapter_outlines_stream,
 )
+from app.agents.sse_events import format_chunk, format_done, format_node_start
 
 router = APIRouter()
 
@@ -214,7 +215,7 @@ async def create_chapter_outlines(
                         "total": len(created_outlines),
                         "stage": STAGE_CHAPTER_OUTLINES
                     }
-                    yield f"event: done\ndata: {json.dumps(completion_data)}\n\n"
+                    yield format_done(extra=completion_data)
 
         except Exception as e:
             # Send error event (sanitized)
@@ -340,6 +341,8 @@ async def confirm_chapter_outline(
 
     # Confirm the chapter outline
     chapter_outline.confirmed = True
+    db.commit()
+    db.refresh(chapter_outline)
 
     # Check if all chapter outlines are confirmed - 使用两个简单查询
     from sqlalchemy import func
@@ -353,16 +356,11 @@ async def confirm_chapter_outline(
         ChapterOutline.confirmed == True
     ).scalar() or 0
 
-    # 确认后，已确认数需要 +1（因为当前章节还未 commit）
-    confirmed_outlines += 1
-
     # If all confirmed, update workflow state to chapter writing
-    if total_outlines > 0 and confirmed_outlines == total_outlines:
+    if total_outlines > 0 and confirmed_outlines >= total_outlines:
         workflow_state = get_or_create_workflow_state(db, project_id)
         workflow_state.stage = STAGE_WRITING
-
-    db.commit()
-    db.refresh(chapter_outline)
+        db.commit()
 
     # Check if chapter content exists
     has_content = db.query(Chapter).filter(
@@ -697,20 +695,18 @@ async def generate_chapter(
             target_words=target_words,
         )
 
-        yield f"event: node_start\ndata: {json.dumps({'message': 'Starting generation'})}\n\n"
+        yield format_node_start('generate')
 
         accumulated_content = ""
         try:
             async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
                 accumulated_content += chunk
-                yield f"event: chunk\ndata: {json.dumps({'content': chunk})}\n\n"
+                yield format_chunk(chunk)
 
             content = clean_chapter_content(accumulated_content) if accumulated_content else ""
             if not content:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="AI 返回内容为空，请重试",
-                )
+                yield format_sse_error(ValueError("AI 返回内容为空，请重试"))
+                return
 
             word_count = len(content)
             chapter.content = content
@@ -723,10 +719,8 @@ async def generate_chapter(
                 "content": content,
                 "word_count": word_count,
             }
-            yield f"event: done\ndata: {json.dumps(chapter_response)}\n\n"
+            yield format_done(extra=chapter_response)
 
-        except HTTPException:
-            raise
         except Exception as e:
             yield format_sse_error(e)
 
@@ -839,6 +833,7 @@ async def review_chapter(
         "outline_world_setting": outline.world_setting or {},
         "review_result": None,
         "llm_config_id": request.llm_config_id if request else None,
+        "llm_model_name": getattr(request, 'llm_model_name', None) if request else None,
     }
 
     graph = create_single_node_graph(review_node)

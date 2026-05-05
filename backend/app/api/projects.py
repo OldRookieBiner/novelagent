@@ -9,6 +9,7 @@ from app.database import get_db
 from app.models.user import User
 from app.models.project import Project
 from app.models.outline import Outline, ChapterOutline
+from app.models.chapter import Chapter
 from app.models.workflow_state import WorkflowState
 from app.schemas.project import (
     ProjectCreate,

@@ -3,6 +3,8 @@
 import re
 from typing import Dict, Any, AsyncIterator
 
+from sqlalchemy.orm import Session
+
 from app.agents.state import NovelState, STAGE_OUTLINE
 from app.services.prompt_loader import get_system_prompt
 from app.database import SessionLocal
@@ -418,61 +420,67 @@ async def generate_outline_node(state: NovelState, llm: LLMService) -> NovelStat
     return new_state
 
 
-def prepare_outline_prompt(state: NovelState) -> tuple[str, int]:
+def prepare_outline_prompt(
+    state: NovelState, db: Session | None = None
+) -> tuple[str, int]:
     """准备大纲生成提示词和章节数"""
-    db = SessionLocal()
-    inspiration_template = state.get("inspiration_template", "")
-    collected_info = state.get("collected_info", {})
+    should_close = False
+    if db is None:
+        db = SessionLocal()
+        should_close = True
+    try:
+        inspiration_template = state.get("inspiration_template", "")
+        collected_info = state.get("collected_info", {})
 
-    # 获取目标字数和每章字数
-    target_words = collected_info.get("targetWords", 100000)
-    words_per_chapter_str = collected_info.get("wordsPerChapter", "")
-    custom_words_per_chapter = collected_info.get("customWordsPerChapter")
+        # 获取目标字数和每章字数
+        target_words = collected_info.get("targetWords", 100000)
+        words_per_chapter_str = collected_info.get("wordsPerChapter", "")
+        custom_words_per_chapter = collected_info.get("customWordsPerChapter")
 
-    # 计算每章字数
-    if words_per_chapter_str == "custom" and custom_words_per_chapter:
-        words_per_chapter = custom_words_per_chapter
-    elif words_per_chapter_str and words_per_chapter_str != "custom":
-        try:
-            words_per_chapter = int(words_per_chapter_str)
-        except (ValueError, TypeError):
-            words_per_chapter = WORDS_PER_CHAPTER_MEDIUM  # 默认值
-    else:
-        words_per_chapter = WORDS_PER_CHAPTER_MEDIUM  # 默认值
-
-    # 根据目标字数和每章字数计算章节数
-    if isinstance(target_words, int) and target_words > 0 and words_per_chapter > 0:
-        chapter_count = max(3, int(target_words / words_per_chapter))  # 最少3章
-    else:
-        chapter_count = DEFAULT_CHAPTER_COUNT
-
-    # 如果没有灵感模板，从 collected_info 生成基本信息
-    if not inspiration_template:
-        novel_type = collected_info.get("novelType", "未指定")
-        core_theme = collected_info.get("coreTheme", "未指定")
-        target_reader = collected_info.get("targetReader", "未指定")
-        era = collected_info.get("era", "未指定")
-        genre = collected_info.get("customGenre") or collected_info.get("genre", "未指定")
-        world_setting = collected_info.get("customWorldSetting") or collected_info.get("worldSetting", "未指定")
-        style = collected_info.get("stylePreference", "未指定")
-        target_words_display = f"{target_words}字" if isinstance(target_words, int) else "未指定"
-
-        # 根据目标读者获取主角设定
-        target_reader_label = "男频" if target_reader == "male" else "女频" if target_reader == "female" else "未指定"
-        if target_reader == "male":
-            protagonist = collected_info.get("customMaleLead") or collected_info.get("maleLead", "未指定")
-            protagonist_label = "男主"
-            gold_finger = collected_info.get("customGoldFinger") or collected_info.get("goldFinger", "未指定")
-        elif target_reader == "female":
-            protagonist = collected_info.get("customFemaleLead") or collected_info.get("femaleLead", "未指定")
-            protagonist_label = "女主"
-            gold_finger = "未指定"
+        # 计算每章字数
+        if words_per_chapter_str == "custom" and custom_words_per_chapter:
+            words_per_chapter = custom_words_per_chapter
+        elif words_per_chapter_str and words_per_chapter_str != "custom":
+            try:
+                words_per_chapter = int(words_per_chapter_str)
+            except (ValueError, TypeError):
+                words_per_chapter = WORDS_PER_CHAPTER_MEDIUM  # 默认值
         else:
-            protagonist = collected_info.get("customProtagonist") or collected_info.get("protagonist", "未指定")
-            protagonist_label = "主角"
-            gold_finger = collected_info.get("customGoldFinger") or collected_info.get("goldFinger", "未指定")
+            words_per_chapter = WORDS_PER_CHAPTER_MEDIUM  # 默认值
 
-        inspiration_template = f"""# 小说创作灵感
+        # 根据目标字数和每章字数计算章节数
+        if isinstance(target_words, int) and target_words > 0 and words_per_chapter > 0:
+            chapter_count = max(3, int(target_words / words_per_chapter))  # 最少3章
+        else:
+            chapter_count = DEFAULT_CHAPTER_COUNT
+
+        # 如果没有灵感模板，从 collected_info 生成基本信息
+        if not inspiration_template:
+            novel_type = collected_info.get("novelType", "未指定")
+            core_theme = collected_info.get("coreTheme", "未指定")
+            target_reader = collected_info.get("targetReader", "未指定")
+            era = collected_info.get("era", "未指定")
+            genre = collected_info.get("customGenre") or collected_info.get("genre", "未指定")
+            world_setting = collected_info.get("customWorldSetting") or collected_info.get("worldSetting", "未指定")
+            style = collected_info.get("stylePreference", "未指定")
+            target_words_display = f"{target_words}字" if isinstance(target_words, int) else "未指定"
+
+            # 根据目标读者获取主角设定
+            target_reader_label = "男频" if target_reader == "male" else "女频" if target_reader == "female" else "未指定"
+            if target_reader == "male":
+                protagonist = collected_info.get("customMaleLead") or collected_info.get("maleLead", "未指定")
+                protagonist_label = "男主"
+                gold_finger = collected_info.get("customGoldFinger") or collected_info.get("goldFinger", "未指定")
+            elif target_reader == "female":
+                protagonist = collected_info.get("customFemaleLead") or collected_info.get("femaleLead", "未指定")
+                protagonist_label = "女主"
+                gold_finger = "未指定"
+            else:
+                protagonist = collected_info.get("customProtagonist") or collected_info.get("protagonist", "未指定")
+                protagonist_label = "主角"
+                gold_finger = collected_info.get("customGoldFinger") or collected_info.get("goldFinger", "未指定")
+
+            inspiration_template = f"""# 小说创作灵感
 
 ## 基本信息
 - **目标读者**：{target_reader_label}
@@ -493,13 +501,15 @@ def prepare_outline_prompt(state: NovelState) -> tuple[str, int]:
 - **风格偏好**：{style}
 """
 
-    prompt = get_system_prompt(db, "outline_generation").format(
-        inspiration_template=inspiration_template,
-        chapter_count=chapter_count
-    )
+        prompt = get_system_prompt(db, "outline_generation").format(
+            inspiration_template=inspiration_template,
+            chapter_count=chapter_count
+        )
 
-    db.close()
-    return prompt, chapter_count
+        return prompt, chapter_count
+    finally:
+        if should_close:
+            db.close()
 
 
 async def generate_outline_stream(
