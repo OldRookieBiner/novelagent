@@ -75,16 +75,20 @@ def extract_characters_from_outline(state: NovelState) -> list[dict]:
         db.close()
 
 
-def create_characters_from_outline_node(state: NovelState) -> NovelState:
+async def create_characters_from_outline_node(state: NovelState) -> NovelState:
     """LangGraph 节点：从大纲提取角色写入数据库
 
     签名： (state: NovelState) -> NovelState
 
-    同步节点，无 LLM 调用。
+    异步节点，DB 操作放入线程池避免阻塞 event loop。
     读取 state["outline_characters"]，批量 INSERT 到 characters 表，
     然后更新 state["characters"] 和 state["stage"]。
     """
-    characters = extract_characters_from_outline(state)
+    import asyncio
+    loop = asyncio.get_event_loop()
+    characters = await loop.run_in_executor(
+        None, extract_characters_from_outline, state
+    )
 
     import logging
     logging.getLogger(__name__).info(
