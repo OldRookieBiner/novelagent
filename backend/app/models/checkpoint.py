@@ -26,7 +26,7 @@ class WorkflowCheckpoint(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    project = relationship("Project", backref="checkpoints")
+    project = relationship("Project", back_populates="checkpoints")
 
     def __repr__(self):
         return (
