@@ -10,14 +10,14 @@ from pydantic import BaseModel
 from app.database import get_db
 from app.models.user import User
 from app.models.project import Project
-from app.models.outline import Outline, ChapterOutline
-from app.models.chapter import Chapter
+from app.models.outline import Outline
 from app.models.checkpoint import WorkflowCheckpoint
 from app.models.workflow_state import WorkflowState
 from app.utils.auth import get_current_user
 from app.utils.project import get_project_for_user
 from app.utils.error import format_sse_error
 from app.utils.deps import get_user_settings_or_raise
+from app.utils.workflow_persistence import NODE_PERSIST_MAP
 from app.agents.graph import create_novel_graph_with_checkpointer
 from app.agents.state import NovelState
 
@@ -289,45 +289,21 @@ async def run_workflow(
                     if isinstance(output, dict):
                         yield f"event: node_done\ndata: {json.dumps({'node': node_name, 'state': output})}\n\n"
 
-                    # 大纲生成节点完成后，将结果持久化到 outlines 表
-                    if node_name == "outline_generation_node" and isinstance(output, dict):
-                        import logging
-                        logger = logging.getLogger(__name__)
-
-                        # 验证数据有效性，防止空数据覆盖
-                        new_title = output.get("outline_title", "")
-                        new_summary = output.get("outline_summary", "")
-                        new_characters = output.get("outline_characters", [])
-                        new_plot_points = output.get("outline_plot_points", [])
-
-                        if not new_title and not new_summary and not new_characters and not new_plot_points:
-                            logger.warning(f"workflow: outline_generation_node returned empty data for project {project_id}")
-                            yield f"event: error\ndata: {json.dumps({'error': '大纲生成失败，AI 返回数据为空，请重试'})}\n\n"
-                            return
+                    # 统一的持久化分发
+                    if node_name in NODE_PERSIST_MAP:
+                        persist_fn = NODE_PERSIST_MAP[node_name]
+                        if node_name == "outline_generation_node":
+                            if not output.get("outline_title") and not output.get("outline_summary") and not output.get("outline_characters") and not output.get("outline_plot_points"):
+                                yield format_sse_error(ValueError("大纲生成失败，AI 返回数据为空，请重试"))
+                                return
+                            else:
+                                persist_fn(output, project_id, outline, db)
                         else:
-                            # 只有有效数据才更新
-                            if new_title:
-                                outline.title = new_title
-                            if new_summary:
-                                outline.summary = new_summary
-                            if new_plot_points:
-                                outline.plot_points = new_plot_points
-                            if new_characters:
-                                outline.characters = new_characters
-
-                            outline.world_setting = output.get("outline_world_setting", outline.world_setting or {})
-                            outline.emotional_curve = output.get("outline_emotional_curve", outline.emotional_curve)
-                            outline.chapter_count_suggested = output.get("chapter_count", outline.chapter_count_suggested)
-
-                            logger.info(f"workflow: persisted outline for project {project_id}: title='{new_title}', char={len(new_characters)}, plot={len(new_plot_points)}")
-
+                            persist_fn(output, project_id, db)
                         db.commit()
 
                     # 关系生成节点完成后，自动确认大纲并停止（规划阶段完成）
                     if node_name == "generate_relations_node":
-                        import logging
-                        logger = logging.getLogger(__name__)
-
                         # 自动确认大纲，允许用户后续生成章节大纲
                         outline.confirmed = True
                         outline.chapter_count_confirmed = True
@@ -336,93 +312,6 @@ async def run_workflow(
                         # 规划阶段已完成，发送 done 事件并终止流
                         yield f"event: done\ndata: {json.dumps({'message': 'Generation completed'})}\n\n"
                         return
-
-                    # 章节内容生成节点完成后，将结果持久化到 chapters 表
-                    if node_name == "generate_chapter_content_node" and isinstance(output, dict):
-                        import logging
-                        logger = logging.getLogger(__name__)
-
-                        written_chapters = output.get("written_chapters", [])
-                        for chapter_data in written_chapters:
-                            chapter_num = chapter_data.get("chapter_number")
-                            if not chapter_num:
-                                continue
-                            # 查找对应的 ChapterOutline
-                            chapter_outline = db.query(ChapterOutline).filter(
-                                ChapterOutline.project_id == project_id,
-                                ChapterOutline.chapter_number == chapter_num
-                            ).first()
-                            if not chapter_outline:
-                                continue
-                            # 查找或创建 Chapter 记录
-                            chapter = db.query(Chapter).filter(
-                                Chapter.chapter_outline_id == chapter_outline.id
-                            ).first()
-                            if not chapter:
-                                chapter = Chapter(
-                                    chapter_outline_id=chapter_outline.id,
-                                    content=chapter_data.get("content", ""),
-                                    word_count=chapter_data.get("word_count", 0),
-                                    review_passed=False,
-                                    review_feedback=None
-                                )
-                                db.add(chapter)
-                            else:
-                                chapter.content = chapter_data.get("content", chapter.content)
-                                chapter.word_count = chapter_data.get("word_count", chapter.word_count)
-                        db.commit()
-                        logger.info(f"workflow: persisted chapter content for project {project_id}")
-
-                    # 审核节点完成后，将审核结果持久化到 chapters 表
-                    if node_name == "review_node" and isinstance(output, dict):
-                        import logging
-                        logger = logging.getLogger(__name__)
-
-                        review_result = output.get("review_result", {})
-                        current_chapter = output.get("current_chapter", 1)
-                        # current_chapter 在 generate_chapter_content_node 中已递增，所以被审核的是 current_chapter - 1
-                        reviewed_chapter_num = current_chapter - 1
-                        chapter_outline = db.query(ChapterOutline).filter(
-                            ChapterOutline.project_id == project_id,
-                            ChapterOutline.chapter_number == reviewed_chapter_num
-                        ).first()
-                        if chapter_outline:
-                            chapter = db.query(Chapter).filter(
-                                Chapter.chapter_outline_id == chapter_outline.id
-                            ).first()
-                            if chapter:
-                                from app.agents.nodes.review import check_review_passed
-                                chapter.review_passed = check_review_passed(review_result)
-                                chapter.review_feedback = review_result.get("raw_response")
-                                chapter.review_result = review_result
-                                db.commit()
-                        logger.info(f"workflow: persisted review result for project {project_id}")
-
-                    # 重写节点完成后，将重写后的内容持久化到 chapters 表
-                    if node_name == "rewrite_node" and isinstance(output, dict):
-                        import logging
-                        logger = logging.getLogger(__name__)
-
-                        written_chapters = output.get("written_chapters", [])
-                        for chapter_data in written_chapters:
-                            chapter_num = chapter_data.get("chapter_number")
-                            if not chapter_num:
-                                continue
-                            chapter_outline = db.query(ChapterOutline).filter(
-                                ChapterOutline.project_id == project_id,
-                                ChapterOutline.chapter_number == chapter_num
-                            ).first()
-                            if not chapter_outline:
-                                continue
-                            chapter = db.query(Chapter).filter(
-                                Chapter.chapter_outline_id == chapter_outline.id
-                            ).first()
-                            if chapter:
-                                chapter.content = chapter_data.get("content", chapter.content)
-                                chapter.word_count = chapter_data.get("word_count", chapter.word_count)
-                                chapter.rewrite_count = output.get("rewrite_count", chapter.rewrite_count)
-                        db.commit()
-                        logger.info(f"workflow: persisted rewritten chapter for project {project_id}")
 
                 elif event_type == "on_chat_model_stream":
                     # LLM 流式输出
@@ -531,6 +420,9 @@ async def confirm_workflow(
     graph = create_novel_graph_with_checkpointer(project_id, "main", db)
     config = {"configurable": {"thread_id": "main"}}
 
+    # 获取大纲对象（用于持久化）
+    outline = db.query(Outline).filter(Outline.project_id == project_id).first()
+
     async def stream_generator():
         """LangGraph 工作流恢复执行 SSE 流生成器"""
         try:
@@ -545,9 +437,26 @@ async def confirm_workflow(
                     yield f"event: node_start\ndata: {json.dumps({'node': event_name})}\n\n"
 
                 elif event_type == "on_chain_end":
+                    node_name = event_name
                     output = event_data.get("output", {})
                     if isinstance(output, dict):
-                        yield f"event: node_done\ndata: {json.dumps({'node': event_name, 'state': output})}\n\n"
+                        yield f"event: node_done\ndata: {json.dumps({'node': node_name, 'state': output})}\n\n"
+
+                    # 统一的持久化分发（与 run_workflow 相同）
+                    if node_name in NODE_PERSIST_MAP:
+                        persist_fn = NODE_PERSIST_MAP[node_name]
+                        if node_name == "outline_generation_node":
+                            # 空数据检查：没有大纲对象或输出为空时都不持久化
+                            if not outline:
+                                yield format_sse_error(ValueError("大纲生成失败，未找到大纲记录，请重试"))
+                                return
+                            if not output.get("outline_title") and not output.get("outline_summary") and not output.get("outline_characters") and not output.get("outline_plot_points"):
+                                yield format_sse_error(ValueError("大纲生成失败，AI 返回数据为空，请重试"))
+                                return
+                            persist_fn(output, project_id, outline, db)
+                        else:
+                            persist_fn(output, project_id, db)
+                        db.commit()
 
                 elif event_type == "on_chat_model_stream":
                     chunk = event_data.get("chunk")
