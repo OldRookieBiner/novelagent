@@ -33,6 +33,7 @@ from app.agents.nodes.chapter_generation import (
     generate_chapter_outlines_node,
     generate_chapter_outlines_stream,
 )
+from app.agents.sse_events import format_chunk, format_done, format_node_start
 
 router = APIRouter()
 
@@ -214,7 +215,7 @@ async def create_chapter_outlines(
                         "total": len(created_outlines),
                         "stage": STAGE_CHAPTER_OUTLINES
                     }
-                    yield f"event: done\ndata: {json.dumps(completion_data)}\n\n"
+                    yield format_done(extra=completion_data)
 
         except Exception as e:
             # Send error event (sanitized)
@@ -694,13 +695,13 @@ async def generate_chapter(
             target_words=target_words,
         )
 
-        yield f"event: node_start\ndata: {json.dumps({'message': 'Starting generation'})}\n\n"
+        yield format_node_start('generate')
 
         accumulated_content = ""
         try:
             async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
                 accumulated_content += chunk
-                yield f"event: chunk\ndata: {json.dumps({'content': chunk})}\n\n"
+                yield format_chunk(chunk)
 
             content = clean_chapter_content(accumulated_content) if accumulated_content else ""
             if not content:
@@ -718,7 +719,7 @@ async def generate_chapter(
                 "content": content,
                 "word_count": word_count,
             }
-            yield f"event: done\ndata: {json.dumps(chapter_response)}\n\n"
+            yield format_done(extra=chapter_response)
 
         except Exception as e:
             yield format_sse_error(e)

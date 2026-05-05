@@ -1,6 +1,5 @@
 """Outline API routes"""
 
-import json
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -44,6 +43,7 @@ from app.agents.nodes.outline_generation import (
     MIN_CHAPTERS_VERY_LONG,
     MIN_CHAPTERS_EPIC,
 )
+from app.agents.sse_events import format_done
 # info_collection_node 已移除，信息收集由前端表单处理
 
 router = APIRouter()
@@ -199,7 +199,7 @@ async def generate_outline(
                 },
                 "stage": STAGE_OUTLINE,
             }
-            yield f"event: done\ndata: {json.dumps(completion_data)}\n\n"
+            yield format_done(extra=completion_data)
 
         except Exception as e:
             yield format_sse_error(e)

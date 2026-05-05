@@ -11,6 +11,13 @@ from typing import AsyncIterator
 from langgraph.graph import StateGraph, END
 
 from app.agents.state import NovelState
+from app.agents.sse_events import (
+    format_node_start,
+    format_chunk,
+    format_done,
+    format_error_message,
+    extract_chunk_from_event,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,31 +43,29 @@ async def stream_node_events(
         SSE 格式字符串，每个 event 以 \n\n 结尾
     """
     try:
-        yield f"event: node_start\ndata: {json.dumps({'message': 'Starting generation'})}\n\n"
+        yield format_node_start('generate')
 
         async for event in graph.astream_events(initial_state, config, version="v2"):
             event_type = event.get("event")
             event_data = event.get("data", {})
 
             if event_type == "on_chat_model_stream":
-                chunk = event_data.get("chunk")
-                if chunk:
-                    content = getattr(chunk, "content", str(chunk))
-                    if content:
-                        # 统一 chunk 事件格式：event: chunk + data: {"content": "..."}
-                        yield f"event: chunk\ndata: {json.dumps({'content': content})}\n\n"
+                content = extract_chunk_from_event(event_data)
+                if content:
+                    # 统一 chunk 事件格式：event: chunk + data: {"content": "..."}
+                    yield format_chunk(content)
 
             elif event_type == "on_chain_end":
                 output = event_data.get("output", {})
                 if isinstance(output, dict):
-                    yield f"event: done\ndata: {json.dumps({'state': output})}\n\n"
+                    yield format_done(extra={'state': output})
                 else:
-                    yield f"event: done\ndata: {json.dumps({'state': {'output': str(output)}})}\n\n"
+                    yield format_done(extra={'state': {'output': str(output)}})
 
     except Exception as e:
         error_msg = str(e)
         logger.error(f"stream_node_events error: {error_msg}")
-        yield f"event: error\ndata: {json.dumps({'error': error_msg})}\n\n"
+        yield format_error_message(error_msg)
 
 
 def create_single_node_graph(node_func, node_name: str = "execute"):

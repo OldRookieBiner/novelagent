@@ -20,6 +20,14 @@ from app.utils.deps import get_user_settings_or_raise
 from app.utils.workflow_persistence import NODE_PERSIST_MAP
 from app.agents.graph import create_novel_graph_with_checkpointer
 from app.agents.state import NovelState
+from app.agents.sse_events import (
+    format_node_start,
+    format_node_done,
+    format_chunk,
+    format_done,
+    format_waiting,
+    extract_chunk_from_event,
+)
 
 router = APIRouter()
 
@@ -267,7 +275,7 @@ async def run_workflow(
         """LangGraph 工作流 SSE 流生成器"""
         try:
             # 发送开始事件
-            yield f"event: node_start\ndata: {json.dumps({'node': 'workflow', 'message': 'Starting workflow'})}\n\n"
+            yield format_node_start('workflow', 'Starting workflow')
 
             # 使用 astream_events 进行流式传输
             async for event in graph.astream_events(initial_state, config, version="v2"):
@@ -278,8 +286,7 @@ async def run_workflow(
                 # 根据事件类型处理
                 if event_type == "on_chain_start":
                     # 节点开始执行
-                    node_name = event_name
-                    yield f"event: node_start\ndata: {json.dumps({'node': node_name})}\n\n"
+                    yield format_node_start(event_name)
 
                 elif event_type == "on_chain_end":
                     # 节点执行完成
@@ -287,7 +294,7 @@ async def run_workflow(
                     output = event_data.get("output", {})
 
                     if isinstance(output, dict):
-                        yield f"event: node_done\ndata: {json.dumps({'node': node_name, 'state': output})}\n\n"
+                        yield format_node_done(node_name, output)
 
                     # 统一的持久化分发
                     if node_name in NODE_PERSIST_MAP:
@@ -310,18 +317,17 @@ async def run_workflow(
                         db.commit()
                         logger.info(f"workflow: auto-confirmed outline for project {project_id}")
                         # 规划阶段已完成，发送 done 事件并终止流
-                        yield f"event: done\ndata: {json.dumps({'message': 'Generation completed'})}\n\n"
+                        yield format_done('Generation completed')
                         return
 
                 elif event_type == "on_chat_model_stream":
                     # LLM 流式输出
-                    chunk = event_data.get("chunk")
-                    if chunk:
-                        content = getattr(chunk, "content", str(chunk))
-                        yield f"event: chunk\ndata: {json.dumps({'content': content})}\n\n"
+                    content = extract_chunk_from_event(event_data)
+                    if content:
+                        yield format_chunk(content)
 
             # 工作流完成
-            yield f"event: done\ndata: {json.dumps({'message': 'Workflow completed'})}\n\n"
+            yield format_done('Workflow completed')
 
         except Exception as e:
             # 发送错误事件（已清理敏感信息）
@@ -426,7 +432,7 @@ async def confirm_workflow(
     async def stream_generator():
         """LangGraph 工作流恢复执行 SSE 流生成器"""
         try:
-            yield f"event: node_start\ndata: {json.dumps({'node': 'workflow_resume', 'message': 'Resuming workflow'})}\n\n"
+            yield format_node_start('workflow_resume', 'Resuming workflow')
 
             async for event in graph.astream_events(None, config, version="v2"):
                 event_type = event.get("event")
@@ -434,13 +440,13 @@ async def confirm_workflow(
                 event_data = event.get("data", {})
 
                 if event_type == "on_chain_start":
-                    yield f"event: node_start\ndata: {json.dumps({'node': event_name})}\n\n"
+                    yield format_node_start(event_name)
 
                 elif event_type == "on_chain_end":
                     node_name = event_name
                     output = event_data.get("output", {})
                     if isinstance(output, dict):
-                        yield f"event: node_done\ndata: {json.dumps({'node': node_name, 'state': output})}\n\n"
+                        yield format_node_done(node_name, output)
 
                     # 统一的持久化分发（与 run_workflow 相同）
                     if node_name in NODE_PERSIST_MAP:
@@ -459,12 +465,11 @@ async def confirm_workflow(
                         db.commit()
 
                 elif event_type == "on_chat_model_stream":
-                    chunk = event_data.get("chunk")
-                    if chunk:
-                        content = getattr(chunk, "content", str(chunk))
-                        yield f"event: chunk\ndata: {json.dumps({'content': content})}\n\n"
+                    content = extract_chunk_from_event(event_data)
+                    if content:
+                        yield format_chunk(content)
 
-            yield f"event: done\ndata: {json.dumps({'message': 'Workflow completed'})}\n\n"
+            yield format_done('Workflow completed')
 
         except Exception as e:
             yield format_sse_error(e)
