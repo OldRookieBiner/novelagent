@@ -3,7 +3,6 @@
 import re
 from sqlalchemy.orm import Session
 
-from app.database import SessionLocal
 from app.models.character import Relation
 from app.agents.state import NovelState, STAGE_RELATIONS
 from app.services.prompt_loader import get_system_prompt
@@ -75,14 +74,14 @@ def parse_relations_response(response: str, characters: list[dict]) -> list[dict
 
 
 def write_relations_to_db(
-    project_id: int, relations_data: list[dict], db: Session | None = None
+    project_id: int, relations_data: list[dict], db: Session
 ) -> list[dict]:
     """将解析好的关系列表写入数据库
 
     Args:
         project_id: 项目 ID
         relations_data: parse_relations_response 的输出
-        db: 可选的数据库会话，如果不传则内部创建
+        db: 数据库会话（必须由调用方提供）
 
     Returns:
         已创建的关系列表
@@ -90,56 +89,54 @@ def write_relations_to_db(
     if not relations_data:
         return []
 
-    should_close = False
-    if db is None:
-        db = SessionLocal()
-        should_close = True
-    try:
-        # 删除已有关系
-        db.query(Relation).filter(Relation.project_id == project_id).delete()
+    # 删除已有关系
+    db.query(Relation).filter(Relation.project_id == project_id).delete()
 
-        created = []
-        for r in relations_data:
-            rel = Relation(
-                project_id=project_id,
-                character_a_id=r["character_a_id"],
-                character_b_id=r["character_b_id"],
-                relation_type=r["relation_type"],
-                trust_level=r["trust_level"],
-                current_status=r["current_status"],
-                direction=r["direction"],
-            )
-            db.add(rel)
-            db.flush()
-            created.append(
-                {
-                    "id": rel.id,
-                    "character_a_id": rel.character_a_id,
-                    "character_b_id": rel.character_b_id,
-                    "relation_type": rel.relation_type,
-                    "trust_level": rel.trust_level,
-                    "current_status": rel.current_status,
-                    "direction": rel.direction,
-                }
-            )
+    created = []
+    for r in relations_data:
+        rel = Relation(
+            project_id=project_id,
+            character_a_id=r["character_a_id"],
+            character_b_id=r["character_b_id"],
+            relation_type=r["relation_type"],
+            trust_level=r["trust_level"],
+            current_status=r["current_status"],
+            direction=r["direction"],
+        )
+        db.add(rel)
+        db.flush()
+        created.append(
+            {
+                "id": rel.id,
+                "character_a_id": rel.character_a_id,
+                "character_b_id": rel.character_b_id,
+                "relation_type": rel.relation_type,
+                "trust_level": rel.trust_level,
+                "current_status": rel.current_status,
+                "direction": rel.direction,
+            }
+        )
 
-        db.commit()
-        return created
-    except Exception:
-        db.rollback()
-        raise
-    finally:
-        if should_close:
-            db.close()
+    return created
 
 
-async def generate_relations_node(
-    state: NovelState, db: Session | None = None
-) -> NovelState:
-    """LangGraph 兼容的关系生成节点
+async def generate_relations_node(state: NovelState) -> NovelState:
+    """LangGraph 节点：从角色生成关系网络
 
     签名：(state: NovelState) -> NovelState
+
+    此节点仅负责调用 LLM 并解析关系数据，不写入数据库。
+    DB 写入由 workflow API 的 astream_events 持久化流程统一处理。
+
+    Args:
+        state: 当前工作流状态（需包含 characters、project_id）
+
+    Returns:
+        更新后的 NovelState（包含 relations 和 stage）
     """
+    import logging
+    from app.database import SessionLocal
+
     characters = state.get("characters", [])
     if len(characters) < 2:
         # 少于两个角色则跳过关系生成
@@ -161,11 +158,8 @@ async def generate_relations_node(
     # 获取大纲概述
     outline_summary = state.get("outline_summary", "未提供")
 
-    # 加载 Prompt
-    should_close = False
-    if db is None:
-        db = SessionLocal()
-        should_close = True
+    # 加载 Prompt（需要独立的 DB 会话，因为 LangGraph 节点中没有共享 session）
+    db = SessionLocal()
     try:
         prompt = get_system_prompt(db, "relation_generation").format(
             characters_text=characters_text,
@@ -173,23 +167,22 @@ async def generate_relations_node(
             outline_summary=outline_summary,
         )
     finally:
-        if should_close:
-            db.close()
+        db.close()
 
     # 调用 LLM
     llm = await get_llm_from_state_async(state)
     response = await llm.chat([{"role": "user", "content": prompt}])
 
-    # 解析响应
+    # 解析响应（仅提取数据，不写 DB）
     relations_data = parse_relations_response(response, characters)
 
-    # 写入数据库
-    project_id = state["project_id"]
-    relations = write_relations_to_db(project_id, relations_data)
+    logging.getLogger(__name__).info(
+        f"relation_gen_node: parsed {len(relations_data)} relations"
+    )
 
     new_state: NovelState = {
         **state,
-        "relations": relations,
+        "relations": relations_data,
         "stage": STAGE_RELATIONS,
     }
 

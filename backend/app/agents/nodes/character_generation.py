@@ -3,8 +3,6 @@
 import asyncio
 from sqlalchemy.orm import Session
 
-from app.database import SessionLocal
-from app.models.character import Character
 from app.agents.state import NovelState, STAGE_CHARACTERS
 
 
@@ -23,9 +21,7 @@ def _map_role(outline_role: str) -> str:
     return "配角"
 
 
-def extract_characters_from_outline(
-    state: NovelState, db: Session | None = None
-) -> list[dict]:
+def extract_characters_from_outline(state: NovelState, db: Session) -> list[dict]:
     """从大纲的 outline_characters 提取角色并写入数据库
 
     删除项目已有角色（避免重复），然后从 state["outline_characters"]
@@ -33,7 +29,7 @@ def extract_characters_from_outline(
 
     Args:
         state: NovelState（需包含 project_id 和 outline_characters）
-        db: 可选的数据库会话，如果不传则内部创建
+        db: 数据库会话（由调用方管理生命周期）
 
     Returns:
         已创建的角色列表 [{id, name, role, ...}]
@@ -44,45 +40,33 @@ def extract_characters_from_outline(
     if not outline_characters:
         return []
 
-    should_close = False
-    if db is None:
-        db = SessionLocal()
-        should_close = True
-    try:
-        # 删除已有角色（重新生成场景，避免重复）
-        db.query(Character).filter(Character.project_id == project_id).delete()
+    # 删除已有角色（重新生成场景，避免重复）
+    db.query(Character).filter(Character.project_id == project_id).delete()
 
-        created = []
-        for oc in outline_characters:
-            char = Character(
-                project_id=project_id,
-                name=oc.get("name", "未命名") or "未命名",
-                role=_map_role(oc.get("role", "")),
-                personality=oc.get("personality", ""),
-                core_motivation=oc.get("motivation", ""),
-                growth_arc=oc.get("arc", ""),
-            )
-            db.add(char)
-            db.flush()  # 获取 id
-            created.append(
-                {
-                    "id": char.id,
-                    "name": char.name,
-                    "role": char.role,
-                    "personality": char.personality,
-                    "core_motivation": char.core_motivation,
-                    "growth_arc": char.growth_arc,
-                }
-            )
+    created = []
+    for oc in outline_characters:
+        char = Character(
+            project_id=project_id,
+            name=oc.get("name", "未命名") or "未命名",
+            role=_map_role(oc.get("role", "")),
+            personality=oc.get("personality", ""),
+            core_motivation=oc.get("motivation", ""),
+            growth_arc=oc.get("arc", ""),
+        )
+        db.add(char)
+        db.flush()  # 获取 id
+        created.append(
+            {
+                "id": char.id,
+                "name": char.name,
+                "role": char.role,
+                "personality": char.personality,
+                "core_motivation": char.core_motivation,
+                "growth_arc": char.growth_arc,
+            }
+        )
 
-        db.commit()
-        return created
-    except Exception:
-        db.rollback()
-        raise
-    finally:
-        if should_close:
-            db.close()
+    return created
 
 
 async def create_characters_from_outline_node(state: NovelState) -> NovelState:
@@ -93,15 +77,27 @@ async def create_characters_from_outline_node(state: NovelState) -> NovelState:
     异步节点，DB 操作放入线程池避免阻塞 event loop。
     读取 state["outline_characters"]，批量 INSERT 到 characters 表，
     然后更新 state["characters"] 和 state["stage"]。
+
+    注意：数据库 session 由 workflow API 中 astream_events 的 persist 逻辑管理，
+    此节点仅负责提取数据，不自行创建/提交 session。
     """
-    loop = asyncio.get_event_loop()
-    characters = await loop.run_in_executor(
-        None, extract_characters_from_outline, state
-    )
+    # 仅从 state 提取角色数据（不写 DB），DB 写入由 workflow API 的 persist 流程统一处理
+    outline_characters = state.get("outline_characters", [])
+    characters = []
+    for oc in outline_characters:
+        characters.append(
+            {
+                "name": oc.get("name", "未命名") or "未命名",
+                "role": _map_role(oc.get("role", "")),
+                "personality": oc.get("personality", ""),
+                "core_motivation": oc.get("motivation", ""),
+                "growth_arc": oc.get("arc", ""),
+            }
+        )
 
     import logging
     logging.getLogger(__name__).info(
-        f"character_gen_node: outline_chars={len(state.get('outline_characters', []))}, created={len(characters)}"
+        f"character_gen_node: outline_chars={len(outline_characters)}, extracted={len(characters)}"
     )
 
     new_state: NovelState = {

@@ -16,7 +16,11 @@ from app.utils.auth import get_current_user
 from app.utils.project import get_project_for_user
 from app.utils.error import format_sse_error
 from app.utils.deps import get_user_settings_or_raise
-from app.utils.workflow_persistence import NODE_PERSIST_MAP
+from app.utils.workflow_persistence import (
+    NODE_PERSIST_MAP,
+    persist_character_generation,
+    persist_relation_generation,
+)
 from app.agents.graph import create_novel_graph_with_checkpointer
 from app.agents.state import NovelState
 from app.agents.sse_events import (
@@ -35,6 +39,7 @@ router = APIRouter()
 class WorkflowRunRequest(BaseModel):
     """工作流运行请求"""
     llm_config_id: Optional[int] = None  # 指定模型配置 ID
+    llm_model_name: Optional[str] = None  # 指定模型名称
 
 
 class WorkflowConfirmRequest(BaseModel):
@@ -61,7 +66,8 @@ def build_initial_state(
     project: Project,
     outline: Outline,
     workflow_state: WorkflowState,
-    llm_config_id: Optional[int] = None
+    llm_config_id: Optional[int] = None,
+    llm_model_name: Optional[str] = None
 ) -> NovelState:
     """
     从项目、大纲和工作流状态构建初始 NovelState。
@@ -71,6 +77,7 @@ def build_initial_state(
         outline: 大纲实例
         workflow_state: 工作流状态实例
         llm_config_id: 模型配置 ID
+        llm_model_name: 模型名称
 
     Returns:
         NovelState 字典
@@ -146,6 +153,7 @@ def build_initial_state(
 
         # LLM 服务
         "llm_config_id": llm_config_id,
+        "llm_model_name": llm_model_name,  # 用户选择的模型名
     }
 
     return state
@@ -248,13 +256,15 @@ async def run_workflow(
         db.commit()
         db.refresh(workflow_state)
 
-    # 获取 LLM 配置 ID
+    # 获取 LLM 配置 ID 和模型名
     llm_config_id = None
+    llm_model_name = None
     if request:
         llm_config_id = request.llm_config_id
+        llm_model_name = request.llm_model_name
 
     # 构建初始状态
-    initial_state = build_initial_state(project, outline, workflow_state, llm_config_id)
+    initial_state = build_initial_state(project, outline, workflow_state, llm_config_id, llm_model_name)
 
     # 使用固定 thread_id，确保 confirm/cancel/state 等操作能找到同一检查点
     thread_id = "main"

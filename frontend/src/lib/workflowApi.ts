@@ -98,12 +98,12 @@ export const workflowApi = {
    * 运行工作流（SSE 流式）- 使用统一的 SSE 处理器
    * @param projectId - 项目 ID
    * @param callbacks - 回调函数
-   * @param options - 流式请求选项（包括 AbortSignal 用于取消，以及 llmConfigId 指定模型配置）
+   * @param options - 流式请求选项（包括 AbortSignal 用于取消，llmConfigId 指定模型配置，modelName 指定模型名）
    */
   async runWorkflow(
     projectId: number,
     callbacks: WorkflowStreamCallbacks,
-    options?: StreamOptions & { llmConfigId?: number }
+    options?: StreamOptions & { llmConfigId?: number; modelName?: string }
   ): Promise<void>
   {
     // 事件处理函数
@@ -172,11 +172,20 @@ export const workflowApi = {
     }
 
     // 使用统一的 SSE 流处理器
+    const requestBody: Record<string, unknown> = {}
+    if (options?.llmConfigId)
+    {
+      requestBody.llm_config_id = options.llmConfigId
+    }
+    if (options?.modelName)
+    {
+      requestBody.llm_model_name = options.modelName
+    }
     await createSSEStream(
       {
         url: `/api/projects/${projectId}/workflow/run`,
         method: 'POST',
-        body: options?.llmConfigId ? { llm_config_id: options.llmConfigId } : {},
+        body: Object.keys(requestBody).length > 0 ? requestBody : undefined,
         signal: options?.signal,
       },
       handleEvent,

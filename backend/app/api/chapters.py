@@ -833,6 +833,7 @@ async def review_chapter(
         "outline_world_setting": outline.world_setting or {},
         "review_result": None,
         "llm_config_id": request.llm_config_id if request else None,
+        "llm_model_name": getattr(request, 'llm_model_name', None) if request else None,
     }
 
     graph = create_single_node_graph(review_node)

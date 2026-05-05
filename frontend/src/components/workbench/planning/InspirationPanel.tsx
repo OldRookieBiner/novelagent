@@ -1021,6 +1021,7 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
         onClose={() => setShowProgressDialog(false)}
         projectId={projectId}
         modelConfigId={selectedModelKey ? parseInt(selectedModelKey.split(':')[0]) : undefined}
+        modelName={selectedModelKey ? selectedModelKey.split(':').slice(1).join(':') : undefined}
         onComplete={() => {}}
         onViewOutline={() =>
         {

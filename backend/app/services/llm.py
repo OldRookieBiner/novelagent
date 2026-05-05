@@ -54,10 +54,10 @@ class LLMService:
             raise ValueError("API key is required")
 
         # 获取配置
-        if base_url and model:
-            # 使用自定义配置
+        if base_url:
+            # 使用了自定义配置的 base_url，优先使用（不依赖预设）
             self.base_url = base_url
-            self.model = model
+            self.model = model or settings.default_model
         else:
             # 使用预设配置
             config = self.MODEL_CONFIGS.get(
@@ -149,8 +149,14 @@ class LLMService:
         return await self.chat(full_messages, temperature)
 
 
-def get_llm_service_from_config(model_config, user_id: int) -> LLMService:
-    """从模型配置获取 LLM 服务"""
+def get_llm_service_from_config(model_config, user_id: int, model_override: str = None) -> LLMService:
+    """从模型配置获取 LLM 服务
+
+    Args:
+        model_config: 模型配置
+        user_id: 用户 ID
+        model_override: 可选，用户指定的模型名（覆盖 model_config.model_name）
+    """
     from app.services.crypto import decrypt_api_key
 
     api_key = (
@@ -162,11 +168,19 @@ def get_llm_service_from_config(model_config, user_id: int) -> LLMService:
     if not api_key:
         raise ValueError("API key not configured for this model")
 
+    # 确定模型名：优先使用 model_override > model_config.model_name > models 列表第一个启用模型
+    model = model_override or model_config.model_name
+    if not model and model_config.models:
+        for m in model_config.models:
+            if m.get("is_enabled", True):
+                model = m["name"]
+                break
+
     return LLMService(
         provider=model_config.provider,
         api_key=api_key,
         base_url=model_config.base_url,
-        model=model_config.model_name,
+        model=model,
     )
 
 

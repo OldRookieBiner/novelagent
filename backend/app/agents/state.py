@@ -117,6 +117,7 @@ class NovelState(TypedDict):
 
     # ========== LLM 服务 ==========
     llm_config_id: Optional[int]  # 使用的模型配置 ID
+    llm_model_name: Optional[str]  # 用户选择的模型名称
 
 
 # ========== 阶段常量 ==========

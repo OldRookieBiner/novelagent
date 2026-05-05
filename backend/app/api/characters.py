@@ -833,7 +833,8 @@ async def generate_characters(
         "outline_characters": outline.characters,
     }
 
-    characters = extract_characters_from_outline(state)
+    characters = extract_characters_from_outline(state, db)
+    db.commit()
 
     if not characters:
         raise HTTPException(
