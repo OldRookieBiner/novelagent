@@ -98,12 +98,12 @@ export const workflowApi = {
    * 运行工作流（SSE 流式）- 使用统一的 SSE 处理器
    * @param projectId - 项目 ID
    * @param callbacks - 回调函数
-   * @param options - 流式请求选项（包括 AbortSignal 用于取消）
+   * @param options - 流式请求选项（包括 AbortSignal 用于取消，以及 llmConfigId 指定模型配置）
    */
   async runWorkflow(
     projectId: number,
     callbacks: WorkflowStreamCallbacks,
-    options?: StreamOptions
+    options?: StreamOptions & { llmConfigId?: number }
   ): Promise<void>
   {
     // 事件处理函数
@@ -176,6 +176,7 @@ export const workflowApi = {
       {
         url: `/api/projects/${projectId}/workflow/run`,
         method: 'POST',
+        body: options?.llmConfigId ? { llm_config_id: options.llmConfigId } : {},
         signal: options?.signal,
       },
       handleEvent,

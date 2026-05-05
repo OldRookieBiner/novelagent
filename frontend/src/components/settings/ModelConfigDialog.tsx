@@ -262,7 +262,7 @@ export default function ModelConfigDialog({
             <Select
               value={selectedProvider}
               onValueChange={handleProviderChange}
-              disabled={loadingProviders || isEditMode}
+              disabled={loadingProviders}
             >
               <SelectTrigger id="provider">
                 <SelectValue placeholder={loadingProviders ? '加载中...' : '选择提供商'} />
@@ -278,9 +278,6 @@ export default function ModelConfigDialog({
             </Select>
             {errors.provider && (
               <p className="text-red-500 text-xs">{errors.provider}</p>
-            )}
-            {isEditMode && (
-              <p className="text-xs text-muted-foreground">编辑模式下不可更改提供商</p>
             )}
           </div>
 
@@ -316,7 +313,7 @@ export default function ModelConfigDialog({
                 if (errors.baseUrl) setErrors({ ...errors, baseUrl: '' })
               }}
               placeholder="如：https://api.openai.com/v1"
-              disabled={!isCustom && selectedProvider !== '' && !isEditMode}
+              disabled={isCustom}
             />
             {errors.baseUrl && (
               <p className="text-red-500 text-xs">{errors.baseUrl}</p>

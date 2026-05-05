@@ -28,6 +28,8 @@ interface OutlineProgressDialogProps
   open: boolean
   onClose: () => void
   projectId: number
+  /** 可选的模型配置 ID */
+  modelConfigId?: number
   onComplete: () => void
   onViewOutline: () => void
 }
@@ -42,6 +44,7 @@ export function OutlineProgressDialog({
   open,
   onClose,
   projectId,
+  modelConfigId,
   onComplete,
   onViewOutline,
 }: OutlineProgressDialogProps)
@@ -137,7 +140,7 @@ export function OutlineProgressDialog({
             ))
           },
         },
-        { signal: controller.signal }
+        { signal: controller.signal, llmConfigId: modelConfigId }
       )
     }
     catch (err)
