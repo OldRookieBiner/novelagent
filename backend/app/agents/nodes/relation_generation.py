@@ -1,6 +1,8 @@
 """关系生成节点 - AI 基于角色生成关系网络"""
 
 import re
+from sqlalchemy.orm import Session
+
 from app.database import SessionLocal
 from app.models.character import Relation
 from app.agents.state import NovelState, STAGE_RELATIONS
@@ -72,12 +74,15 @@ def parse_relations_response(response: str, characters: list[dict]) -> list[dict
     return relations
 
 
-def write_relations_to_db(project_id: int, relations_data: list[dict]) -> list[dict]:
+def write_relations_to_db(
+    project_id: int, relations_data: list[dict], db: Session | None = None
+) -> list[dict]:
     """将解析好的关系列表写入数据库
 
     Args:
         project_id: 项目 ID
         relations_data: parse_relations_response 的输出
+        db: 可选的数据库会话，如果不传则内部创建
 
     Returns:
         已创建的关系列表
@@ -85,7 +90,10 @@ def write_relations_to_db(project_id: int, relations_data: list[dict]) -> list[d
     if not relations_data:
         return []
 
-    db = SessionLocal()
+    should_close = False
+    if db is None:
+        db = SessionLocal()
+        should_close = True
     try:
         # 删除已有关系
         db.query(Relation).filter(Relation.project_id == project_id).delete()
@@ -121,10 +129,13 @@ def write_relations_to_db(project_id: int, relations_data: list[dict]) -> list[d
         db.rollback()
         raise
     finally:
-        db.close()
+        if should_close:
+            db.close()
 
 
-async def generate_relations_node(state: NovelState) -> NovelState:
+async def generate_relations_node(
+    state: NovelState, db: Session | None = None
+) -> NovelState:
     """LangGraph 兼容的关系生成节点
 
     签名：(state: NovelState) -> NovelState
@@ -151,7 +162,10 @@ async def generate_relations_node(state: NovelState) -> NovelState:
     outline_summary = state.get("outline_summary", "未提供")
 
     # 加载 Prompt
-    db = SessionLocal()
+    should_close = False
+    if db is None:
+        db = SessionLocal()
+        should_close = True
     try:
         prompt = get_system_prompt(db, "relation_generation").format(
             characters_text=characters_text,
@@ -159,7 +173,8 @@ async def generate_relations_node(state: NovelState) -> NovelState:
             outline_summary=outline_summary,
         )
     finally:
-        db.close()
+        if should_close:
+            db.close()
 
     # 调用 LLM
     llm = await get_llm_from_state_async(state)

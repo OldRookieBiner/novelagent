@@ -1,5 +1,7 @@
 """角色生成节点 - 从大纲提取角色并写入数据库"""
 
+from sqlalchemy.orm import Session
+
 from app.database import SessionLocal
 from app.models.character import Character
 from app.agents.state import NovelState, STAGE_CHARACTERS
@@ -20,7 +22,9 @@ def _map_role(outline_role: str) -> str:
     return "配角"
 
 
-def extract_characters_from_outline(state: NovelState) -> list[dict]:
+def extract_characters_from_outline(
+    state: NovelState, db: Session | None = None
+) -> list[dict]:
     """从大纲的 outline_characters 提取角色并写入数据库
 
     删除项目已有角色（避免重复），然后从 state["outline_characters"]
@@ -28,6 +32,7 @@ def extract_characters_from_outline(state: NovelState) -> list[dict]:
 
     Args:
         state: NovelState（需包含 project_id 和 outline_characters）
+        db: 可选的数据库会话，如果不传则内部创建
 
     Returns:
         已创建的角色列表 [{id, name, role, ...}]
@@ -38,7 +43,10 @@ def extract_characters_from_outline(state: NovelState) -> list[dict]:
     if not outline_characters:
         return []
 
-    db = SessionLocal()
+    should_close = False
+    if db is None:
+        db = SessionLocal()
+        should_close = True
     try:
         # 删除已有角色（重新生成场景，避免重复）
         db.query(Character).filter(Character.project_id == project_id).delete()
@@ -72,7 +80,8 @@ def extract_characters_from_outline(state: NovelState) -> list[dict]:
         db.rollback()
         raise
     finally:
-        db.close()
+        if should_close:
+            db.close()
 
 
 async def create_characters_from_outline_node(state: NovelState) -> NovelState:
