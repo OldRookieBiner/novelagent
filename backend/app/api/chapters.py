@@ -340,6 +340,8 @@ async def confirm_chapter_outline(
 
     # Confirm the chapter outline
     chapter_outline.confirmed = True
+    db.commit()
+    db.refresh(chapter_outline)
 
     # Check if all chapter outlines are confirmed - 使用两个简单查询
     from sqlalchemy import func
@@ -353,16 +355,11 @@ async def confirm_chapter_outline(
         ChapterOutline.confirmed == True
     ).scalar() or 0
 
-    # 确认后，已确认数需要 +1（因为当前章节还未 commit）
-    confirmed_outlines += 1
-
     # If all confirmed, update workflow state to chapter writing
-    if total_outlines > 0 and confirmed_outlines == total_outlines:
+    if total_outlines > 0 and confirmed_outlines >= total_outlines:
         workflow_state = get_or_create_workflow_state(db, project_id)
         workflow_state.stage = STAGE_WRITING
-
-    db.commit()
-    db.refresh(chapter_outline)
+        db.commit()
 
     # Check if chapter content exists
     has_content = db.query(Chapter).filter(
