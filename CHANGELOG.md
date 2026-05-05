@@ -2,6 +2,65 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.8.0 - 2026-05-03
+
+### 新功能
+
+- **全新工作台页面** - 统一的写作工作台，替代旧的分散页面
+  - Tab 布局：灵感采集、大纲、人物设定、人物关系、章节大纲、写作、审核
+  - 可折叠面板，最大化编辑空间
+  - 全局 Header 导航，返回按钮和项目列表入口
+  - 面板状态自动保存，Tab 切换不丢失数据
+- **人物设定模块** - 从大纲自动生成人物，支持手动创建和编辑
+- **人物关系模块** - AI 自动生成人物关系图谱，支持手动创建和编辑关系
+- **LangGraph 工作流全面升级**
+  - 自动化大纲→人物→关系生成流程（无需逐步确认）
+  - 大纲生成集成 SSE 进度对话框
+  - LangGraph v1 检查点 API 迁移
+- **TipTap 富文本编辑器** - 写作面板从纯文本升级为富文本编辑
+- **灵感采集界面重构** - 左右分栏布局，实时 Prompt 模板预览，快速模板，步骤引导
+- **首页重新设计** - 全局 Header、自适应网格、项目卡片新样式、创建项目对话框
+- **章节大纲面板升级** - 进度条、一键确认全部、状态图标、统计卡片
+- **写作面板优化** - 章节状态图标、键盘快捷键、骨架屏加载
+
+### 优化
+
+- **代码质量大幅提升**
+  - 前端组件拆分：Settings、Writing、CharacterSetting 拆分为独立组件
+  - 后端共享工具函数：提取节点通用逻辑，减少重复代码
+  - 类型安全增强：窄化类型、移除不安全断言
+  - React 性能优化：React.memo 和 useCallback 减少不必要渲染
+- **UI 交互优化**
+  - 统一 Loading 状态组件
+  - 统一 Toast 错误提示
+  - 大纲面板分组卡片布局，手动 AI 分析触发
+  - 审核面板简化，移除写作辅助标签
+- **大纲解析增强** - 支持多种 AI 输出格式，自动清理星号标记，解析失败时保留已有数据
+- **SSE 流式处理增强** - 统一 chunk 格式、错误解析修复、重试前清理、空面板安全检查
+- **工作流稳定性** - 空大纲自动终止、随机 thread_id、清理端点、plot_points 有效性校验
+- **API 重构** - 确认端点使用 PUT 语义，移除废弃的 info_collection_chat 端点
+
+### 修复
+
+- 修复 SSE 事件对象解析错误（node_start/node_done/waiting）
+- 修复 LangGraph v1 检查点兼容性问题（async aget_tuple/aput）
+- 修复大纲进度对话框节点名称匹配问题
+- 修复关系生成后 SSE 继续推送的问题
+- 修复人物/关系节点缺少 waiting_for_confirmation 状态
+- 修复工作流恢复功能
+- 修复字数统计 HTML 标签计数问题（DOMPurify 净化）
+- 修复 InspirationPanel 模板初始化、闭包过期、草稿清理问题
+- 修复 TipTap 编辑器 key prop 缺失
+- 修复主题色进度条适配、响应式网格列数
+
+### 测试
+
+- 新增页面集成测试：Login、Home、Settings
+- 新增组件测试：CharacterList、ChapterNav、ChapterEditor
+- 新增 Hook 测试：useCharacters、useSettings、useWriting
+- 新增后端单元测试：依赖注入工具、节点工具函数
+- 新增工作流测试：大纲失败中止、SSE 错误事件格式、plot_points 有效性、Prompt 加载回退
+
 ## v0.7.2 - 2026-04-28
 
 ### 新功能

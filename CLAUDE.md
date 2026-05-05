@@ -22,7 +22,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **NovelAgent** - AI 小说创作 Agent 系统。
 
-**当前版本：v0.6.4** - 多模型配置、Coding Plan API、模型选择
+**当前版本：v0.8.0** - 全新工作台页面、人物设定与关系图谱、LangGraph 工作流全面升级
 
 ### 快速开始
 
@@ -78,9 +78,9 @@ docker exec novelagent-backend-1 pytest -v
 docker exec novelagent-backend-1 pytest tests/test_workflow.py -v  # 单个测试文件
 
 # 前端测试
-cd frontend && npm run test:run
-cd frontend && npm run test:run -- src/stores/workflowStore.test.ts  # 单个测试文件
-cd frontend && npm run test:coverage
+cd frontend && npm run test
+cd frontend && npm run test -- src/stores/workbenchStore.test.ts  # 单个测试文件
+cd frontend && npm run test -- --coverage
 
 # 数据库迁移
 docker exec novelagent-backend-1 alembic upgrade head    # 应用迁移
@@ -92,16 +92,16 @@ docker exec novelagent-backend-1 alembic revision -m "description"  # 创建新�
 ```
 novelagent/
 ├── backend/app/
-│   ├── api/            # API 路由 (projects, outline, chapters, settings, model_configs, agent_prompts, workflow)
-│   ├── agents/         # LangGraph Agents (state, graph, nodes/, checkpointer)
-│   ├── models/         # SQLAlchemy 模型 (user, project, outline, chapter, model_config, checkpoint)
+│   ├── api/            # API 路由 (auth, projects, outline, chapters, characters, settings, model_configs, system_prompts, workflow)
+│   ├── agents/         # LangGraph Agents (state, graph, nodes/, checkpointer, streaming)
+│   ├── models/         # SQLAlchemy 模型 (user, project, outline, chapter, character, model_config, checkpoint, settings)
 │   ├── schemas/        # Pydantic schemas
 │   └── services/       # LLM 服务、加密服务
 ├── frontend/src/
-│   ├── components/     # UI 组件 (ui/, project/, settings/)
+│   ├── components/     # UI 组件 (ui/, project/, settings/, common/, layout/, workbench/, character/)
 │   ├── pages/          # 页面
-│   ├── lib/            # API 客户端 (api, workflowApi, sseParser)
-│   └── stores/         # Zustand 状态 (workflowStore, settingsStore)
+│   ├── lib/            # API 客户端 (api, workflowApi, sseParser, characterApi, inspiration)
+│   └── stores/         # Zustand 状态 (workbenchStore, settingsStore, authStore, projectStore)
 └── docker-compose.yml
 ```
 
@@ -130,7 +130,8 @@ novelagent/
 ```
 /                   → 首页（项目列表）
 /project/:id        → 项目详情
-/project/:id/write  → 写作页面
+/project/:id/write  → 写作页面（旧）
+/project/:id/workbench → 工作台页面（新，Tab 布局）
 /project/:id/read/:chapterId → 阅读/审核
 /settings           → 设置
 ```
@@ -147,11 +148,23 @@ novelagent/
 | `hybrid` | 大纲和章节大纲需确认，写作自动进行 |
 | `auto` | 全自动，仅审核不通过时暂停 |
 
+### LangGraph 工作流节点
+
+| 节点 | 文件 | 说明 |
+|------|------|------|
+| 大纲生成 | `nodes/outline_generation.py` | 生成小说大纲 |
+| 角色提取 | `nodes/character_generation.py` | 从大纲自动生成人物设定 |
+| 关系图谱 | `nodes/relation_generation.py` | 生成人物关系 |
+| 章节大纲 | `nodes/chapter_generation.py` | 生成章节大纲和内容 |
+| 审核 | `nodes/review.py` | AI 审核章节内容 |
+| 重写 | `nodes/rewrite.py` | 根据审核意见重写 |
+| 等待确认 | `nodes/wait_confirm.py` | 暂停等待用户确认 |
+
 ### 前端工作流状态管理
 
 ```typescript
-// workflowStore - Zustand store
-import { useWorkflowStore } from '@/stores/workflowStore'
+// workbenchStore - Zustand store
+import { useWorkbenchStore } from '@/stores/workbenchStore'
 
 // 主要状态
 stage: WorkflowStage              // 当前阶段
@@ -250,27 +263,26 @@ const data = parseSSEData(event.data)          // 解析 data 字段
 ### 开发流程图
 
 ```
-BRAINSTORMING → WRITING-PLANS → EXECUTION → TDD → VERIFICATION → CODE-REVIEW → FINISHING
-     ↓              ↓              ↓         ↓         ↓              ↓            ↓
-  设计讨论        编写计划        执行计划   测试驱动   验证完成       代码审查      完成分支
+BRAINSTORMING → SPEC → WRITING-PLANS → EXECUTION (内含 TDD) → CODE-REVIEW → FINISHING
+     ↓           ↓           ↓               ↓                    ↓            ↓
+  设计讨论   设计文档+审查  编写实现计划   subagent 或 inline     代码审查      完成分支
 ```
 
 ### 技能流程表
 
-| 阶段 | 核心技能 | 强制要求 |
-|------|----------|----------|
-| 需求/设计 | `superpowers:brainstorming` | 新功能必须先设计讨论，**不得跳过**。提出多方案时**必须给出推荐** |
-| 架构检查 | 确认 LangGraph 集成方式 | 涉及 AI/工作流的功能必须先确认节点设计 |
-| 计划编写 | `superpowers:writing-plans` | 设计确认后编写详细实现计划，保存到 `docs/superpowers/plans/` |
-| 计划执行 | `superpowers:executing-plans` | 按计划逐步执行 |
-| 并行开发 | `superpowers:subagent-driven-development` | 并行执行独立任务（推荐） |
-| 测试驱动 | `superpowers:test-driven-development` | TDD：先写测试，看到失败，再写实现 |
-| 完成验证 | `superpowers:verification-before-completion` | 完成前运行验证命令，**不得凭感觉** |
-| 请求审查 | `superpowers:requesting-code-review` | 审查通过后再提交 |
-| 接收审查 | `superpowers:receiving-code-review` | 处理审查反馈，修改代码 |
+| 阶段 | 核心技能 | 说明 |
+|------|----------|------|
+| 需求/设计 | `superpowers:brainstorming` | 探索项目上下文 → 提问 → 提出 2-3 个方案 → 设计 → 写 spec → 自审 → 用户审查。**不得跳过** |
+| 架构检查 | 确认 LangGraph 集成方式 | **[项目特定]** 涉及 AI/工作流的功能必须先确认节点设计 |
+| 计划编写 | `superpowers:writing-plans` | 基于 spec 编写详细实现计划（含文件路径、代码、命令），保存到 `docs/superpowers/plans/` |
+| 执行（推荐） | `superpowers:subagent-driven-development` | 每任务一个子代理 + 两阶段审查（spec 合规 → 代码质量），同会话内连续执行 |
+| 执行（备选） | `superpowers:executing-plans` | 当前会话内逐步执行，每步验证 |
+| Bug 修复 | `superpowers:systematic-debugging` | 先找根因（Phase 1）→ 模式分析（Phase 2）→ 假设验证（Phase 3）→ 实现修复（Phase 4），**不得盲目修改** |
+| 完成验证 | `superpowers:verification-before-completion` | 任何完成声明前必须运行验证命令并提供证据，**不得凭感觉** |
+| 请求审查 | `superpowers:requesting-code-review` | 每个任务/主要功能完成后审查，审查通过后再继续 |
+| 接收审查 | `superpowers:receiving-code-review` | 先理解 → 验证 → 评估 → 再实现，禁止表演性同意 |
+| 完成分支 | `superpowers:finishing-a-development-branch` | 先验证测试通过 → 4 选项（合并/PR/保留/丢弃） |
 | 提交代码 | `commit-commands:commit` | 审查通过后提交 |
-| Bug 修复 | `superpowers:systematic-debugging` | 系统排查，**不得盲目修改** |
-| 完成分支 | `superpowers:finishing-a-development-branch` | 合并/PR/清理分支 |
 
 ### 方案选择规则
 
@@ -293,8 +305,9 @@ BRAINSTORMING → WRITING-PLANS → EXECUTION → TDD → VERIFICATION → CODE-
 **开始开发前：**
 
 - [ ] 是否已调用 `superpowers:brainstorming` 进行设计？
-- [ ] 设计文档是否已保存到 `docs/superpowers/specs/`？
-- [ ] 用户是否已审核并批准设计？
+- [ ] 设计文档（spec）是否已保存到 `docs/superpowers/specs/`？
+- [ ] Spec 自审是否通过（无 placeholder、无矛盾、无歧义）？
+- [ ] 用户是否已审查并批准 spec？
 - [ ] 实现计划是否已保存到 `docs/superpowers/plans/`？
 - [ ] 是否使用 worktree 隔离开发环境？
 
@@ -310,6 +323,8 @@ BRAINSTORMING → WRITING-PLANS → EXECUTION → TDD → VERIFICATION → CODE-
 | Skill | 用途 | 触发场景 |
 |-------|------|----------|
 | `superpowers:using-git-worktrees` | 隔离开发环境 | 需要独立开发分支时 |
+| `superpowers:test-driven-development` | TDD 测试驱动开发 | 执行计划中实现功能/修复时 |
+| `superpowers:systematic-debugging` | 系统调试 | 遇到 bug/测试失败时 |
 | `ui-ux-pro-max:ui-ux-pro-max` | UI/UX 设计建议 | 界面设计讨论时 |
 | `agent-browser-skill:agent-browser` | 浏览器自动化 | E2E 测试、页面抓取 |
 | `commit-commands:clean_gone` | 清理已删除的远程分支 | 分支维护时 |
@@ -520,9 +535,10 @@ refactor(workflow): simplify node execution logic
 | 项目 | `/api/projects` | 项目 CRUD、工作流 |
 | 大纲 | `/api/projects/{id}/outline` | 小说大纲 |
 | 章节 | `/api/projects/{id}/chapters` | 章节管理 |
+| 人物 | `/api/projects/{id}/characters` | 人物设定、人物关系 |
 | 设置 | `/api/settings` | 用户设置 |
 | 模型 | `/api/model_configs` | 模型配置管理 |
-| 提示词 | `/api/agent_prompts` | Agent Prompt 管理 |
+| 提示词 | `/api/system_prompts` | Agent Prompt 管理 |
 
 ### 工作流 API
 
