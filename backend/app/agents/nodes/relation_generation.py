@@ -136,15 +136,43 @@ async def generate_relations_node(state: NovelState) -> NovelState:
     """
     import logging
     from app.database import SessionLocal
+    from app.models.character import Character as CharacterModel
 
-    characters = state.get("characters", [])
-    if len(characters) < 2:
-        # 少于两个角色则跳过关系生成
+    logger_rn = logging.getLogger(__name__)
+
+    project_id = state["project_id"]
+
+    # 从数据库查询已持久化的角色（带 id），确保 name→id 映射正确
+    # state["characters"] 来自 create_characters_from_outline_node 的返回值，
+    # 该返回值中的角色没有数据库 id，因为 persist 阶段才写入并生成 id
+    db = SessionLocal()
+    try:
+        db_characters = db.query(CharacterModel).filter(
+            CharacterModel.project_id == project_id
+        ).order_by(CharacterModel.id).all()
+    finally:
+        db.close()
+
+    if len(db_characters) < 2:
+        logger_rn.info(
+            f"relation_gen_node: only {len(db_characters)} characters in DB for project {project_id}, skipping"
+        )
         return {**state, "stage": STAGE_RELATIONS, "relations": []}
+
+    characters_with_id = [
+        {
+            "id": c.id,
+            "name": c.name,
+            "role": c.role,
+            "personality": c.personality or "",
+            "core_motivation": c.core_motivation or "",
+        }
+        for c in db_characters
+    ]
 
     # 构建角色列表文本
     characters_lines = []
-    for c in characters:
+    for c in characters_with_id:
         characters_lines.append(
             f"- {c['name']}（{c.get('role', '配角')}）：{c.get('personality', '')}，{c.get('core_motivation', '')}"
         )
@@ -158,23 +186,27 @@ async def generate_relations_node(state: NovelState) -> NovelState:
     # 获取大纲概述
     outline_summary = state.get("outline_summary", "未提供")
 
-    # 加载 Prompt（需要独立的 DB 会话，因为 LangGraph 节点中没有共享 session）
-    db = SessionLocal()
+    # 加载 Prompt
+    db2 = SessionLocal()
     try:
-        prompt = get_system_prompt(db, "relation_generation").format(
+        prompt = get_system_prompt(db2, "relation_generation").format(
             characters_text=characters_text,
             world_era=world_era,
             outline_summary=outline_summary,
         )
     finally:
-        db.close()
+        db2.close()
 
     # 调用 LLM
     llm = await get_llm_from_state_async(state)
     response = await llm.chat([{"role": "user", "content": prompt}])
 
-    # 解析响应（仅提取数据，不写 DB）
-    relations_data = parse_relations_response(response, characters)
+    # 解析响应（使用带 id 的角色列表进行 name→id 映射）
+    relations_data = parse_relations_response(response, characters_with_id)
+
+    logger_rn.info(
+        f"relation_gen_node: parsed {len(relations_data)} relations for project {project_id}"
+    )
 
     logging.getLogger(__name__).info(
         f"relation_gen_node: parsed {len(relations_data)} relations"
