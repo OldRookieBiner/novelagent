@@ -160,14 +160,28 @@ class TestPromptTemplates:
     """Tests for prompt templates"""
 
     def test_outline_generation_prompt_variables(self):
-        """Outline generation prompt should contain key variables"""
+        """Outline generation prompt should contain key variables
+        Note: 人物设定 has been moved to CHARACTER_GENERATION_PROMPT as part of
+        the character prompt split feature (v0.8.2).
+        """
         from app.agents.prompts import OUTLINE_GENERATION_PROMPT
 
         # Check prompt contains key instructions
-        assert "人物设定" in OUTLINE_GENERATION_PROMPT
         assert "世界观" in OUTLINE_GENERATION_PROMPT
         assert "情感曲线" in OUTLINE_GENERATION_PROMPT
         assert "inspiration_template" in OUTLINE_GENERATION_PROMPT
+
+    def test_character_generation_prompt_variables(self):
+        """Character generation prompt should contain key variables
+        Note: The prompt uses 角色 (role/character) terminology for character design,
+        consistent with the character prompt split feature (v0.8.2).
+        """
+        from app.agents.prompts import CHARACTER_GENERATION_PROMPT
+
+        # Check prompt contains key instructions
+        assert "角色" in CHARACTER_GENERATION_PROMPT
+        assert "outline" in CHARACTER_GENERATION_PROMPT
+        assert "world_era" in CHARACTER_GENERATION_PROMPT or "outline_summary" in CHARACTER_GENERATION_PROMPT
 
     def test_generate_outline_prompt_format(self):
         """Outline generation prompt should format correctly"""
