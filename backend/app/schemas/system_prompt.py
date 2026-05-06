@@ -20,6 +20,7 @@ AgentTypeKey = Literal[
     "chapter_content_generation",
     "review",
     "rewrite",
+    "character_generation",
 ]
 
 
@@ -27,7 +28,7 @@ AgentTypeKey = Literal[
 AGENT_TYPES: dict[AgentTypeKey, AgentTypeMeta] = {
     "outline_generation": {
         "name": "大纲生成",
-        "description": "根据灵感信息生成结构化大纲，包含人物设定、世界观、情节节点",
+        "description": "根据灵感信息生成结构化大纲，包含世界观、情节节点、情感曲线、伏笔地图",
         "variables": ["inspiration_template", "chapter_count"],
         "variable_descriptions": {
             "inspiration_template": "用户输入的创作灵感，包含类型、风格、偏好等",
@@ -112,6 +113,15 @@ AGENT_TYPES: dict[AgentTypeKey, AgentTypeMeta] = {
             "genre": "小说题材",
             "main_characters": "主要人物设定",
             "world_setting": "世界观设定",
+        },
+    },
+    "character_generation": {
+        "name": "人物生成",
+        "description": "根据小说大纲概述和世界观设定，生成性格鲜明的人物角色列表",
+        "variables": ["outline_summary", "world_era"],
+        "variable_descriptions": {
+            "outline_summary": "小说大纲的概述内容，包含核心冲突和故事主线",
+            "world_era": "故事世界观的年代设定，如古代、现代、未来、架空",
         },
     },
 }
