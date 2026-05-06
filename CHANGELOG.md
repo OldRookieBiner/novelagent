@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.8.1 - 2026-05-06
+
+### 修复
+
+- **修复项目列表排序混乱** - API 查询添加 `order_by(updated_at.desc())`，按最近更新排序
+- **修复 SQLAlchemy 并发连接错误** - Checkpointer 改为独立 SessionLocal()，不再共享外部 db session，消除线程池并发操作同一连接池导致的 `isce` 错误
+- **修复 logger 未定义错误** - workflow.py 模块顶部添加 logger 定义
+- **修复关系生成节点角色 ID 缺失** - `generate_relations_node` 改为从数据库直接查询角色（带 id），解决 state 中角色缺少数据库 id 导致 name→id 映射失败的问题
+
 ## v0.8.0 - 2026-05-03
 
 ### 新功能
