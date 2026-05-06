@@ -23,6 +23,7 @@ PROMPT_KEY_MAP = {
     "chapter_content_generation": "prompt_chapter_content_generation",
     "review": "prompt_review",
     "rewrite": "prompt_rewrite",
+    "character_generation": "prompt_character_generation",
 }
 
 
