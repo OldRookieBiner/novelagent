@@ -80,7 +80,7 @@ async def list_projects(
     直接返回包含进度详情的项目列表，避免前端 N+1 请求
     支持可选分页参数 limit 和 offset
     """
-    projects = db.query(Project).filter(Project.user_id == current_user.id)
+    projects = db.query(Project).filter(Project.user_id == current_user.id).order_by(Project.updated_at.desc())
     total = projects.count()
     if limit is not None:
         projects = projects.offset(offset).limit(limit).all()

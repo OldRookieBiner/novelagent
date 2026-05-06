@@ -1,5 +1,6 @@
 """Workflow API routes for LangGraph integration"""
 
+import logging
 from typing import Optional
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.responses import StreamingResponse
@@ -32,6 +33,9 @@ from app.agents.sse_events import (
 )
 
 router = APIRouter()
+
+# 模块日志
+logger = logging.getLogger(__name__)
 
 
 # ========== Request/Response Schemas ==========
@@ -269,7 +273,7 @@ async def run_workflow(
     # 使用固定 thread_id，确保 confirm/cancel/state 等操作能找到同一检查点
     thread_id = "main"
 
-    graph = create_novel_graph_with_checkpointer(project_id, thread_id, db)
+    graph = create_novel_graph_with_checkpointer(project_id, thread_id)
 
     # 配置
     config = {
@@ -417,8 +421,6 @@ async def confirm_workflow(
         record.checkpoint = checkpoint_data
 
     # 同步更新大纲和项目
-    import logging
-    logger = logging.getLogger(__name__)
     if confirmation_type == "outline":
         outline = db.query(Outline).filter(Outline.project_id == project_id).first()
         if outline:
@@ -599,8 +601,7 @@ async def cleanup_workflow_checkpoints(
 
     db.commit()
 
-    import logging
-    logging.getLogger(__name__).info(f"Cleaned up {deleted} checkpoints for project {project_id}")
+    logger.info(f"Cleaned up {deleted} checkpoints for project {project_id}")
 
     return {"message": "Checkpoints cleaned up", "deleted": deleted}
 

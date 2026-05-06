@@ -16,30 +16,29 @@ class TestPostgresCheckpointSaver:
         saver = PostgresCheckpointSaver(project_id=1)
         assert saver.project_id == 1
         assert saver.thread_id == "default"
-        assert saver._external_db is None
 
     def test_init_with_custom_values(self):
         """Should initialize with custom values"""
-        mock_db = Mock()
         saver = PostgresCheckpointSaver(
-            project_id=2, thread_id="custom_thread", db=mock_db
+            project_id=2, thread_id="custom_thread"
         )
         assert saver.project_id == 2
         assert saver.thread_id == "custom_thread"
-        assert saver._external_db == mock_db
 
     def test_get_tuple_no_checkpoint(self):
         """Should return None when no checkpoint exists"""
         saver = PostgresCheckpointSaver(project_id=1)
         config = {"configurable": {"thread_id": "default"}}
 
-        with patch.object(saver, "_get_db") as mock_get_db:
+        with patch.object(saver, "_get_db") as mock_get_db, \
+             patch.object(saver, "_close_db") as mock_close_db:
             mock_db = Mock()
             mock_db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
             mock_get_db.return_value = mock_db
 
             result = saver.get_tuple(config)
             assert result is None
+            mock_close_db.assert_called_once_with(mock_db)
 
     def test_put_creates_checkpoint(self):
         """Should create new checkpoint with proper structure"""
@@ -48,7 +47,8 @@ class TestPostgresCheckpointSaver:
         checkpoint = {"channel_values": {"stage": "writing"}}
         metadata = {"step": 1}
 
-        with patch.object(saver, "_get_db") as mock_get_db:
+        with patch.object(saver, "_get_db") as mock_get_db, \
+             patch.object(saver, "_close_db") as mock_close_db:
             mock_db = Mock()
             mock_db.add = Mock()
             mock_db.commit = Mock()
@@ -60,6 +60,7 @@ class TestPostgresCheckpointSaver:
             assert "checkpoint_id" in result["configurable"]
             mock_db.add.assert_called_once()
             mock_db.commit.assert_called_once()
+            mock_close_db.assert_called_once_with(mock_db)
 
     def test_cleanup_old_checkpoints(self):
         """Should remove old checkpoints exceeding limit"""
@@ -144,11 +145,3 @@ class TestGetCheckpointSaver:
         assert isinstance(saver, PostgresCheckpointSaver)
         assert saver.project_id == 1
         assert saver.thread_id == "test"
-
-    def test_factory_with_db_session(self):
-        """Should pass db session to saver"""
-        from app.agents.checkpointer import get_checkpoint_saver
-
-        mock_db = Mock()
-        saver = get_checkpoint_saver(project_id=1, db=mock_db)
-        assert saver._external_db == mock_db

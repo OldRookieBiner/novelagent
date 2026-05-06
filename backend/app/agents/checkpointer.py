@@ -27,11 +27,12 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
 
     用于持久化工作流状态，支持暂停/恢复功能。
 
-    支持外部传入数据库会话，实现会话复用，避免频繁创建/销毁连接。
+    每次 get/put 操作都创建独立的数据库会话，操作完成后立即关闭。
+    避免与其他组件（LangGraph 节点、API 端点）共享会话导致并发冲突。
     """
 
     def __init__(
-        self, project_id: int, thread_id: str = "default", db: Optional[Session] = None
+        self, project_id: int, thread_id: str = "default"
     ):
         """
         初始化检查点保存器。
@@ -39,43 +40,28 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
         Args:
             project_id: 项目 ID
             thread_id: 线程 ID（默认 "default"）
-            db: 可选的外部数据库会话，如果提供则复用该会话
         """
         self.project_id = project_id
         self.thread_id = thread_id
-        self._external_db = db  # 外部传入的会话
-        self._internal_db: Optional[Session] = None  # 内部创建的会话
         self._put_count = 0  # 记录保存次数，用于定期清理
 
     def _get_db(self) -> Session:
-        """获取数据库会话，优先使用外部会话"""
-        if self._external_db is not None:
-            logger.debug(
-                "Checkpointer: reusing external DB session for project %s",
-                self.project_id,
-            )
-            return self._external_db
-        if self._internal_db is None:
-            self._internal_db = SessionLocal()
-            logger.debug(
-                "Checkpointer: created internal DB session for project %s",
-                self.project_id,
-            )
-        return self._internal_db
+        """每次操作创建独立的数据库会话"""
+        db = SessionLocal()
+        logger.debug(
+            "Checkpointer: created DB session for project %s",
+            self.project_id,
+        )
+        return db
 
-    def _should_close_db(self) -> bool:
-        """判断是否应该关闭会话（仅关闭内部创建的会话）"""
-        return self._internal_db is not None
-
-    def _close_db(self):
-        """关闭内部数据库会话，不影响外部会话"""
-        if self._internal_db:
+    def _close_db(self, db: Session):
+        """关闭数据库会话"""
+        if db:
             logger.debug(
-                "Checkpointer: closing internal DB session for project %s",
+                "Checkpointer: closing DB session for project %s",
                 self.project_id,
             )
-            self._internal_db.close()
-            self._internal_db = None
+            db.close()
 
     def get_tuple(self, config: dict) -> Optional[CheckpointTuple]:
         """
@@ -111,7 +97,7 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
                 return self._record_to_tuple(record, config)
             return None
         finally:
-            self._close_db()
+            self._close_db(db)
 
     def _record_to_tuple(
         self, record: WorkflowCheckpoint, config: dict
@@ -224,7 +210,7 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
                 }
             }
         finally:
-            self._close_db()
+            self._close_db(db)
 
     def _cleanup_old_checkpoints(self, db: Session, thread_id: str) -> int:
         """
@@ -303,7 +289,7 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
             for record in records:
                 yield self._record_to_tuple(record, config)
         finally:
-            self._close_db()
+            self._close_db(db)
 
     def delete(self, config: dict, checkpoint_id: str) -> None:
         """
@@ -320,7 +306,7 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
             ).delete()
             db.commit()
         finally:
-            self._close_db()
+            self._close_db(db)
 
     def cleanup_old_checkpoints(self, keep_latest: int = 10) -> int:
         """
@@ -375,11 +361,11 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
 
             return deleted_count
         finally:
-            self._close_db()
+            self._close_db(db)
 
 
 def get_checkpoint_saver(
-    project_id: int, thread_id: str = "default", db: Optional[Session] = None
+    project_id: int, thread_id: str = "default"
 ) -> PostgresCheckpointSaver:
     """
     获取检查点保存器实例。
@@ -387,9 +373,8 @@ def get_checkpoint_saver(
     Args:
         project_id: 项目 ID
         thread_id: 线程 ID（默认 "default"）
-        db: 可选的外部数据库会话，用于会话复用
 
     Returns:
         PostgresCheckpointSaver 实例
     """
-    return PostgresCheckpointSaver(project_id, thread_id, db)
+    return PostgresCheckpointSaver(project_id, thread_id)
