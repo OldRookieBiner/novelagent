@@ -307,7 +307,7 @@ export const outlineApi = {
 
 // Streaming callback types for chapter outlines
 export interface ChapterOutlineStreamCallbacks {
-  onProgress: (chapterNumber: number, total: number, chapter: { id: number; chapter_number: number; title: string }) => void;
+  onProgress: (chapterNumber: number, total: number, chapter: { chapter_number: number; title: string }) => void;
   onDone: (total: number, stage: string) => void;
   onError: (error: string) => void;
 }
@@ -339,13 +339,16 @@ export const chapterOutlinesApi = {
       },
       (type, data) => {
         if (type === 'progress') {
-          const progress = data as { chapter_number: number; total: number; chapter: { id: number; chapter_number: number; title: string } }
+          const progress = data as { chapter_number: number; total: number; chapter: { chapter_number: number; title: string } }
           callbacks.onProgress(progress.chapter_number, progress.total, progress.chapter)
         } else if (type === 'done') {
           const done = data as { total: number; stage: string }
           callbacks.onDone(done.total, done.stage)
+        } else if (type === 'error') {
+          // 处理后端返回的错误事件，避免前端卡在"生成中"状态
+          const errorData = data as { error: string }
+          callbacks.onError(errorData.error || '生成失败')
         }
-        // error 类型由 onError 回调处理
       },
       callbacks.onError
     )

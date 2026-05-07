@@ -25,6 +25,10 @@ interface WorkbenchState
   panelStates: Record<string, { dirty: boolean }>
   setPanelDirty: (panelKey: string, dirty: boolean) => void
 
+  // 模型选择状态（灵感面板写入，全局读取）
+  selectedModelKey: string
+  setSelectedModelKey: (key: string) => void
+
   // 重置
   reset: () => void
 }
@@ -35,6 +39,7 @@ const initialState = {
   sidebarCollapsed: false,
   aiPanelTab: 'assist' as const,
   panelStates: {} as Record<string, { dirty: boolean }>,
+  selectedModelKey: '' as string,
 }
 
 export const useWorkbenchStore = create<WorkbenchState>((set) => ({
@@ -65,6 +70,8 @@ export const useWorkbenchStore = create<WorkbenchState>((set) => ({
       [panelKey]: { ...state.panelStates[panelKey], dirty }
     }
   })),
+
+  setSelectedModelKey: (key) => set({ selectedModelKey: key }),
 
   reset: () => set(initialState),
 }))

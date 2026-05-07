@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { chapterOutlinesApi } from '@/lib/api'
 import { toast } from 'sonner'
+import { useWorkbenchStore } from '@/stores/workbenchStore'
 import type { ChapterOutline } from '@/types'
 
 interface ChapterOutlinePanelProps
@@ -37,6 +38,7 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
   const [progress, setProgress] = useState<{ current: number; total: number; currentTitle?: string; completed?: string[] } | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const completedTitlesRef = useRef<string[]>([])
+  const { selectedModelKey } = useWorkbenchStore()
 
   useEffect(() =>
   {
@@ -172,6 +174,16 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
     completedTitlesRef.current = []
     const controller = new AbortController()
     abortControllerRef.current = controller
+
+    // 从 store 解析模型配置 ID
+    let llmConfigId: number | undefined
+    if (selectedModelKey)
+    {
+      const configIdStr = selectedModelKey.split(':')[0]
+      const parsed = parseInt(configIdStr)
+      if (!isNaN(parsed)) llmConfigId = parsed
+    }
+
     try
     {
       await chapterOutlinesApi.createStream(
@@ -179,6 +191,27 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
         {
           onProgress: (chapterNumber, total, chapter) =>
           {
+            // 将已生成章节添加到列表（立即显示，不用等全部完成）
+            const tempId = -(chapter.chapter_number)
+            const newChapter: ChapterOutline = {
+              id: tempId,
+              project_id: projectId,
+              chapter_number: chapter.chapter_number,
+              title: chapter.title || '',
+              scene: '', characters: '', plot: '', conflict: '', ending: '',
+              target_words: 3000,
+              confirmed: false,
+              has_content: false,
+              created_at: new Date().toISOString(),
+            }
+            setChapters(prev =>
+            {
+              // 避免重复添加
+              if (prev.some(c => c.chapter_number === chapter.chapter_number)) return prev
+              return [...prev, newChapter].sort((a, b) => a.chapter_number - b.chapter_number)
+            })
+
+            // 更新进度条
             completedTitlesRef.current.push(chapter.title || `第${chapter.chapter_number}章`)
             setProgress({
               current: chapterNumber,
@@ -213,7 +246,8 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
             toast.error(`生成失败: ${error}`)
           }
         },
-        { signal: controller.signal }
+        { signal: controller.signal },
+        llmConfigId
       )
     }
     catch (err)

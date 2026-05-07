@@ -57,6 +57,34 @@ def persist_outline(output: dict, project_id: int, outline: Outline, db: Session
     return True
 
 
+def persist_chapter_outlines(output: dict, project_id: int, db: Session):
+    """持久化章节大纲生成节点的输出到 chapter_outlines 表"""
+    chapter_outlines = output.get("chapter_outlines", [])
+    if not chapter_outlines:
+        logger.info(f"persist_chapter_outlines: no outlines for project {project_id}")
+        return
+
+    for co_data in chapter_outlines:
+        chapter_outline = ChapterOutline(
+            project_id=project_id,
+            chapter_number=co_data.get("chapter_number", 1),
+            title=co_data.get("title"),
+            scene=co_data.get("scene"),
+            characters=co_data.get("characters"),
+            plot=co_data.get("plot"),
+            conflict=co_data.get("conflict"),
+            ending=co_data.get("ending"),
+            target_words=co_data.get("target_words", 3000),
+            confirmed=False,
+        )
+        db.add(chapter_outline)
+
+    logger.info(
+        f"persist_chapter_outlines: project {project_id}: "
+        f"created {len(chapter_outlines)} outlines"
+    )
+
+
 def persist_chapter_content(output: dict, project_id: int, db: Session):
     """持久化章节内容生成节点的输出到 chapters 表"""
     written_chapters = output.get("written_chapters", [])
@@ -224,6 +252,7 @@ NODE_PERSIST_MAP = {
     "outline_generation_node": persist_outline,
     "create_characters_from_outline_node": persist_character_generation,
     "generate_relations_node": persist_relation_generation,
+    "chapter_outlines_node": persist_chapter_outlines,
     "generate_chapter_content_node": persist_chapter_content,
     "review_node": persist_review_result,
     "rewrite_node": persist_rewrite_result,

@@ -118,10 +118,9 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
 
   // 模型选择器状态
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([])
-  const [selectedModelKey, setSelectedModelKey] = useState<string>('')
   const [loadingModels, setLoadingModels] = useState(false)
 
-  const { setActiveMenuItem } = useWorkbenchStore()
+  const { setActiveMenuItem, selectedModelKey, setSelectedModelKey } = useWorkbenchStore()
 
   // 构建完整的表单数据对象（用于生成模板）
   const formData = useMemo((): InspirationData => ({
@@ -247,12 +246,14 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
           }
         }
         setModelOptions(options)
-        // 设置默认选中：优先 is_default === true 的配置
-        const defaultOption = options.find(o => o.isDefault) || options[0]
-        if (defaultOption)
+        // 设置默认选中：仅当 store 中没有选择时
+        if (!selectedModelKey)
         {
-          // key 格式: "model_config_id:model_name"
-          setSelectedModelKey(`${defaultOption.modelConfigId}:${defaultOption.modelName}`)
+          const defaultOption = options.find(o => o.isDefault) || options[0]
+          if (defaultOption)
+          {
+            setSelectedModelKey(`${defaultOption.modelConfigId}:${defaultOption.modelName}`)
+          }
         }
       }
       catch (err)

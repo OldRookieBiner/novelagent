@@ -109,7 +109,10 @@ async def create_chapter_outlines(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Generate all chapter outlines using AI with SSE streaming."""
+    """Generate all chapter outlines using AI with SSE streaming.
+
+    持久化走 workflow_persistence.persist_chapter_outlines，符合 LangGraph 框架规范。
+    """
     project = get_project_for_user(project_id, current_user.id, db)
     outline = get_outline_for_project(project_id, db)
 
@@ -165,60 +168,54 @@ async def create_chapter_outlines(
         "collected_info": outline.collected_info or {},
     }
 
+    from app.utils.workflow_persistence import persist_chapter_outlines
+
     # Create async generator for SSE streaming
     async def stream_generator():
-        """Generate chapter outlines one by one and stream via SSE."""
-        created_outlines = []
+        """Generate chapter outlines one by one and stream via SSE.
+
+        持久化统一走 persist_chapter_outlines，不再直接写 DB。
+        """
+        all_chapters = []
 
         try:
             async for event in generate_chapter_outlines_stream(state, llm):
                 if event["type"] == "progress":
-                    # Save chapter to database
+                    # 收集生成结果，不再直接写 DB
                     chapter_data = event["chapter"]
-                    chapter_outline = ChapterOutline(
-                        project_id=project_id,
-                        chapter_number=chapter_data.get("chapter_number", 1),
-                        title=chapter_data.get("title"),
-                        scene=chapter_data.get("scene"),
-                        characters=chapter_data.get("characters"),
-                        plot=chapter_data.get("plot"),
-                        conflict=chapter_data.get("conflict"),
-                        ending=chapter_data.get("ending"),
-                        target_words=chapter_data.get("target_words", 3000),
-                        confirmed=False
-                    )
-                    db.add(chapter_outline)
-                    db.commit()
-                    db.refresh(chapter_outline)
-                    created_outlines.append(chapter_outline)
+                    all_chapters.append(chapter_data)
 
-                    # Send progress event
+                    # 发送进度事件
                     progress_data = {
                         "chapter_number": event["chapter_number"],
                         "total": event["total"],
                         "chapter": {
-                            "id": chapter_outline.id,
-                            "chapter_number": chapter_outline.chapter_number,
-                            "title": chapter_outline.title,
+                            "chapter_number": chapter_data.get("chapter_number"),
+                            "title": chapter_data.get("title"),
                         }
                     }
                     yield f"event: progress\ndata: {json.dumps(progress_data)}\n\n"
 
                 elif event["type"] == "done":
+                    # 统一持久化：使用 workflow_persistence 模块
+                    output = {"chapter_outlines": all_chapters}
+                    persist_chapter_outlines(output, project_id, db)
+                    db.commit()
+
                     # 更新工作流状态
                     workflow_state = get_or_create_workflow_state(db, project_id)
                     workflow_state.stage = STAGE_CHAPTER_OUTLINES
                     db.commit()
 
-                    # Send completion event
+                    # 发送完成事件
                     completion_data = {
-                        "total": len(created_outlines),
+                        "total": len(all_chapters),
                         "stage": STAGE_CHAPTER_OUTLINES
                     }
                     yield format_done(extra=completion_data)
 
         except Exception as e:
-            # Send error event (sanitized)
+            # 发送错误事件（已清理敏感信息）
             yield format_sse_error(e)
 
     return StreamingResponse(
