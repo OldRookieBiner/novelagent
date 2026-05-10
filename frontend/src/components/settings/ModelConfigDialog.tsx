@@ -61,6 +61,8 @@ export default function ModelConfigDialog({
 
   // 获取选中的提供商信息
   const selectedProviderInfo = providers.find(p => p.id === selectedProvider)
+  // 有 models_api 的提供商都支持获取模型列表
+  const hasModelsApi = selectedProviderInfo?.models_api || editConfig?.provider_type === 'coding_plan'
   const isCodingPlan = selectedProviderInfo?.provider_type === 'coding_plan' || editConfig?.provider_type === 'coding_plan'
   const isCustom = selectedProvider === 'custom'
 
@@ -186,12 +188,12 @@ export default function ModelConfigDialog({
     if (!baseUrl.trim()) newErrors.baseUrl = '请输入 API 地址'
 
     // 单模型验证
-    if (!isCodingPlan && !modelName.trim()) {
+    if (!hasModelsApi && !modelName.trim()) {
       newErrors.modelName = '请输入模型名称'
     }
 
     // Coding Plan 验证
-    if (isCodingPlan) {
+    if (hasModelsApi) {
       const enabledModels = availableModels.filter(m => m.is_enabled)
       if (enabledModels.length === 0) {
         newErrors.models = '请至少选择一个模型'
@@ -211,7 +213,7 @@ export default function ModelConfigDialog({
       api_key: apiKey.trim() || undefined,
     }
 
-    if (isCodingPlan) {
+    if (hasModelsApi) {
       data.models = availableModels.filter(m => m.is_enabled)
     } else {
       data.model_name = modelName.trim()
@@ -339,7 +341,7 @@ export default function ModelConfigDialog({
           </div>
 
           {/* 单模型配置：模型名称 */}
-          {!isCodingPlan && selectedProvider && (
+          {!hasModelsApi && selectedProvider && (
             <div className="space-y-2">
               <Label htmlFor="modelName">
                 模型名称 <span className="text-red-500">*</span>
@@ -360,7 +362,7 @@ export default function ModelConfigDialog({
           )}
 
           {/* Coding Plan 配置：获取模型列表 */}
-          {isCodingPlan && (
+          {hasModelsApi && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label>模型列表</Label>
