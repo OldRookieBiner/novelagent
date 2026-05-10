@@ -313,6 +313,7 @@ export interface ProviderInfo {
   name: string
   provider_type: 'single' | 'coding_plan'
   base_url: string
+  models_api?: string
 }
 
 export interface ProvidersListResponse {

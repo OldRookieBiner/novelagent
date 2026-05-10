@@ -8,6 +8,8 @@ const AGENT_TABS = [
   { id: 'outline_generation', label: '大纲生成' },
   { id: 'chapter_outline_generation', label: '章节大纲' },
   { id: 'chapter_content_generation', label: '正文生成' },
+  { id: 'character_generation', label: '人物生成' },
+  { id: 'relation_generation', label: '关系生成' },
   { id: 'review', label: '审核' },
   { id: 'rewrite', label: '重写' },
 ] as const
