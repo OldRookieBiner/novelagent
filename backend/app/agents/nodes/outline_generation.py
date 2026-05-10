@@ -6,6 +6,7 @@ from typing import Dict, Any, AsyncIterator
 from sqlalchemy.orm import Session
 
 from app.agents.state import NovelState, STAGE_OUTLINE
+from app.agents.nodes.utils import parse_words_per_chapter
 from app.services.prompt_loader import get_system_prompt
 from app.database import SessionLocal
 from app.services.llm import LLMService
@@ -13,22 +14,26 @@ from app.utils.llm import get_llm_from_state_async
 
 # 预编译正则表达式，提升性能
 # 标题匹配模式：支持多种格式
-# 1. "标题：《xxx》"
-# 2. "# 一、标题\n《xxx》"
-# 3. "# 小说大纲：xxx"
-# 4. "# 《xxx》"
-RE_TITLE = re.compile(r"(?:##\s*)?(?:\*\*)?标题(?:\*\*)?[：:]\s*(.+?)(?:\n|$)")
-RE_TITLE_OUTLINE = re.compile(r"#\s*小说大纲[：:]\s*(.+?)(?:\n|$)")
-RE_TITLE_BRACKET = re.compile(r"#\s*《(.+?)》")
-RE_TITLE_CHAPTER = re.compile(r"#\s*[一二三四五六七八九十]+[、.].*\n《(.+?)》")  # 新增：# 一、标题 后面跟《xxx》
+# 1. "标题：《xxx》" 或 "标题: xxx"
+# 2. "#/##/### 小说大纲：xxx"
+# 3. "#/##/### 《xxx》"
+# 4. "#/##/### 一、标题\n《xxx》"（编号标题后跟书名号）
+# 5. "#/##/### 一、标题\n标题：《xxx》"（编号标题后跟标题字段）
+# 6. "#/##/### 标题\n《xxx》"（无编号标题后跟书名号）
+RE_TITLE = re.compile(r"(?:#{1,6}\s*)?(?:\*\*)?标题(?:\*\*)?[：:]\s*(.+?)(?:\n|$)")
+RE_TITLE_OUTLINE = re.compile(r"#{1,6}\s*小说大纲[：:]\s*(.+?)(?:\n|$)")
+RE_TITLE_BRACKET = re.compile(r"#{1,6}\s*《(.+?)》")
+# 匹配编号标题（### 一、标题）后跟书名号标题
+RE_TITLE_CHAPTER = re.compile(r"#{1,6}\s*[一二三四五六七八九十]+[、.].*\n\s*《(.+?)》")
+# 匹配编号标题后跟"标题："字段（### 一、标题\n标题：《xxx》已由 RE_TITLE 匹配）
 
 # 概述匹配模式：支持 “三、人物设定” / “# 三、人物设定” 等后续标题格式
 RE_SUMMARY = re.compile(
-    r"(?:##\s*)?(?:\*\*)?概述(?:\*\*)?[：:]\s*(.+?)(?=(?:\n[#]*\s*(?:[一二三四五六七八九十]+[、.])?\s*)?(?:人物设定|世界观|主要情节节点|情节节点)|---|\n\d+\.)",
+    r"(?:#{0,6}\s*)?(?:\*\*)?概述(?:\*\*)?[：:]\s*(.+?)(?=(?:\n#{0,6}\s*(?:[一二三四五六七八九十]+[、.])?\s*)?(?:人物设定|世界观|主要情节节点|情节节点)|---|\n\d+\.)",
     re.DOTALL,
 )
 RE_SUMMARY_MD = re.compile(
-    r"(?:##\s*)?(?:\*\*)?概述(?:\*\*)?\s*\n+(.+?)(?=(?:\n[#]*\s*(?:[一二三四五六七八九十]+[、.])?\s*)?(?:人物设定|世界观|主要情节节点|情节节点)|$)",
+    r"(?:#{0,6}\s*)?(?:\*\*)?概述(?:\*\*)?\s*\n+(.+?)(?=(?:\n#{0,6}\s*(?:[一二三四五六七八九十]+[、.])?\s*)?(?:人物设定|世界观|主要情节节点|情节节点)|$)",
     re.DOTALL,
 )
 # 新增：支持 # 二、概述 后面直接跟内容的格式
@@ -113,9 +118,10 @@ def parse_outline(response: str) -> Dict[str, Any]:
         title_match = RE_TITLE_CHAPTER.search(response)  # 新增
     if title_match:
         title = title_match.group(1).strip()
-        # 清理标题 - 移除书名号
+        # 清理标题 - 移除书名号和 markdown 粗体标记
         if title.startswith("《") and title.endswith("》"):
             title = title[1:-1]
+        title = re.sub(r"\*+", "", title).strip()
         outline["title"] = title
 
     # 提取概述 - 支持多种格式
@@ -146,7 +152,7 @@ def _parse_characters_section(response: str, outline: Dict[str, Any]):
     """从响应中提取人物设定，支持多种格式"""
     # 匹配 "人物设定（xxx）" 或 "三、人物设定" 等变体
     characters_section = re.search(
-        r"(?:[#]*\s*(?:[一二三四五六七八九十]+[、.])?\s*)?人物设定(?:[（(][^)）]*[)）])?[：:\s]*\n*(.+?)(?=(?:[#]*\s*(?:[一二三四五六七八九十]+[、.])?\s*)?(?:世界观|情节节点|情感曲线)|---|$)",
+        r"(?:#{0,6}\s*(?:[一二三四五六七八九十]+[、.])?\s*)?人物设定(?:[（(][^)）]*[)）])?[：:\s]*\n*(.+?)(?=(?:#{0,6}\s*(?:[一二三四五六七八九十]+[、.])?\s*)?(?:世界观|情节节点|情感曲线)|---|$)",
         response,
         re.DOTALL
     )
@@ -295,7 +301,7 @@ def _parse_characters_section(response: str, outline: Dict[str, Any]):
 def _parse_world_setting(response: str, outline: Dict[str, Any]):
     """从响应中提取世界观，支持粗体格式"""
     world_section = re.search(
-        r"(?:[#]*\s*(?:[一二三四五六七八九十]+[、.])?\s*)?世界观(?:与势力)?(?:[（(][^)）]*[)）])?[：:\s]*\n*(.+?)(?=(?:[#]*\s*(?:[一二三四五六七八九十]+[、.])?\s*)?(?:情节节点|情感曲线)|---|$)",
+        r"(?:#{0,6}\s*(?:[一二三四五六七八九十]+[、.])?\s*)?世界观(?:与势力)?(?:[（(][^)）]*[)）])?[：:\s]*\n*(.+?)(?=(?:#{0,6}\s*(?:[一二三四五六七八九十]+[、.])?\s*)?(?:情节节点|情感曲线)|---|$)",
         response,
         re.DOTALL
     )
@@ -338,9 +344,13 @@ def _parse_world_setting(response: str, outline: Dict[str, Any]):
 
 
 def _parse_plot_points(response: str, outline: Dict[str, Any]):
-    """从响应中提取情节节点，支持多种格式"""
+    """从响应中提取情节节点，支持多种格式
+
+    关键约束：fallback 正则仅限在"情节节点"附近搜索，
+    避免匹配到"关键地点"等非情节编号列表。
+    """
     plot_section = re.search(
-        r"(?:[#]*\s*(?:[一二三四五六七八九十]+[、.])?\s*)?情节节点(?:[（(][^)）]*[)）])?[：:\s]*\n*(.+?)(?=(?:[#]*\s*(?:[一二三四五六七八九十]+[、.])?\s*)?情感曲线|---|$)",
+        r"(?:#{0,6}\s*(?:[一二三四五六七八九十]+[、.])?\s*)?情节节点(?:[（(][^)）]*[)）])?[：:\s]*\n*(.+?)(?=(?:#{0,6}\s*(?:[一二三四五六七八九十]+[、.])?\s*)?(?:情感曲线|伏笔)|---|$)",
         response,
         re.DOTALL
     )
@@ -358,17 +368,18 @@ def _parse_plot_points(response: str, outline: Dict[str, Any]):
             }
             outline["plot_points"].append(plot)
 
-    # 如果上面没匹配到，尝试旧格式
-    if not outline["plot_points"]:
-        plot_matches = RE_PLOT_BOLD.findall(response)
+    # 仅当情节节点 section 找到但无编号内容时，在 section 内尝试旧格式
+    if not outline["plot_points"] and plot_section:
+        plot_text = plot_section.group(1)
+        plot_matches = RE_PLOT_BOLD.findall(plot_text)
         if plot_matches:
             outline["plot_points"] = [{"order": i+1, "event": p.strip(), "conflict": "", "hook": ""} for i, p in enumerate(plot_matches)]
         else:
-            plot_matches = RE_PLOT_FALLBACK.findall(response)
+            plot_matches = RE_PLOT_FALLBACK.findall(plot_text)
             if plot_matches:
                 outline["plot_points"] = [{"order": i+1, "event": p.strip(), "conflict": "", "hook": ""} for i, p in enumerate(plot_matches)]
 
-    # 尝试匹配 "- **1.** xxx" 或 "- **N.** xxx" 粗体编号格式
+    # 如果整个"情节节点" section 都未找到，尝试粗体编号格式（仅匹配带"伏笔"标记的）
     if not outline["plot_points"]:
         plot_matches = re.findall(r"[-•]\s*\*{0,2}(\d+)[.、]\s*\*{0,2}\s*(.+?)(?=\n[-•]|\n\d+[.、]|\n\n|$)", response, re.DOTALL)
         if plot_matches:
@@ -381,7 +392,7 @@ def _parse_plot_points(response: str, outline: Dict[str, Any]):
 def _parse_emotional_curve(response: str, outline: Dict[str, Any]):
     """从响应中提取情感曲线"""
     curve_match = re.search(
-        r"(?:[#]*\s*(?:[一二三四五六七八九十]+[、.])?\s*)?情感曲线(?:与节奏)?(?:[（(][^)）]*[)）])?[：:\s]*\n*(.+?)(?=---|$)",
+        r"(?:#{0,6}\s*(?:[一二三四五六七八九十]+[、.])?\s*)?情感曲线(?:与节奏)?(?:[（(][^)）]*[)）])?[：:\s]*\n*(.+?)(?=---|$)",
         response,
         re.DOTALL
     )
@@ -541,9 +552,16 @@ async def outline_generation_node(state: NovelState) -> NovelState:
 
     prompt, chapter_count = prepare_outline_prompt(state)
 
+    # 大纲输出包含多个板块（标题/概述/世界观/情节节点/情感曲线/伏笔表），
+    # 需要足够的 max_tokens，否则 LLM 会在 finish_reason=length 处截断，
+    # 导致标题/角色等字段解析失败
+    outline_max_tokens = 8192
+
     # 使用流式 API，框架自动捕获 on_chat_model_stream 事件
     response = ""
-    async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
+    async for chunk in llm.chat_stream(
+        [{"role": "user", "content": prompt}], max_tokens=outline_max_tokens
+    ):
         response += chunk
 
     outline = parse_outline(response)
@@ -553,7 +571,8 @@ async def outline_generation_node(state: NovelState) -> NovelState:
     logger.info(
         f"outline parsed: title='{outline.get('title', '')}', "
         f"char={len(outline.get('characters', []))}, "
-        f"plot={len(outline.get('plot_points', []))}"
+        f"plot={len(outline.get('plot_points', []))}, "
+        f"response_len={len(response)}"
     )
 
     is_valid = bool(
