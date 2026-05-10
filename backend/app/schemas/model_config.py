@@ -104,6 +104,7 @@ class ProviderInfo(BaseModel):
     name: str
     provider_type: str
     base_url: str
+    models_api: Optional[str] = None
 
 
 class ProvidersListResponse(BaseModel):

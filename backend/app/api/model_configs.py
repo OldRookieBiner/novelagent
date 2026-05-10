@@ -83,6 +83,7 @@ async def list_providers():
             name=config["name"],
             provider_type=config["provider_type"],
             base_url=config["base_url"],
+            models_api=config.get("models_api"),
         )
         for key, config in PRESET_PROVIDERS.items()
     ]
@@ -93,7 +94,7 @@ async def list_providers():
 async def fetch_available_models(
     request: FetchModelsRequest, current_user: User = Depends(get_current_user)
 ):
-    """从 Coding Plan API 获取可用模型列表"""
+    """从提供商 API 获取可用模型列表（支持所有配置了 models_api 的提供商）"""
     provider_config = get_provider_config(request.provider)
 
     if not provider_config:
@@ -101,9 +102,9 @@ async def fetch_available_models(
             models=[], error=f"未知的提供商: {request.provider}", allow_manual=True
         )
 
-    if provider_config["provider_type"] != "coding_plan":
+    if not provider_config.get("models_api"):
         return FetchModelsResponse(
-            models=[], error="该提供商不是 Coding Plan 类型", allow_manual=False
+            models=[], error="该提供商不支持获取模型列表", allow_manual=False
         )
 
     models_api = provider_config.get("models_api", "/v1/models")
