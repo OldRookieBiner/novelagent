@@ -54,6 +54,16 @@ def build_config_response(c: ModelConfig) -> ModelConfigResponse:
             }
             for m in c.models
         ]
+    elif c.model_name:
+        # 旧数据兼容：model_name 回退为单元素 models 列表
+        models = [
+            {
+                "id": c.model_name,
+                "name": c.model_name,
+                "is_enabled": True,
+                "health_status": c.health_status,
+            }
+        ]
 
     return ModelConfigResponse(
         id=c.id,
