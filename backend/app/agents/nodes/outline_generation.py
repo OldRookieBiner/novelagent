@@ -25,6 +25,8 @@ RE_TITLE_OUTLINE = re.compile(r"#{1,6}\s*小说大纲[：:]\s*(.+?)(?:\n|$)")
 RE_TITLE_BRACKET = re.compile(r"#{1,6}\s*《(.+?)》")
 # 匹配编号标题（### 一、标题）后跟书名号标题
 RE_TITLE_CHAPTER = re.compile(r"#{1,6}\s*[一二三四五六七八九十]+[、.].*\n\s*《(.+?)》")
+# 匹配无#前缀的编号标题后跟书名号（如"一、标题\n《xxx》"）
+RE_TITLE_CHAPTER_NO_HASH = re.compile(r"[一二三四五六七八九十]+[、.].*\n《(.+?)》")
 # 匹配编号标题后跟"标题："字段（### 一、标题\n标题：《xxx》已由 RE_TITLE 匹配）
 
 # 概述匹配模式：支持 “三、人物设定” / “# 三、人物设定” 等后续标题格式
@@ -116,6 +118,8 @@ def parse_outline(response: str) -> Dict[str, Any]:
         title_match = RE_TITLE_BRACKET.search(response)
     if not title_match:
         title_match = RE_TITLE_CHAPTER.search(response)  # 新增
+    if not title_match:
+        title_match = RE_TITLE_CHAPTER_NO_HASH.search(response)  # 新增：无#前缀的格式
     if title_match:
         title = title_match.group(1).strip()
         # 清理标题 - 移除书名号和 markdown 粗体标记
@@ -161,8 +165,8 @@ def _parse_characters_section(response: str, outline: Dict[str, Any]):
 
     chars_text = characters_section.group(1)
 
-    # 角色类型关键词
-    role_keywords = r"(主角|核心反派|重要配角\d*|配角\d*)"
+    # 角色类型关键词（按优先级排序，长匹配在前）
+    role_keywords = r"(女主角|女配角|核心反派|重要配角|女角|主角|反派|配角)"
 
     # 找到所有角色行（支持 - **主角：xxx 或 - 主角：xxx 或 ### 主角 等格式）
     role_line_pattern = re.compile(
