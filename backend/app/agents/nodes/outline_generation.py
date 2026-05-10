@@ -530,8 +530,12 @@ async def outline_generation_node(state: NovelState) -> NovelState:
     LangGraph 兼容的大纲生成节点（流式版本）
 
     使用 llm.chat_stream() 确保 astream_events 能捕获逐字流式内容。
+    生成后立即将大纲数据持久化到数据库。
     签名：(state: NovelState) -> NovelState
     """
+    from app.database import SessionLocal
+    from app.models.outline import Outline
+
     # 获取 LLM 服务（异步）
     llm = await get_llm_from_state_async(state)
 
@@ -556,6 +560,36 @@ async def outline_generation_node(state: NovelState) -> NovelState:
         outline.get("title") or outline.get("summary")
         or outline.get("characters") or outline.get("plot_points")
     )
+
+    # 持久化大纲到数据库
+    project_id = state.get("project_id")
+    if project_id and is_valid:
+        db = SessionLocal()
+        try:
+            outline_record = db.query(Outline).filter(
+                Outline.project_id == project_id
+            ).first()
+
+            if outline_record:
+                outline_record.title = outline.get("title", "")
+                outline_record.summary = outline.get("summary", "")
+                outline_record.plot_points = outline.get("plot_points", [])
+                outline_record.characters = outline.get("characters", [])
+                outline_record.world_setting = outline.get("world_setting", {})
+                outline_record.emotional_curve = outline.get("emotional_curve", "")
+                # 自动确认大纲（用户点击"开始规划"即表示确认）
+                outline_record.confirmed = True
+                outline_record.chapter_count_suggested = chapter_count
+                outline_record.chapter_count_confirmed = True
+                db.commit()
+                logger.info(f"outline_generation_node: Persisted outline to DB for project {project_id}")
+            else:
+                logger.warning(f"outline_generation_node: No outline record found for project {project_id}")
+        except Exception as db_error:
+            db.rollback()
+            logger.error(f"outline_generation_node: Failed to persist outline: {db_error}")
+        finally:
+            db.close()
 
     new_state: NovelState = {
         **state,

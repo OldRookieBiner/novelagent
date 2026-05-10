@@ -97,6 +97,8 @@ class LLMService:
                     temperature=temperature,
                     max_tokens=max_tokens,
                 )
+                if not response.choices:
+                    raise ValueError("LLM response has empty choices, no content available")
                 return response.choices[0].message.content
             except APIError as e:
                 last_error = e
@@ -113,7 +115,11 @@ class LLMService:
     async def chat_stream(
         self, messages: list[dict], temperature: float = 0.7, max_tokens: int = 4096
     ) -> AsyncIterator[str]:
-        """Send a chat request and stream response with retry"""
+        """Send a chat request and stream response with retry
+
+        当输出因 max_tokens 截断时（finish_reason="length"），
+        在日志中记录警告。调用方应根据 target_words 计算足够的 max_tokens。
+        """
         last_error = None
         for attempt in range(MAX_RETRIES + 1):
             try:
@@ -126,8 +132,17 @@ class LLMService:
                 )
 
                 async for chunk in stream:
-                    if chunk.choices[0].delta.content:
-                        yield chunk.choices[0].delta.content
+                    delta = chunk.choices[0].delta if chunk.choices else None
+                    if delta and delta.content:
+                        yield delta.content
+
+                    # 检测截断：finish_reason="length" 表示 max_tokens 不够
+                    if chunk.choices and chunk.choices[0].finish_reason == "length":
+                        logger.warning(
+                            f"LLM output truncated (finish_reason=length). "
+                            f"max_tokens={max_tokens} may be too low. "
+                            f"Consider increasing max_tokens."
+                        )
                 return  # 成功，退出
             except APIError as e:
                 last_error = e

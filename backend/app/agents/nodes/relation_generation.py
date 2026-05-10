@@ -7,6 +7,7 @@ from app.models.character import Relation
 from app.agents.state import NovelState, STAGE_RELATIONS
 from app.services.prompt_loader import get_system_prompt
 from app.utils.llm import get_llm_from_state_async
+from app.database import SessionLocal
 
 
 # 预编译正则：解析 - 角色A | 角色B | 关系类型 | 信任度 | 描述 | 发展方向
@@ -120,55 +121,59 @@ def write_relations_to_db(
     return created
 
 
-async def generate_relations_node(state: NovelState) -> NovelState:
+async def generate_relations_node(state: NovelState, config: dict = None) -> NovelState:
     """LangGraph 节点：从角色生成关系网络
 
-    签名：(state: NovelState) -> NovelState
+    签名：(state: NovelState, config: dict) -> NovelState
 
-    此节点仅负责调用 LLM 并解析关系数据，不写入数据库。
-    DB 写入由 workflow API 的 astream_events 持久化流程统一处理。
+    从数据库读取已持久化的角色（带 id），生成关系后立即写入数据库。
 
     Args:
-        state: 当前工作流状态（需包含 characters、project_id）
+        state: 当前工作流状态（需包含 project_id）
+        config: LangGraph 配置字典（可选）
 
     Returns:
         更新后的 NovelState（包含 relations 和 stage）
     """
     import logging
     from app.database import SessionLocal
-    from app.models.character import Character as CharacterModel
+    from app.models.character import Character, Relation
 
     logger_rn = logging.getLogger(__name__)
-
     project_id = state["project_id"]
 
-    # 从数据库查询已持久化的角色（带 id），确保 name→id 映射正确
-    # state["characters"] 来自 create_characters_from_outline_node 的返回值，
-    # 该返回值中的角色没有数据库 id，因为 persist 阶段才写入并生成 id
+    # 从数据库读取已持久化的角色（带 id）
     db = SessionLocal()
     try:
-        db_characters = db.query(CharacterModel).filter(
-            CharacterModel.project_id == project_id
-        ).order_by(CharacterModel.id).all()
+        db_characters = db.query(Character).filter(
+            Character.project_id == project_id
+        ).order_by(Character.id).all()
+
+        characters_with_id = [
+            {
+                "id": c.id,
+                "name": c.name,
+                "role": c.role,
+                "personality": c.personality or "",
+                "core_motivation": c.core_motivation or "",
+            }
+            for c in db_characters
+        ]
     finally:
         db.close()
 
-    if len(db_characters) < 2:
+    if len(characters_with_id) < 2:
         logger_rn.info(
-            f"relation_gen_node: only {len(db_characters)} characters in DB for project {project_id}, skipping"
+            f"relation_gen_node: only {len(characters_with_id)} characters for project {project_id}, skipping"
         )
-        return {**state, "stage": STAGE_RELATIONS, "relations": []}
-
-    characters_with_id = [
-        {
-            "id": c.id,
-            "name": c.name,
-            "role": c.role,
-            "personality": c.personality or "",
-            "core_motivation": c.core_motivation or "",
+        return {
+            **state,
+            "stage": STAGE_RELATIONS,
+            "relations": [],
+            # 规划阶段完成，等待用户确认
+            "waiting_for_confirmation": True,
+            "confirmation_type": "relations",
         }
-        for c in db_characters
-    ]
 
     # 构建角色列表文本
     characters_lines = []
@@ -186,36 +191,76 @@ async def generate_relations_node(state: NovelState) -> NovelState:
     # 获取大纲概述
     outline_summary = state.get("outline_summary", "未提供")
 
-    # 加载 Prompt
-    db2 = SessionLocal()
-    try:
-        prompt = get_system_prompt(db2, "relation_generation").format(
+    # 从 state 获取预加载的 prompts
+    prompts = state.get("_prompts", {})
+    if prompts and "relation_generation" in prompts:
+        prompt = prompts["relation_generation"].format(
             characters_text=characters_text,
             world_era=world_era,
             outline_summary=outline_summary,
         )
-    finally:
-        db2.close()
+        logger_rn.info(f"relation_gen_node: Using prompt from state, length={len(prompt)}")
+    else:
+        # 回退：使用默认 prompt
+        from app.agents.prompts import DEFAULT_PROMPTS
+        default_prompt = DEFAULT_PROMPTS.get("relation_generation", "")
+        if default_prompt:
+            prompt = default_prompt.format(
+                characters_text=characters_text,
+                world_era=world_era,
+                outline_summary=outline_summary,
+            )
+            logger_rn.info(f"relation_gen_node: Using DEFAULT_PROMPTS fallback, length={len(prompt)}")
+        else:
+            prompt = f"基于以下角色生成关系网络：\n{characters_text}\n世界观：{world_era}\n大纲：{outline_summary}"
+            logger_rn.warning("relation_gen_node: No relation_generation prompt found, using minimal fallback")
 
     # 调用 LLM
     llm = await get_llm_from_state_async(state)
     response = await llm.chat([{"role": "user", "content": prompt}])
 
-    # 解析响应（使用带 id 的角色列表进行 name→id 映射）
+    logger_rn.info(f"relation_gen_node: LLM response length={len(response)}, preview={response[:300] if response else 'EMPTY'}")
+
+    # 解析响应
     relations_data = parse_relations_response(response, characters_with_id)
 
     logger_rn.info(
         f"relation_gen_node: parsed {len(relations_data)} relations for project {project_id}"
     )
 
-    logging.getLogger(__name__).info(
-        f"relation_gen_node: parsed {len(relations_data)} relations"
-    )
+    # 立即写入数据库
+    if relations_data:
+        db = SessionLocal()
+        try:
+            # 删除旧关系
+            db.query(Relation).filter(Relation.project_id == project_id).delete()
 
-    new_state: NovelState = {
+            # 创建新关系
+            for rel_data in relations_data:
+                rel = Relation(
+                    project_id=project_id,
+                    character_a_id=rel_data["character_a_id"],
+                    character_b_id=rel_data["character_b_id"],
+                    relation_type=rel_data["relation_type"],
+                    trust_level=rel_data["trust_level"],
+                    current_status=rel_data["current_status"],
+                    direction=rel_data["direction"],
+                )
+                db.add(rel)
+
+            db.commit()
+            logger_rn.info(f"relation_gen_node: Persisted {len(relations_data)} relations to DB")
+        except Exception as db_error:
+            db.rollback()
+            logger_rn.error(f"relation_gen_node: Failed to persist relations: {db_error}")
+        finally:
+            db.close()
+
+    return {
         **state,
         "relations": relations_data,
         "stage": STAGE_RELATIONS,
+        # 规划阶段完成，等待用户确认
+        "waiting_for_confirmation": True,
+        "confirmation_type": "relations",
     }
-
-    return new_state

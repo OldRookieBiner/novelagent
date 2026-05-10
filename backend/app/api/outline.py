@@ -1,5 +1,6 @@
 """Outline API routes"""
 
+import json
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -25,6 +26,7 @@ from app.agents.state import (
 )
 from app.agents.nodes.outline_generation import (
     generate_outline_stream,
+    parse_outline,
     outline_generation_node,
     # 导入章节数计算常量
     DEFAULT_CHAPTER_COUNT,
@@ -43,7 +45,6 @@ from app.agents.nodes.outline_generation import (
     MIN_CHAPTERS_VERY_LONG,
     MIN_CHAPTERS_EPIC,
 )
-from app.agents.sse_events import format_done
 # info_collection_node 已移除，信息收集由前端表单处理
 
 router = APIRouter()
@@ -68,14 +69,14 @@ async def generate_outline(
     current_user: User = Depends(get_current_user)
 ):
     """Generate outline using AI from collected info with SSE streaming."""
-    project, outline = get_project_and_outline(project_id, current_user.id, db)
+    from app.services.outline_service import OutlineService
 
-    # Check if outline is already confirmed
-    if outline.confirmed:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot regenerate a confirmed outline"
-        )
+    # 使用 OutlineService 进行验证
+    service = OutlineService(db, project_id, current_user.id)
+    service.validate_can_generate()
+
+    # 获取项目和大纲（验证通过后必定存在）
+    project, outline = service._load_project_outline()
 
     user_settings = get_user_settings_or_raise(current_user, db)
 
@@ -84,123 +85,73 @@ async def generate_outline(
     workflow_state.stage = STAGE_OUTLINE
     db.commit()
 
-    # Get LLM service
-    llm = get_llm_for_context(request, current_user, user_settings, db)
+    # 导入完整 graph 和共享 SSE 流生成器
+    from app.api.workflow import build_initial_state, stream_workflow_events
+    from app.agents.graph import create_novel_graph_with_checkpointer
 
-    # Prepare state for outline generation
-    # 优先从 inspiration_template 列读取，回退到 collected_info 字典中的 inspiration_template
-    inspiration_template = outline.inspiration_template or ""
-    if not inspiration_template:
-        inspiration_template = (outline.collected_info or {}).get("inspiration_template", "")
+    # 构建初始状态
+    llm_config_id = request.llm_config_id if request else None
+    initial_state = build_initial_state(project, outline, workflow_state, llm_config_id)
 
-    # 导入 LangGraph 流式工具
-    from app.agents.streaming import create_single_node_graph, stream_node_events
-    from app.agents.nodes.outline_generation import outline_generation_node
-
-    # 构建完整的 NovelState
-    graph_state = {
-        "project_id": project_id,
-        "stage": "outline",
-        "collected_info": outline.collected_info or {},
-        "inspiration_template": inspiration_template,
-        "outline_title": outline.title,
-        "outline_summary": outline.summary,
-        "outline_plot_points": outline.plot_points or [],
-        "outline_characters": outline.characters or [],
-        "outline_world_setting": outline.world_setting or {},
-        "outline_emotional_curve": outline.emotional_curve,
-        "chapter_count": outline.chapter_count_suggested or 0,
-        "chapter_outlines": [],
-        "chapter_outlines_confirmed": False,
-        "written_chapters": [],
-        "current_chapter": 1,
-        "review_mode": "hybrid",
-        "review_result": None,
-        "rewrite_count": 0,
-        "max_rewrite_count": 3,
-        "waiting_for_confirmation": False,
-        "confirmation_type": None,
-        "outline_confirmed": False,
-        "llm_config_id": request.llm_config_id if request else None,
-        "llm_model_name": getattr(request, 'llm_model_name', None) if request else None,
-    }
-
-    # 创建单节点 graph
-    graph = create_single_node_graph(outline_generation_node)
-    config = {"configurable": {"thread_id": f"outline-{project_id}"}}
+    # 创建带检查点的完整 graph
+    graph = create_novel_graph_with_checkpointer(project_id, "default", db)
+    config = {"configurable": {"thread_id": "default"}}
 
     async def stream_generator():
-        """Generate outline via LangGraph and stream via SSE."""
+        """使用完整 graph + checkpointer 生成大纲，委托共享 SSE 流生成器"""
+        node_state = None
+
         try:
-            event_count = 0
-            data_event_count = 0
-            async for sse_event in stream_node_events(graph, graph_state, config):
-                event_count += 1
-                if sse_event.startswith("data:"):
-                    data_event_count += 1
-                yield sse_event
+            async for sse_event in stream_workflow_events(graph, config, initial_state):
+                # 捕获 outline_generation_node 的 node_done 事件
+                if "event: node_done" in sse_event and "outline_generation_node" in sse_event:
+                    try:
+                        data_str = sse_event.split("data: ", 1)[1].strip()
+                        payload = json.loads(data_str)
+                        node_state = payload.get("state", {})
+                    except (json.JSONDecodeError, IndexError):
+                        pass
+                    yield sse_event
+                elif sse_event.startswith("event: done"):
+                    # 替换默认 done 事件为兼容格式
+                    pass
+                else:
+                    yield sse_event
 
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.info(f"outline stream: total events={event_count}, data events={data_event_count}")
+            # 从 node_done state 中提取大纲数据写入 DB
+            if node_state:
+                outline.title = node_state.get("outline_title")
+                outline.summary = node_state.get("outline_summary")
+                outline.plot_points = node_state.get("outline_plot_points") or []
+                outline.characters = node_state.get("outline_characters") or []
+                outline.world_setting = node_state.get("outline_world_setting") or {}
+                outline.emotional_curve = node_state.get("outline_emotional_curve")
 
-            # Get parsed state directly from graph (node already called parse_outline internally)
-            result_state = await graph.ainvoke(graph_state, config)
+                # 更新工作流状态
+                workflow_state = get_or_create_workflow_state(db, project_id)
+                workflow_state.stage = STAGE_OUTLINE
 
-            # 提取解析后的字段（节点已经在内部调用 parse_outline 并存储到 state 中）
-            parsed_title = result_state.get("outline_title", "")
-            parsed_summary = result_state.get("outline_summary", "")
-            parsed_plot_points = result_state.get("outline_plot_points", [])
-            parsed_characters = result_state.get("outline_characters", [])
-            parsed_world_setting = result_state.get("outline_world_setting", {})
-            parsed_emotional_curve = result_state.get("outline_emotional_curve")
+                db.commit()
+                db.refresh(outline)
 
-            parsed = {
-                "title": parsed_title,
-                "summary": parsed_summary,
-                "plot_points": parsed_plot_points,
-                "characters": parsed_characters,
-                "world_setting": parsed_world_setting,
-                "emotional_curve": parsed_emotional_curve,
-            }
-
-            # 检查解析结果是否有效
-            is_outline_valid = result_state.get("outline_valid", False)
-
-            # 只有当有有效内容时才更新数据库
-            if is_outline_valid and (parsed["title"] or parsed["summary"]):
-                outline.title = parsed["title"]
-                outline.summary = parsed["summary"]
-                outline.plot_points = parsed["plot_points"]
-                outline.characters = parsed["characters"]
-                outline.world_setting = parsed["world_setting"]
-                outline.emotional_curve = parsed["emotional_curve"]
-                logger.info(f"outline updated: title='{parsed['title']}'")
+                # 发送兼容前端的 done 事件
+                completion_data = {
+                    "outline": {
+                        "title": node_state.get("outline_title"),
+                        "summary": node_state.get("outline_summary"),
+                        "plot_points": node_state.get("outline_plot_points") or [],
+                        "characters": node_state.get("outline_characters") or [],
+                        "world_setting": node_state.get("outline_world_setting") or {},
+                        "emotional_curve": node_state.get("outline_emotional_curve"),
+                        "confirmed": False,
+                        "chapter_count_suggested": outline.chapter_count_suggested,
+                    },
+                    "stage": STAGE_OUTLINE,
+                }
+                yield f"event: done\ndata: {json.dumps(completion_data)}\n\n"
             else:
-                logger.info(f"parsed result empty or invalid, skipping update to preserve existing data")
-
-            # 更新工作流状态
-            workflow_state = get_or_create_workflow_state(db, project_id)
-            workflow_state.stage = STAGE_OUTLINE
-
-            db.commit()
-            db.refresh(outline)
-
-            # Send completion event with parsed outline and updated stage
-            completion_data = {
-                "outline": {
-                    "title": parsed["title"],
-                    "summary": parsed["summary"],
-                    "plot_points": parsed["plot_points"],
-                    "characters": parsed["characters"],
-                    "world_setting": parsed["world_setting"],
-                    "emotional_curve": parsed["emotional_curve"],
-                    "confirmed": False,
-                    "chapter_count_suggested": outline.chapter_count_suggested,
-                },
-                "stage": STAGE_OUTLINE,
-            }
-            yield format_done(extra=completion_data)
+                # node_state 为空时仍然发送完成事件
+                yield f"event: done\ndata: {json.dumps({'message': 'Outline generation completed'})}\n\n"
 
         except Exception as e:
             yield format_sse_error(e)

@@ -114,6 +114,19 @@ export function WritingPanel({ projectId }: WritingPanelProps)
     fetchChapters()
   }, [projectId])
 
+  // 将原始文本（\n 分隔）转换为 HTML 段落格式
+  const formatContentAsHtml = (rawContent: string): string =>
+  {
+    if (!rawContent) return ''
+    // 已经是 HTML 格式则直接返回
+    if (rawContent.includes('<p>')) return rawContent
+    return rawContent
+      .split('\n')
+      .filter(p => p.trim())
+      .map(p => `<p>${p}</p>`)
+      .join('')
+  }
+
   useEffect(() =>
   {
     if (!selectedChapter) return
@@ -125,12 +138,16 @@ export function WritingPanel({ projectId }: WritingPanelProps)
       {
         const chapter = await chaptersApi.get(projectId, selectedChapter.chapter_number)
         setChapterContent(chapter)
-        setContent(chapter.content || '')
+        // 从 DB 读取的原始文本需转为 HTML 格式显示
+        setContent(formatContentAsHtml(chapter.content || ''))
+        setSaved(true)
+        setTimeout(() => setSaved(false), 1500)
       }
       catch
       {
         setChapterContent(null)
         setContent('')
+        setSaved(false)
       }
       finally
       {
@@ -234,9 +251,10 @@ export function WritingPanel({ projectId }: WritingPanelProps)
           }
           else if (type === 'done')
           {
-            // 从 done 事件提取 word_count（word_count 在顶层）
-            const doneData = data as { word_count?: number; content?: string }
-            const wordCount = doneData?.word_count
+            // 从 done 事件提取章节数据（结构为 {chapter: {id, content, word_count}}）
+            const doneData = data as { chapter?: { id?: number; word_count?: number; content?: string }; word_count?: number }
+            const chapterData = doneData?.chapter
+            const wordCount = chapterData?.word_count || doneData?.word_count
             if (wordCount)
             {
               toast.success(`AI 生成完成，共 ${wordCount} 字`)
@@ -245,9 +263,12 @@ export function WritingPanel({ projectId }: WritingPanelProps)
             {
               toast.success('AI 生成完成')
             }
+            // 后端已自动保存，更新前端状态反映已保存
             setChapters(prev => prev.map(c =>
               c.id === selectedChapter.id ? { ...c, has_content: true } : c
             ))
+            setSaved(true)
+            setTimeout(() => setSaved(false), 1500)
           }
           else if (type === 'error')
           {
@@ -286,12 +307,7 @@ export function WritingPanel({ projectId }: WritingPanelProps)
         // 使用 API 返回的内容替换流式累积的内容，确保一致性
         if (chapter.content)
         {
-          const apiHtml = chapter.content
-            .split('\n')
-            .filter(p => p.trim())
-            .map(p => `<p>${p}</p>`)
-            .join('')
-          setContent(apiHtml)
+          setContent(formatContentAsHtml(chapter.content))
         }
       }
       catch

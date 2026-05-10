@@ -2,7 +2,7 @@
 
 import json
 from typing import List
-from fastapi import APIRouter, HTTPException, status, Depends, Request
+from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -16,12 +16,12 @@ from app.schemas.chapter import (
     ChapterOutlineUpdate,
     ChapterResponse,
     ChapterContentUpdate,
-    ReviewRequest,
-    ReviewResponse
+    ChapterGenerateRequest,
+    ReviewRequest
 )
 from app.schemas.outline import ChapterOutlinesGenerateRequest
 from app.utils.auth import get_current_user
-from app.utils.deps import get_user_settings_or_raise, get_llm_for_context
+from app.utils.deps import get_user_settings_or_raise
 from app.utils.project import get_project_for_user
 from app.utils.workflow import get_or_create_workflow_state
 from app.utils.error import format_sse_error
@@ -30,10 +30,12 @@ from app.agents.state import (
     STAGE_WRITING
 )
 from app.agents.nodes.chapter_generation import (
-    generate_chapter_outlines_node,
     generate_chapter_outlines_stream,
+    generate_chapter_content_stream,
+    clean_chapter_content,
 )
-from app.agents.sse_events import format_chunk, format_done, format_node_start
+from app.api.workflow import build_initial_state
+from app.utils.llm import get_llm_from_state_async
 
 router = APIRouter()
 
@@ -109,18 +111,15 @@ async def create_chapter_outlines(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Generate all chapter outlines using AI with SSE streaming.
+    """生成所有章节大纲（SSE 流式，逐章进度）
 
-    持久化走 workflow_persistence.persist_chapter_outlines，符合 LangGraph 框架规范。
+    使用 generate_chapter_outlines_stream 逐章生成，LLM 通过
+    get_llm_from_state_async 获取（与 LangGraph 节点相同机制）。
+    每章完成时发送 progress 事件，全部完成后写入 DB 并发送 done 事件。
     """
     project = get_project_for_user(project_id, current_user.id, db)
     outline = get_outline_for_project(project_id, db)
 
-    import logging
-    logger = logging.getLogger(__name__)
-    logger.info(f"create_chapter_outlines: project_id={project_id}, outline.confirmed={outline.confirmed}, outline.chapter_count_confirmed={outline.chapter_count_confirmed}")
-
-    # Check if outline is confirmed and chapter count is set
     if not outline.confirmed:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -133,7 +132,6 @@ async def create_chapter_outlines(
             detail="Chapter count must be set before generating chapter outlines"
         )
 
-    # Check if chapter outlines already exist
     existing = db.query(ChapterOutline).filter(
         ChapterOutline.project_id == project_id
     ).first()
@@ -151,71 +149,77 @@ async def create_chapter_outlines(
     workflow_state.stage = STAGE_CHAPTER_OUTLINES
     db.commit()
 
-    # Get LLM service
-    llm = get_llm_for_context(request, current_user, user_settings, db)
+    # 构建初始状态（传入 db 预加载角色/关系数据）
+    llm_config_id = request.llm_config_id if request else None
+    initial_state = build_initial_state(
+        project, outline, workflow_state, llm_config_id, db=db
+    )
 
-    # Prepare state for chapter outline generation
-    state = {
-        "project_id": project_id,
-        "outline_title": outline.title,
-        "outline_summary": outline.summary,
-        "outline_plot_points": outline.plot_points or [],
-        # v0.6.1 增强字段
-        "outline_characters": outline.characters or [],
-        "outline_world_setting": outline.world_setting or {},
-        "outline_emotional_curve": outline.emotional_curve,
-        "chapter_count_suggested": outline.chapter_count_suggested,
-        "collected_info": outline.collected_info or {},
-    }
-
-    from app.utils.workflow_persistence import persist_chapter_outlines
-
-    # Create async generator for SSE streaming
     async def stream_generator():
-        """Generate chapter outlines one by one and stream via SSE.
-
-        持久化统一走 persist_chapter_outlines，不再直接写 DB。
-        """
-        all_chapters = []
-
+        """逐章生成章节大纲并流式发送进度事件"""
         try:
-            async for event in generate_chapter_outlines_stream(state, llm):
-                if event["type"] == "progress":
-                    # 收集生成结果，不再直接写 DB
-                    chapter_data = event["chapter"]
-                    all_chapters.append(chapter_data)
+            # 通过与 LangGraph 节点相同的机制获取 LLM 服务
+            llm = await get_llm_from_state_async(initial_state, db)
 
-                    # 发送进度事件
-                    progress_data = {
-                        "chapter_number": event["chapter_number"],
-                        "total": event["total"],
+            # 逐章生成，每完成一章发送 progress 事件
+            generated_chapters = []
+            async for event in generate_chapter_outlines_stream(initial_state, llm):
+                if event.get("type") == "progress":
+                    # 保存已生成的章节
+                    chapter_data = event.get("chapter", {})
+                    generated_chapters.append(chapter_data)
+
+                    # 发送 progress 事件给前端（包含完整章节大纲数据）
+                    progress_payload = {
+                        "chapter_number": event.get("chapter_number"),
+                        "total": event.get("total"),
                         "chapter": {
                             "chapter_number": chapter_data.get("chapter_number"),
-                            "title": chapter_data.get("title"),
+                            "title": chapter_data.get("title", ""),
+                            "scene": chapter_data.get("scene", ""),
+                            "characters": chapter_data.get("characters", ""),
+                            "plot": chapter_data.get("plot", ""),
+                            "conflict": chapter_data.get("conflict", ""),
+                            "ending": chapter_data.get("ending", ""),
+                            "target_words": chapter_data.get("target_words", 3000),
                         }
                     }
-                    yield f"event: progress\ndata: {json.dumps(progress_data)}\n\n"
+                    yield f"event: progress\ndata: {json.dumps(progress_payload)}\n\n"
 
-                elif event["type"] == "done":
-                    # 统一持久化：使用 workflow_persistence 模块
-                    output = {"chapter_outlines": all_chapters}
-                    persist_chapter_outlines(output, project_id, db)
-                    db.commit()
+                elif event.get("type") == "done":
+                    # 所有章节已生成，写入数据库
+                    chapter_outlines = event.get("chapter_outlines", generated_chapters)
+                    created_count = 0
+
+                    for co_data in chapter_outlines:
+                        chapter_outline = ChapterOutline(
+                            project_id=project_id,
+                            chapter_number=co_data.get("chapter_number", 1),
+                            title=co_data.get("title"),
+                            scene=co_data.get("scene"),
+                            characters=co_data.get("characters"),
+                            plot=co_data.get("plot"),
+                            conflict=co_data.get("conflict"),
+                            ending=co_data.get("ending"),
+                            target_words=co_data.get("target_words", 3000),
+                            confirmed=False
+                        )
+                        db.add(chapter_outline)
+                        created_count += 1
 
                     # 更新工作流状态
                     workflow_state = get_or_create_workflow_state(db, project_id)
                     workflow_state.stage = STAGE_CHAPTER_OUTLINES
                     db.commit()
 
-                    # 发送完成事件
-                    completion_data = {
-                        "total": len(all_chapters),
+                    # 发送包含 total 的 done 事件
+                    done_payload = {
+                        "total": created_count,
                         "stage": STAGE_CHAPTER_OUTLINES
                     }
-                    yield format_done(extra=completion_data)
+                    yield f"event: done\ndata: {json.dumps(done_payload)}\n\n"
 
         except Exception as e:
-            # 发送错误事件（已清理敏感信息）
             yield format_sse_error(e)
 
     return StreamingResponse(
@@ -338,8 +342,6 @@ async def confirm_chapter_outline(
 
     # Confirm the chapter outline
     chapter_outline.confirmed = True
-    db.commit()
-    db.refresh(chapter_outline)
 
     # Check if all chapter outlines are confirmed - 使用两个简单查询
     from sqlalchemy import func
@@ -353,11 +355,16 @@ async def confirm_chapter_outline(
         ChapterOutline.confirmed == True
     ).scalar() or 0
 
+    # 确认后，已确认数需要 +1（因为当前章节还未 commit）
+    confirmed_outlines += 1
+
     # If all confirmed, update workflow state to chapter writing
-    if total_outlines > 0 and confirmed_outlines >= total_outlines:
+    if total_outlines > 0 and confirmed_outlines == total_outlines:
         workflow_state = get_or_create_workflow_state(db, project_id)
         workflow_state.stage = STAGE_WRITING
-        db.commit()
+
+    db.commit()
+    db.refresh(chapter_outline)
 
     # Check if chapter content exists
     has_content = db.query(Chapter).filter(
@@ -551,15 +558,24 @@ async def update_chapter_content(
 async def generate_chapter(
     project_id: int,
     chapter_num: int,
-    request: Request = None,
+    request: ChapterGenerateRequest = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Generate chapter content with SSE streaming."""
+    """生成章节正文（SSE 流式）
+
+    使用 generate_chapter_content_stream 流式生成，LLM 通过
+    get_llm_from_state_async 获取（与 LangGraph 节点相同机制）。
+    状态通过 build_initial_state 构建（含 DB 预加载的角色/关系数据），
+    确保生成上下文与 LangGraph 节点一致。
+
+    DB 写入使用独立 Session（从 SessionLocal 创建），避免请求级
+    Session 在长流式操作期间失效导致内容丢失。
+    """
     project = get_project_for_user(project_id, current_user.id, db)
     outline = get_outline_for_project(project_id, db)
 
-    # Find the chapter outline
+    # 查找章节大纲
     chapter_outline = db.query(ChapterOutline).filter(
         ChapterOutline.project_id == project_id,
         ChapterOutline.chapter_number == chapter_num
@@ -571,155 +587,106 @@ async def generate_chapter(
             detail=f"Chapter outline {chapter_num} not found"
         )
 
-    # Check if chapter outline is confirmed
     if not chapter_outline.confirmed:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Chapter outline must be confirmed before generating content"
         )
 
-    # Get or create chapter
-    chapter = db.query(Chapter).filter(
-        Chapter.chapter_outline_id == chapter_outline.id
-    ).first()
+    # 保存 chapter_outline_id 供流内部使用（不预先创建空记录）
+    chapter_outline_id = chapter_outline.id
 
-    if not chapter:
-        chapter = Chapter(
-            chapter_outline_id=chapter_outline.id,
-            content=None,
-            word_count=0,
-            review_passed=False,
-            review_feedback=None
-        )
-        db.add(chapter)
-        db.commit()
-        db.refresh(chapter)
+    # 构建初始状态（传入 db 预加载角色/关系数据）
+    llm_config_id = request.llm_config_id if request else None
+    workflow_state = get_or_create_workflow_state(db, project_id)
+    initial_state = build_initial_state(
+        project, outline, workflow_state, llm_config_id, db=db
+    )
+    initial_state["current_chapter"] = chapter_num
 
-    user_settings = get_user_settings_or_raise(current_user, db)
-
-    # Get LLM service
-    llm = get_llm_for_context(request, current_user, user_settings, db)
-
-    # Prepare state for generation
-    state = {
-        "project_id": project_id,
-        "outline_title": outline.title,
-        "outline_summary": outline.summary,
-        # v0.6.1 增强字段
-        "outline_characters": outline.characters or [],
-        "outline_world_setting": outline.world_setting or {},
-        "outline_emotional_curve": outline.emotional_curve,
-        "collected_info": outline.collected_info or {},
-    }
-
-    # Prepare chapter outline dict for generation
-    chapter_outline_dict = {
+    # 构建当前章节大纲数据（从 DB 获取完整字段）
+    current_outline = {
         "chapter_number": chapter_outline.chapter_number,
-        "title": chapter_outline.title or "",
-        "scene": chapter_outline.scene or "",
-        "characters": chapter_outline.characters or "",
-        "plot": chapter_outline.plot or "",
-        "conflict": chapter_outline.conflict or "",
-        "ending": chapter_outline.ending or "",
-        "target_words": chapter_outline.target_words or 3000
+        "title": chapter_outline.title,
+        "scene": chapter_outline.scene,
+        "characters": chapter_outline.characters,
+        "plot": chapter_outline.plot,
+        "conflict": chapter_outline.conflict,
+        "ending": chapter_outline.ending,
+        "target_words": chapter_outline.target_words,
     }
 
-    # Create async generator for SSE streaming
     async def stream_generator():
-        """直接调用 LLM 流式生成章节内容，绕过 LangGraph 事件系统
+        """流式生成章节正文
 
-        LangGraph 的 astream_events 无法捕获自定义 LLMService.chat_stream
-        的 on_chat_model_stream 事件（LLMService 不是 LangChain 组件），
-        因此直接使用 llm.chat_stream 生成内容并手动构建 SSE 事件。
+        生成完成后原子性写入数据库：使用独立 Session 创建或更新
+        Chapter 记录并填充内容。不在流之前创建空记录，避免中断时
+        残留 content=NULL 的脏数据。
+
+        使用独立 Session 而非请求级 db，原因：
+        1. 请求级 db 在 StreamingResponse 完成后由 get_db().finally
+           调用 rollback + close，可能导致长流式操作后 commit 失败
+        2. LLM 流式生成耗时数分钟，期间 PostgreSQL 连接可能被回收
         """
-        from app.agents.nodes.chapter_generation import (
-            generate_chapter_content_stream,
-            clean_chapter_content,
-        )
-        from app.agents.nodes.utils import (
-            _format_chapter_outline_str,
-            format_characters_info,
-            format_relations_info,
-            format_evolution_info,
-            format_world_setting,
-        )
-        from app.agents.prompts import GENERATE_CHAPTER_CONTENT_PROMPT
+        from app.database import SessionLocal
 
-        # 获取上一章结尾
-        previous_ending = ""
-        if chapter_outline.chapter_number > 1:
-            prev_outline = (
-                db.query(ChapterOutline)
-                .filter(
-                    ChapterOutline.project_id == project_id,
-                    ChapterOutline.chapter_number == chapter_outline.chapter_number - 1,
-                )
-                .first()
-            )
-            if prev_outline and prev_outline.chapter and prev_outline.chapter.content:
-                prev_content = prev_outline.chapter.content
-                previous_ending = prev_content[-500:] if len(prev_content) > 500 else prev_content
-
-        # 构建章节大纲 dict
-        chapter_outline_dict = {
-            "chapter_number": chapter_outline.chapter_number,
-            "title": chapter_outline.title or "",
-            "scene": chapter_outline.scene or "",
-            "characters": chapter_outline.characters or "",
-            "plot": chapter_outline.plot or "",
-            "conflict": chapter_outline.conflict or "",
-            "ending": chapter_outline.ending or "",
-            "target_words": chapter_outline.target_words or 3000,
-        }
-
-        # 格式化 prompt 各部分
-        info = outline.collected_info or {}
-        outline_str = _format_chapter_outline_str(chapter_outline_dict)
-        chars_str = format_characters_info(state)
-        relations_str = format_relations_info(state, chapter_outline_dict.get("chapter_number", 1))
-        evolution_str, evolution_plans_str = format_evolution_info(state, chapter_outline_dict.get("chapter_number", 1))
-        world_str = format_world_setting(state)
-        combined_characters_str = chars_str + relations_str + evolution_str + evolution_plans_str
-        target_words = chapter_outline_dict.get("target_words", 3000)
-
-        prompt = GENERATE_CHAPTER_CONTENT_PROMPT.format(
-            chapter_outline=outline_str,
-            previous_ending=previous_ending,
-            genre=info.get("novelType", "未指定"),
-            main_characters=combined_characters_str,
-            world_setting=world_str,
-            style_preference=info.get("stylePreference", "未指定"),
-            target_words=target_words,
-        )
-
-        yield format_node_start('generate')
-
-        accumulated_content = ""
+        save_db = SessionLocal()
         try:
-            async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
-                accumulated_content += chunk
-                yield format_chunk(chunk)
+            # 通过与 LangGraph 节点相同的机制获取 LLM 服务
+            llm = await get_llm_from_state_async(initial_state, db)
 
-            content = clean_chapter_content(accumulated_content) if accumulated_content else ""
+            # 流式生成章节正文
+            content = ""
+            async for chunk in generate_chapter_content_stream(initial_state, current_outline, llm):
+                content += chunk
+                yield f"event: chunk\ndata: {json.dumps({'content': chunk})}\n\n"
+
+            # 后处理：清理 LLM 可能添加的结尾数字
+            content = clean_chapter_content(content)
             if not content:
-                yield format_sse_error(ValueError("AI 返回内容为空，请重试"))
+                yield format_sse_error(ValueError("生成内容为空"))
                 return
 
+            # 原子性写入数据库（使用独立 Session）
             word_count = len(content)
-            chapter.content = content
-            chapter.word_count = word_count
-            db.commit()
+            chapter = save_db.query(Chapter).filter(
+                Chapter.chapter_outline_id == chapter_outline_id
+            ).first()
 
+            if chapter:
+                # 更新已有记录
+                chapter.content = content
+                chapter.word_count = word_count
+            else:
+                # 创建新记录（含内容，不留空记录）
+                chapter = Chapter(
+                    chapter_outline_id=chapter_outline_id,
+                    content=content,
+                    word_count=word_count,
+                    review_passed=False,
+                    review_feedback=None
+                )
+                save_db.add(chapter)
+
+            # 更新工作流状态
+            wf = get_or_create_workflow_state(save_db, project_id)
+            wf.stage = STAGE_WRITING
+            save_db.commit()
+            save_db.refresh(chapter)
+
+            # 发送完成事件
             chapter_response = {
                 "id": chapter.id,
                 "chapter_outline_id": chapter.chapter_outline_id,
                 "content": content,
                 "word_count": word_count,
             }
-            yield format_done(extra=chapter_response)
+            yield f"event: done\ndata: {json.dumps({'chapter': chapter_response})}\n\n"
 
         except Exception as e:
             yield format_sse_error(e)
+        finally:
+            save_db.close()
 
     return StreamingResponse(
         stream_generator(),
@@ -732,7 +699,7 @@ async def generate_chapter(
     )
 
 
-@router.post("/{project_id}/chapters/{chapter_num}/review", response_model=ReviewResponse)
+@router.post("/{project_id}/chapters/{chapter_num}/review")
 async def review_chapter(
     project_id: int,
     chapter_num: int,
@@ -740,11 +707,23 @@ async def review_chapter(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Review chapter quality."""
+    """审核章节质量（SSE 流式）
+
+    使用 review_chapter_node LangGraph 节点函数进行审核，LLM 通过
+    get_llm_from_state_async 获取（与 LangGraph 节点相同机制）。
+    审核过程流式输出审核文本，完成后发送审核结果。
+
+    SSE 事件：
+    - chunk: 审核文本片段 {content: string}
+    - done: 审核完成 {passed: bool, feedback: string, issues: string[]}
+    - error: 审核失败 {error: string}
+    """
+    from app.agents.nodes.review import review_chapter_node, check_review_passed
+
     project = get_project_for_user(project_id, current_user.id, db)
     outline = get_outline_for_project(project_id, db)
 
-    # Find the chapter outline
+    # 查找章节大纲
     chapter_outline = db.query(ChapterOutline).filter(
         ChapterOutline.project_id == project_id,
         ChapterOutline.chapter_number == chapter_num
@@ -756,7 +735,7 @@ async def review_chapter(
             detail=f"Chapter outline {chapter_num} not found"
         )
 
-    # Find the chapter
+    # 查找章节内容
     chapter = db.query(Chapter).filter(
         Chapter.chapter_outline_id == chapter_outline.id
     ).first()
@@ -773,80 +752,103 @@ async def review_chapter(
             detail="Chapter has no content to review"
         )
 
-    user_settings = get_user_settings_or_raise(current_user, db)
+    # 构建初始状态（传入 db 预加载角色/关系数据）
+    llm_config_id = request.llm_config_id if request else None
+    workflow_state = get_or_create_workflow_state(db, project_id)
+    initial_state = build_initial_state(
+        project, outline, workflow_state, llm_config_id, db=db
+    )
+    initial_state["current_chapter"] = chapter_num
+    initial_state["written_chapters"] = [{"chapter_number": chapter_num, "content": chapter.content}]
 
-    # Get LLM service
-    llm = get_llm_for_context(request, current_user, user_settings, db)
-
-    # Prepare state for review
-    state = {
-        "project_id": project_id,
-        "outline_title": outline.title,
-        "outline_summary": outline.summary,
-        # v0.6.1 增强字段
-        "outline_characters": outline.characters or [],
-        "outline_world_setting": outline.world_setting or {},
-        "outline_emotional_curve": outline.emotional_curve,
-        "collected_info": outline.collected_info or {},
-    }
-
-    # Prepare chapter outline dict for review
+    # 构建章节大纲数据（从 DB 获取完整字段）
     chapter_outline_dict = {
         "chapter_number": chapter_outline.chapter_number,
         "title": chapter_outline.title or "",
+        "scene": chapter_outline.scene,
+        "characters": chapter_outline.characters,
         "plot": chapter_outline.plot or "",
+        "conflict": chapter_outline.conflict,
+        "ending": chapter_outline.ending,
+        "target_words": chapter_outline.target_words,
     }
 
-    # Get strictness from request
+    # 保存审核参数供流内部使用
     strictness = request.strictness if request else "standard"
+    chapter_outline_id = chapter_outline.id
 
-    from app.agents.streaming import create_single_node_graph
-    from app.agents.nodes.review import review_node, check_review_passed
+    async def stream_generator():
+        """流式审核章节
 
-    graph_state = {
-        "project_id": project_id,
-        "current_chapter": chapter_num + 1,
-        "chapter_outlines": [
-            {
-                "chapter_number": co.chapter_number,
-                "title": co.title,
-                "scene": co.scene,
-                "characters": co.characters,
-                "plot": co.plot,
-                "conflict": co.conflict,
-                "ending": co.ending,
-                "target_words": co.target_words,
+        审核完成后原子性写入数据库：使用独立 Session 保存审核结果。
+        使用独立 Session 而非请求级 db，原因与 generate_chapter 相同：
+        长时间 LLM 操作期间请求级 Session 可能失效。
+        """
+        from app.database import SessionLocal
+
+        save_db = SessionLocal()
+        try:
+            # 通过与 LangGraph 节点相同的机制获取 LLM 服务
+            llm = await get_llm_from_state_async(initial_state, db)
+
+            # 构建审核 prompt（与 review_chapter_node 相同逻辑）
+            from app.services.prompt_loader import get_system_prompt
+            from app.agents.nodes.utils import _format_chapter_outline_str, format_characters_info
+
+            info = initial_state.get("collected_info", {})
+            outline_str = _format_chapter_outline_str(chapter_outline_dict)
+            chars_str = format_characters_info(initial_state)
+
+            prompt = get_system_prompt(save_db, "review").format(
+                strictness=strictness,
+                chapter_outline=outline_str,
+                chapter_content=chapter.content,
+                genre=info.get("novelType", "未指定"),
+                main_characters=chars_str,
+                style_preference=info.get("stylePreference", "未指定"),
+            )
+
+            # 流式调用 LLM，逐块发送审核文本
+            response = ""
+            async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
+                response += chunk
+                yield f"event: chunk\ndata: {json.dumps({'content': chunk})}\n\n"
+
+            # 解析审核结果
+            from app.agents.nodes.review import parse_review_result
+            review_result = parse_review_result(response)
+            review_result["raw_response"] = response
+
+            # 保存审核结果到数据库（使用独立 Session）
+            ch = save_db.query(Chapter).filter(
+                Chapter.chapter_outline_id == chapter_outline_id
+            ).first()
+
+            if ch:
+                ch.review_passed = check_review_passed(review_result)
+                ch.review_feedback = review_result.get("raw_response")
+                ch.review_result = review_result
+                save_db.commit()
+
+            # 发送完成事件
+            result_data = {
+                "passed": ch.review_passed if ch else False,
+                "feedback": ch.review_feedback if ch else "",
+                "issues": review_result.get("issues", []),
             }
-            for co in db.query(ChapterOutline)
-            .filter(ChapterOutline.project_id == project_id)
-            .order_by(ChapterOutline.chapter_number)
-            .all()
-        ],
-        "written_chapters": [
-            {"chapter_number": chapter_num, "content": chapter.content}
-        ],
-        "collected_info": outline.collected_info or {},
-        "outline_characters": outline.characters or [],
-        "outline_world_setting": outline.world_setting or {},
-        "review_result": None,
-        "llm_config_id": request.llm_config_id if request else None,
-        "llm_model_name": getattr(request, 'llm_model_name', None) if request else None,
-    }
+            yield f"event: done\ndata: {json.dumps(result_data)}\n\n"
 
-    graph = create_single_node_graph(review_node)
-    config = {"configurable": {"thread_id": f"review-{project_id}-{chapter_num}"}}
+        except Exception as e:
+            yield format_sse_error(e)
+        finally:
+            save_db.close()
 
-    result = await graph.ainvoke(graph_state, config)
-
-    review_result = result.get("review_result", {})
-    if review_result:
-        chapter.review_passed = check_review_passed(review_result)
-        chapter.review_feedback = review_result.get("raw_response")
-        chapter.review_result = review_result
-        db.commit()
-
-    return ReviewResponse(
-        passed=chapter.review_passed,
-        feedback=chapter.review_feedback or "",
-        issues=review_result.get("issues", []) if review_result else [],
+    return StreamingResponse(
+        stream_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
     )

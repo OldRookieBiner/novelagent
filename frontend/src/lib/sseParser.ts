@@ -173,6 +173,8 @@ export async function createSSEStream(
   const decoder = new TextDecoder()
   let buffer = ''
 
+  let receivedDone = false
+
   try
   {
     while (true)
@@ -202,6 +204,19 @@ export async function createSSEStream(
       {
         const parsedData = parseSSEData(event.data)
         onEvent(event.type, parsedData)
+
+        // 收到 done 事件后立即退出循环，避免连接关闭时的网络错误
+        if (event.type === 'done')
+        {
+          receivedDone = true
+          break
+        }
+      }
+
+      // 已收到 done 事件，退出外层循环
+      if (receivedDone)
+      {
+        break
       }
     }
   }
@@ -209,6 +224,11 @@ export async function createSSEStream(
   {
     // 用户主动取消，不触发错误回调
     if (err instanceof Error && err.name === 'AbortError')
+    {
+      return
+    }
+    // 已收到 done 事件后连接关闭是正常行为，不触发错误
+    if (receivedDone)
     {
       return
     }

@@ -833,8 +833,7 @@ async def generate_characters(
         "outline_characters": outline.characters,
     }
 
-    characters = extract_characters_from_outline(state, db)
-    db.commit()
+    characters = extract_characters_from_outline(state)
 
     if not characters:
         raise HTTPException(
@@ -887,52 +886,39 @@ async def generate_relations(
         Outline.project_id == project_id
     ).first()
 
-    from app.agents.streaming import create_single_node_graph
+    # 构建初始状态
+    from app.api.workflow import build_initial_state
+    from app.agents.graph import create_novel_graph_with_checkpointer
     from app.agents.nodes.relation_generation import generate_relations_node
+    from app.models.workflow_state import WorkflowState
 
-    graph_state = {
-        "project_id": project_id,
-        "characters": [
-            {
-                "id": c.id,
-                "name": c.name,
-                "role": c.role,
-                "personality": c.personality or "",
-                "core_motivation": c.core_motivation or "",
-            }
-            for c in characters
-        ],
-        "outline_world_setting": outline.world_setting if outline else {},
-        "outline_summary": outline.summary if outline else "",
-    }
+    workflow_state = db.query(WorkflowState).filter(
+        WorkflowState.project_id == project_id
+    ).first()
 
-    graph = create_single_node_graph(generate_relations_node)
-    config = {"configurable": {"thread_id": f"relations-{project_id}"}}
+    llm_config_id = request.llm_config_id if hasattr(request, 'llm_config_id') else None蛵
+    initial_state = build_initial_state(project, outline, workflow_state, llm_config_id)
+    initial_state["characters"] = [
+        {
+            "id": c.id,
+            "name": c.name,
+            "role": c.role,
+            "personality": c.personality or "",
+            "core_motivation": c.core_motivation or "",
+        }
+        for c in characters
+    ]
 
-    result_state = await graph.ainvoke(graph_state, config)
+    graph = create_novel_graph_with_checkpointer(project_id, "default", db)
+    config = {"configurable": {"thread_id": "default"}}
 
-    # 从数据库重新查询，获取带有数据库 ID 的记录
-    # 因为 graph 返回的解析结果没有数据库生成的 id 字段
-    db_relations = (
-        db.query(Relation)
-        .filter(Relation.project_id == project_id)
-        .all()
-    )
+    result_state = await graph.ainvoke(initial_state, config)
+
+    relations = result_state.get("relations", [])
 
     return {
-        "message": f"Created {len(db_relations)} relations",
-        "relations": [
-            {
-                "id": r.id,
-                "character_a_id": r.character_a_id,
-                "character_b_id": r.character_b_id,
-                "relation_type": r.relation_type,
-                "trust_level": r.trust_level,
-                "current_status": r.current_status,
-                "direction": r.direction,
-            }
-            for r in db_relations
-        ],
+        "message": f"Created {len(relations)} relations",
+        "relations": relations,
     }
 
 

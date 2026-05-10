@@ -4,6 +4,7 @@ import re
 from sqlalchemy.orm import Session
 
 from app.agents.state import NovelState, STAGE_CHARACTERS
+from app.utils.llm import get_llm_from_state_async
 
 
 def _map_role(outline_role: str) -> str:
@@ -108,24 +109,23 @@ def extract_characters_from_outline(state: NovelState, db: Session) -> list[dict
     return created
 
 
-async def create_characters_from_outline_node(state: NovelState) -> NovelState:
+async def create_characters_from_outline_node(state: NovelState, config: dict = None) -> NovelState:
     """LangGraph 节点：根据大纲通过独立 LLM 调用生成角色
 
-    签名： (state: NovelState) -> NovelState
+    签名： (state: NovelState, config: dict) -> NovelState
 
     读取大纲摘要和世界观背景，使用 character_generation prompt
-    调用 LLM 生成角色列表。不再依赖 state["outline_characters"]。
+    调用 LLM 生成角色列表。生成后立即写入数据库。
 
-    注意：数据库 session 由 workflow API 中 astream_events 的 persist 逻辑管理，
-    此节点仅负责生成数据，不自行创建/提交 session。
+    Prompt 从 state["_prompts"] 获取（由 WorkflowOrchestrator 预加载）。
     """
     import logging
     from app.database import SessionLocal
-    from app.services.prompt_loader import get_system_prompt
-    from app.utils.llm import get_llm_from_state_async
+    from app.models.character import Character
 
     logger = logging.getLogger(__name__)
 
+    project_id = state["project_id"]
     outline_summary = state.get("outline_summary", "")
     world_era = (state.get("outline_world_setting") or {}).get("era", "未指定")
 
@@ -135,25 +135,85 @@ async def create_characters_from_outline_node(state: NovelState) -> NovelState:
         # 获取 LLM 服务
         llm = await get_llm_from_state_async(state)
 
-        # 获取人物生成 prompt
-        db = SessionLocal()
-        try:
-            prompt = get_system_prompt(db, "character_generation").format(
+        # 从 state 获取预加载的 prompts
+        prompts = state.get("_prompts", {})
+        logger.info(f"character_gen_node: prompts_keys={list(prompts.keys()) if prompts else 'empty'}")
+
+        if prompts and "character_generation" in prompts:
+            prompt_template = prompts["character_generation"]
+            logger.info(f"character_gen_node: Using prompt from state, template_length={len(prompt_template)}")
+            prompt = prompt_template.format(
                 outline_summary=outline_summary,
                 world_era=world_era,
             )
-        finally:
-            db.close()
+        else:
+            # 回退：使用默认 prompt
+            from app.agents.prompts import DEFAULT_PROMPTS
+            default_prompt = DEFAULT_PROMPTS.get("character_generation", "")
+            if default_prompt:
+                prompt = default_prompt.format(
+                    outline_summary=outline_summary,
+                    world_era=world_era,
+                )
+                logger.info(f"character_gen_node: Using DEFAULT_PROMPTS fallback, length={len(prompt)}")
+            else:
+                prompt = f"根据以下大纲生成角色列表：\n{outline_summary}\n世界观：{world_era}"
+                logger.warning("character_gen_node: No character_generation prompt found, using minimal fallback")
+
+        logger.info(f"character_gen_node: Calling LLM with prompt length={len(prompt)}")
 
         # 调用 LLM 生成人物
         response = await llm.chat([{"role": "user", "content": prompt}])
 
+        logger.info(f"character_gen_node: LLM response length={len(response)}, preview={response[:200] if response else 'EMPTY'}")
+
         # 解析响应
-        characters = parse_character_generation_response(response)
+        parsed_characters = parse_character_generation_response(response)
 
         logger.info(
-            f"character_gen_node: LLM generated {len(characters)} characters"
+            f"character_gen_node: LLM generated {len(parsed_characters)} characters"
         )
+
+        if not parsed_characters:
+            logger.warning(
+                f"character_gen_node: No characters parsed from LLM response. "
+                f"Response format may not match expected pattern."
+            )
+        else:
+            # 立即写入数据库
+            db = SessionLocal()
+            try:
+                # 删除已有角色
+                db.query(Character).filter(Character.project_id == project_id).delete()
+
+                # 创建新角色
+                for char_data in parsed_characters:
+                    char = Character(
+                        project_id=project_id,
+                        name=char_data["name"],
+                        role=char_data["role"],
+                        personality=char_data["personality"],
+                        core_motivation=char_data["core_motivation"],
+                        growth_arc=char_data["growth_arc"],
+                    )
+                    db.add(char)
+                    db.flush()  # 获取 ID
+                    characters.append({
+                        "id": char.id,
+                        "name": char.name,
+                        "role": char.role,
+                        "personality": char.personality,
+                        "core_motivation": char.core_motivation,
+                        "growth_arc": char.growth_arc,
+                    })
+
+                db.commit()
+                logger.info(f"character_gen_node: Persisted {len(characters)} characters to DB")
+            except Exception as db_error:
+                db.rollback()
+                logger.error(f"character_gen_node: Failed to persist characters: {db_error}")
+            finally:
+                db.close()
 
     except Exception as e:
         logger.warning(
@@ -165,6 +225,9 @@ async def create_characters_from_outline_node(state: NovelState) -> NovelState:
         **state,
         "characters": characters,
         "stage": STAGE_CHARACTERS,
+        # 角色生成完成后直接继续执行关系生成，无需等待确认
+        "waiting_for_confirmation": False,
+        "confirmation_type": None,
     }
 
     return new_state

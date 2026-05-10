@@ -19,8 +19,6 @@ import type {
   ChapterOutlineUpdate,
   Chapter,
   ChapterContentUpdate,
-  ReviewRequest,
-  ReviewResponse,
   UserSettings,
   SettingsUpdate,
   ChatMessage,
@@ -307,7 +305,7 @@ export const outlineApi = {
 
 // Streaming callback types for chapter outlines
 export interface ChapterOutlineStreamCallbacks {
-  onProgress: (chapterNumber: number, total: number, chapter: { chapter_number: number; title: string }) => void;
+  onProgress: (chapterNumber: number, total: number, chapter: { chapter_number: number; title: string; scene: string; characters: string; plot: string; conflict: string; ending: string; target_words: number }) => void;
   onDone: (total: number, stage: string) => void;
   onError: (error: string) => void;
 }
@@ -339,7 +337,7 @@ export const chapterOutlinesApi = {
       },
       (type, data) => {
         if (type === 'progress') {
-          const progress = data as { chapter_number: number; total: number; chapter: { chapter_number: number; title: string } }
+          const progress = data as { chapter_number: number; total: number; chapter: { chapter_number: number; title: string; scene: string; characters: string; plot: string; conflict: string; ending: string; target_words: number } }
           callbacks.onProgress(progress.chapter_number, progress.total, progress.chapter)
         } else if (type === 'done') {
           const done = data as { total: number; stage: string }
@@ -398,20 +396,6 @@ export const chaptersApi = {
       method: "PUT",
       body: data,
     });
-  },
-
-  async review(
-    projectId: number,
-    chapterNum: number,
-    data?: ReviewRequest
-  ): Promise<ReviewResponse> {
-    return request<ReviewResponse>(
-      `/api/projects/${projectId}/chapters/${chapterNum}/review`,
-      {
-        method: "POST",
-        body: data,
-      }
-    );
   },
 };
 

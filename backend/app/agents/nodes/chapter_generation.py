@@ -259,6 +259,16 @@ async def generate_chapter_outlines_node(state: NovelState, llm: LLMService) -> 
     return new_state
 
 
+def _calc_max_tokens(target_words: int) -> int:
+    """根据目标字数计算 LLM 输出 max_tokens
+
+    中文 1 字 ≈ 1-2 token，加上标点和格式开销，
+    实际 token 数约为字数的 2-2.5 倍。设置 2.5 倍上限 + 512 冗余。
+    最低 8192 以保证短章节也有足够空间。
+    """
+    return max(int(target_words * 2.5) + 512, 8192)
+
+
 async def generate_chapter_content_stream(
     state: NovelState,
     chapter_outline: dict,
@@ -289,9 +299,20 @@ async def generate_chapter_content_stream(
     # 获取章节目标字数
     target_words = chapter_outline.get("target_words", 3000)
 
+    # 获取前章结尾用于衔接
+    previous_ending = ""
+    written_chapters = state.get("written_chapters", [])
+    chapter_number = chapter_outline.get("chapter_number", 1)
+    if written_chapters:
+        for ch in written_chapters:
+            if ch.get("chapter_number") == chapter_number - 1:
+                ch_content = ch.get("content", "")
+                previous_ending = ch_content[-500:] if len(ch_content) > 500 else ch_content
+                break
+
     prompt = GENERATE_CHAPTER_CONTENT_PROMPT.format(
         chapter_outline=outline_str,
-        previous_ending="",
+        previous_ending=previous_ending,
         genre=info.get("novelType", "未指定"),
         main_characters=combined_characters_str,
         world_setting=world_str,
@@ -299,7 +320,13 @@ async def generate_chapter_content_stream(
         target_words=target_words
     )
 
-    async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
+    # 根据目标字数计算 max_tokens，避免截断
+    max_tokens = _calc_max_tokens(target_words)
+
+    async for chunk in llm.chat_stream(
+        [{"role": "user", "content": prompt}],
+        max_tokens=max_tokens
+    ):
         yield chunk
 
 
@@ -399,9 +426,15 @@ async def generate_chapter_content_node(state: NovelState) -> NovelState:
         target_words=target_words
     )
 
+    # 根据目标字数计算 max_tokens，避免截断
+    max_tokens = _calc_max_tokens(target_words)
+
     # 调用 LLM 流式生成内容（框架自动捕获 on_chat_model_stream）
     content = ""
-    async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
+    async for chunk in llm.chat_stream(
+        [{"role": "user", "content": prompt}],
+        max_tokens=max_tokens
+    ):
         content += chunk
 
     # 后处理：移除结尾的纯数字（可能是 LLM 自动添加的字数）

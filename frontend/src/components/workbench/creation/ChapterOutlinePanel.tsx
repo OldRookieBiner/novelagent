@@ -191,15 +191,19 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
         {
           onProgress: (chapterNumber, total, chapter) =>
           {
-            // 将已生成章节添加到列表（立即显示，不用等全部完成）
+            // 将已生成章节添加到列表（使用后端返回的完整数据）
             const tempId = -(chapter.chapter_number)
             const newChapter: ChapterOutline = {
               id: tempId,
               project_id: projectId,
               chapter_number: chapter.chapter_number,
               title: chapter.title || '',
-              scene: '', characters: '', plot: '', conflict: '', ending: '',
-              target_words: 3000,
+              scene: chapter.scene || '',
+              characters: chapter.characters || '',
+              plot: chapter.plot || '',
+              conflict: chapter.conflict || '',
+              ending: chapter.ending || '',
+              target_words: chapter.target_words || 3000,
               confirmed: false,
               has_content: false,
               created_at: new Date().toISOString(),

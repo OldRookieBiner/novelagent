@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.8.3 - 2026-05-10
+
+### 修复
+
+- **修复章节审核点击"开始审核"后报错"审核失败"** - 根因：审核端点使用同步请求-响应模式，前端 30 秒超时被 AbortController 中止。将审核端点从同步 JSON 改为 SSE 流式模式（与章节生成一致），支持实时预览审核文本和取消审核
+- **修复章节正文生成不完整截断问题** - LLM `max_tokens` 默认 4096 远不够 3000 中文章节所需，新增 `_calc_max_tokens` 按 2.5 倍计算（最低 8192），`chat_stream` 添加 `finish_reason=length` 截断检测
+- **修复章节正文生成后不自动保存** - 后端将 Chapter 创建移到流内部原子性写入（创建或更新），不再预先创建空记录；前端生成后设置 `saved=true`
+- **修复章节大纲生成完毕后报错"生成失败: network error"** - `createSSEStream` 收到 done 事件后立即退出循环避免网络误报错；后端 progress 事件发送完整章节大纲数据
+- **修复 LLM choices 空列表 IndexError** - `chat()` 方法添加 `response.choices` 空列表防护，替代裸 IndexError；`chat_stream()` 同步修复
+- **修复章节正文页面 AI 生成按钮报错** - 创建 `ChapterGenerateRequest` Pydantic schema 替代 FastAPI Request 对象，正确解析 `llm_config_id`；`review_chapter` 改用 LangGraph 节点函数
+- **修复章节大纲只显示标题无场景/情节等字段** - 后端 progress 事件发送完整字段，前端使用后端返回的完整字段创建章节
+
+### 优化
+
+- **审核端点 SSE 流式改造** - 审核过程实时输出文本（chunk 事件），完成后发送结构化结果（done 事件），使用独立 Session 保存审核结果
+- **章节正文 DB 写入独立 Session** - 使用 SessionLocal 创建独立会话，避免请求级 Session 在长流式操作期间失效
+- **章节正文生成传入前章结尾** - `generate_chapter_content_stream` 从 state 获取 `previous_ending`，提升章节连贯性
+- **后端架构优化** - 新增 `chapter_service`、`outline_service`、`workflow_orchestrator` 服务层，提取业务逻辑；`build_initial_state` 支持预加载角色/关系数据
+- **LLM 服务异步化** - 新增 `get_llm_from_state_async`，在 async 节点中使用线程池执行同步 DB 操作，避免阻塞事件循环
+- **前端 SSE 解析增强** - `createSSEStream` 支持 done 事件后优雅退出，避免连接关闭时的网络错误误报
+
 ## v0.8.2 - 2026-05-07
 
 ### 修复

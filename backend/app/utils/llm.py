@@ -66,8 +66,8 @@ def get_llm_for_user(
     return get_llm_service(user_settings)
 
 
-def get_llm_from_state(state: dict) -> "LLMService":
-    """从工作流状态获取 LLM 服务（同步版本，不推荐在 async 上下文使用）
+def get_llm_from_state(state: dict, db: Optional["Session"] = None) -> "LLMService":
+    """从工作流状态获取 LLM 服务（同步版本）
 
     根据 state 中的 llm_config_id 和 project_id 获取对应的 LLM 服务。
     优先级：指定模型配置 > 默认模型配置 > 用户设置
@@ -77,6 +77,7 @@ def get_llm_from_state(state: dict) -> "LLMService":
 
     Args:
         state: NovelState 字典
+        db: 可选的数据库会话。如果提供，直接使用而不创建新 session。
 
     Returns:
         LLMService 实例
@@ -88,7 +89,11 @@ def get_llm_from_state(state: dict) -> "LLMService":
     from app.models.project import Project
     from app.models.settings import UserSettings
 
-    db = SessionLocal()
+    should_close = False
+    if db is None:
+        db = SessionLocal()
+        should_close = True
+
     try:
         project_id = state.get("project_id")
         project = db.query(Project).filter(Project.id == project_id).first()
@@ -105,16 +110,19 @@ def get_llm_from_state(state: dict) -> "LLMService":
 
         return get_llm_for_user(user_id, user_settings, db, state.get("llm_config_id"), state.get("llm_model_name"))
     finally:
-        db.close()
+        if should_close:
+            db.close()
 
 
-async def get_llm_from_state_async(state: dict) -> "LLMService":
+async def get_llm_from_state_async(state: dict, db: Optional["Session"] = None) -> "LLMService":
     """从工作流状态获取 LLM 服务（异步版本，推荐在 async 节点使用）
 
     将同步数据库操作放到线程池中执行，避免阻塞 event loop。
+    如果传入 db 参数，直接使用该会话，不再创建新的 SessionLocal。
 
     Args:
         state: NovelState 字典
+        db: 可选的数据库会话。如果提供，直接使用而不创建新 session。
 
     Returns:
         LLMService 实例
@@ -122,5 +130,9 @@ async def get_llm_from_state_async(state: dict) -> "LLMService":
     Raises:
         ValueError: 项目未找到或用户设置未找到
     """
+    if db is not None:
+        # 直接在同一线程执行（调用方负责线程安全）
+        return get_llm_from_state(state, db)
+
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(_db_executor, get_llm_from_state, state)

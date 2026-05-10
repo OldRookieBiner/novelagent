@@ -1,5 +1,7 @@
 """节点共享工具函数的单元测试"""
 
+import pytest
+from unittest.mock import MagicMock
 from app.agents.nodes.utils import (
     _format_chapter_outline_str,
     format_characters_info,
@@ -336,3 +338,164 @@ class TestFormatWorldSetting:
         result = format_world_setting(state)
 
         assert result == "默认世界"
+
+
+class TestGetLlmFromStateAsync:
+    """测试 get_llm_from_state_async 的可选 db 参数"""
+
+    @pytest.mark.asyncio
+    async def test_accepts_db_param(self):
+        """get_llm_from_state_async 应接受可选的 db 参数"""
+        from app.utils.llm import get_llm_from_state_async
+
+        mock_db = MagicMock()
+        state = {"project_id": 1, "llm_config_id": None}
+
+        # 验证函数签名支持 db 参数（即使实际调用会失败因为 mock 不完整）
+        # 这测试的是接口，不是完整行为
+        import inspect
+        sig = inspect.signature(get_llm_from_state_async)
+        params = list(sig.parameters.keys())
+        assert "db" in params, f"get_llm_from_state_async should have 'db' parameter, got: {params}"
+
+
+class TestRelationGenerationNode:
+    """测试 relation_generation_node 的重构"""
+
+    def test_accepts_config_param(self):
+        """generate_relations_node 应接受可选的 config 参数"""
+        from app.agents.nodes.relation_generation import generate_relations_node
+        import inspect
+
+        sig = inspect.signature(generate_relations_node)
+        params = list(sig.parameters.keys())
+        assert "config" in params, f"generate_relations_node should have 'config' parameter, got: {params}"
+
+    @pytest.mark.asyncio
+    async def test_uses_state_characters_with_ids(self):
+        """generate_relations_node 应从 state['characters'] 读取角色（带 id），不查询 DB"""
+        from app.agents.nodes.relation_generation import generate_relations_node
+        from unittest.mock import patch, AsyncMock, MagicMock
+
+        state = {
+            "project_id": 1,
+            "characters": [
+                {"id": 1, "name": "Alice", "role": "主角", "personality": "Brave", "core_motivation": "Save"},
+                {"id": 2, "name": "Bob", "role": "配角", "personality": "Cautious", "core_motivation": "Protect"},
+            ],
+            "outline_world_setting": {"era": "现代"},
+            "outline_summary": "A story",
+        }
+
+        config = {
+            "configurable": {
+                "prompts": {
+                    "relation_generation": "Generate relations for: {characters_text}"
+                }
+            }
+        }
+
+        # Mock LLM
+        with patch("app.agents.nodes.relation_generation.get_llm_from_state_async") as mock_llm:
+            mock_llm_instance = AsyncMock()
+            mock_llm_instance.chat = AsyncMock(return_value="- Alice | Bob | 信任 | 80 | Friends | 稳定")
+            mock_llm.return_value = mock_llm_instance
+
+            result = await generate_relations_node(state, config=config)
+
+        assert "relations" in result
+        assert len(result["relations"]) >= 1
+        # 验证使用的是 state 中的角色 id
+        if result["relations"]:
+            assert result["relations"][0]["character_a_id"] in [1, 2]
+            assert result["relations"][0]["character_b_id"] in [1, 2]
+
+    @pytest.mark.asyncio
+    async def test_uses_config_prompts(self):
+        """generate_relations_node 应从 config['prompts'] 读取 prompt"""
+        from app.agents.nodes.relation_generation import generate_relations_node
+        from unittest.mock import patch, AsyncMock
+
+        state = {
+            "project_id": 1,
+            "characters": [
+                {"id": 1, "name": "Alice", "role": "主角", "personality": "", "core_motivation": ""},
+                {"id": 2, "name": "Bob", "role": "配角", "personality": "", "core_motivation": ""},
+            ],
+            "outline_world_setting": {},
+            "outline_summary": "Test",
+        }
+
+        custom_prompt = "CUSTOM_PROMPT_TEMPLATE: {characters_text}"
+
+        config = {
+            "configurable": {
+                "prompts": {
+                    "relation_generation": custom_prompt
+                }
+            }
+        }
+
+        with patch("app.agents.nodes.relation_generation.get_llm_from_state_async") as mock_llm:
+            mock_llm_instance = AsyncMock()
+            mock_llm_instance.chat = AsyncMock(return_value="- Alice | Bob | 信任 | 50 | Test | 稳定")
+            mock_llm.return_value = mock_llm_instance
+
+            await generate_relations_node(state, config=config)
+
+            # 验证 LLM chat 被调用，且 prompt 包含自定义模板内容
+            mock_llm_instance.chat.assert_called_once()
+            call_args = mock_llm_instance.chat.call_args
+            # call_args[0][0] 是消息列表，[0] 是第一条消息，["content"] 是内容
+            prompt_used = call_args[0][0][0]["content"]
+            assert "CUSTOM_PROMPT_TEMPLATE" in prompt_used
+
+
+class TestCharacterGenerationNode:
+    """测试 character_generation_node 的重构"""
+
+    def test_accepts_config_param(self):
+        """create_characters_from_outline_node 应接受可选的 config 参数"""
+        from app.agents.nodes.character_generation import create_characters_from_outline_node
+        import inspect
+
+        sig = inspect.signature(create_characters_from_outline_node)
+        params = list(sig.parameters.keys())
+        assert "config" in params, f"create_characters_from_outline_node should have 'config' parameter, got: {params}"
+
+    @pytest.mark.asyncio
+    async def test_uses_config_prompts(self):
+        """create_characters_from_outline_node 应从 config['prompts'] 读取 prompt"""
+        from app.agents.nodes.character_generation import create_characters_from_outline_node
+        from unittest.mock import patch, AsyncMock
+
+        state = {
+            "project_id": 1,
+            "outline_summary": "A story about heroes",
+            "outline_world_setting": {"era": "古代"},
+        }
+
+        custom_prompt = "CUSTOM_CHARACTER_PROMPT: {outline_summary} in {world_era}"
+
+        config = {
+            "configurable": {
+                "prompts": {
+                    "character_generation": custom_prompt
+                }
+            }
+        }
+
+        with patch("app.agents.nodes.character_generation.get_llm_from_state_async") as mock_llm:
+            mock_llm_instance = AsyncMock()
+            mock_llm_instance.chat = AsyncMock(return_value="- 主角 | 主角描述")
+            mock_llm.return_value = mock_llm_instance
+
+            await create_characters_from_outline_node(state, config=config)
+
+            # 验证 LLM chat 被调用，且 prompt 包含自定义模板内容
+            mock_llm_instance.chat.assert_called_once()
+            call_args = mock_llm_instance.chat.call_args
+            # call_args[0][0] 是消息列表，[0] 是第一条消息，["content"] 是内容
+            prompt_used = call_args[0][0][0]["content"]
+            assert "CUSTOM_CHARACTER_PROMPT" in prompt_used
+

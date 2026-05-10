@@ -1,9 +1,9 @@
 // frontend/src/components/workbench/creation/AIAssistantPanel.tsx
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { AlertCircle, RefreshCw, ShieldCheck, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { chaptersApi } from '@/lib/api'
+import { createSSEStream } from '@/lib/sseParser'
 import { toast } from 'sonner'
 import type { ReviewResponse } from '@/types'
 
@@ -21,34 +21,90 @@ export function AIAssistantPanel({ projectId, chapterNumber, chapterContent, onR
 {
   const [reviewing, setReviewing] = useState(false)
   const [reviewResult, setReviewResult] = useState<ReviewResponse | null>(null)
+  // 审核流式文本
+  const [reviewText, setReviewText] = useState('')
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   const handleReview = async () =>
   {
     if (!projectId || !chapterNumber) return
     setReviewing(true)
+    setReviewResult(null)
+    setReviewText('')
+
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+    const accumulated: string[] = []
+
     try
     {
-      const result = await chaptersApi.review(projectId, chapterNumber)
-      setReviewResult(result)
-      onReviewComplete?.(result)
+      await createSSEStream(
+        {
+          url: `/api/projects/${projectId}/chapters/${chapterNumber}/review`,
+          method: 'POST',
+          signal: controller.signal
+        },
+        (type, data) =>
+        {
+          if (type === 'chunk')
+          {
+            // 从 chunk 事件中提取 content 字段
+            const chunkData = data as { content: string } | string
+            const chunkText = typeof chunkData === 'string' ? chunkData : chunkData.content
+            if (chunkText)
+            {
+              accumulated.push(chunkText)
+              setReviewText(accumulated.join(''))
+            }
+          }
+          else if (type === 'done')
+          {
+            // 从 done 事件获取结构化审核结果
+            const result = data as unknown as ReviewResponse
+            setReviewResult(result)
+            onReviewComplete?.(result)
 
-      if (result.passed)
-      {
-        toast.success('审核通过')
-      }
-      else
-      {
-        toast.warning('审核未通过，请根据建议修改')
-      }
-    }
-    catch (err)
-    {
-      console.error('Failed to review:', err)
-      toast.error('审核失败')
+            if (result.passed)
+            {
+              toast.success('审核通过')
+            }
+            else
+            {
+              toast.warning('审核未通过，请根据建议修改')
+            }
+          }
+          else if (type === 'error')
+          {
+            const errorData = data as { error?: string } | string
+            const errorMsg = typeof errorData === 'object' && errorData !== null
+              ? (errorData.error || JSON.stringify(errorData))
+              : String(errorData)
+            console.error('Review error:', errorMsg)
+            toast.error(`审核失败: ${errorMsg}`)
+          }
+        },
+        (error) =>
+        {
+          console.error('Failed to review:', error)
+          toast.error('审核失败')
+        }
+      )
     }
     finally
     {
       setReviewing(false)
+      abortControllerRef.current = null
+    }
+  }
+
+  const handleCancelReview = () =>
+  {
+    if (abortControllerRef.current)
+    {
+      abortControllerRef.current.abort()
+      setReviewing(false)
+      abortControllerRef.current = null
+      toast.info('已取消审核')
     }
   }
 
@@ -86,7 +142,7 @@ export function AIAssistantPanel({ projectId, chapterNumber, chapterContent, onR
             {/* 反馈 */}
             <div className="p-3 bg-muted rounded-md">
               <span className="text-xs font-medium">反馈意见</span>
-              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+              <p className="text-xs text-muted-foreground mt-1 leading-relaxed whitespace-pre-wrap">
                 {reviewResult.feedback}
               </p>
             </div>
@@ -106,13 +162,39 @@ export function AIAssistantPanel({ projectId, chapterNumber, chapterContent, onR
 
             {/* 重新审核 */}
             <Button
-              onClick={() => { setReviewResult(null) }}
+              onClick={() => { setReviewResult(null); setReviewText('') }}
               variant="outline"
               size="sm"
               className="w-full text-xs"
             >
               <RefreshCw className="h-3 w-3 mr-1" />
               重新审核
+            </Button>
+          </div>
+        ) : reviewing ? (
+          <div className="space-y-3">
+            {/* 流式审核文本预览 */}
+            {reviewText && (
+              <div className="p-3 bg-muted rounded-md max-h-[calc(100vh-280px)] overflow-auto">
+                <span className="text-xs font-medium">审核中...</span>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed whitespace-pre-wrap">
+                  {reviewText}
+                </p>
+              </div>
+            )}
+            {!reviewText && (
+              <div className="p-4 bg-muted rounded-md text-center">
+                <RefreshCw className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2 animate-spin" />
+                <div className="text-xs text-muted-foreground">正在审核中...</div>
+              </div>
+            )}
+            <Button
+              onClick={handleCancelReview}
+              variant="destructive"
+              size="sm"
+              className="w-full text-xs"
+            >
+              取消审核
             </Button>
           </div>
         ) : (
@@ -130,21 +212,12 @@ export function AIAssistantPanel({ projectId, chapterNumber, chapterContent, onR
             {/* 审核按钮 */}
             <Button
               onClick={handleReview}
-              disabled={reviewing || !chapterContent || !chapterNumber}
+              disabled={!chapterContent || !chapterNumber}
               size="sm"
               className="w-full text-xs"
             >
-              {reviewing ? (
-                <>
-                  <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-                  审核中...
-                </>
-              ) : (
-                <>
-                  <ShieldCheck className="h-3 w-3 mr-1" />
-                  开始审核
-                </>
-              )}
+              <ShieldCheck className="h-3 w-3 mr-1" />
+              开始审核
             </Button>
           </div>
         )}

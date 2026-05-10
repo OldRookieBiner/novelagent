@@ -58,8 +58,14 @@ class ChapterResponse(BaseModel):
         from_attributes = True
 
 
+class ChapterGenerateRequest(BaseModel):
+    """章节正文生成请求"""
+    llm_config_id: Optional[int] = None
+
+
 class ReviewRequest(BaseModel):
     strictness: Optional[str] = "standard"  # loose, standard, strict
+    llm_config_id: Optional[int] = None
 
 
 class ReviewResponse(BaseModel):

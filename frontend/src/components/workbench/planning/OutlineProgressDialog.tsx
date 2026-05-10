@@ -127,6 +127,14 @@ export function OutlineProgressDialog({
           {
             // 大纲流式输出中的文本块，进度条不需要处理
           },
+          onWaiting: () =>
+          {
+            // 收到 waiting 事件（规划阶段暂停等待确认），视为规划完成
+            abortRef.current = null
+            setSteps(prev => prev.map(s => ({ ...s, status: 'done' })))
+            setCompleted(true)
+            onComplete()
+          },
           onDone: () =>
           {
             abortRef.current = null

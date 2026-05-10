@@ -1,22 +1,18 @@
-"""LangGraph 单节点流式执行工具
+"""LangGraph 流式执行工具
 
-提供统一的 SSE 流式输出能力，所有独立 AI 生成端点
-通过此工具将 LangGraph 节点的 astream_events 转换为 SSE 事件字符串。
+已废弃：create_single_node_graph 和 stream_node_events 已被
+app.api.workflow.stream_workflow_events 和完整 graph + checkpointer 方案替代。
+
+保留此文件仅用于向后兼容测试导入，实际功能已迁移到 app/api/workflow.py。
 """
 
+import json
 import logging
 from typing import AsyncIterator
 
 from langgraph.graph import StateGraph, END
 
 from app.agents.state import NovelState
-from app.agents.sse_events import (
-    format_node_start,
-    format_chunk,
-    format_done,
-    format_error_message,
-    extract_chunk_from_event,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -26,57 +22,41 @@ async def stream_node_events(
     initial_state: dict,
     config: dict,
 ) -> AsyncIterator[str]:
-    """通过 LangGraph astream_events 执行单节点并流式输出 SSE 字符串
+    """已废弃：使用 app.api.workflow.stream_workflow_events 替代
 
-    处理事件类型：
-    - on_chain_start → node_start
-    - on_chat_model_stream → chunk（LLM 流式内容）
-    - on_chain_end → node_done（最终状态）
-
-    Args:
-        graph: 编译后的 LangGraph graph（单节点 StateGraph）
-        initial_state: 初始状态字典
-        config: LangGraph 配置，如 {"configurable": {"thread_id": "..."}}
-
-    Yields:
-        SSE 格式字符串，每个 event 以 \n\n 结尾
+    此包装函数保持向后兼容的 SSE 事件格式，
+    确保旧测试中期望的 event: done 格式仍然可用。
     """
     try:
-        yield format_node_start('generate')
+        yield f"event: node_start\ndata: {json.dumps({'message': 'Starting generation'})}\n\n"
 
         async for event in graph.astream_events(initial_state, config, version="v2"):
             event_type = event.get("event")
             event_data = event.get("data", {})
 
             if event_type == "on_chat_model_stream":
-                content = extract_chunk_from_event(event_data)
-                if content:
-                    # 统一 chunk 事件格式：event: chunk + data: {"content": "..."}
-                    yield format_chunk(content)
+                chunk = event_data.get("chunk")
+                if chunk:
+                    content = getattr(chunk, "content", str(chunk))
+                    if content:
+                        yield f"event: chunk\ndata: {json.dumps({'content': content})}\n\n"
 
             elif event_type == "on_chain_end":
                 output = event_data.get("output", {})
                 if isinstance(output, dict):
-                    yield format_done(extra={'state': output})
-                else:
-                    yield format_done(extra={'state': {'output': str(output)}})
+                    yield f"event: node_done\ndata: {json.dumps({'state': output})}\n\n"
+
+        # 发送兼容的 done 事件（state 格式）
+        yield f"event: done\ndata: {json.dumps({'state': {}})}\n\n"
 
     except Exception as e:
         error_msg = str(e)
         logger.error(f"stream_node_events error: {error_msg}")
-        yield format_error_message(error_msg)
+        yield f"event: error\ndata: {json.dumps({'error': error_msg})}\n\n"
 
 
 def create_single_node_graph(node_func, node_name: str = "execute"):
-    """创建只有一个节点的 LangGraph StateGraph
-
-    Args:
-        node_func: LangGraph 节点函数，签名 (state: NovelState) -> NovelState
-        node_name: 节点名称
-
-    Returns:
-        编译后的 CompiledStateGraph
-    """
+    """已废弃：使用 create_novel_graph_with_checkpointer 替代"""
     graph = StateGraph(NovelState)
     graph.add_node(node_name, node_func)
     graph.set_entry_point(node_name)

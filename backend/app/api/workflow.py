@@ -1,11 +1,14 @@
 """Workflow API routes for LangGraph integration"""
 
+import json
 import logging
-from typing import Optional
+from typing import Optional, AsyncIterator
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.models.user import User
@@ -17,25 +20,79 @@ from app.utils.auth import get_current_user
 from app.utils.project import get_project_for_user
 from app.utils.error import format_sse_error
 from app.utils.deps import get_user_settings_or_raise
-from app.utils.workflow_persistence import (
-    NODE_PERSIST_MAP,
-    persist_character_generation,
-    persist_relation_generation,
-)
 from app.agents.graph import create_novel_graph_with_checkpointer
 from app.agents.state import NovelState
-from app.agents.sse_events import (
-    format_node_start,
-    format_node_done,
-    format_chunk,
-    format_done,
-    extract_chunk_from_event,
-)
 
 router = APIRouter()
 
-# 模块日志
-logger = logging.getLogger(__name__)
+
+async def stream_workflow_events(
+    graph,
+    config: dict,
+    initial_state: dict = None,
+) -> AsyncIterator[str]:
+    """共享的 LangGraph 工作流 SSE 事件流生成器
+
+    将 LangGraph astream_events 事件转换为 SSE 字符串。
+
+    - 如果 initial_state 不为 None，视为首次执行，先发送 workflow start 事件
+    - 如果 initial_state 为 None，视为恢复执行，先发送 workflow_resume 事件
+
+    处理的事件类型：
+    - on_chain_start → node_start
+    - on_chat_model_stream → chunk（LLM 流式内容）
+    - on_chain_end → node_done（或 waiting 如果等待确认）
+
+    Args:
+        graph: 编译后的 LangGraph graph
+        config: LangGraph 配置字典
+        initial_state: 初始状态（首次执行时传入，恢复执行时传 None）
+
+    Yields:
+        SSE 格式字符串，以 \\n\\n 结尾
+    """
+    try:
+        # 首次执行 vs 恢复执行
+        if initial_state is not None:
+            yield f"event: node_start\ndata: {json.dumps({'node': 'workflow', 'message': 'Starting workflow'})}\n\n"
+        else:
+            yield f"event: node_start\ndata: {json.dumps({'node': 'workflow_resume', 'message': 'Resuming workflow'})}\n\n"
+
+        async for event in graph.astream_events(initial_state, config, version="v2"):
+            event_type = event.get("event")
+            event_name = event.get("name", "")
+            event_data = event.get("data", {})
+
+            if event_type == "on_chain_start":
+                yield f"event: node_start\ndata: {json.dumps({'node': event_name})}\n\n"
+
+            elif event_type == "on_chain_end":
+                output = event_data.get("output", {})
+                # 处理 output 不是字典的情况（如 END 字符串）
+                if isinstance(output, dict):
+                    if output.get("waiting_for_confirmation"):
+                        yield f"event: waiting\ndata: {json.dumps({'node': event_name, 'confirmation_type': output.get('confirmation_type')})}\n\n"
+                        # 工作流暂停，同时发送 done 事件通知前端当前阶段完成
+                        yield f"event: done\ndata: {json.dumps({'message': 'Workflow paused for confirmation'})}\n\n"
+                        return
+                    else:
+                        yield f"event: node_done\ndata: {json.dumps({'node': event_name, 'state': output})}\n\n"
+                else:
+                    # output 不是字典（如 END 字符串），说明工作流已完成
+                    # 跳过 node_done，直接等待最终的 done 事件
+                    pass
+
+            elif event_type == "on_chat_model_stream":
+                chunk = event_data.get("chunk")
+                if chunk:
+                    content = getattr(chunk, "content", str(chunk))
+                    if content:
+                        yield f"event: chunk\ndata: {json.dumps({'content': content})}\n\n"
+
+        yield f"event: done\ndata: {json.dumps({'message': 'Workflow completed'})}\n\n"
+
+    except Exception as e:
+        yield format_sse_error(e)
 
 
 # ========== Request/Response Schemas ==========
@@ -43,7 +100,6 @@ logger = logging.getLogger(__name__)
 class WorkflowRunRequest(BaseModel):
     """工作流运行请求"""
     llm_config_id: Optional[int] = None  # 指定模型配置 ID
-    llm_model_name: Optional[str] = None  # 指定模型名称
 
 
 class WorkflowConfirmRequest(BaseModel):
@@ -71,17 +127,20 @@ def build_initial_state(
     outline: Outline,
     workflow_state: WorkflowState,
     llm_config_id: Optional[int] = None,
-    llm_model_name: Optional[str] = None
+    db: Optional["Session"] = None
 ) -> NovelState:
     """
     从项目、大纲和工作流状态构建初始 NovelState。
+
+    当传入 db 参数时，会从数据库预加载已持久化的角色和关系（带 id），
+    覆盖检查点中可能存在的旧数据，确保节点始终使用最新的 DB 数据。
 
     Args:
         project: 项目实例
         outline: 大纲实例
         workflow_state: 工作流状态实例
         llm_config_id: 模型配置 ID
-        llm_model_name: 模型名称
+        db: 可选的数据库会话，用于预加载角色/关系数据
 
     Returns:
         NovelState 字典
@@ -133,9 +192,6 @@ def build_initial_state(
         "outline_emotional_curve": outline.emotional_curve,
         "outline_confirmed": outline.confirmed,
 
-        # 大纲有效性：有标题或概述即有效，避免路由到 end 导致工作流提前终止
-        "outline_valid": bool(outline.title or outline.summary),
-
         # 章节大纲
         "chapter_count": outline.chapter_count_suggested or 0,
         "chapter_outlines": chapter_outlines,
@@ -157,13 +213,58 @@ def build_initial_state(
 
         # LLM 服务
         "llm_config_id": llm_config_id,
-        "llm_model_name": llm_model_name,  # 用户选择的模型名
+
+        # 预加载：角色和关系（从 DB 获取最新数据）
+        "characters": [],
+        "relations": [],
+        "evolution_plans": [],
+        "evolution_records": [],
     }
+
+    # 从数据库预加载已持久化的角色（带 id）
+    if db is not None:
+        from app.models.character import Character, Relation
+
+        db_characters = db.query(Character).filter(
+            Character.project_id == project.id
+        ).order_by(Character.id).all()
+
+        if db_characters:
+            state["characters"] = [
+                {
+                    "id": c.id,
+                    "name": c.name,
+                    "role": c.role,
+                    "personality": c.personality or "",
+                    "core_motivation": c.core_motivation or "",
+                    "growth_arc": c.growth_arc or "",
+                }
+                for c in db_characters
+            ]
+
+        # 预加载关系
+        db_relations = db.query(Relation).filter(
+            Relation.project_id == project.id
+        ).all()
+
+        if db_relations:
+            state["relations"] = [
+                {
+                    "id": r.id,
+                    "character_a_id": r.character_a_id,
+                    "character_b_id": r.character_b_id,
+                    "relation_type": r.relation_type,
+                    "trust_level": r.trust_level,
+                    "current_status": r.current_status or "",
+                    "direction": r.direction or "双向",
+                }
+                for r in db_relations
+            ]
 
     return state
 
 
-def get_latest_checkpoint(project_id: int, thread_id: str = "main", db: Session = None) -> Optional[dict]:
+def get_latest_checkpoint(project_id: int, thread_id: str = "default", db: Session = None) -> Optional[dict]:
     """
     获取项目的最新检查点状态。
 
@@ -188,7 +289,7 @@ def get_latest_checkpoint(project_id: int, thread_id: str = "main", db: Session 
     return None
 
 
-def delete_project_checkpoints(project_id: int, thread_id: str = "main", db: Session = None) -> int:
+def delete_project_checkpoints(project_id: int, thread_id: str = "default", db: Session = None) -> int:
     """
     删除项目的所有检查点。
 
@@ -260,90 +361,35 @@ async def run_workflow(
         db.commit()
         db.refresh(workflow_state)
 
-    # 获取 LLM 配置 ID 和模型名
+    # 获取 LLM 配置 ID
     llm_config_id = None
-    llm_model_name = None
     if request:
         llm_config_id = request.llm_config_id
-        llm_model_name = request.llm_model_name
 
-    # 构建初始状态
-    initial_state = build_initial_state(project, outline, workflow_state, llm_config_id, llm_model_name)
+    # 构建初始状态（预加载 DB 数据）
+    initial_state = build_initial_state(project, outline, workflow_state, llm_config_id, db=db)
 
-    # 使用固定 thread_id，确保 confirm/cancel/state 等操作能找到同一检查点
-    thread_id = "main"
+    # 预加载 prompts 到 state（使所有节点都能访问）
+    from app.services.prompt_loader import get_system_prompt
+    initial_state["_prompts"] = {
+        "outline_generation": get_system_prompt(db, "outline_generation"),
+        "character_generation": get_system_prompt(db, "character_generation"),
+        "relation_generation": get_system_prompt(db, "relation_generation"),
+    }
 
-    graph = create_novel_graph_with_checkpointer(project_id, thread_id)
+    # 创建带检查点的图（复用 db 会话）
+    graph = create_novel_graph_with_checkpointer(project_id, "default")
 
-    # 配置
+    # 配置（仅包含 thread_id，prompts 已放入 state）
     config = {
         "configurable": {
-            "thread_id": thread_id
+            "thread_id": "default",
         }
     }
 
-    # 创建 SSE 流生成器
-    async def stream_generator():
-        """LangGraph 工作流 SSE 流生成器"""
-        try:
-            # 发送开始事件
-            yield format_node_start('workflow', 'Starting workflow')
-
-            # 使用 astream_events 进行流式传输
-            async for event in graph.astream_events(initial_state, config, version="v2"):
-                event_type = event.get("event")
-                event_name = event.get("name", "")
-                event_data = event.get("data", {})
-
-                # 根据事件类型处理
-                if event_type == "on_chain_start":
-                    # 节点开始执行
-                    yield format_node_start(event_name)
-
-                elif event_type == "on_chain_end":
-                    # 节点执行完成
-                    node_name = event_name
-                    output = event_data.get("output", {})
-
-                    if isinstance(output, dict):
-                        yield format_node_done(node_name, output)
-
-                    # 统一的持久化分发
-                    if node_name in NODE_PERSIST_MAP:
-                        persist_fn = NODE_PERSIST_MAP[node_name]
-                        if node_name == "outline_generation_node":
-                            if not output.get("outline_title") and not output.get("outline_summary") and not output.get("outline_characters") and not output.get("outline_plot_points"):
-                                yield format_sse_error(ValueError("大纲生成失败，AI 返回数据为空，请重试"))
-                                return
-                            else:
-                                persist_fn(output, project_id, outline, db)
-                        else:
-                            persist_fn(output, project_id, db)
-                        db.commit()
-
-                    # 关系生成节点完成后，自动确认大纲并停止（规划阶段完成）
-                    if node_name == "generate_relations_node":
-                        # 自动确认大纲，允许用户后续生成章节大纲
-                        outline.confirmed = True
-                        outline.chapter_count_confirmed = True
-                        db.commit()
-                        logger.info(f"workflow: auto-confirmed outline for project {project_id}")
-                        # 规划阶段已完成，发送 done 事件并终止流
-                        yield format_done('Generation completed')
-                        return
-
-                elif event_type == "on_chat_model_stream":
-                    # LLM 流式输出
-                    content = extract_chunk_from_event(event_data)
-                    if content:
-                        yield format_chunk(content)
-
-            # 工作流完成
-            yield format_done('Workflow completed')
-
-        except Exception as e:
-            # 发送错误事件（已清理敏感信息）
-            yield format_sse_error(e)
+    # 创建 SSE 流生成器（使用共享函数）
+    def stream_generator():
+        return stream_workflow_events(graph, config, initial_state)
 
     return StreamingResponse(
         stream_generator(),
@@ -373,7 +419,7 @@ async def confirm_workflow(
     project = get_project_for_user(project_id, current_user.id, db)
 
     # 获取最新检查点
-    checkpoint_state = get_latest_checkpoint(project_id, "main", db)
+    checkpoint_state = get_latest_checkpoint(project_id, "default", db)
 
     if not checkpoint_state:
         raise HTTPException(
@@ -412,7 +458,7 @@ async def confirm_workflow(
     # 更新数据库中的检查点（使用传入的 db 会话）
     record = db.query(WorkflowCheckpoint).filter(
         WorkflowCheckpoint.project_id == project_id,
-        WorkflowCheckpoint.thread_id == "main"
+        WorkflowCheckpoint.thread_id == "default"
     ).order_by(WorkflowCheckpoint.updated_at.desc()).first()
 
     if record:
@@ -427,62 +473,57 @@ async def confirm_workflow(
             outline.title = checkpoint_state.get("outline_title", outline.title)
             outline.summary = checkpoint_state.get("outline_summary", outline.summary)
             outline.confirmed = True
-            logger.info(f"confirm_workflow: setting outline.confirmed=True for project {project_id}")
+
+    # 同步更新角色（characters）
+    if confirmation_type == "characters":
+        from app.models.character import Character
+
+        characters_data = checkpoint_state.get("characters", [])
+        if characters_data:
+            # 删除旧角色，创建新角色
+            db.query(Character).filter(Character.project_id == project_id).delete()
+            for char_data in characters_data:
+                char = Character(
+                    project_id=project_id,
+                    name=char_data.get("name", "未命名"),
+                    role=char_data.get("role", "配角"),
+                    personality=char_data.get("personality", ""),
+                    core_motivation=char_data.get("core_motivation", ""),
+                    growth_arc=char_data.get("growth_arc", ""),
+                )
+                db.add(char)
+            logger.info(f"Persisted {len(characters_data)} characters to DB for project {project_id}")
+
+    # 同步更新关系（relations）
+    if confirmation_type == "relations":
+        from app.models.character import Relation
+
+        relations_data = checkpoint_state.get("relations", [])
+        if relations_data:
+            # 删除旧关系，创建新关系
+            db.query(Relation).filter(Relation.project_id == project_id).delete()
+            for rel_data in relations_data:
+                rel = Relation(
+                    project_id=project_id,
+                    character_a_id=rel_data.get("character_a_id"),
+                    character_b_id=rel_data.get("character_b_id"),
+                    relation_type=rel_data.get("relation_type", "陌生"),
+                    trust_level=rel_data.get("trust_level", 50),
+                    current_status=rel_data.get("current_status", ""),
+                    direction=rel_data.get("direction", "双向"),
+                )
+                db.add(rel)
+            logger.info(f"Persisted {len(relations_data)} relations to DB for project {project_id}")
 
     # 提交所有数据库更改
     db.commit()
 
     # 通过 LangGraph 恢复执行
-    graph = create_novel_graph_with_checkpointer(project_id, "main", db)
-    config = {"configurable": {"thread_id": "main"}}
-
-    # 获取大纲对象（用于持久化）
-    outline = db.query(Outline).filter(Outline.project_id == project_id).first()
+    graph = create_novel_graph_with_checkpointer(project_id, "default")
+    config = {"configurable": {"thread_id": "default"}}
 
     async def stream_generator():
-        """LangGraph 工作流恢复执行 SSE 流生成器"""
-        try:
-            yield format_node_start('workflow_resume', 'Resuming workflow')
-
-            async for event in graph.astream_events(None, config, version="v2"):
-                event_type = event.get("event")
-                event_name = event.get("name", "")
-                event_data = event.get("data", {})
-
-                if event_type == "on_chain_start":
-                    yield format_node_start(event_name)
-
-                elif event_type == "on_chain_end":
-                    node_name = event_name
-                    output = event_data.get("output", {})
-                    if isinstance(output, dict):
-                        yield format_node_done(node_name, output)
-
-                    # 统一的持久化分发（与 run_workflow 相同）
-                    if node_name in NODE_PERSIST_MAP:
-                        persist_fn = NODE_PERSIST_MAP[node_name]
-                        if node_name == "outline_generation_node":
-                            # 空数据检查：没有大纲对象或输出为空时都不持久化
-                            if not outline:
-                                yield format_sse_error(ValueError("大纲生成失败，未找到大纲记录，请重试"))
-                                return
-                            if not output.get("outline_title") and not output.get("outline_summary") and not output.get("outline_characters") and not output.get("outline_plot_points"):
-                                yield format_sse_error(ValueError("大纲生成失败，AI 返回数据为空，请重试"))
-                                return
-                            persist_fn(output, project_id, outline, db)
-                        else:
-                            persist_fn(output, project_id, db)
-                        db.commit()
-
-                elif event_type == "on_chat_model_stream":
-                    content = extract_chunk_from_event(event_data)
-                    if content:
-                        yield format_chunk(content)
-
-            yield format_done('Workflow completed')
-
-        except Exception as e:
-            yield format_sse_error(e)
+        return stream_workflow_events(graph, config, None)
 
     return StreamingResponse(
         stream_generator(),
@@ -514,7 +555,7 @@ async def get_workflow_state(
     project = get_project_for_user(project_id, current_user.id, db)
 
     # 获取最新检查点
-    checkpoint_state = get_latest_checkpoint(project_id, "main", db)
+    checkpoint_state = get_latest_checkpoint(project_id, "default", db)
 
     if checkpoint_state:
         return WorkflowStateResponse(
@@ -568,42 +609,12 @@ async def cancel_workflow(
     project = get_project_for_user(project_id, current_user.id, db)
 
     # 删除检查点
-    deleted_count = delete_project_checkpoints(project_id, "main", db)
+    deleted_count = delete_project_checkpoints(project_id, "default", db)
 
     return {
         "message": "Workflow cancelled",
         "deleted_checkpoints": deleted_count
     }
-
-
-@router.post("/{project_id}/workflow/cleanup")
-async def cleanup_workflow_checkpoints(
-    project_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    清除工作流检查点，用于重试前清理状态。
-    """
-    project = get_project_for_user(project_id, current_user.id, db)
-
-    deleted = db.query(WorkflowCheckpoint).filter(
-        WorkflowCheckpoint.project_id == project_id
-    ).delete()
-
-    workflow_state = db.query(WorkflowState).filter(
-        WorkflowState.project_id == project_id
-    ).first()
-    if workflow_state:
-        workflow_state.stage = "inspiration"
-        workflow_state.waiting_for_confirmation = False
-        workflow_state.confirmation_type = None
-
-    db.commit()
-
-    logger.info(f"Cleaned up {deleted} checkpoints for project {project_id}")
-
-    return {"message": "Checkpoints cleaned up", "deleted": deleted}
 
 
 class UpdateStageRequest(BaseModel):
