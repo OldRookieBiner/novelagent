@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.8.4 - 2026-05-10
+
+### 重构
+
+- **设置页面全面重构** - 采用全屏布局 + 侧边栏导航，统一设计风格
+  - 侧边栏可折叠，显示"智能体"、"模型配置"、"提示词"标签页
+  - ModelConfigDialog 支持 fetchModels 获取所有提供商的模型列表
+  - ModelConfigItem 显示单类型模型的标签（如 o1、o3-mini）
+  - 模型配置响应为空时回退到 model_name 字段
+  - ProviderInfo 类型新增 models_api 字段
+  - AGENT_TABS 完成所有标签页配置
+
 ## v0.8.3 - 2026-05-10
 
 ### 修复
