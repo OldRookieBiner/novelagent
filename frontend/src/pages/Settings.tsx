@@ -114,7 +114,7 @@ export default function Settings()
       {/* 主内容区 */}
       <div className="flex flex-1 overflow-hidden">
         {/* 左侧导航栏 */}
-        <nav className="w-[220px] border-r bg-white shrink-0">
+        <nav className="w-[200px] border-r bg-white shrink-0" role="tablist">
           {SETTINGS_NAV.map((group) => (
             <div key={group.group}>
               <div className="px-4 pt-4 pb-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
@@ -126,6 +126,8 @@ export default function Settings()
                 return (
                   <button
                     key={item.id}
+                    role="tab"
+                    aria-selected={activeTab === item.id}
                     onClick={() => setActiveTab(item.id)}
                     className={cn(
                       'w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors',

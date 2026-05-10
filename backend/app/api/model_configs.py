@@ -192,12 +192,15 @@ async def test_model_connection(
     if not request.api_key:
         return HealthCheckResponse(status="unhealthy", error="请输入 API Key")
 
-    # Coding Plan 类型需要选择具体模型测试
+    # 确定 model_to_test
     model_to_test = request.model_name
-    if request.provider_type == "coding_plan" and not model_to_test:
-        return HealthCheckResponse(
-            status="unhealthy", error="Coding Plan 类型需要选择具体模型"
-        )
+    # 如果未指定 model_name，从 models 列表中取第一个启用的模型
+    if not model_to_test and request.models:
+        enabled_models = [m for m in request.models if m.is_enabled]
+        if enabled_models:
+            model_to_test = enabled_models[0].id
+    if not model_to_test:
+        return HealthCheckResponse(status="unhealthy", error="请选择至少一个模型")
 
     try:
         llm = LLMService(
@@ -336,8 +339,8 @@ async def check_model_health(
 
     # 确定 model_name
     model_name = config.model_name
-    if config.provider_type == "coding_plan" and config.models:
-        # 从 models 列表选择第一个启用的模型
+    if config.models:
+        # 从 models 列表选择第一个启用的模型（支持所有 provider_type）
         enabled_models = [m for m in config.models if m.get("is_enabled", True)]
         if enabled_models:
             model_name = enabled_models[0].get("id")

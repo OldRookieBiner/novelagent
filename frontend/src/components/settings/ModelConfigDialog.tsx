@@ -361,7 +361,7 @@ export default function ModelConfigDialog({
             </div>
           )}
 
-          {/* Coding Plan 配置：获取模型列表 */}
+          {/* 模型列表配置：支持所有有 models_api 的提供商 */}
           {hasModelsApi && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">

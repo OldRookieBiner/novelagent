@@ -29,7 +29,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **NovelAgent** - AI 小说创作 Agent 系统。
 
-**当前版本：v0.8.0** - 全新工作台页面、人物设定与关系图谱、LangGraph 工作流全面升级
+**当前版本：v0.8.3** - 审核SSE流式改造、章节生成修复、后端架构优化
 
 ### 快速开始
 
@@ -83,11 +83,13 @@ docker compose build --no-cache backend && docker compose up -d backend
 # 后端测试
 docker exec novelagent-backend-1 pytest -v
 docker exec novelagent-backend-1 pytest tests/test_workflow.py -v  # 单个测试文件
+docker exec novelagent-backend-1 pytest tests/ -k "test_build_initial" -v  # 按名称匹配
 
 # 前端测试
-cd frontend && npm run test
-cd frontend && npm run test -- src/stores/workbenchStore.test.ts  # 单个测试文件
-cd frontend && npm run test -- --coverage
+cd frontend && npm run test:run                                       # 单次运行
+cd frontend && npm run test:run -- src/stores/workbenchStore.test.ts  # 单个测试文件
+cd frontend && npm run test:coverage                                  # 覆盖率
+cd frontend && npm run test                                           # Watch 模式（开发时用）
 
 # 数据库迁移
 docker exec novelagent-backend-1 alembic upgrade head    # 应用迁移
@@ -100,15 +102,17 @@ docker exec novelagent-backend-1 alembic revision -m "description"  # 创建新�
 novelagent/
 ├── backend/app/
 │   ├── api/            # API 路由 (auth, projects, outline, chapters, characters, settings, model_configs, system_prompts, workflow)
-│   ├── agents/         # LangGraph Agents (state, graph, nodes/, checkpointer, streaming)
-│   ├── models/         # SQLAlchemy 模型 (user, project, outline, chapter, character, model_config, checkpoint, settings)
-│   ├── schemas/        # Pydantic schemas
-│   └── services/       # LLM 服务、加密服务
+│   ├── agents/         # LangGraph Agents (state, graph, nodes/, checkpointer, streaming, sse_events, prompts)
+│   ├── models/         # SQLAlchemy 模型 (user, project, outline, chapter, character, model_config, checkpoint, settings, system_config, workflow_state)
+│   ├── schemas/        # Pydantic schemas (user, project, outline, chapter, character, model_config, settings, system_prompt)
+│   ├── services/       # 业务服务 (llm, crypto, chapter_service, outline_service, model_providers, prompt_loader, workflow_orchestrator)
+│   └── utils/          # 工具函数 (auth, deps, error, logger, project, workflow, llm, workflow_persistence)
 ├── frontend/src/
-│   ├── components/     # UI 组件 (ui/, project/, settings/, common/, layout/, workbench/, character/)
-│   ├── pages/          # 页面
-│   ├── lib/            # API 客户端 (api, workflowApi, sseParser, characterApi, inspiration)
-│   └── stores/         # Zustand 状态 (workbenchStore, settingsStore, authStore, projectStore)
+│   ├── components/     # UI 组件 (ui/, settings/, common/, layout/, workbench/, character/)
+│   │   └── workbench/  #   creation/ (大纲/章节/写作/AI面板), planning/ (灵感/人物/关系面板)
+│   ├── pages/          # 页面 (Home, Login, Settings, ProjectWorkbench)
+│   ├── lib/            # API 客户端与工具 (api, workflowApi, sseParser, characterApi, inspiration, utils)
+│   └── stores/         # Zustand 状态 (workbenchStore, settingsStore, authStore, projectStore, workflowStore)
 └── docker-compose.yml
 ```
 
@@ -117,11 +121,17 @@ novelagent/
 | 文件 | 说明 |
 |------|------|
 | `backend/app/main.py` | 后端入口，FastAPI 应用配置 |
-| `backend/app/agents/graph.py` | LangGraph 工作流定义 |
-| `backend/app/agents/state.py` | 工作流状态定义 |
+| `backend/app/agents/graph.py` | LangGraph 工作流定义、条件路由 |
+| `backend/app/agents/state.py` | NovelState 状态定义、阶段常量 |
+| `backend/app/agents/streaming.py` | LangGraph SSE 流式执行（已废弃，保留兼容） |
+| `backend/app/agents/sse_events.py` | SSE 事件格式化工具（集中管理所有事件字符串） |
+| `backend/app/api/workflow.py` | 工作流 API 路由、stream_workflow_events 核心流函数、build_initial_state |
+| `backend/app/services/workflow_orchestrator.py` | 单节点 SSE 编排器（persist + 事务回滚） |
 | `frontend/src/main.tsx` | 前端入口 |
 | `frontend/src/App.tsx` | 路由配置 |
 | `frontend/src/lib/api.ts` | API 客户端定义 |
+| `frontend/src/lib/workflowApi.ts` | 工作流 SSE 流式 API |
+| `frontend/src/lib/sseParser.ts` | SSE 事件解析器 |
 
 ### 技术栈
 
@@ -135,12 +145,10 @@ novelagent/
 ### 页面结构
 
 ```
-/                   → 首页（项目列表）
-/project/:id        → 项目详情
-/project/:id/write  → 写作页面（旧）
-/project/:id/workbench → 工作台页面（新，Tab 布局）
-/project/:id/read/:chapterId → 阅读/审核
-/settings           → 设置
+/                       → 首页（项目列表，独立全屏布局）
+/project/:id/workbench → 工作台页面（全屏布局，Tab 布局）
+/project/:id            → 重定向到 workbench
+/settings               → 设置
 ```
 
 ---
@@ -159,24 +167,25 @@ novelagent/
 
 | 节点 | 文件 | 说明 |
 |------|------|------|
-| 大纲生成 | `nodes/outline_generation.py` | 生成小说大纲 |
+| 大纲生成 | `nodes/outline_generation.py` | 生成小说大纲，设置 `outline_valid` 标志 |
 | 角色提取 | `nodes/character_generation.py` | 从大纲自动生成人物设定 |
 | 关系图谱 | `nodes/relation_generation.py` | 生成人物关系 |
-| 章节大纲 | `nodes/chapter_generation.py` | 生成章节大纲和内容 |
+| 章节大纲 | `nodes/chapter_generation.py` | 生成章节大纲（含 `_calc_max_tokens` 动态 token 计算） |
+| 章节 正文 | `nodes/chapter_generation.py` | 流式生成章节正文（`generate_chapter_content_stream`） |
 | 审核 | `nodes/review.py` | AI 审核章节内容 |
 | 重写 | `nodes/rewrite.py` | 根据审核意见重写 |
-| 等待确认 | `nodes/wait_confirm.py` | 暂停等待用户确认 |
+| 工具 | `nodes/utils.py` | 节点共享工具函数 |
 
 ### 前端工作流状态管理
 
 ```typescript
-// workbenchStore - Zustand store
+// workbenchStore - Zustand store（工作台核心状态）
 import { useWorkbenchStore } from '@/stores/workbenchStore'
 
 // 主要状态
 stage: WorkflowStage              // 当前阶段
 waitingForConfirmation: boolean   // 是否等待确认
-confirmationType: ConfirmationType // 确认类型
+confirmationType: ConfirmationType // 确认类型：outline | characters | relations | chapter_outlines | review_failed
 writtenChapters: WrittenChapter[] // 已写章节
 
 // workflowApi - SSE 流式 API
@@ -188,15 +197,16 @@ await workflowApi.runWorkflow(projectId, {
 
 ### SSE 事件类型
 
-| 事件 | 说明 |
-|------|------|
-| `node_start` | 节点开始 |
-| `node_done` | 节点完成 |
-| `chunk` | 文本块 |
-| `checkpoint` | 检查点保存 |
-| `waiting` | 等待确认 |
-| `done` | 工作流完成 |
-| `error` | 错误 |
+| 事件 | 说明 | 来源 |
+|------|------|------|
+| `node_start` | 节点开始 | workflow.py |
+| `node_done` | 节点完成 | workflow.py |
+| `chunk` | LLM 流式文本块 | workflow.py, chapters.py |
+| `progress` | 章节大纲生成进度（含完整字段数据） | chapters.py |
+| `checkpoint` | 检查点保存 | — |
+| `waiting` | 等待确认（含 confirmation_type） | workflow.py |
+| `done` | 工作流/操作完成 | workflow.py, chapters.py |
+| `error` | 错误 | 所有 SSE 端点 |
 
 ### SSE 解析工具
 
@@ -220,8 +230,10 @@ const data = parseSSEData(event.data)          // 解析 data 字段
 |------|------|
 | 工作流节点 | 所有 AI 生成流程必须作为 LangGraph 节点实现 |
 | 状态管理 | 使用 NovelState (app/agents/state.py) 管理工作流状态 |
+| 阶段常量 | `STAGE_INSPIRATION → STAGE_OUTLINE → STAGE_CHARACTERS → STAGE_RELATIONS → STAGE_CHAPTER_OUTLINES → STAGE_WRITING → STAGE_REVIEW → STAGE_COMPLETE` |
 | 检查点 | 使用 WorkflowCheckpoint 实现暂停/恢复功能 |
 | 流式传输 | 通过 LangGraph astream_events 实现 SSE 流式输出 |
+| Prompt 预加载 | `run_workflow` 将 `_prompts` 预加载到 state，节点从 `state["_prompts"]` 获取 |
 
 **禁止行为：**
 - ❌ 直接在 API 路由中调用 LLM 服务（应通过 LangGraph 节点）
@@ -373,6 +385,8 @@ await outlineApi.createStream(projectId, callbacks, { signal: controller.signal 
 controller.abort()
 ```
 
+`createSSEStream` 收到 `done` 事件后立即退出循环，避免后续网络断开误报 error。
+
 #### TipTap 纯文本内容转换
 
 `setContent()` 不会自动将 `\n` 转为 `<p>` 标签：
@@ -413,6 +427,36 @@ import { ArrowLeft, Plus } from 'lucide-react'
 # 获取 LLM 服务优先级：模型配置 > 用户设置
 from app.services.llm import get_llm_service_from_config, get_llm_service
 ```
+
+#### 章节 max_tokens 动态计算
+
+LLM 默认 `max_tokens=4096` 远不够 3000 中文章节。`_calc_max_tokens` 按 `目标字数 × 2.5 + 512` 计算（最低 8192）：
+```python
+# nodes/chapter_generation.py
+def _calc_max_tokens(target_words: int) -> int:
+    return max(int(target_words * 2.5) + 512, 8192)
+```
+
+#### LLM 截断检测
+
+`chat_stream()` 检测 `finish_reason="length"` 并记录警告。如出现此日志，需增大 max_tokens：
+```
+LLM output truncated (finish_reason=length). max_tokens=4096 may be too low.
+```
+
+#### SSE 端点 DB Session 独立性
+
+章节生成/审核等长 SSE 流使用 `SessionLocal()` 创建独立 Session，避免请求级 Session 在流式操作期间失效。不要在 SSE 生成器内部使用 FastAPI 依赖注入的 `db: Session`。
+
+#### WorkflowOrchestrator 使用模式
+
+单节点 SSE 流式端点（章节生成、审核等）使用 `WorkflowOrchestrator`：
+```python
+orch = WorkflowOrchestrator(db, project_id)
+async for sse_event in orch.run(graph, config, initial_state, target_node, persist_callback):
+    yield sse_event
+```
+persist_callback 异常会触发 `db.rollback()` 并 yield error 事件。
 
 #### workflowMode 持久化
 
@@ -538,20 +582,21 @@ refactor(workflow): simplify node execution logic
 
 | 模块 | 前缀 | 说明 |
 |------|------|------|
-| 认证 | `/api/auth` | 登录、登出 |
-| 项目 | `/api/projects` | 项目 CRUD、工作流 |
-| 大纲 | `/api/projects/{id}/outline` | 小说大纲 |
-| 章节 | `/api/projects/{id}/chapters` | 章节管理 |
-| 人物 | `/api/projects/{id}/characters` | 人物设定、人物关系 |
-| 设置 | `/api/settings` | 用户设置 |
-| 模型 | `/api/model_configs` | 模型配置管理 |
-| 提示词 | `/api/system_prompts` | Agent Prompt 管理 |
+| 认证 | `/api/auth` | 登录、登出、当前用户 |
+| 项目 | `/api/projects` | 项目 CRUD |
+| 大纲 | `/api/projects/{id}/outline` | 大纲 CRUD、流式生成、确认、章节数设定 |
+| 章节 | `/api/projects/{id}/chapters` | 章节大纲 CRUD、章节正文 CRUD、流式生成、流式审核 |
+| 人物 | `/api/projects/{id}/characters` | 人物 CRUD、AI 生成、关系 CRUD、关系演化 |
+| 设置 | `/api/settings` | 用户设置读写 |
+| 模型 | `/api/model_configs` | 模型配置 CRUD、测试连接、健康检查、可用模型 |
+| 提示词 | `/api/system_prompts` | Agent Prompt 列表、更新、重置 |
 
 ### 工作流 API
 
 ```
 POST /api/projects/{id}/workflow/run     # 运行工作流（SSE 流式）
-POST /api/projects/{id}/workflow/confirm # 确认当前节点
+POST /api/projects/{id}/workflow/confirm # 确认当前节点（可携带修改数据）
 GET  /api/projects/{id}/workflow/state    # 获取工作流状态
-POST /api/projects/{id}/workflow/cancel   # 取消工作流
+POST /api/projects/{id}/workflow/cancel   # 取消工作流（删除检查点）
+PUT  /api/projects/{id}/workflow/stage    # 手动切换工作流阶段
 ```
