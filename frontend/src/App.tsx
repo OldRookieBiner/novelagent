@@ -58,7 +58,16 @@ function App() {
               </PrivateRoute>
             }
           />
-          {/* Settings 和项目重定向使用 Layout */}
+          {/* 设置页面使用独立全屏布局 */}
+          <Route
+            path="/settings"
+            element={
+              <PrivateRoute>
+                <Settings />
+              </PrivateRoute>
+            }
+          />
+          {/* 项目重定向使用 Layout */}
           <Route
             path="/"
             element={
@@ -68,7 +77,6 @@ function App() {
             }
           >
             <Route path="project/:id" element={<RedirectToWorkbench />} />
-            <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>
         <Toaster />

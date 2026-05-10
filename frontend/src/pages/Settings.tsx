@@ -1,21 +1,36 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Monitor, Shield, Bot, ArrowLeft } from 'lucide-react'
 import { useSettings } from '@/components/settings/hooks/useSettings'
+import Header from '@/components/layout/Header'
 import ModelConfigPanel from '@/components/settings/ModelConfigPanel'
 import ReviewConfigPanel from '@/components/settings/ReviewConfigPanel'
 import AgentPromptPanel from '@/components/settings/AgentPromptPanel'
 import LoadingSpinner from '@/components/ui/LoadingSpinner'
+import { cn } from '@/lib/utils'
 
-const SETTINGS_TABS = [
-  { id: 'model', label: '模型配置' },
-  { id: 'review', label: '审核设置' },
-  { id: 'agents', label: '智能体管理' },
-] as const
+const SETTINGS_NAV = [
+  {
+    group: '配置',
+    items: [
+      { id: 'model' as const, label: '模型配置', icon: Monitor },
+      { id: 'review' as const, label: '审核设置', icon: Shield },
+    ],
+  },
+  {
+    group: '智能体',
+    items: [
+      { id: 'agents' as const, label: 'Prompt 管理', icon: Bot },
+    ],
+  },
+]
 
-type SettingsTab = typeof SETTINGS_TABS[number]['id']
+type SettingsTab = 'model' | 'review' | 'agents'
 
 export default function Settings()
 {
   const [activeTab, setActiveTab] = useState<SettingsTab>('model')
+  const navigate = useNavigate()
   const {
     loading,
     // 模型配置
@@ -80,35 +95,56 @@ export default function Settings()
   }
 
   return (
-    <div className="flex flex-1">
-      {/* 左侧导航栏 */}
-      <nav className="w-[220px] border-r bg-background">
-        <div className="p-4 border-b">
-          <h2 className="font-semibold">设置</h2>
-        </div>
-        <div className="p-3 space-y-1" role="tablist">
-          {SETTINGS_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              role="tab"
-              aria-selected={activeTab === tab.id}
-              aria-controls={`${tab.id}-panel`}
-              onClick={() => setActiveTab(tab.id)}
-              className={`w-full px-3 py-2 text-sm rounded-md transition-colors ${
-                activeTab === tab.id
-                  ? 'bg-secondary text-foreground font-medium'
-                  : 'bg-transparent text-muted-foreground hover:bg-secondary/50'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </nav>
+    <div className="flex flex-col h-screen bg-gray-50">
+      {/* 全局 Header */}
+      <Header />
 
-      {/* 右侧内容区 */}
-      <div className="flex-1 p-6 flex flex-col">
-        <div className="flex-1">
+      {/* 页面 Header */}
+      <header className="h-14 border-b bg-white flex items-center px-6 shrink-0">
+        <button
+          onClick={() => navigate('/')}
+          className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors mr-4"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          <span className="text-sm">返回</span>
+        </button>
+        <h1 className="text-lg font-semibold">系统设置</h1>
+      </header>
+
+      {/* 主内容区 */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* 左侧导航栏 */}
+        <nav className="w-[220px] border-r bg-white shrink-0">
+          {SETTINGS_NAV.map((group) => (
+            <div key={group.group}>
+              <div className="px-4 pt-4 pb-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                {group.group}
+              </div>
+              {group.items.map((item) =>
+              {
+                const Icon = item.icon
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setActiveTab(item.id)}
+                    className={cn(
+                      'w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors',
+                      activeTab === item.id
+                        ? 'text-primary bg-primary/10 border-r-2 border-primary font-medium'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                    )}
+                  >
+                    <Icon className="h-4 w-4 flex-shrink-0" />
+                    <span>{item.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+          ))}
+        </nav>
+
+        {/* 右侧内容区 */}
+        <main className="flex-1 p-6 overflow-auto">
           {activeTab === 'model' && (
             <ModelConfigPanel
               modelConfigs={modelConfigs}
@@ -154,7 +190,7 @@ export default function Settings()
               onReset={handleResetPrompt}
             />
           )}
-        </div>
+        </main>
       </div>
     </div>
   )

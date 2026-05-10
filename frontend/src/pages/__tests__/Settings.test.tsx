@@ -57,12 +57,19 @@ vi.mock('@/lib/api', () => ({
 }))
 
 describe('Settings', () => {
-  it('renders settings page with tab navigation', () => {
+  it('renders settings page with navigation', () => {
     render(<Settings />)
 
-    expect(screen.getByText('设置')).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: '模型配置' })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: '审核设置' })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: '智能体管理' })).toBeInTheDocument()
+    expect(screen.getByText('系统设置')).toBeInTheDocument()
+    // 侧边栏导航项和面板标题可能重名，使用 getAllByText 确认存在
+    expect(screen.getAllByText('模型配置').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('审核设置').length).toBeGreaterThan(0)
+    expect(screen.getByText('Prompt 管理')).toBeInTheDocument()
+  })
+
+  it('renders back button', () => {
+    render(<Settings />)
+
+    expect(screen.getByText('返回')).toBeInTheDocument()
   })
 })
