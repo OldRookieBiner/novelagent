@@ -47,6 +47,9 @@ export default function ModelConfigItem({
 
   // 单模型配置
   if (config.provider_type === 'single') {
+    // 有 models 列表时展示标签（新数据格式）
+    const displayModels = config.models || []
+
     return (
       <div className="flex items-center p-3 border rounded-lg hover:bg-muted/50 transition-colors">
         {/* 默认标记 */}
@@ -64,6 +67,17 @@ export default function ModelConfigItem({
 
         {/* 名称 */}
         <span className="font-medium flex-1">{config.name}</span>
+
+        {/* 模型信息 */}
+        {displayModels.length > 0 ? (
+          <span className="text-sm text-muted-foreground mr-3">
+            {displayModels.length === 1
+              ? displayModels[0].name
+              : `${displayModels.filter(m => m.is_enabled).length} 个模型`}
+          </span>
+        ) : config.model_name ? (
+          <span className="text-sm text-muted-foreground mr-3">{config.model_name}</span>
+        ) : null}
 
         {/* 健康状态 */}
         <span className={cn('text-sm mr-3', getHealthColor(config.health_status))}>
