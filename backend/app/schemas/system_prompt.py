@@ -21,6 +21,7 @@ AgentTypeKey = Literal[
     "review",
     "rewrite",
     "character_generation",
+    "relation_generation",
 ]
 
 
@@ -122,6 +123,16 @@ AGENT_TYPES: dict[AgentTypeKey, AgentTypeMeta] = {
         "variable_descriptions": {
             "outline_summary": "小说大纲的概述内容，包含核心冲突和故事主线",
             "world_era": "故事世界观的年代设定，如古代、现代、未来、架空",
+        },
+    },
+    "relation_generation": {
+        "name": "关系生成",
+        "description": "基于人物设定生成人物关系网络",
+        "variables": ["characters_text", "world_era", "outline_summary"],
+        "variable_descriptions": {
+            "characters_text": "已生成的角色列表文本，包含姓名、性格、动机等",
+            "world_era": "故事世界观的年代设定",
+            "outline_summary": "小说大纲概述，用于确保关系与主线关联",
         },
     },
 }

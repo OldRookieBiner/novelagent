@@ -34,9 +34,9 @@ class TestSystemPromptsAPI:
 
         data = response.json()
         assert "prompts" in data
-        assert len(data["prompts"]) == 6
-        # 6 agent types: outline_generation, chapter_outline_generation,
-        # chapter_content_generation, review, rewrite, character_generation
+        assert len(data["prompts"]) == 7
+        # 7 agent types: outline_generation, chapter_outline_generation,
+        # chapter_content_generation, review, rewrite, character_generation, relation_generation
 
         # Check structure of first prompt
         prompt = data["prompts"][0]

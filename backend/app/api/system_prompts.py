@@ -24,6 +24,7 @@ PROMPT_KEY_MAP = {
     "review": "prompt_review",
     "rewrite": "prompt_rewrite",
     "character_generation": "prompt_character_generation",
+    "relation_generation": "prompt_relation_generation",
 }
 
 
