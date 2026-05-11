@@ -110,6 +110,12 @@ class WorkflowConfirmRequest(BaseModel):
     chapter_outlines: Optional[list] = None
 
 
+class WorkflowReplanRequest(BaseModel):
+    """重新规划请求"""
+    llm_config_id: Optional[int] = None
+    llm_model_name: Optional[str] = None
+
+
 class WorkflowStateResponse(BaseModel):
     """工作流状态响应"""
     project_id: int
@@ -643,6 +649,113 @@ async def cleanup_workflow(
     return WorkflowCleanupResponse(
         message="Checkpoints cleaned up",
         deleted=deleted_count,
+    )
+
+
+@router.post("/{project_id}/workflow/replan")
+async def replan_workflow(
+    project_id: int,
+    request: WorkflowReplanRequest = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    重新生成规划（大纲+人物+关系）。
+
+    清理旧的检查点、大纲生成数据、人物、关系、章节大纲，
+    然后重新启动工作流从大纲生成开始。
+    """
+    # 验证项目所有权
+    project = get_project_for_user(project_id, current_user.id, db)
+
+    # 获取大纲
+    outline = db.query(Outline).filter(
+        Outline.project_id == project_id
+    ).first()
+
+    if not outline:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Outline not found"
+        )
+
+    # 1. 清理检查点
+    delete_project_checkpoints(project_id, "default", db)
+
+    # 2. 重置 WorkflowState
+    workflow_state = db.query(WorkflowState).filter(
+        WorkflowState.project_id == project_id,
+        WorkflowState.thread_id == "main"
+    ).first()
+
+    if workflow_state:
+        workflow_state.stage = "inspiration"
+        workflow_state.waiting_for_confirmation = False
+        workflow_state.confirmation_type = None
+        workflow_state.current_chapter = 1
+
+    # 3. 重置大纲生成字段（保留 collected_info 和 inspiration_template）
+    outline.title = None
+    outline.summary = None
+    outline.plot_points = []
+    outline.characters = []
+    outline.world_setting = None
+    outline.emotional_curve = None
+    outline.confirmed = False
+    outline.chapter_count_suggested = 0
+    outline.chapter_count_confirmed = False
+
+    # 4. 删除旧的人物和关系
+    from app.models.character import Character, Relation
+    from app.models.outline import ChapterOutline
+
+    # 先删关系（外键依赖人物），再删人物
+    db.query(Relation).filter(Relation.project_id == project_id).delete()
+    db.query(Character).filter(Character.project_id == project_id).delete()
+
+    # 5. 删除章节大纲（cascade 会自动删除关联的 Chapter）
+    db.query(ChapterOutline).filter(ChapterOutline.project_id == project_id).delete()
+
+    # 提交所有清理
+    db.commit()
+    db.refresh(outline)
+
+    # 6. 构建初始状态
+    if not workflow_state:
+        workflow_state = WorkflowState(project_id=project_id)
+        db.add(workflow_state)
+        db.commit()
+        db.refresh(workflow_state)
+
+    llm_config_id = None
+    if request:
+        llm_config_id = request.llm_config_id
+
+    initial_state = build_initial_state(project, outline, workflow_state, llm_config_id, db=db)
+
+    # 预加载 prompts
+    from app.services.prompt_loader import get_system_prompt
+    initial_state["_prompts"] = {
+        "outline_generation": get_system_prompt(db, "outline_generation"),
+        "character_generation": get_system_prompt(db, "character_generation"),
+        "relation_generation": get_system_prompt(db, "relation_generation"),
+    }
+
+    # 7. 创建带检查点的图并启动工作流
+    graph = create_novel_graph_with_checkpointer(project_id, "default")
+    config = {"configurable": {"thread_id": "default"}}
+
+    def stream_generator():
+        return stream_workflow_events(graph, config, initial_state)
+
+    return StreamingResponse(
+        stream_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
