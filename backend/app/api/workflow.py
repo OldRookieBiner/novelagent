@@ -617,6 +617,35 @@ async def cancel_workflow(
     }
 
 
+class WorkflowCleanupResponse(BaseModel):
+    """工作流清理响应"""
+    message: str
+    deleted: int
+
+
+@router.post("/{project_id}/workflow/cleanup", response_model=WorkflowCleanupResponse)
+async def cleanup_workflow(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    清理工作流检查点（不删业务数据）。
+
+    用于规划生成失败后的重试清理。
+    """
+    # 验证项目所有权
+    get_project_for_user(project_id, current_user.id, db)
+
+    # 删除检查点
+    deleted_count = delete_project_checkpoints(project_id, "default", db)
+
+    return WorkflowCleanupResponse(
+        message="Checkpoints cleaned up",
+        deleted=deleted_count,
+    )
+
+
 class UpdateStageRequest(BaseModel):
     """更新工作流阶段请求"""
     stage: str

@@ -134,6 +134,41 @@ class TestWorkflowAPI:
         )
         assert remaining == 0
 
+    def test_cleanup_workflow(
+        self,
+        client: TestClient,
+        auth_headers: dict,
+        project_with_outline: int,
+        db: Session,
+    ):
+        """Should cleanup workflow checkpoints"""
+        # 创建测试检查点
+        checkpoint = WorkflowCheckpoint(
+            project_id=project_with_outline,
+            thread_id="default",
+            checkpoint={"channel_values": {"stage": "outline"}},
+        )
+        db.add(checkpoint)
+        db.commit()
+
+        # 清理工作流
+        response = client.post(
+            f"/api/projects/{project_with_outline}/workflow/cleanup",
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["deleted"] >= 1
+
+        # 验证检查点已删除
+        remaining = (
+            db.query(WorkflowCheckpoint)
+            .filter(WorkflowCheckpoint.project_id == project_with_outline)
+            .count()
+        )
+        assert remaining == 0
+
     def test_workflow_not_found(self, client: TestClient, auth_headers: dict):
         """Should return 404 for non-existent project"""
         response = client.get(
