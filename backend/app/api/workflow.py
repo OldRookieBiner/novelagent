@@ -381,6 +381,10 @@ async def run_workflow(
         "outline_generation": get_system_prompt(db, "outline_generation"),
         "character_generation": get_system_prompt(db, "character_generation"),
         "relation_generation": get_system_prompt(db, "relation_generation"),
+        "chapter_outline_generation": get_system_prompt(db, "chapter_outline_generation"),
+        "chapter_content_generation": get_system_prompt(db, "chapter_content_generation"),
+        "review": get_system_prompt(db, "review"),
+        "rewrite": get_system_prompt(db, "rewrite"),
     }
 
     # 创建带检查点的图（复用 db 会话）
@@ -739,6 +743,10 @@ async def replan_workflow(
         "outline_generation": get_system_prompt(db, "outline_generation"),
         "character_generation": get_system_prompt(db, "character_generation"),
         "relation_generation": get_system_prompt(db, "relation_generation"),
+        "chapter_outline_generation": get_system_prompt(db, "chapter_outline_generation"),
+        "chapter_content_generation": get_system_prompt(db, "chapter_content_generation"),
+        "review": get_system_prompt(db, "review"),
+        "rewrite": get_system_prompt(db, "rewrite"),
     }
 
     # 7. 创建带检查点的图并启动工作流

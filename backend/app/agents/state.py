@@ -119,6 +119,9 @@ class NovelState(TypedDict):
     llm_config_id: Optional[int]  # 使用的模型配置 ID
     llm_model_name: Optional[str]  # 用户选择的模型名称
 
+    # ========== Prompt 加载（LangGraph 合规）==========
+    _prompts: dict[str, str]  # 预加载的 prompt 模板，节点从此处获取而非直接查询 DB
+
 
 # ========== 阶段常量 ==========
 STAGE_INSPIRATION = "inspiration"

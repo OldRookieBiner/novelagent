@@ -211,9 +211,10 @@ class TestPromptTemplates:
 
     def test_chapter_content_prompt_format(self):
         """Chapter content prompt should format correctly"""
-        from app.agents.prompts import GENERATE_CHAPTER_CONTENT_PROMPT
+        from app.agents.prompts import DEFAULT_PROMPTS
 
-        prompt = GENERATE_CHAPTER_CONTENT_PROMPT.format(
+        # 使用已注入禁用词的 DEFAULT_PROMPTS 版本
+        prompt = DEFAULT_PROMPTS["chapter_content_generation"].format(
             chapter_outline="第1章：测试章节\n场景：城市",
             previous_ending="上一章的结尾...",
             genre="都市",

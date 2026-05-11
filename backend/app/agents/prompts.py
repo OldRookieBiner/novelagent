@@ -1,5 +1,29 @@
 """Prompt templates for the agent - v0.6.5 优化版"""
 
+from app.agents.constants import FORBIDDEN_WORDS, FORBIDDEN_PATTERNS, FORBIDDEN_RULES
+
+
+def _format_forbidden_words() -> str:
+    """格式化禁用词列表为 Prompt 可用格式"""
+    words = "、".join(FORBIDDEN_WORDS)
+    patterns = "\n".join(f"- {p}" for p in FORBIDDEN_PATTERNS)
+    rules = "\n".join(f"- {r}" for r in FORBIDDEN_RULES)
+
+    return f"""**绝对禁用词汇**：
+{words}
+
+**绝对禁用句式**：
+{patterns}
+
+**禁用规则**：
+{rules}"""
+
+
+def _format_forbidden_words_list() -> str:
+    """格式化禁用词列表为逗号分隔的字符串（用于打分维度说明）"""
+    return "、".join(FORBIDDEN_WORDS)
+
+
 # ==============================================================================
 # 1. 大纲生成 Prompt - 增加伏笔标记、世界观扩展
 # ==============================================================================
@@ -205,17 +229,7 @@ GENERATE_CHAPTER_CONTENT_PROMPT = """你是一位获得茅盾文学奖的当代�
 
 以下词汇和表达在 20 年一线作家的作品中**几乎不会出现**，如果你使用了，说明你在模仿 AI：
 
-**绝对禁用词汇**：
-不禁、竟然、居然、蓦然、恍然、心中涌起、一股暖流、下意识、不由自主地、心头一震、不由自主地、悄然、缓缓、注视、似乎、仿佛、嘴角上扬、眼神复杂、欲言又止、眸光微动、眼中闪过一丝、深吸一口气、定了定神、下意识、迟疑了片刻、心里五味杂陈、莫名的、本能地、条件反射、脑海里浮现、心中一动、暗暗、不动声色、不动声色地、目光一凝、瞳孔微缩、浑身一震、作为 AI
-
-**绝对禁用句式**：
-- "他的眼神里有复杂的情绪"
-- "她的嘴角微微上扬，露出一个意味深长的笑容"
-- "两人对视了一眼，仿佛有千言万语"
-- 每段结尾的总结性句子（如"这一夜，注定不平静"）
-- 超过 3 行的纯心理活动描写
-- 用 "……" 省略号表达沉默或情绪（最多每章出现 1 次，且不超过 3 个连续点）
-- 以风光描写开头的环境铺陈（除非这个环境本身就是角色心理的投射）
+{forbidden_words}
 
 **正确示例对比**：
 - ❌ "他眼神复杂地看着她，欲言又止。"
@@ -294,7 +308,7 @@ REVIEW_CHAPTER_PROMPT = """你是一位从业 30 年的文学编辑，以苛刻�
 - 1-2 分：完全没有 AI 味，读起来像真人作家作品
 - 5 分：偶尔有"下意识""缓缓""嘴角上扬"等词，但不影响整体
 - 8-10 分：大量模板化表达、总结性段落、精神胜利式心理描写
-打分维度：检查禁用词（不禁、竟然、蓦然、恍然、心中涌起、缓缓、下意识、嘴角上扬、眼神复杂、欲言又止、深吸一口气、定了定神、瞳孔微缩、浑身一震 等） / 是否存在模板化表达 / 描写是否具体有画面感 / 段落结尾是否存在总结性句子
+打分维度：检查禁用词（{forbidden_words_list} 等） / 是否存在模板化表达 / 描写是否具体有画面感 / 段落结尾是否存在总结性句子
 
 ### 6. 大纲偏离度（1-10 分，越低越好）—— 新增维度
 - 1-2 分：完全按照大纲执行，甚至超出预期的补充
@@ -384,7 +398,7 @@ REWRITE_CHAPTER_PROMPT = """你是一位资深小说编辑兼作家，同时也�
 
 ### 3. 反 AI 味（修改后复查）
 修改完成后，必须再次全文扫描以下禁用词汇，确认一个都没有出现：
-不禁、竟然、居然、蓦然、恍然、心中涌起、一股暖流、下意识、不由自主地、心头一震、悄然、缓缓、注视、似乎、仿佛、嘴角上扬、眼神复杂、欲言又止、眸光微动、眼中闪过一丝、深吸一口气、定了定神、迟疑了片刻、心里五味杂陈、莫名的、本能地、脑海里浮现、心中一动、暗暗、不动声色、目光一凝、瞳孔微缩、浑身一震
+{forbidden_words_list}
 
 **重点**：以下句式也是 AI 味重灾区，修改时必须杜绝：
 - "他的眼神里有复杂的情绪" → 改为具体描写他做了什么
@@ -499,12 +513,24 @@ RELATION_GENERATION_PROMPT = """你是一个资深小说人物关系设计师，
 # ==============================================================================
 # Default prompts dictionary for system defaults
 # ==============================================================================
+# 使用字符串替换来只填充禁用词相关占位符，保留其他占位符供运行时填充
+
+def _apply_forbidden_words_to_prompt(prompt_template: str) -> str:
+    """将禁用词格式化后注入到 prompt 模板中"""
+    return prompt_template.replace("{forbidden_words}", _format_forbidden_words())
+
+
+def _apply_forbidden_words_list_to_prompt(prompt_template: str) -> str:
+    """将禁用词列表格式化后注入到 prompt 模板中"""
+    return prompt_template.replace("{forbidden_words_list}", _format_forbidden_words_list())
+
+
 DEFAULT_PROMPTS = {
     "outline_generation": OUTLINE_GENERATION_PROMPT,
     "chapter_outline_generation": GENERATE_SINGLE_CHAPTER_OUTLINE_PROMPT,
-    "chapter_content_generation": GENERATE_CHAPTER_CONTENT_PROMPT,
-    "review": REVIEW_CHAPTER_PROMPT,
-    "rewrite": REWRITE_CHAPTER_PROMPT,
+    "chapter_content_generation": _apply_forbidden_words_to_prompt(GENERATE_CHAPTER_CONTENT_PROMPT),
+    "review": _apply_forbidden_words_list_to_prompt(REVIEW_CHAPTER_PROMPT),
+    "rewrite": _apply_forbidden_words_list_to_prompt(REWRITE_CHAPTER_PROMPT),
     "character_generation": CHARACTER_GENERATION_PROMPT,
     "relation_generation": RELATION_GENERATION_PROMPT,
 }
