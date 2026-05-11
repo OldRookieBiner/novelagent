@@ -172,6 +172,7 @@ def build_initial_state(
         if co.chapter and co.chapter.content:
             written_chapters.append({
                 "chapter_number": co.chapter_number,
+                "title": co.title,
                 "content": co.chapter.content,
                 "word_count": co.chapter.word_count,
             })
@@ -270,15 +271,29 @@ def build_initial_state(
     return state
 
 
-def _build_prompts_dict(db: Session) -> dict[str, str]:
-    """构建预加载的 prompts 字典（所有节点共享）"""
+def _build_prompts_dict(db: Session) -> dict[str, str | dict]:
+    """构建预加载的 prompts 字典（所有节点共享）
+
+    chapter_content_generation 为 dict 格式 {"system": ..., "user": ...}，
+    system 模板始终使用默认值（角色定位+写作规则+禁用词），
+    user 模板可由用户自定义（DB 中存储）。
+    """
     from app.services.prompt_loader import get_system_prompt
+    from app.agents.prompts import DEFAULT_PROMPTS
+
+    # chapter_content_generation: system 固定默认值，user 可自定义
+    default_cc = DEFAULT_PROMPTS["chapter_content_generation"]
+    user_prompt = get_system_prompt(db, "chapter_content_generation")
+
     return {
         "outline_generation": get_system_prompt(db, "outline_generation"),
         "character_generation": get_system_prompt(db, "character_generation"),
         "relation_generation": get_system_prompt(db, "relation_generation"),
         "chapter_outline_generation": get_system_prompt(db, "chapter_outline_generation"),
-        "chapter_content_generation": get_system_prompt(db, "chapter_content_generation"),
+        "chapter_content_generation": {
+            "system": default_cc["system"] if isinstance(default_cc, dict) else default_cc,
+            "user": user_prompt,
+        },
         "review": get_system_prompt(db, "review"),
         "rewrite": get_system_prompt(db, "rewrite"),
     }

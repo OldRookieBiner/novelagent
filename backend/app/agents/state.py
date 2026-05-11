@@ -120,7 +120,7 @@ class NovelState(TypedDict):
     llm_model_name: Optional[str]  # 用户选择的模型名称
 
     # ========== Prompt 加载（LangGraph 合规）==========
-    _prompts: dict[str, str]  # 预加载的 prompt 模板，节点从此处获取而非直接查询 DB
+    _prompts: dict[str, str | dict]  # 预加载的 prompt 模板，chapter_content_generation 为 dict 格式
 
 
 # ========== 阶段常量 ==========
