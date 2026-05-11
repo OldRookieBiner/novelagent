@@ -6,6 +6,7 @@ from typing import AsyncIterator
 from app.agents.state import NovelState, STAGE_CHAPTER_OUTLINES, STAGE_WRITING
 from app.services.llm import LLMService
 from app.utils.llm import get_llm_from_state_async
+from app.agents.context_strategy import get_context_strategy
 from app.agents.nodes.utils import (
     _format_chapter_outline_str,
     format_characters_info,
@@ -303,41 +304,59 @@ def _calc_max_tokens(target_words: int) -> int:
     return max(int(target_words * 2.5) + 512, 8192)
 
 
-async def generate_chapter_content_stream(
+def _get_chapter_content_prompts(state: NovelState) -> tuple[str, str]:
+    """获取章节正文生成的 system/user 模板
+
+    Returns:
+        (system_template, user_template) — 旧格式兼容时 system 为空串
+    """
+    prompts = state.get("_prompts", {})
+    prompt_data = prompts.get("chapter_content_generation") if prompts else None
+
+    if prompt_data and isinstance(prompt_data, dict):
+        return prompt_data.get("system", ""), prompt_data.get("user", "")
+    elif prompt_data and isinstance(prompt_data, str):
+        # 旧格式兼容：整个模板作为 user message
+        return "", prompt_data
+    else:
+        from app.agents.prompts import DEFAULT_PROMPTS
+        default = DEFAULT_PROMPTS.get("chapter_content_generation", {})
+        if isinstance(default, dict):
+            return default.get("system", ""), default.get("user", "")
+        return "", default
+
+
+def _build_chapter_content_messages(
     state: NovelState,
     chapter_outline: dict,
-    llm: LLMService
-) -> AsyncIterator[str]:
-    """生成章节内容（流式，增强版）"""
+) -> list[dict]:
+    """构建章节正文生成的 system/user 消息列表
 
+    将角色定位、写作规则、禁用词、前文上下文、人物、世界观放入 system message，
+    章节大纲、前章结尾、题材/字数/风格放入 user message。
+    """
     info = state.get("collected_info", {})
+    written_chapters = state.get("written_chapters", [])
+    chapter_number = chapter_outline.get("chapter_number", 1)
 
-    # 格式化章节大纲（使用共享工具函数）
+    # 格式化章节大纲
     outline_str = _format_chapter_outline_str(chapter_outline)
 
-    # 格式化人物设定（使用共享工具函数）
+    # 格式化人物设定、关系、演变
     chars_str = format_characters_info(state)
+    relations_str = format_relations_info(state, chapter_number)
+    evolution_str, _ = format_evolution_info(state, chapter_number)
+    combined_characters_str = chars_str + relations_str + evolution_str
 
-    # 格式化人物关系（使用共享工具函数）
-    relations_str = format_relations_info(state, chapter_outline.get("chapter_number", 1))
-
-    # 格式化人物演变历史（使用共享工具函数）
-    evolution_str, evolution_plans_str = format_evolution_info(state, chapter_outline.get("chapter_number", 1))
-
-    # 格式化世界观（使用共享工具函数）
+    # 格式化世界观
     world_str = format_world_setting(state)
 
-    # 合并人物设定、关系和演变信息
-    combined_characters_str = chars_str + relations_str + evolution_str + evolution_plans_str
-
-    # 获取每章最低字数（优先使用用户设定，回退到章节大纲的 target_words）
+    # 每章最低字数
     min_words, _ = parse_words_per_chapter(info)
     suggested_max = int(min_words * 1.5)
 
-    # 获取前章结尾用于衔接
+    # 前章结尾（用于 user message 中的衔接参考）
     previous_ending = ""
-    written_chapters = state.get("written_chapters", [])
-    chapter_number = chapter_outline.get("chapter_number", 1)
     if written_chapters:
         for ch in written_chapters:
             if ch.get("chapter_number") == chapter_number - 1:
@@ -345,33 +364,57 @@ async def generate_chapter_content_stream(
                 previous_ending = ch_content[-500:] if len(ch_content) > 500 else ch_content
                 break
 
-    # 从 state 获取预加载的 prompts（LangGraph 合规）
-    prompts = state.get("_prompts", {})
-    if prompts and "chapter_content_generation" in prompts:
-        prompt_template = prompts["chapter_content_generation"]
-    else:
-        from app.agents.prompts import DEFAULT_PROMPTS
-        prompt_template = DEFAULT_PROMPTS.get("chapter_content_generation", "")
+    # 上下文策略：构建前文全文上下文
+    target_words = info.get("targetWords", 100000)
+    if isinstance(target_words, str):
+        target_words = int(target_words)
+    strategy = get_context_strategy(target_words)
+    previous_context = strategy.build_previous_context(written_chapters, chapter_number)
 
-    prompt = prompt_template.format(
+    # 获取 system/user 模板
+    system_template, user_template = _get_chapter_content_prompts(state)
+
+    # 格式化 system message（角色定位 + 规则 + 上下文 + 人物 + 世界观）
+    messages = []
+    if system_template:
+        system_content = system_template.format(
+            previous_context=previous_context,
+            main_characters=combined_characters_str,
+            world_setting=world_str,
+        )
+        messages.append({"role": "system", "content": system_content})
+
+    # 格式化 user message（具体任务输入）
+    user_content = user_template.format(
         chapter_outline=outline_str,
         previous_ending=previous_ending,
         genre=info.get("novelType", "未指定"),
-        target_words=min_words,
-        main_characters=combined_characters_str,
-        world_setting=world_str,
-        style_preference=info.get("stylePreference", "未指定"),
         min_words=min_words,
-        suggested_max=suggested_max
+        suggested_max=suggested_max,
+        style_preference=info.get("stylePreference", "未指定"),
     )
+    messages.append({"role": "user", "content": user_content})
+
+    return messages
+
+
+async def generate_chapter_content_stream(
+    state: NovelState,
+    chapter_outline: dict,
+    llm: LLMService
+) -> AsyncIterator[str]:
+    """生成章节内容（流式，使用 system/user 双层消息 + 上下文策略）"""
+
+    info = state.get("collected_info", {})
+    min_words, _ = parse_words_per_chapter(info)
+
+    # 构建 system/user 消息
+    messages = _build_chapter_content_messages(state, chapter_outline)
 
     # 根据最低字数的 2 倍计算 max_tokens，确保不截断
     max_tokens = _calc_max_tokens(min_words * 2)
 
-    async for chunk in llm.chat_stream(
-        [{"role": "user", "content": prompt}],
-        max_tokens=max_tokens
-    ):
+    async for chunk in llm.chat_stream(messages, max_tokens=max_tokens):
         yield chunk
 
 
@@ -398,7 +441,7 @@ async def generate_chapter_content_node(state: NovelState) -> NovelState:
     此节点：
     1. 获取当前章节号 (current_chapter)
     2. 获取章节大纲列表 (chapter_outlines)
-    3. 获取已写章节用于上下文 (written_chapters)
+    3. 构建 system/user 双层消息（含上下文策略）
     4. 调用 LLM 生成章节内容
     5. 返回更新后的状态，包含新章节
 
@@ -410,7 +453,6 @@ async def generate_chapter_content_node(state: NovelState) -> NovelState:
     # 获取当前章节信息
     current_chapter = state.get("current_chapter", 1)
     chapter_outlines = state.get("chapter_outlines", [])
-    written_chapters = state.get("written_chapters", [])
 
     # 找到当前章节的大纲
     chapter_outline = None
@@ -426,71 +468,19 @@ async def generate_chapter_content_node(state: NovelState) -> NovelState:
             f"已生成 {len(chapter_outlines)} 个章节大纲）"
         )
 
-    # 获取上一章的结尾用于衔接
-    previous_ending = ""
-    if written_chapters:
-        # 找到上一章的内容
-        for chapter in written_chapters:
-            if chapter.get("chapter_number") == current_chapter - 1:
-                content = chapter.get("content", "")
-                # 取最后 500 字作为衔接参考
-                previous_ending = content[-500:] if len(content) > 500 else content
-                break
-
-    # 准备提示词
+    # 准备字数信息
     info = state.get("collected_info", {})
-
-    # 获取每章最低字数
     min_words, _ = parse_words_per_chapter(info)
-    suggested_max = int(min_words * 1.5)
 
-    # 格式化章节大纲（使用共享工具函数）
-    outline_str = _format_chapter_outline_str(chapter_outline)
-
-    # 格式化人物设定（使用共享工具函数）
-    chars_str = format_characters_info(state)
-
-    # 格式化人物关系（使用共享工具函数）
-    relations_str = format_relations_info(state, chapter_outline.get("chapter_number", 1))
-
-    # 格式化人物演变历史（使用共享工具函数）
-    evolution_str, _ = format_evolution_info(state, chapter_outline.get("chapter_number", 1))
-
-    # 格式化世界观（使用共享工具函数）
-    world_str = format_world_setting(state)
-
-    # 合并人物设定、关系和演变信息（用于 prompt）
-    combined_characters_str = chars_str + relations_str + evolution_str
-
-    # 从 state 获取预加载的 prompts（LangGraph 合规）
-    prompts = state.get("_prompts", {})
-    if prompts and "chapter_content_generation" in prompts:
-        prompt_template = prompts["chapter_content_generation"]
-    else:
-        from app.agents.prompts import DEFAULT_PROMPTS
-        prompt_template = DEFAULT_PROMPTS.get("chapter_content_generation", "")
-
-    prompt = prompt_template.format(
-        chapter_outline=outline_str,
-        previous_ending=previous_ending,
-        genre=info.get("novelType", "未指定"),
-        target_words=min_words,
-        main_characters=combined_characters_str,
-        world_setting=world_str,
-        style_preference=info.get("stylePreference", "未指定"),
-        min_words=min_words,
-        suggested_max=suggested_max
-    )
+    # 构建 system/user 消息
+    messages = _build_chapter_content_messages(state, chapter_outline)
 
     # 根据最低字数的 2 倍计算 max_tokens，确保不截断
     max_tokens = _calc_max_tokens(min_words * 2)
 
     # 调用 LLM 流式生成内容（框架自动捕获 on_chat_model_stream）
     content = ""
-    async for chunk in llm.chat_stream(
-        [{"role": "user", "content": prompt}],
-        max_tokens=max_tokens
-    ):
+    async for chunk in llm.chat_stream(messages, max_tokens=max_tokens):
         content += chunk
 
     # 后处理：移除结尾的纯数字（可能是 LLM 自动添加的字数）
