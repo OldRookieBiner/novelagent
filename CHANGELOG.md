@@ -2,6 +2,48 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.8.6 - 2026-05-11
+
+### 新功能
+
+- **章节正文 System/User 双层消息** - 章节正文生成从单条 user message 拆分为 system + user 双层消息，LLM 对 system message 中的角色定位和写作规则遵循度显著提升
+  - System message 包含：角色定位、写作原则、禁用词表、前文上下文、人物档案、世界观
+  - User message 包含：章节大纲、前章结尾衔接、题材/字数/风格
+  - `DEFAULT_PROMPTS["chapter_content_generation"]` 改为 `{"system": ..., "user": ...}` dict 格式
+  - `_build_chapter_content_messages()` 统一构建双层消息，`_get_chapter_content_prompts()` 兼容旧格式
+
+- **上下文策略模块** - 新增 ContextStrategy 策略模式，短篇自动将前文全文放入上下文（不再仅取最后 500 字）
+  - 新建 `context_strategy.py`：ContextStrategy ABC + FulltextContentStrategy + get_context_strategy 工厂
+  - 短篇（≤10万字）使用 Fulltext 策略，所有已写章节全文注入 system message
+  - Hybrid/Summary 策略预留给中长篇（Phase 4）
+
+- **审核输出 JSON 结构化** - 审核结果从自由文本标记格式改为 JSON 格式，解析更可靠
+  - `parse_review_result()` 优先 JSON 解析，自动回退旧格式正则（`_parse_review_result_legacy`）
+  - 新增 `outline_deviation`（大纲偏离度）审核维度，检查正文是否偏离章节大纲
+  - `check_review_passed()` 新增大纲偏离度 ≤ 4 通过条件
+
+### 重构
+
+- **Prompt 加载统一为 state["_prompts"]** - 所有 7 个 LangGraph 节点从 `state["_prompts"]` 获取 prompt 模板，不再直接查询 DB，符合 LangGraph 合规性
+  - 新增 `_build_prompts_dict()` 函数消除重复 prompt 构建代码
+  - 新增 `_prompts: dict[str, str | dict]` 字段到 NovelState
+  - 清理 `relation_generation.py` 中未使用的 `get_system_prompt` import
+
+- **禁用词表独立模块** - 从 prompts.py 抽取 FORBIDDEN_WORDS、FORBIDDEN_PATTERNS、FORBIDDEN_RULES 到 `constants.py`，prompt 模板通过格式化函数注入
+
+- **字数机制改为最低字数** - `parse_words_per_chapter` 返回 min_words 而非区间，章节内容 prompt 使用 min_words/suggested_max 替代 target_words
+
+- **written_chapters 补充 title 字段** - `build_initial_state()` 中 written_chapters 新增 title，支持上下文策略格式化输出
+
+### 测试
+
+- 新增 test_context_strategy.py（7 个测试）：空前文、单章/多章、排除当前章、跳过空内容、策略选择
+- 新增 test_review.py JSON 解析测试（7 个新测试）：JSON 通过/失败、前后文字、无效回退、legacy outline_deviation
+- 更新 test_agents.py：chapter_content prompt 测试适配 dict 格式
+- 更新 test_prompt_loader.py：dict 格式 prompt 长度检查兼容
+- 更新 test_system_prompts.py：API 返回 user 模板而非 dict
+- 总计 221 测试通过
+
 ## v0.8.5 - 2026-05-11
 
 ### 新功能
