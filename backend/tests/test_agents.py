@@ -210,20 +210,33 @@ class TestPromptTemplates:
         assert "40" in prompt
 
     def test_chapter_content_prompt_format(self):
-        """Chapter content prompt should format correctly"""
+        """Chapter content prompt should format correctly with system/user dict"""
         from app.agents.prompts import DEFAULT_PROMPTS
 
-        # 使用已注入禁用词的 DEFAULT_PROMPTS 版本
-        prompt = DEFAULT_PROMPTS["chapter_content_generation"].format(
+        # chapter_content_generation 是 dict 格式：{"system": ..., "user": ...}
+        prompt_data = DEFAULT_PROMPTS["chapter_content_generation"]
+        assert isinstance(prompt_data, dict), "chapter_content_generation should be dict"
+        assert "system" in prompt_data, "Should have system key"
+        assert "user" in prompt_data, "Should have user key"
+
+        # 格式化 user 模板（用户可自定义部分）
+        user_prompt = prompt_data["user"].format(
             chapter_outline="第1章：测试章节\n场景：城市",
             previous_ending="上一章的结尾...",
             genre="都市",
             min_words=3000,
             suggested_max=4500,
-            main_characters="张三",
-            world_setting="现代都市",
             style_preference="轻松幽默",
         )
 
-        assert "第1章" in prompt
-        assert "张三" in prompt
+        # 格式化 system 模板（角色定位+规则+上下文）
+        system_prompt = prompt_data["system"].format(
+            previous_context="前文内容...",
+            main_characters="张三",
+            world_setting="现代都市",
+            forbidden_words="禁用词列表",
+        )
+
+        assert "第1章" in user_prompt
+        assert "张三" in system_prompt
+        assert "茅盾文学奖" in system_prompt

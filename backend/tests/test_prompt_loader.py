@@ -12,8 +12,13 @@ def test_min_prompt_length_threshold():
 def test_default_prompts_are_long_enough():
     """DEFAULT_PROMPTS 中所有 prompt 都应超过最小长度"""
     for agent_type, prompt in DEFAULT_PROMPTS.items():
-        assert len(prompt.strip()) >= MIN_PROMPT_LENGTH, (
-            f"DEFAULT_PROMPTS['{agent_type}'] is too short ({len(prompt.strip())} < {MIN_PROMPT_LENGTH})"
+        # dict 格式（如 chapter_content_generation）检查 user 部分
+        if isinstance(prompt, dict):
+            text = prompt.get("user", "")
+        else:
+            text = prompt
+        assert len(text.strip()) >= MIN_PROMPT_LENGTH, (
+            f"DEFAULT_PROMPTS['{agent_type}'] is too short ({len(text.strip())} < {MIN_PROMPT_LENGTH})"
         )
 
 

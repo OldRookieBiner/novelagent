@@ -33,6 +33,14 @@ def get_prompt_key(agent_type: str) -> str:
     return PROMPT_KEY_MAP.get(agent_type, f"prompt_{agent_type}")
 
 
+def _get_default_prompt_content(agent_type: str) -> str:
+    """获取默认 prompt 内容，dict 格式取 user 部分"""
+    default = DEFAULT_PROMPTS.get(agent_type, "")
+    if isinstance(default, dict):
+        return default.get("user", "")
+    return default
+
+
 @router.get("/", response_model=SystemPromptListResponse)
 async def get_system_prompts(db: Session = Depends(get_db)):
     """获取所有系统提示词"""
@@ -41,7 +49,8 @@ async def get_system_prompts(db: Session = Depends(get_db)):
         key = get_prompt_key(agent_type)
         config = db.query(SystemConfig).filter(SystemConfig.key == key).first()
 
-        content = config.value if config else DEFAULT_PROMPTS.get(agent_type, "")
+        # DB 中存储的始终是 user 模板字符串，无记录时取默认值
+        content = config.value if config else _get_default_prompt_content(agent_type)
         updated_at = config.updated_at if config else None
 
         prompts.append(
@@ -99,7 +108,7 @@ async def reset_system_prompt(agent_type: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail=f"Unknown agent type: {agent_type}")
 
     key = get_prompt_key(agent_type)
-    default_content = DEFAULT_PROMPTS.get(agent_type, "")
+    default_content = _get_default_prompt_content(agent_type)
 
     config = db.query(SystemConfig).filter(SystemConfig.key == key).first()
 
