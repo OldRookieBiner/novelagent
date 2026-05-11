@@ -125,26 +125,23 @@ def format_world_setting(state: dict) -> str:
         return info.get("customWorldSetting") or info.get("worldSetting", "未指定")
 
 
-def parse_words_per_chapter(collected_info: dict | None) -> tuple[int, int, str]:
-    """解析每章字数区间
+def parse_words_per_chapter(collected_info: dict | None) -> tuple[int, str]:
+    """解析每章最低字数
 
-    统一处理灵感页面 wordsPerChapter 字段的三种格式：
-    - range 格式："2000-2500" → (2000, 2500, "2000-2500字")
-    - custom 格式：需要 customWordsPerChapter，上下浮动 10%
-    - 空值/无效值：返回默认区间 (2000, 3000, "2000-3000字")
+    新格式返回 (min_words, display_text)，不再返回上下限区间。
+    兼容旧 range 格式 "2000-2500"，取下限作为最低字数。
 
     Args:
         collected_info: 灵感采集信息字典
 
     Returns:
-        (下限, 上限, 显示文本)
+        (最低字数, 显示文本)
     """
-    DEFAULT_LOWER = 2000
-    DEFAULT_UPPER = 3000
-    DEFAULT_DISPLAY = "2000-3000字"
+    DEFAULT_MIN = 3000
+    DEFAULT_DISPLAY = "3000字起"
 
     if not collected_info:
-        return DEFAULT_LOWER, DEFAULT_UPPER, DEFAULT_DISPLAY
+        return DEFAULT_MIN, DEFAULT_DISPLAY
 
     wpc_str = collected_info.get("wordsPerChapter", "")
     custom_val = collected_info.get("customWordsPerChapter")
@@ -152,30 +149,25 @@ def parse_words_per_chapter(collected_info: dict | None) -> tuple[int, int, str]
     # custom 模式
     if wpc_str == "custom":
         if custom_val and isinstance(custom_val, int) and custom_val > 0:
-            lower = max(100, int(custom_val * 0.9))
-            upper = int(custom_val * 1.1)
-            return lower, upper, f"约{custom_val}字"
-        return DEFAULT_LOWER, DEFAULT_UPPER, DEFAULT_DISPLAY
+            return custom_val, f"{custom_val}字起"
+        return DEFAULT_MIN, DEFAULT_DISPLAY
 
-    # range 格式："2000-2500"
-    if wpc_str and "-" in str(wpc_str):
-        try:
-            parts = str(wpc_str).split("-")
-            lower = int(parts[0].strip())
-            upper = int(parts[1].strip())
-            if lower > 0 and upper > 0:
-                return lower, upper, f"{lower}-{upper}字"
-        except (ValueError, IndexError):
-            pass
-        return DEFAULT_LOWER, DEFAULT_UPPER, DEFAULT_DISPLAY
-
-    # 纯数字格式："3000"
+    # 纯数字格式（新格式）
     if wpc_str:
         try:
             val = int(wpc_str)
             if val > 0:
-                return val, val, f"{val}字"
+                return val, f"{val}字起"
         except (ValueError, TypeError):
             pass
 
-    return DEFAULT_LOWER, DEFAULT_UPPER, DEFAULT_DISPLAY
+    # 兼容旧数据：range 格式 "2000-2500"，取下限作为最低字数
+    if "-" in str(wpc_str):
+        try:
+            lower = int(str(wpc_str).split("-")[0].strip())
+            if lower > 0:
+                return lower, f"{lower}字起"
+        except (ValueError, IndexError):
+            pass
+
+    return DEFAULT_MIN, DEFAULT_DISPLAY

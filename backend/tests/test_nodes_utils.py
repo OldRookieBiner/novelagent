@@ -406,58 +406,51 @@ from app.agents.nodes.utils import parse_words_per_chapter
 
 
 class TestParseWordsPerChapter:
-    """测试解析每章字数区间"""
+    """测试解析每章最低字数"""
 
-    def test_range_format(self):
-        """range 格式应正确解析上下限"""
-        lower, upper, display = parse_words_per_chapter({"wordsPerChapter": "2000-2500"})
-        assert lower == 2000
-        assert upper == 2500
-        assert display == "2000-2500字"
+    def test_range_format_backward_compat(self):
+        """旧 range 格式应取下限作为最低字数"""
+        min_words, display = parse_words_per_chapter({"wordsPerChapter": "2000-2500"})
+        assert min_words == 2000
+        assert display == "2000字起"
+
+    def test_new_single_number_format(self):
+        """新格式：纯数字应为最低字数"""
+        min_words, display = parse_words_per_chapter({"wordsPerChapter": "3000"})
+        assert min_words == 3000
+        assert display == "3000字起"
 
     def test_custom_format(self):
-        """自定义字数应上下浮动 10%"""
-        lower, upper, display = parse_words_per_chapter({
+        """自定义字数应直接作为最低字数"""
+        min_words, display = parse_words_per_chapter({
             "wordsPerChapter": "custom",
             "customWordsPerChapter": 3000
         })
-        assert lower == 2700
-        assert upper == 3300
-        assert display == "约3000字"
+        assert min_words == 3000
+        assert display == "3000字起"
 
     def test_custom_without_value(self):
         """自定义模式但无值时应使用默认值"""
-        lower, upper, display = parse_words_per_chapter({
+        min_words, display = parse_words_per_chapter({
             "wordsPerChapter": "custom"
         })
-        assert lower == 2000
-        assert upper == 3000
+        assert min_words == 3000
         assert "字" in display
 
     def test_empty_words_per_chapter(self):
         """空值应使用默认值"""
-        lower, upper, display = parse_words_per_chapter({})
-        assert lower == 2000
-        assert upper == 3000
+        min_words, display = parse_words_per_chapter({})
+        assert min_words == 3000
 
-    def test_invalid_range_format(self):
-        """无效的 range 字符串应使用默认值"""
-        lower, upper, display = parse_words_per_chapter({"wordsPerChapter": "abc"})
-        assert lower == 2000
-        assert upper == 3000
-
-    def test_single_number_range(self):
-        """纯数字字符串（非 range）应解析为上下限相同"""
-        lower, upper, display = parse_words_per_chapter({"wordsPerChapter": "3000"})
-        assert lower == 3000
-        assert upper == 3000
-        assert display == "3000字"
+    def test_invalid_format(self):
+        """无效字符串应使用默认值"""
+        min_words, display = parse_words_per_chapter({"wordsPerChapter": "abc"})
+        assert min_words == 3000
 
     def test_none_collected_info(self):
         """None 输入应使用默认值"""
-        lower, upper, display = parse_words_per_chapter(None)
-        assert lower == 2000
-        assert upper == 3000
+        min_words, display = parse_words_per_chapter(None)
+        assert min_words == 3000
 
 
 class TestGetLlmFromStateAsync:
