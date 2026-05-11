@@ -6,7 +6,6 @@ from typing import Dict, Any
 from sqlalchemy.orm import Session
 
 from app.agents.state import NovelState, STAGE_REVIEW
-from app.services.prompt_loader import get_system_prompt
 from app.database import SessionLocal
 from app.services.llm import LLMService
 from app.utils.llm import get_llm_from_state_async
@@ -92,7 +91,15 @@ async def review_chapter_node(
         # 格式化人物设定（使用共享工具函数）
         chars_str = format_characters_info(state)
 
-        prompt = get_system_prompt(db, "review").format(
+        # 优先从 state["_prompts"] 获取，回退到 DEFAULT_PROMPTS
+        prompts = state.get("_prompts", {})
+        if prompts and "review" in prompts:
+            prompt_template = prompts["review"]
+        else:
+            from app.agents.prompts import DEFAULT_PROMPTS
+            prompt_template = DEFAULT_PROMPTS.get("review", "")
+
+        prompt = prompt_template.format(
             strictness=strictness,
             chapter_outline=outline_str,
             chapter_content=chapter_content,

@@ -6,8 +6,6 @@ from typing import Dict, Any, AsyncIterator
 from sqlalchemy.orm import Session
 
 from app.agents.state import NovelState, STAGE_OUTLINE
-from app.agents.nodes.utils import parse_words_per_chapter
-from app.services.prompt_loader import get_system_prompt
 from app.database import SessionLocal
 from app.services.llm import LLMService
 from app.utils.llm import get_llm_from_state_async
@@ -516,7 +514,15 @@ def prepare_outline_prompt(
 - **风格偏好**：{style}
 """
 
-        prompt = get_system_prompt(db, "outline_generation").format(
+        # 优先从 state["_prompts"] 获取，回退到 DEFAULT_PROMPTS
+        prompts = state.get("_prompts", {})
+        if prompts and "outline_generation" in prompts:
+            prompt_template = prompts["outline_generation"]
+        else:
+            from app.agents.prompts import DEFAULT_PROMPTS
+            prompt_template = DEFAULT_PROMPTS.get("outline_generation", "")
+
+        prompt = prompt_template.format(
             inspiration_template=inspiration_template,
             chapter_count=chapter_count
         )
@@ -572,6 +578,10 @@ async def outline_generation_node(state: NovelState) -> NovelState:
 
     import logging
     logger = logging.getLogger(__name__)
+    # [DEBUG-a3f1] 临时日志：输出 LLM 返回的前 500 字符，用于调试正则解析
+    logger.warning(
+        f"[DEBUG-a3f1] LLM response first 500 chars:\n{response[:500]}"
+    )
     logger.info(
         f"outline parsed: title='{outline.get('title', '')}', "
         f"char={len(outline.get('characters', []))}, "

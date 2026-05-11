@@ -270,6 +270,20 @@ def build_initial_state(
     return state
 
 
+def _build_prompts_dict(db: Session) -> dict[str, str]:
+    """构建预加载的 prompts 字典（所有节点共享）"""
+    from app.services.prompt_loader import get_system_prompt
+    return {
+        "outline_generation": get_system_prompt(db, "outline_generation"),
+        "character_generation": get_system_prompt(db, "character_generation"),
+        "relation_generation": get_system_prompt(db, "relation_generation"),
+        "chapter_outline_generation": get_system_prompt(db, "chapter_outline_generation"),
+        "chapter_content_generation": get_system_prompt(db, "chapter_content_generation"),
+        "review": get_system_prompt(db, "review"),
+        "rewrite": get_system_prompt(db, "rewrite"),
+    }
+
+
 def get_latest_checkpoint(project_id: int, thread_id: str = "default", db: Session = None) -> Optional[dict]:
     """
     获取项目的最新检查点状态。
@@ -376,16 +390,7 @@ async def run_workflow(
     initial_state = build_initial_state(project, outline, workflow_state, llm_config_id, db=db)
 
     # 预加载 prompts 到 state（使所有节点都能访问）
-    from app.services.prompt_loader import get_system_prompt
-    initial_state["_prompts"] = {
-        "outline_generation": get_system_prompt(db, "outline_generation"),
-        "character_generation": get_system_prompt(db, "character_generation"),
-        "relation_generation": get_system_prompt(db, "relation_generation"),
-        "chapter_outline_generation": get_system_prompt(db, "chapter_outline_generation"),
-        "chapter_content_generation": get_system_prompt(db, "chapter_content_generation"),
-        "review": get_system_prompt(db, "review"),
-        "rewrite": get_system_prompt(db, "rewrite"),
-    }
+    initial_state["_prompts"] = _build_prompts_dict(db)
 
     # 创建带检查点的图（复用 db 会话）
     graph = create_novel_graph_with_checkpointer(project_id, "default")
@@ -738,16 +743,7 @@ async def replan_workflow(
     initial_state = build_initial_state(project, outline, workflow_state, llm_config_id, db=db)
 
     # 预加载 prompts
-    from app.services.prompt_loader import get_system_prompt
-    initial_state["_prompts"] = {
-        "outline_generation": get_system_prompt(db, "outline_generation"),
-        "character_generation": get_system_prompt(db, "character_generation"),
-        "relation_generation": get_system_prompt(db, "relation_generation"),
-        "chapter_outline_generation": get_system_prompt(db, "chapter_outline_generation"),
-        "chapter_content_generation": get_system_prompt(db, "chapter_content_generation"),
-        "review": get_system_prompt(db, "review"),
-        "rewrite": get_system_prompt(db, "rewrite"),
-    }
+    initial_state["_prompts"] = _build_prompts_dict(db)
 
     # 7. 创建带检查点的图并启动工作流
     graph = create_novel_graph_with_checkpointer(project_id, "default")
