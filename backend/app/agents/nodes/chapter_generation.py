@@ -1,13 +1,9 @@
 """Chapter generation nodes"""
 
 import re
-from typing import Dict, Any, AsyncIterator
+from typing import AsyncIterator
 
 from app.agents.state import NovelState, STAGE_CHAPTER_OUTLINES, STAGE_WRITING
-from app.agents.prompts import (
-    GENERATE_SINGLE_CHAPTER_OUTLINE_PROMPT,
-    GENERATE_CHAPTER_CONTENT_PROMPT,
-)
 from app.services.llm import LLMService
 from app.utils.llm import get_llm_from_state_async
 from app.agents.nodes.utils import (
@@ -211,7 +207,15 @@ async def generate_single_chapter_outline(
     # 获取情感曲线
     emotional_curve = state.get("outline_emotional_curve", "") or "未提供"
 
-    prompt = GENERATE_SINGLE_CHAPTER_OUTLINE_PROMPT.format(
+    # 从 state 获取预加载的 prompts（LangGraph 合规）
+    prompts = state.get("_prompts", {})
+    if prompts and "chapter_outline_generation" in prompts:
+        prompt_template = prompts["chapter_outline_generation"]
+    else:
+        from app.agents.prompts import DEFAULT_PROMPTS
+        prompt_template = DEFAULT_PROMPTS.get("chapter_outline_generation", "")
+
+    prompt = prompt_template.format(
         outline=outline,
         plot_points=plot_points_str,
         characters=chars_str,
@@ -341,7 +345,15 @@ async def generate_chapter_content_stream(
                 previous_ending = ch_content[-500:] if len(ch_content) > 500 else ch_content
                 break
 
-    prompt = GENERATE_CHAPTER_CONTENT_PROMPT.format(
+    # 从 state 获取预加载的 prompts（LangGraph 合规）
+    prompts = state.get("_prompts", {})
+    if prompts and "chapter_content_generation" in prompts:
+        prompt_template = prompts["chapter_content_generation"]
+    else:
+        from app.agents.prompts import DEFAULT_PROMPTS
+        prompt_template = DEFAULT_PROMPTS.get("chapter_content_generation", "")
+
+    prompt = prompt_template.format(
         chapter_outline=outline_str,
         previous_ending=previous_ending,
         genre=info.get("novelType", "未指定"),
@@ -450,7 +462,15 @@ async def generate_chapter_content_node(state: NovelState) -> NovelState:
     # 合并人物设定、关系和演变信息（用于 prompt）
     combined_characters_str = chars_str + relations_str + evolution_str
 
-    prompt = GENERATE_CHAPTER_CONTENT_PROMPT.format(
+    # 从 state 获取预加载的 prompts（LangGraph 合规）
+    prompts = state.get("_prompts", {})
+    if prompts and "chapter_content_generation" in prompts:
+        prompt_template = prompts["chapter_content_generation"]
+    else:
+        from app.agents.prompts import DEFAULT_PROMPTS
+        prompt_template = DEFAULT_PROMPTS.get("chapter_content_generation", "")
+
+    prompt = prompt_template.format(
         chapter_outline=outline_str,
         previous_ending=previous_ending,
         genre=info.get("novelType", "未指定"),
