@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 
 from app.models.character import Relation
 from app.agents.state import NovelState, STAGE_RELATIONS
-from app.services.prompt_loader import get_system_prompt
 from app.utils.llm import get_llm_from_state_async
 from app.database import SessionLocal
 
