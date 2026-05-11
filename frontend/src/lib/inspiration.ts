@@ -93,10 +93,10 @@ export const COMMON_OPTIONS = {
   ],
 
   wordsPerChapter: [
-    { value: '1500-2000', label: '1500-2000字', desc: '短章' },
-    { value: '2000-2500', label: '2000-2500字', desc: '标准·番茄推荐' },
-    { value: '2500-3000', label: '2500-3000字', desc: '中章·七猫推荐' },
-    { value: '3000-5000', label: '3000-5000字', desc: '长章' },
+    { value: '2000', label: '2000字起', desc: '短章' },
+    { value: '3000', label: '3000字起', desc: '标准·番茄推荐' },
+    { value: '4000', label: '4000字起', desc: '中章·七猫推荐' },
+    { value: '5000', label: '5000字起', desc: '长章' },
     { value: 'custom', label: '自定义' },
   ],
 
@@ -331,8 +331,15 @@ export function parseTemplateToData(template: string): Partial<InspirationData> 
       else if (value && value !== '未设置') {
         const numMatch = value.match(/(\d+)/)
         if (numMatch) {
-          data.wordsPerChapter = 'custom'
-          data.customWordsPerChapter = parseInt(numMatch[1])
+          const numVal = parseInt(numMatch[1])
+          // 检查是否匹配预设选项的 value
+          const presetOption = INSPIRATION_OPTIONS.wordsPerChapter.find(o => o.value === String(numVal))
+          if (presetOption) {
+            data.wordsPerChapter = presetOption.value
+          } else {
+            data.wordsPerChapter = 'custom'
+            data.customWordsPerChapter = numVal
+          }
         }
       }
     }
@@ -454,7 +461,7 @@ export const QUICK_TEMPLATES: QuickTemplate[] = [
       worldSetting: 'xiuzhen',
       era: 'ancient',
       targetReader: 'male',
-      wordsPerChapter: 'option_3000',
+      wordsPerChapter: '3000',
       narrative: 'third_person',
       genre: 'feichai',
       maleLead: 'lengmian',
@@ -472,7 +479,7 @@ export const QUICK_TEMPLATES: QuickTemplate[] = [
       coreTheme: 'nixi',
       era: 'modern',
       targetReader: 'female',
-      wordsPerChapter: 'option_2500',
+      wordsPerChapter: '3000',
       narrative: 'first_person',
       femaleLead: 'zongcai',
       stylePreference: 'wenxin',
@@ -489,7 +496,7 @@ export const QUICK_TEMPLATES: QuickTemplate[] = [
       worldSetting: 'kehuan',
       era: 'future',
       targetReader: 'male',
-      wordsPerChapter: 'option_3000',
+      wordsPerChapter: '3000',
       narrative: 'third_person',
       genre: 'yinghan',
       maleLead: 'lenghan',
