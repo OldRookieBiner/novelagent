@@ -213,6 +213,68 @@ class TestFormatRelationsInfo:
 
         assert result == ""
 
+    def test_relations_with_id_based_fields(self):
+        """关系数据使用 character_a_id/character_b_id/relation_type/current_status 时应正确解析"""
+        state = {
+            "characters": [
+                {"id": 1, "name": "林风", "role": "主角"},
+                {"id": 2, "name": "苏瑶", "role": "女主"},
+            ],
+            "relations": [
+                {
+                    "character_a_id": 1,
+                    "character_b_id": 2,
+                    "relation_type": "师徒",
+                    "current_status": "青梅竹马",
+                }
+            ],
+        }
+        result = format_relations_info(state, 1)
+
+        assert "【人物关系】" in result
+        assert "林风 与 苏瑶：师徒（青梅竹马）" in result
+
+    def test_relations_mixed_field_formats(self):
+        """两种字段命名混合时，有 character1/character2 优先使用"""
+        state = {
+            "characters": [
+                {"id": 1, "name": "林风"},
+            ],
+            "relations": [
+                {
+                    "character1": "张三",
+                    "character2": "李四",
+                    "relationship_type": "敌对",
+                    "character_a_id": 1,
+                    "character_b_id": 2,
+                    "relation_type": "合作",
+                    "description": "表面合作",
+                    "current_status": "暗中对抗",
+                }
+            ],
+        }
+        result = format_relations_info(state, 1)
+
+        # character1/character2 优先于 ID 映射
+        assert "张三 与 李四：敌对（表面合作）" in result
+
+    def test_relations_id_fields_without_characters(self):
+        """关系数据只有 ID 但 characters 为空时，应显示未知"""
+        state = {
+            "characters": [],
+            "relations": [
+                {
+                    "character_a_id": 1,
+                    "character_b_id": 2,
+                    "relation_type": "敌对",
+                    "current_status": "不共戴天",
+                }
+            ],
+        }
+        result = format_relations_info(state, 1)
+
+        assert "未知 与 未知：敌对（不共戴天）" in result
+
 
 class TestFormatEvolutionInfo:
     """测试格式化人物演变信息"""

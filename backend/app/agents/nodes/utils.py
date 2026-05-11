@@ -51,16 +51,31 @@ def format_characters_info(state: dict) -> str:
 
 
 def format_relations_info(state: dict, current_chapter: int) -> str:
-    """格式化人物关系为提示词用字符串"""
+    """格式化人物关系为提示词用字符串
+
+    兼容两种字段命名：
+    - 旧格式：character1/character2/relationship_type/description
+    - 新格式：character_a_id/character_b_id/relation_type/current_status
+    """
     relations = state.get("relations", [])
     if not relations:
         return ""
 
+    # 构建 ID→名字映射（解决关系数据只有 ID 没有名字的问题）
+    characters = state.get("characters", [])
+    id_to_name = {c.get("id"): c.get("name", "") for c in characters if c.get("id")}
+
     relations_str = "\n【人物关系】\n"
     for r in relations:
-        relations_str += f"- {r.get('character1', '')} 与 {r.get('character2', '')}：{r.get('relationship_type', '')}"
-        if r.get("description"):
-            relations_str += f"（{r.get('description')}）"
+        # 兼容两种字段命名：旧格式优先
+        name_a = r.get("character1") or id_to_name.get(r.get("character_a_id"), "未知")
+        name_b = r.get("character2") or id_to_name.get(r.get("character_b_id"), "未知")
+        rel_type = r.get("relationship_type") or r.get("relation_type", "")
+        desc = r.get("description") or r.get("current_status", "")
+
+        relations_str += f"- {name_a} 与 {name_b}：{rel_type}"
+        if desc:
+            relations_str += f"（{desc}）"
         relations_str += "\n"
     return relations_str
 
