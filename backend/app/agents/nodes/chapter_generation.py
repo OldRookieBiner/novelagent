@@ -202,9 +202,21 @@ async def generate_single_chapter_outline(
             for c in recent
         ])
 
+    # 格式化人物设定（使用共享工具函数）
+    chars_str = format_characters_info(state)
+
+    # 格式化世界观（使用共享工具函数）
+    world_str = format_world_setting(state)
+
+    # 获取情感曲线
+    emotional_curve = state.get("outline_emotional_curve", "") or "未提供"
+
     prompt = GENERATE_SINGLE_CHAPTER_OUTLINE_PROMPT.format(
         outline=outline,
         plot_points=plot_points_str,
+        characters=chars_str,
+        world_setting=world_str,
+        emotional_curve=emotional_curve,
         chapter_count=chapter_count,
         chapter_number=chapter_number,
         previous_chapters_info=previous_info,

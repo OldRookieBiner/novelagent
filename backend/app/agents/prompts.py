@@ -79,6 +79,15 @@ GENERATE_SINGLE_CHAPTER_OUTLINE_PROMPT = """你是一个精通伏笔编排和人
 ## 主要情节节点及伏笔状态
 {plot_points}
 
+## 人物设定
+{characters}
+
+## 世界观
+{world_setting}
+
+## 情感曲线
+{emotional_curve}
+
 ## 当前进度
 - 总章节数：{chapter_count}
 - 当前章节：第 {chapter_number} 章
