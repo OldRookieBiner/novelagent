@@ -32,6 +32,8 @@ interface OutlineProgressDialogProps
   modelConfigId?: number
   /** 可选的模型名称 */
   modelName?: string
+  /** 是否为重新规划模式 */
+  isReplan?: boolean
   onComplete: () => void
   onViewOutline: () => void
 }
@@ -48,6 +50,7 @@ export function OutlineProgressDialog({
   projectId,
   modelConfigId,
   modelName,
+  isReplan = false,
   onComplete,
   onViewOutline,
 }: OutlineProgressDialogProps)
@@ -97,20 +100,23 @@ export function OutlineProgressDialog({
     const controller = new AbortController()
     abortRef.current = controller
 
-    // 重试前先清除旧的 checkpoint，防止状态污染
-    try
+    // 重新规划模式由后端 replan 端点处理清理；非重新规划模式先清除旧 checkpoint
+    if (!isReplan)
     {
-      await workflowCleanupApi.cleanup(projectId)
-    }
-    catch (cleanupErr)
-    {
-      console.warn('Failed to cleanup checkpoints before retry:', cleanupErr)
-      // 不阻塞重试：如果 cleanup 失败仍然尝试运行
+      try
+      {
+        await workflowCleanupApi.cleanup(projectId)
+      }
+      catch (cleanupErr)
+      {
+        console.warn('Failed to cleanup checkpoints before retry:', cleanupErr)
+      }
     }
 
     try
     {
-      await workflowApi.runWorkflow(
+      const workflowFn = isReplan ? workflowApi.replanWorkflow.bind(workflowApi) : workflowApi.runWorkflow.bind(workflowApi)
+      await workflowFn(
         projectId,
         {
           onNodeStart: (nodeName: string) =>
@@ -239,7 +245,7 @@ export function OutlineProgressDialog({
             ) : (
               <>
                 <Sparkles className="h-5 w-5 text-blue-500" />
-                正在规划你的小说
+                {isReplan ? '正在重新规划' : '正在规划你的小说'}
               </>
             )}
           </DialogTitle>

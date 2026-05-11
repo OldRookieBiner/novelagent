@@ -1,7 +1,7 @@
 // frontend/src/components/workbench/planning/InspirationPanel.tsx
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Lightbulb, RotateCcw, ArrowRight, Check, ChevronDown, ChevronUp, Copy, ChevronLeft, ChevronRight, Cpu } from 'lucide-react'
+import { Lightbulb, RotateCcw, RefreshCw, ArrowRight, Check, ChevronDown, ChevronUp, Copy, ChevronLeft, ChevronRight, Cpu } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -26,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
 import { OutlineProgressDialog } from './OutlineProgressDialog'
 import { toast } from 'sonner'
@@ -33,6 +34,7 @@ import { toast } from 'sonner'
 interface InspirationPanelProps
 {
   projectId: number
+  hasOutline?: boolean
 }
 
 /** 扁平化后的模型选项 */
@@ -81,7 +83,7 @@ const TARGET_READER_DESC: Record<string, string> = {
   female: '言情、甜宠、逆袭',
 }
 
-export function InspirationPanel({ projectId }: InspirationPanelProps)
+export function InspirationPanel({ projectId, hasOutline = false }: InspirationPanelProps)
 {
   // 必填项状态
   const [targetReader, setTargetReader] = useState('')
@@ -115,6 +117,7 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [rightCollapsed, setRightCollapsed] = useState(false)
   const [showProgressDialog, setShowProgressDialog] = useState(false)
+  const [showReplanConfirm, setShowReplanConfirm] = useState(false)
 
   // 模型选择器状态
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([])
@@ -340,6 +343,13 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
     {
       toast.error('复制失败')
     })
+  }
+
+  // 重新规划处理
+  const handleReplan = () =>
+  {
+    setShowReplanConfirm(false)
+    setShowProgressDialog(true)
   }
 
   // 确认灵感，生成大纲
@@ -948,20 +958,30 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
               </Select>
             </div>
 
-            {/* 确认按钮 */}
-            <Button onClick={handleConfirm} disabled={confirming} className="px-6 mt-[22px]">
-              {confirming ? (
-                <>保存中...</>
-              ) : (
-                <>
-                  <Check className="h-4 w-4 mr-2" />
-                  开始规划
-                  <ArrowRight className="h-4 w-4 ml-2" />
-                </>
-              )}
-            </Button>
+            {/* 确认/重新规划按钮 */}
+            {hasOutline ? (
+              <Button onClick={() => setShowReplanConfirm(true)} className="px-6 mt-[22px]" variant="outline">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                重新规划
+                <ArrowRight className="h-4 w-4 ml-2" />
+              </Button>
+            ) : (
+              <Button onClick={handleConfirm} disabled={confirming} className="px-6 mt-[22px]">
+                {confirming ? (
+                  <>保存中...</>
+                ) : (
+                  <>
+                    <Check className="h-4 w-4 mr-2" />
+                    开始规划
+                    <ArrowRight className="h-4 w-4 ml-2" />
+                  </>
+                )}
+              </Button>
+            )}
           </div>
-          <p className="text-xs text-muted-foreground text-center mt-1.5">确认后自动开始规划</p>
+          <p className="text-xs text-muted-foreground text-center mt-1.5">
+            {hasOutline ? '重新生成大纲、人物和关系' : '确认后自动开始规划'}
+          </p>
         </div>
       </div>
 
@@ -1016,6 +1036,21 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
           </div>
         )}
       </div>
+      {/* 重新规划确认对话框 */}
+      <AlertDialog open={showReplanConfirm} onOpenChange={setShowReplanConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认重新规划？</AlertDialogTitle>
+            <AlertDialogDescription>
+              重新规划将清除当前的大纲、人物和关系数据，基于当前灵感重新生成。此操作不可撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={handleReplan}>确认重新规划</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {/* 大纲生成进度弹窗 */}
       <OutlineProgressDialog
         open={showProgressDialog}
@@ -1023,6 +1058,7 @@ export function InspirationPanel({ projectId }: InspirationPanelProps)
         projectId={projectId}
         modelConfigId={selectedModelKey ? parseInt(selectedModelKey.split(':')[0]) : undefined}
         modelName={selectedModelKey ? selectedModelKey.split(':').slice(1).join(':') : undefined}
+        isReplan={hasOutline}
         onComplete={() => {}}
         onViewOutline={() =>
         {

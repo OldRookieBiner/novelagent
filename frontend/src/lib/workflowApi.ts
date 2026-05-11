@@ -194,6 +194,101 @@ export const workflowApi = {
   },
 
   /**
+   * 重新规划工作流（SSE 流式）
+   * 清理旧的大纲/人物/关系数据，重新生成规划
+   * @param projectId - 项目 ID
+   * @param callbacks - 回调函数
+   * @param options - 流式请求选项
+   */
+  async replanWorkflow(
+    projectId: number,
+    callbacks: WorkflowStreamCallbacks,
+    options?: StreamOptions & { llmConfigId?: number; modelName?: string }
+  ): Promise<void>
+  {
+    // 事件处理函数
+    const handleEvent = (eventType: string, data: SSEData) =>
+    {
+      switch (eventType)
+      {
+        case 'node_start':
+        {
+          const nodeData = data as unknown as { node: string; message?: string }
+          callbacks.onNodeStart?.(nodeData.node)
+        }
+        break
+
+        case 'node_done':
+        {
+          const nodeData = data as unknown as { node: string; state: unknown }
+          callbacks.onNodeDone?.(nodeData.node, nodeData.state)
+        }
+        break
+
+        case 'chunk':
+        {
+          const chunkData = data as unknown as { content: string } | string
+          const chunkText = typeof chunkData === 'string' ? chunkData : chunkData.content
+          if (chunkText)
+          {
+            callbacks.onChunk?.(chunkText)
+          }
+        }
+        break
+
+        case 'checkpoint':
+          callbacks.onCheckpoint?.(data as unknown as WorkflowStateResponse)
+          break
+
+        case 'waiting':
+        {
+          const waitingData = data as unknown as { node: string; confirmation_type: string }
+          callbacks.onWaiting?.(waitingData.confirmation_type)
+        }
+        break
+
+        case 'done':
+          callbacks.onDone?.(data as unknown as { stage: string; chapters: WrittenChapter[] })
+          break
+
+        case 'error':
+        {
+          const errorData = data as unknown as { error?: string } | string
+          const errorMsg = typeof errorData === 'object' && errorData !== null
+            ? (errorData.error || JSON.stringify(errorData))
+            : String(errorData)
+          callbacks.onError?.(errorMsg)
+        }
+        break
+
+        default:
+          break
+      }
+    }
+
+    const requestBody: Record<string, unknown> = {}
+    if (options?.llmConfigId)
+    {
+      requestBody.llm_config_id = options.llmConfigId
+    }
+    if (options?.modelName)
+    {
+      requestBody.llm_model_name = options.modelName
+    }
+
+    await createSSEStream(
+      {
+        url: `/api/projects/${projectId}/workflow/replan`,
+        method: 'POST',
+        body: Object.keys(requestBody).length > 0 ? requestBody : undefined,
+        signal: options?.signal,
+      },
+      handleEvent,
+      (error) => callbacks.onError?.(error)
+    )
+  },
+
+  /**
    * 确认工作流当前节点
    * @param projectId - 项目 ID
    */
