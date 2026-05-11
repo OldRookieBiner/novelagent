@@ -52,10 +52,27 @@ Phase 1/2 已修复所有 P0 数据丢失问题和 Prompt 加载合规性。Phas
 
 **DEFAULT_PROMPTS 更新：**
 - `"chapter_content_generation"` 改为 `{"system": ..., "user": ...}` 字典格式
-- 各节点的 prompt 获取逻辑适配：`prompts["chapter_content_generation"]` 可能是 str（旧格式）或 dict（新格式），需兼容
-- 具体兼容逻辑：在 `chapter_generation.py` 的 prompt 获取处增加类型判断：
+- 其他 prompt 保持 str 格式不变（仅章节正文需要 system/user 拆分）
+- `get_system_prompt()` 返回 `str`，DB 中也只存 str。因此 `_build_prompts_dict()` 需要对 `chapter_content_generation` 做特殊处理：
+  - DB 中存储的是 user 模板（用户可自定义的部分）
+  - system 模板始终使用 DEFAULT_PROMPTS 中的默认值（角色定位+写作规则+禁用词，不适合用户修改）
 
 ```python
+# _build_prompts_dict() 中
+"chapter_content_generation": {
+    "system": DEFAULT_PROMPTS["chapter_content_generation"]["system"],
+    "user": get_system_prompt(db, "chapter_content_generation"),
+},
+```
+
+注意：`get_system_prompt(db, "chapter_content_generation")` 此时返回的是旧的完整模板或用户自定义模板。需要增加 DB key `prompt_chapter_content_generation_user` 专门存储 user 部分，或者让 `get_system_prompt()` 对 DB 中旧格式模板自动识别并只取 user 部分。
+
+**最简方案：** chapter_content_generation 的 user 模板使用新的 DB key `prompt_chapter_content_generation_user`，DB 中无记录时回退到 `DEFAULT_PROMPTS["chapter_content_generation"]["user"]`。system 模板不走 DB，始终使用默认值。
+
+- 各节点的 prompt 获取逻辑适配：`prompts["chapter_content_generation"]` 是 dict 格式，需兼容
+
+```python
+# chapter_generation.py 中的 prompt 获取
 prompts = state.get("_prompts", {})
 prompt_data = prompts.get("chapter_content_generation") if prompts else None
 
@@ -69,12 +86,8 @@ elif prompt_data and isinstance(prompt_data, str):
 else:
     from app.agents.prompts import DEFAULT_PROMPTS
     prompt_data = DEFAULT_PROMPTS.get("chapter_content_generation", {})
-    if isinstance(prompt_data, dict):
-        system_template = prompt_data.get("system", "")
-        user_template = prompt_data.get("user", "")
-    else:
-        user_template = str(prompt_data)
-        system_template = ""
+    system_template = prompt_data.get("system", "")
+    user_template = prompt_data.get("user", "")
 ```
 
 ### LangGraph 合规性
@@ -180,6 +193,17 @@ previous_context = strategy.build_previous_context(written_chapters, current_cha
 ```
 
 **数据来源：** 前文全文从 `state["written_chapters"]` 读取，无需额外 DB 查询。
+
+**注意：** 当前 `build_initial_state()` 构建 `written_chapters` 时只包含 `chapter_number`、`content`、`word_count`，缺少 `title`。Fulltext 策略需要 title 生成格式化的前文。需在 `workflow.py` 第 173 行补上：
+
+```python
+written_chapters.append({
+    "chapter_number": co.chapter_number,
+    "title": co.title,           # ← 新增
+    "content": co.chapter.content,
+    "word_count": co.chapter.word_count,
+})
+```
 
 ### 与小说长度的关联
 
