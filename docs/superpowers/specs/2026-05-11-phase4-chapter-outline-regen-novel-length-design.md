@@ -29,14 +29,24 @@ Phase 3 完成了 System Message 机制、Fulltext 上下文策略、审核 JSON
 |------|------|
 | `backend/app/api/workflow.py` | 新增 `replan_chapter_outlines` 端点 |
 
-端点逻辑（参考现有 `replan` 端点的模式）：
+端点逻辑：
 1. 获取项目，验证存在
-2. 删除 ChapterOutline（级联删 Chapter）
-3. 重置 WorkflowState
-4. 删除检查点
-5. 构建 initial_state，stage 设为 `STAGE_CHAPTER_OUTLINES`
-6. 调用 `stream_workflow_events` 启动工作流（从 chapter_outlines_node 开始）
-7. SSE 流式返回
+2. 验证大纲已确认（`outline.confirmed == True`）
+3. 删除 ChapterOutline（级联删 Chapter）
+4. 重置 WorkflowState（stage → `STAGE_CHAPTER_OUTLINES`，current_chapter → 1）
+5. 删除检查点
+6. 构建 initial_state（`build_initial_state` 会加载大纲/人物/关系数据）
+7. **直接调用 `generate_chapter_outlines_stream`** 流式生成章节大纲（与现有 `create_chapter_outlines` 端点相同模式）
+8. SSE 流式返回 progress + done 事件
+9. 生成完成后写入 DB
+
+**LangGraph 合规性说明：**
+
+不通过 `graph.astream_events` 执行，而是直接调用节点函数 `generate_chapter_outlines_stream`。原因：
+- LangGraph 图的入口点是 `outline_generation_node`，`astream_events` 始终从入口点开始，无法从中间节点启动
+- 现有章节大纲生成端点（`POST /chapter-outlines`）也是直接调用 `generate_chapter_outlines_stream`，不通过图执行
+- 章节正文生成、审核等 SSE 端点同样是直接调用节点函数的模式
+- 此方式不影响工作流的暂停/恢复——章节大纲生成完成后，用户通过确认端点继续工作流
 
 **前端改动：**
 
@@ -49,9 +59,9 @@ Phase 3 完成了 System Message 机制、Fulltext 上下文策略、审核 JSON
 确认对话框文案："重新生成将清除所有章节大纲和已写正文，基于当前大纲重新规划章节结构。此操作不可撤销。"
 
 **LangGraph 合规性：**
-- 复用现有工作流架构，initial_state 的 stage 设为 `STAGE_CHAPTER_OUTLINES`
-- 工作流会从 chapter_outlines_node 开始执行
+- 直接调用 `generate_chapter_outlines_stream`，与现有 `create_chapter_outlines` 端点模式一致
 - 不引入新的节点或 state 字段
+- 不通过 `graph.astream_events` 执行（因图入口点是大纲生成，无法从中间节点启动）
 
 ---
 
@@ -113,7 +123,7 @@ UI 设计：
 
 | 文件 | 改动类型 | 风险 |
 |------|---------|------|
-| `backend/app/api/workflow.py` | 新增端点 | 低：复用 replan 模式 |
+| `backend/app/api/workflow.py` | 新增端点 | 低：复用 create_chapter_outlines 模式 |
 | `frontend/src/components/workbench/creation/ChapterOutlinePanel.tsx` | 新增按钮+对话框 | 低：纯 UI |
 | `frontend/src/lib/workflowApi.ts` | 新增方法 | 低 |
 | `frontend/src/components/workbench/planning/InspirationPanel.tsx` | 改造篇幅选择 | 中：替换输入方式，需保留草稿兼容 |
