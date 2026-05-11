@@ -78,14 +78,14 @@ def clean_chapter_content(content: str) -> str:
 def parse_single_chapter_outline(
     response: str,
     chapter_number: int,
-    words_per_chapter_range: tuple[int, int] | None = None
+    min_words: int | None = None
 ) -> dict:
     """解析单章节大纲（增强版）
 
     Args:
         response: AI 返回的章节大纲文本
         chapter_number: 章节号
-        words_per_chapter_range: 每章字数区间 (下限, 上限)，用于钳制 target_words
+        min_words: 每章最低字数，用于保底 target_words
 
     返回结构：
     {
@@ -167,13 +167,9 @@ def parse_single_chapter_outline(
     if words_match:
         chapter["target_words"] = int(words_match.group(1))
 
-    # 钳制 target_words 到用户设定的每章字数区间
-    if words_per_chapter_range:
-        lower, upper = words_per_chapter_range
-        if chapter["target_words"] < lower:
-            chapter["target_words"] = lower
-        elif chapter["target_words"] > upper:
-            chapter["target_words"] = upper
+    # 保底 target_words 不低于用户设定的最低字数
+    if min_words and chapter["target_words"] < min_words:
+        chapter["target_words"] = min_words
 
     return chapter
 
@@ -192,9 +188,9 @@ async def generate_single_chapter_outline(
 
     chapter_count = state.get("chapter_count", 10)
 
-    # 获取每章字数区间
+    # 获取每章最低字数
     collected_info = state.get("collected_info", {})
-    words_lower, words_upper, words_display = parse_words_per_chapter(collected_info)
+    min_words, _ = parse_words_per_chapter(collected_info)
 
     # Build previous chapters info for context
     previous_info = ""
@@ -212,14 +208,13 @@ async def generate_single_chapter_outline(
         chapter_count=chapter_count,
         chapter_number=chapter_number,
         previous_chapters_info=previous_info,
-        words_per_chapter=words_display
     )
 
     response = ""
     async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
         response += chunk
 
-    return parse_single_chapter_outline(response, chapter_number, (words_lower, words_upper))
+    return parse_single_chapter_outline(response, chapter_number, min_words)
 
 
 async def generate_chapter_outlines_stream(
@@ -319,11 +314,9 @@ async def generate_chapter_content_stream(
     # 合并人物设定、关系和演变信息
     combined_characters_str = chars_str + relations_str + evolution_str + evolution_plans_str
 
-    # 获取每章字数区间（优先使用用户设定，回退到章节大纲的 target_words）
-    _, _, words_display = parse_words_per_chapter(info)
-    words_per_chapter_range = words_display
-    # 使用区间上限计算 max_tokens，确保不截断
-    target_words_for_tokens = chapter_outline.get("target_words", 3000)
+    # 获取每章最低字数（优先使用用户设定，回退到章节大纲的 target_words）
+    min_words, _ = parse_words_per_chapter(info)
+    suggested_max = int(min_words * 1.5)
 
     # 获取前章结尾用于衔接
     previous_ending = ""
@@ -340,14 +333,16 @@ async def generate_chapter_content_stream(
         chapter_outline=outline_str,
         previous_ending=previous_ending,
         genre=info.get("novelType", "未指定"),
+        target_words=min_words,
         main_characters=combined_characters_str,
         world_setting=world_str,
         style_preference=info.get("stylePreference", "未指定"),
-        words_per_chapter_range=words_per_chapter_range
+        min_words=min_words,
+        suggested_max=suggested_max
     )
 
-    # 根据目标字数计算 max_tokens，避免截断
-    max_tokens = _calc_max_tokens(target_words_for_tokens)
+    # 根据最低字数的 2 倍计算 max_tokens，确保不截断
+    max_tokens = _calc_max_tokens(min_words * 2)
 
     async for chunk in llm.chat_stream(
         [{"role": "user", "content": prompt}],
@@ -421,9 +416,9 @@ async def generate_chapter_content_node(state: NovelState) -> NovelState:
     # 准备提示词
     info = state.get("collected_info", {})
 
-    # 获取每章字数区间显示文本
-    _, _, words_display = parse_words_per_chapter(info)
-    words_per_chapter_range = words_display
+    # 获取每章最低字数
+    min_words, _ = parse_words_per_chapter(info)
+    suggested_max = int(min_words * 1.5)
 
     # 格式化章节大纲（使用共享工具函数）
     outline_str = _format_chapter_outline_str(chapter_outline)
@@ -443,22 +438,20 @@ async def generate_chapter_content_node(state: NovelState) -> NovelState:
     # 合并人物设定、关系和演变信息（用于 prompt）
     combined_characters_str = chars_str + relations_str + evolution_str
 
-    # 获取章节目标字数
-    # 使用章节大纲的 target_words 计算 max_tokens（用于流式生成容量）
-    target_words_for_tokens = chapter_outline.get("target_words", 3000)
-
     prompt = GENERATE_CHAPTER_CONTENT_PROMPT.format(
         chapter_outline=outline_str,
         previous_ending=previous_ending,
         genre=info.get("novelType", "未指定"),
+        target_words=min_words,
         main_characters=combined_characters_str,
         world_setting=world_str,
         style_preference=info.get("stylePreference", "未指定"),
-        words_per_chapter_range=words_per_chapter_range
+        min_words=min_words,
+        suggested_max=suggested_max
     )
 
-    # 根据目标字数计算 max_tokens，避免截断
-    max_tokens = _calc_max_tokens(target_words_for_tokens)
+    # 根据最低字数的 2 倍计算 max_tokens，确保不截断
+    max_tokens = _calc_max_tokens(min_words * 2)
 
     # 调用 LLM 流式生成内容（框架自动捕获 on_chat_model_stream）
     content = ""
