@@ -1,5 +1,6 @@
 """章节审核节点"""
 
+import json
 import re
 from typing import Dict, Any
 
@@ -13,7 +14,27 @@ from app.agents.nodes.utils import _format_chapter_outline_str, format_character
 
 
 def parse_review_result(response: str) -> Dict[str, Any]:
-    """解析审核结果"""
+    """解析审核结果（优先 JSON，回退旧格式正则）"""
+    # 尝试 JSON 解析
+    json_match = re.search(r'\{[\s\S]*\}', response)
+    if json_match:
+        try:
+            data = json.loads(json_match.group())
+            return {
+                "passed": bool(data.get("passed", False)),
+                "scores": data.get("scores", {}),
+                "issues": data.get("issues", []),
+                "suggestions": data.get("suggestions", ""),
+            }
+        except json.JSONDecodeError:
+            pass
+
+    # 回退：旧格式正则解析
+    return _parse_review_result_legacy(response)
+
+
+def _parse_review_result_legacy(response: str) -> Dict[str, Any]:
+    """旧格式回退解析（兼容期）"""
     result = {"passed": False, "scores": {}, "issues": [], "suggestions": ""}
 
     # 解析是否通过
@@ -26,6 +47,7 @@ def parse_review_result(response: str) -> Dict[str, Any]:
         "writing_quality": r"文笔质量[：:]\s*(\d+)/10",
         "emotional_tension": r"情感张力[：:]\s*(\d+)/10",
         "ai_flavor": r"AI味程度[：:]\s*(\d+)/10",
+        "outline_deviation": r"大纲偏离度[：:]\s*(\d+)/10",
     }
 
     for key, pattern in score_patterns.items():
@@ -126,8 +148,9 @@ def check_review_passed(review_result: Dict[str, Any]) -> bool:
     """检查审核是否通过
 
     通过条件：
-    - 所有评分 >= 6
-    - AI味 <= 3
+    - plot/character/writing/emotional 均 ≥ 6
+    - AI味 ≤ 3
+    - 大纲偏离度 ≤ 4
     """
     scores = review_result.get("scores", {})
 
@@ -141,6 +164,9 @@ def check_review_passed(review_result: Dict[str, Any]) -> bool:
             return False
 
     if scores.get("ai_flavor", 10) > 3:
+        return False
+
+    if scores.get("outline_deviation", 0) > 4:
         return False
 
     return True

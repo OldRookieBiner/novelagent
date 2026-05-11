@@ -4,8 +4,86 @@ import pytest
 from app.agents.nodes.review import parse_review_result, check_review_passed
 
 
-class TestParseReviewResult:
-    """Tests for parse_review_result function"""
+class TestParseReviewResultJSON:
+    """Tests for JSON format review parsing"""
+
+    def test_parse_json_passed(self):
+        """Should parse JSON format passed review"""
+        response = '''```json
+{
+  "passed": true,
+  "scores": {
+    "plot_consistency": 8,
+    "character_consistency": 9,
+    "writing_quality": 7,
+    "emotional_tension": 8,
+    "ai_flavor": 2,
+    "outline_deviation": 2
+  },
+  "issues": [],
+  "suggestions": ""
+}
+```'''
+        result = parse_review_result(response)
+
+        assert result["passed"] is True
+        assert result["scores"]["plot_consistency"] == 8
+        assert result["scores"]["ai_flavor"] == 2
+        assert result["scores"]["outline_deviation"] == 2
+        assert result["issues"] == []
+
+    def test_parse_json_failed(self):
+        """Should parse JSON format failed review"""
+        response = '''{
+  "passed": false,
+  "scores": {
+    "plot_consistency": 5,
+    "character_consistency": 4,
+    "writing_quality": 6,
+    "emotional_tension": 5,
+    "ai_flavor": 7,
+    "outline_deviation": 6
+  },
+  "issues": [
+    {"type": "情节矛盾", "location": "第3段", "description": "转折突兀"},
+    {"type": "AI味", "location": "全文", "description": "多处禁用词"}
+  ],
+  "suggestions": "增加过渡描写，替换AI味词汇"
+}'''
+        result = parse_review_result(response)
+
+        assert result["passed"] is False
+        assert result["scores"]["ai_flavor"] == 7
+        assert result["scores"]["outline_deviation"] == 6
+        assert len(result["issues"]) == 2
+        assert result["issues"][0]["type"] == "情节矛盾"
+        assert "过渡描写" in result["suggestions"]
+
+    def test_parse_json_with_surrounding_text(self):
+        """Should extract JSON from surrounding text"""
+        response = '''以下是审核结果：
+
+```json
+{"passed": true, "scores": {"plot_consistency": 7}, "issues": [], "suggestions": ""}
+```
+
+以上是审核结果。'''
+        result = parse_review_result(response)
+        assert result["passed"] is True
+        assert result["scores"]["plot_consistency"] == 7
+
+    def test_parse_json_invalid_fallback(self):
+        """Should fallback to legacy when JSON is invalid"""
+        response = """【审核结果】通过
+情节一致性：8/10
+AI味程度：2/10"""
+        result = parse_review_result(response)
+        assert result["passed"] is True
+        assert result["scores"]["plot_consistency"] == 8
+
+
+class TestParseReviewResultLegacy:
+    """Tests for legacy format review parsing (fallback)"""
 
     def test_parse_passed_result(self):
         """Should parse a passed review result"""
@@ -79,7 +157,6 @@ AI味程度：7/10
         assert result["passed"] is True
         assert result["scores"]["plot_consistency"] == 7
         assert result["scores"]["writing_quality"] == 8
-        # 缺失的评分应该是空字典中没有
         assert "character_consistency" not in result["scores"]
 
     def test_parse_empty_response(self):
@@ -102,6 +179,14 @@ AI味程度：7/10
         assert result["scores"]["plot_consistency"] == 8
         assert result["scores"]["character_consistency"] == 9
 
+    def test_parse_legacy_with_outline_deviation(self):
+        """Should parse outline_deviation from legacy format"""
+        response = """【审核结果】通过
+情节一致性：8/10
+大纲偏离度：3/10"""
+        result = parse_review_result(response)
+        assert result["scores"]["outline_deviation"] == 3
+
 
 class TestCheckReviewPassed:
     """Tests for check_review_passed function"""
@@ -115,6 +200,7 @@ class TestCheckReviewPassed:
                 "writing_quality": 6,
                 "emotional_tension": 7,
                 "ai_flavor": 2,
+                "outline_deviation": 2,
             }
         }
         assert check_review_passed(result) is True
@@ -128,6 +214,7 @@ class TestCheckReviewPassed:
                 "writing_quality": 8,
                 "emotional_tension": 8,
                 "ai_flavor": 2,
+                "outline_deviation": 2,
             }
         }
         assert check_review_passed(result) is False
@@ -141,6 +228,21 @@ class TestCheckReviewPassed:
                 "writing_quality": 8,
                 "emotional_tension": 8,
                 "ai_flavor": 5,
+                "outline_deviation": 2,
+            }
+        }
+        assert check_review_passed(result) is False
+
+    def test_fail_on_high_outline_deviation(self):
+        """Should fail on high outline deviation"""
+        result = {
+            "scores": {
+                "plot_consistency": 8,
+                "character_consistency": 8,
+                "writing_quality": 8,
+                "emotional_tension": 8,
+                "ai_flavor": 2,
+                "outline_deviation": 5,
             }
         }
         assert check_review_passed(result) is False
@@ -159,6 +261,7 @@ class TestCheckReviewPassed:
                 "writing_quality": 6,
                 "emotional_tension": 6,
                 "ai_flavor": 3,
+                "outline_deviation": 4,
             }
         }
         assert check_review_passed(result) is True
@@ -172,6 +275,7 @@ class TestCheckReviewPassed:
                 "writing_quality": 6,
                 "emotional_tension": 6,
                 "ai_flavor": 3,
+                "outline_deviation": 4,
             }
         }
         assert check_review_passed(result) is False
