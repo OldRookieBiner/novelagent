@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.8.5 - 2026-05-11
+
+### 新功能
+
+- **重新生成规划** - 支持重新生成大纲、人物和关系，解决规划失败无法重试和对结果不满意无法重新生成的问题
+  - 后端新增 `POST /workflow/replan` 端点，清理旧数据后重新启动工作流
+  - 后端新增 `POST /workflow/cleanup` 端点，修复前端重试时清理静默失败的问题
+  - 前端灵感面板在规划完成后显示"重新规划"按钮
+  - 点击后弹出确认对话框，确认后清理旧数据并重新生成
+  - OutlineProgressDialog 支持 isReplan 模式，标题显示"正在重新规划"
+
+### 优化
+
+- **workflowApi 新增 replanWorkflow 方法** - 前端调用重新规划端点的统一方法
+
 ## v0.8.4 - 2026-05-10
 
 ### 重构
