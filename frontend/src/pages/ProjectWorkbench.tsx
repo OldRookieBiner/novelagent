@@ -16,7 +16,7 @@ export default function ProjectWorkbench()
   const { id } = useParams<{ id: string }>()
   const projectId = id ? parseInt(id) : null
   const { activeTab, activeMenuItem } = useWorkbenchStore()
-  const { project, outline, loading } = useProjectData(projectId)
+  const { project, outline, loading, refreshOutline } = useProjectData(projectId)
 
   if (loading || !project)
   {
@@ -39,7 +39,7 @@ export default function ProjectWorkbench()
         switch (activeMenuItem)
         {
           case 'inspiration':
-            return <InspirationPanel projectId={projectId!} hasOutline={!!outline?.title} />
+            return <InspirationPanel projectId={projectId!} hasOutline={!!outline?.title} onPlanningComplete={refreshOutline} />
           case 'outline':
             return <OutlinePanel projectId={projectId!} />
           case 'characters':

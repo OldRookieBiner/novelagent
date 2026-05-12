@@ -39,6 +39,7 @@ interface InspirationPanelProps
 {
   projectId: number
   hasOutline?: boolean
+  onPlanningComplete?: () => void
 }
 
 /** 扁平化后的模型选项 */
@@ -87,7 +88,7 @@ const TARGET_READER_DESC: Record<string, string> = {
   female: '言情、甜宠、逆袭',
 }
 
-export function InspirationPanel({ projectId, hasOutline = false }: InspirationPanelProps)
+export function InspirationPanel({ projectId, hasOutline = false, onPlanningComplete }: InspirationPanelProps)
 {
   // 必填项状态
   const [targetReader, setTargetReader] = useState('')
@@ -1136,9 +1137,10 @@ export function InspirationPanel({ projectId, hasOutline = false }: InspirationP
         isReplan={hasOutline}
         collectedInfo={replanCollectedInfo}
         inspirationTemplate={template}
-        onComplete={() => {}}
+        onComplete={() => { onPlanningComplete?.() }}
         onViewOutline={() =>
         {
+          onPlanningComplete?.()
           setShowProgressDialog(false)
           setActiveMenuItem('outline')
         }}

@@ -27,6 +27,17 @@ interface WorkflowState {
   chapterOutlines: ChapterOutline[]
   chapterOutlinesConfirmed: boolean
 
+  // ========== 章节大纲生成状态 ==========
+  chapterOutlineGenerating: boolean
+  chapterOutlineReplaning: boolean
+  chapterOutlineProgress: {
+    current: number
+    total: number
+    currentTitle?: string
+    completed?: string[]
+  } | null
+  chapterOutlineAbortController: AbortController | null
+
   // ========== 写作状态 ==========
   writtenChapters: WrittenChapter[]
   currentChapter: number
@@ -62,6 +73,19 @@ interface WorkflowState {
   updateChapterOutline: (id: number, updates: Partial<ChapterOutline>) => void
   setChapterOutlinesConfirmed: (confirmed: boolean) => void
 
+  // 章节大纲生成
+  setChapterOutlineGenerating: (generating: boolean) => void
+  setChapterOutlineReplaning: (replaning: boolean) => void
+  setChapterOutlineProgress: (progress: {
+    current: number
+    total: number
+    currentTitle?: string
+    completed?: string[]
+  } | null) => void
+  setChapterOutlineAbortController: (controller: AbortController | null) => void
+  cancelChapterOutlineGeneration: () => void
+  clearChapterOutlineGenerationState: () => void
+
   // 写作
   addWrittenChapter: (chapter: WrittenChapter) => void
   setCurrentChapter: (chapter: number) => void
@@ -93,6 +117,10 @@ const initialState = {
   outlineConfirmed: false,
   chapterOutlines: [],
   chapterOutlinesConfirmed: false,
+  chapterOutlineGenerating: false,
+  chapterOutlineReplaning: false,
+  chapterOutlineProgress: null,
+  chapterOutlineAbortController: null,
   writtenChapters: [],
   currentChapter: 0,
   writtenChaptersCount: 0,
@@ -140,6 +168,40 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
 
   setChapterOutlinesConfirmed: (confirmed) => set({ chapterOutlinesConfirmed: confirmed }),
 
+  // ========== 章节大纲生成 Actions ==========
+
+  setChapterOutlineGenerating: (generating) => set({ chapterOutlineGenerating: generating }),
+
+  setChapterOutlineReplaning: (replaning) => set({ chapterOutlineReplaning: replaning }),
+
+  setChapterOutlineProgress: (progress) => set({ chapterOutlineProgress: progress }),
+
+  setChapterOutlineAbortController: (controller) => set({ chapterOutlineAbortController: controller }),
+
+  // 取消章节大纲生成（用户主动取消时调用）
+  cancelChapterOutlineGeneration: () =>
+  {
+    const state = useWorkflowStore.getState()
+    if (state.chapterOutlineAbortController)
+    {
+      state.chapterOutlineAbortController.abort()
+    }
+    set({
+      chapterOutlineGenerating: false,
+      chapterOutlineReplaning: false,
+      chapterOutlineProgress: null,
+      chapterOutlineAbortController: null,
+    })
+  },
+
+  // 清理章节大纲生成状态（生成完成后调用）
+  clearChapterOutlineGenerationState: () => set({
+    chapterOutlineGenerating: false,
+    chapterOutlineReplaning: false,
+    chapterOutlineProgress: null,
+    chapterOutlineAbortController: null,
+  }),
+
   // ========== 写作 Actions ==========
 
   addWrittenChapter: (chapter) => set((state) => {
@@ -186,5 +248,13 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
 
   // ========== 重置 ==========
 
-  reset: () => set(initialState),
+  reset: () =>
+  {
+    const state = useWorkflowStore.getState()
+    if (state.chapterOutlineAbortController)
+    {
+      state.chapterOutlineAbortController.abort()
+    }
+    set(initialState)
+  },
 }))

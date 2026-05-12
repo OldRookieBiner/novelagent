@@ -1,6 +1,6 @@
 // frontend/src/components/workbench/creation/ChapterOutlinePanel.tsx
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Save, Sparkles, Check, X, ChevronLeft, ChevronRight, FileText, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -11,6 +11,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { workflowApi } from '@/lib/workflowApi'
 import { toast } from 'sonner'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
+import { useWorkflowStore } from '@/stores/workflowStore'
+import { useShallow } from 'zustand/react/shallow'
 import type { ChapterOutline } from '@/types'
 
 interface ChapterOutlinePanelProps
@@ -35,13 +37,31 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
   const [editingPlot, setEditingPlot] = useState('')
   const [editingTargetWords, setEditingTargetWords] = useState(3000)
   const [saving, setSaving] = useState(false)
-  const [generating, setGenerating] = useState(false)
   const [showReplanDialog, setShowReplanDialog] = useState(false)
-  const [replaning, setReplaning] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
-  const [progress, setProgress] = useState<{ current: number; total: number; currentTitle?: string; completed?: string[] } | null>(null)
-  const abortControllerRef = useRef<AbortController | null>(null)
-  const completedTitlesRef = useRef<string[]>([])
+
+  // 从 workflowStore 读取生成相关状态（使用 useShallow 避免不必要的重渲染）
+  const {
+    chapterOutlineGenerating: generating,
+    chapterOutlineReplaning: replaning,
+    chapterOutlineProgress: progress,
+    setChapterOutlineGenerating,
+    setChapterOutlineReplaning,
+    setChapterOutlineProgress,
+    setChapterOutlineAbortController,
+    cancelChapterOutlineGeneration,
+    clearChapterOutlineGenerationState,
+  } = useWorkflowStore(useShallow(s => ({
+    chapterOutlineGenerating: s.chapterOutlineGenerating,
+    chapterOutlineReplaning: s.chapterOutlineReplaning,
+    chapterOutlineProgress: s.chapterOutlineProgress,
+    setChapterOutlineGenerating: s.setChapterOutlineGenerating,
+    setChapterOutlineReplaning: s.setChapterOutlineReplaning,
+    setChapterOutlineProgress: s.setChapterOutlineProgress,
+    setChapterOutlineAbortController: s.setChapterOutlineAbortController,
+    cancelChapterOutlineGeneration: s.cancelChapterOutlineGeneration,
+    clearChapterOutlineGenerationState: s.clearChapterOutlineGenerationState,
+  })))
   const { selectedModelKey } = useWorkbenchStore()
 
   useEffect(() =>
@@ -67,6 +87,13 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
       }
     }
     fetchChapters()
+
+    // 如果 store 中没有正在生成的状态，清理可能残留的进度
+    const { chapterOutlineGenerating, chapterOutlineReplaning } = useWorkflowStore.getState()
+    if (!chapterOutlineGenerating && !chapterOutlineReplaning)
+    {
+      clearChapterOutlineGenerationState()
+    }
   }, [projectId])
 
   useEffect(() =>
@@ -79,18 +106,6 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
       setEditingTargetWords(selectedChapter.target_words || 3000)
     }
   }, [selectedChapter])
-
-  useEffect(() =>
-  {
-    return () =>
-    {
-      if (abortControllerRef.current)
-      {
-        abortControllerRef.current.abort()
-        abortControllerRef.current = null
-      }
-    }
-  }, [])
 
   const handleSave = useCallback(async () =>
   {
@@ -173,11 +188,11 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
 
   const handleGenerateAll = async () =>
   {
-    setGenerating(true)
-    setProgress(null)
-    completedTitlesRef.current = []
+    setChapterOutlineGenerating(true)
+    setChapterOutlineProgress(null)
+    const completedTitles: string[] = []
     const controller = new AbortController()
-    abortControllerRef.current = controller
+    setChapterOutlineAbortController(controller)
 
     // 从 store 解析模型配置 ID
     let llmConfigId: number | undefined
@@ -220,19 +235,17 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
             })
 
             // 更新进度条
-            completedTitlesRef.current.push(chapter.title || `第${chapter.chapter_number}章`)
-            setProgress({
+            completedTitles.push(chapter.title || `第${chapter.chapter_number}章`)
+            setChapterOutlineProgress({
               current: chapterNumber,
               total,
               currentTitle: chapter.title || `第${chapter.chapter_number}章`,
-              completed: [...completedTitlesRef.current]
+              completed: [...completedTitles]
             })
           },
           onDone: async (total) =>
           {
-            setGenerating(false)
-            setProgress(null)
-            abortControllerRef.current = null
+            clearChapterOutlineGenerationState()
             // 重新获取完整数据以确保显示正确
             try
             {
@@ -248,9 +261,7 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
           },
           onError: (error) =>
           {
-            setGenerating(false)
-            setProgress(null)
-            abortControllerRef.current = null
+            clearChapterOutlineGenerationState()
             toast.error(`生成失败: ${error}`)
           }
         },
@@ -260,35 +271,35 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
     }
     catch (err)
     {
-      setGenerating(false)
-      setProgress(null)
-      abortControllerRef.current = null
+      clearChapterOutlineGenerationState()
       toast.error('生成失败')
     }
   }
 
   const handleCancelGenerate = () =>
   {
-    if (abortControllerRef.current)
-    {
-      abortControllerRef.current.abort()
-      abortControllerRef.current = null
-      setGenerating(false)
-      setReplaning(false)
-      setProgress(null)
-      toast.info('已取消生成')
-    }
+    cancelChapterOutlineGeneration()
+    toast.info('已取消生成')
   }
 
   const handleReplanChapterOutlines = async () =>
   {
     setShowReplanDialog(false)
-    setReplaning(true)
-    setProgress(null)
-    completedTitlesRef.current = []
+    setChapterOutlineReplaning(true)
+    setChapters([])  // 清除旧章节，避免流式期间新旧混合
+    setChapterOutlineProgress(null)
+    const completedTitles: string[] = []
 
     const controller = new AbortController()
-    abortControllerRef.current = controller
+    setChapterOutlineAbortController(controller)
+
+    // 解析模型配置 ID
+    let llmConfigId: number | undefined
+    if (selectedModelKey)
+    {
+      const parsed = parseInt(selectedModelKey.split(':')[0])
+      if (!isNaN(parsed)) llmConfigId = parsed
+    }
 
     try
     {
@@ -319,19 +330,17 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
               return [...prev, newChapter].sort((a, b) => a.chapter_number - b.chapter_number)
             })
 
-            completedTitlesRef.current.push(chapter.title || `第${chapter.chapter_number}章`)
-            setProgress({
+            completedTitles.push(chapter.title || `第${chapter.chapter_number}章`)
+            setChapterOutlineProgress({
               current: data.chapter_number,
               total: data.total,
               currentTitle: chapter.title || `第${chapter.chapter_number}章`,
-              completed: [...completedTitlesRef.current]
+              completed: [...completedTitles]
             })
           },
           onDone: async (data) =>
           {
-            setReplaning(false)
-            setProgress(null)
-            abortControllerRef.current = null
+            clearChapterOutlineGenerationState()
             try
             {
               const refreshedData = await chapterOutlinesApi.list(projectId)
@@ -345,20 +354,16 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
           },
           onError: (error) =>
           {
-            setReplaning(false)
-            setProgress(null)
-            abortControllerRef.current = null
+            clearChapterOutlineGenerationState()
             toast.error(`重新生成失败: ${error}`)
           }
         },
-        { signal: controller.signal, llmConfigId: selectedModelKey ? (() => { const p = parseInt(selectedModelKey.split(':')[0]); return isNaN(p) ? undefined : p })() : undefined }
+        { signal: controller.signal, llmConfigId }
       )
     }
     catch (err)
     {
-      setReplaning(false)
-      setProgress(null)
-      abortControllerRef.current = null
+      clearChapterOutlineGenerationState()
       toast.error('重新生成失败')
     }
   }
