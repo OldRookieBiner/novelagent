@@ -32,6 +32,68 @@ export interface InspirationData {
   customFemaleLead?: string
 }
 
+// 篇幅类型选项
+export interface NovelLengthOption {
+  value: string
+  label: string
+  range: string
+  defaultTargetWords: number
+  contextStrategy: string
+  disabled: boolean
+  disabledReason?: string
+  defaultWordsPerChapter: string
+}
+
+export const NOVEL_LENGTH_OPTIONS: NovelLengthOption[] = [
+  {
+    value: 'short',
+    label: '短篇',
+    range: '≤10万字',
+    defaultTargetWords: 50000,
+    contextStrategy: '全文上下文',
+    disabled: false,
+    defaultWordsPerChapter: '3000',
+  },
+  {
+    value: 'medium',
+    label: '中篇',
+    range: '10-30万字',
+    defaultTargetWords: 200000,
+    contextStrategy: '混合上下文',
+    disabled: true,
+    disabledReason: '待开发',
+    defaultWordsPerChapter: '5000',
+  },
+  {
+    value: 'long',
+    label: '长篇',
+    range: '>30万字',
+    defaultTargetWords: 500000,
+    contextStrategy: '摘要上下文',
+    disabled: true,
+    disabledReason: '待开发',
+    defaultWordsPerChapter: '5000',
+  },
+]
+
+/**
+ * 根据 targetWords 值匹配篇幅选项
+ * 与后端 get_context_strategy 阈值一致：≤100000 → short, ≤300000 → medium, >300000 → long
+ */
+export function getNovelLengthFromTargetWords(targetWords: number): string {
+  if (targetWords <= 100000) return 'short'
+  if (targetWords <= 300000) return 'medium'
+  return 'long'
+}
+
+/**
+ * 获取篇幅选项对应的 targetWords 值
+ */
+export function getTargetWordsForNovelLength(novelLength: string): number {
+  const option = NOVEL_LENGTH_OPTIONS.find(o => o.value === novelLength)
+  return option?.defaultTargetWords || 50000
+}
+
 // ============================================
 // 通用选项配置（男女频共用）
 // ============================================

@@ -6,11 +6,15 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {
   INSPIRATION_OPTIONS,
   COMMON_OPTIONS,
   MALE_OPTIONS,
   FEMALE_OPTIONS,
+  NOVEL_LENGTH_OPTIONS,
+  getNovelLengthFromTargetWords,
+  getTargetWordsForNovelLength,
 generateInspirationTemplate,
   saveInspirationDraft,
   loadInspirationDraft,
@@ -88,7 +92,7 @@ export function InspirationPanel({ projectId, hasOutline = false }: InspirationP
   // 必填项状态
   const [targetReader, setTargetReader] = useState('')
   const [novelType, setNovelType] = useState('')
-  const [targetWords, setTargetWords] = useState<number>(0)
+  const [novelLength, setNovelLength] = useState<string>('short')
   const [wordsPerChapter, setWordsPerChapter] = useState('')
   const [customWordsPerChapter, setCustomWordsPerChapter] = useState<number | undefined>()
   const [era, setEra] = useState('')
@@ -125,10 +129,20 @@ export function InspirationPanel({ projectId, hasOutline = false }: InspirationP
 
   const { setActiveMenuItem, selectedModelKey, setSelectedModelKey } = useWorkbenchStore()
 
+  const handleNovelLengthChange = (value: string) =>
+  {
+    setNovelLength(value)
+    const option = NOVEL_LENGTH_OPTIONS.find(o => o.value === value)
+    if (option && !option.disabled)
+    {
+      setWordsPerChapter(option.defaultWordsPerChapter)
+    }
+  }
+
   // 构建完整的表单数据对象（用于生成模板）
   const formData = useMemo((): InspirationData => ({
     novelType,
-    targetWords,
+    targetWords: getTargetWordsForNovelLength(novelLength),
     coreTheme,
     worldSetting,
     customWorldSetting,
@@ -146,7 +160,7 @@ export function InspirationPanel({ projectId, hasOutline = false }: InspirationP
     narrative,
     goldFinger,
     customGoldFinger,
-  }), [novelType, targetWords, coreTheme, worldSetting, customWorldSetting, era, genre, customGenre, maleLead, customMaleLead, femaleLead, customFemaleLead, stylePreference, targetReader, wordsPerChapter, customWordsPerChapter, narrative, goldFinger, customGoldFinger])
+  }), [novelType, novelLength, coreTheme, worldSetting, customWorldSetting, era, genre, customGenre, maleLead, customMaleLead, femaleLead, customFemaleLead, stylePreference, targetReader, wordsPerChapter, customWordsPerChapter, narrative, goldFinger, customGoldFinger])
 
   // 实时更新模板（用户未手动编辑时）
   useEffect(() =>
@@ -176,7 +190,7 @@ export function InspirationPanel({ projectId, hasOutline = false }: InspirationP
     {
       if (draft.targetReader) setTargetReader(draft.targetReader)
       if (draft.novelType) setNovelType(draft.novelType)
-      if (draft.targetWords) setTargetWords(draft.targetWords)
+      if (draft.targetWords) { setNovelLength(getNovelLengthFromTargetWords(draft.targetWords)) }
       if (draft.wordsPerChapter) setWordsPerChapter(draft.wordsPerChapter)
       if (draft.customWordsPerChapter) setCustomWordsPerChapter(draft.customWordsPerChapter)
       if (draft.era) setEra(draft.era)
@@ -295,7 +309,7 @@ export function InspirationPanel({ projectId, hasOutline = false }: InspirationP
   {
     const data: InspirationData = {
       novelType,
-      targetWords,
+      targetWords: getTargetWordsForNovelLength(novelLength),
       coreTheme,
       worldSetting,
       customWorldSetting,
@@ -314,11 +328,11 @@ export function InspirationPanel({ projectId, hasOutline = false }: InspirationP
       goldFinger,
       customGoldFinger,
     }
-    if (novelType || targetWords || coreTheme || targetReader)
+    if (novelType || novelLength || coreTheme || targetReader)
     {
       saveInspirationDraft(data)
     }
-  }, [novelType, targetWords, coreTheme, worldSetting, customWorldSetting, era, genre, customGenre, maleLead, customMaleLead, femaleLead, customFemaleLead, stylePreference, targetReader, wordsPerChapter, customWordsPerChapter, narrative, goldFinger, customGoldFinger])
+  }, [novelType, novelLength, coreTheme, worldSetting, customWorldSetting, era, genre, customGenre, maleLead, customMaleLead, femaleLead, customFemaleLead, stylePreference, targetReader, wordsPerChapter, customWordsPerChapter, narrative, goldFinger, customGoldFinger])
 
   // 用户手动编辑模板
   const handleTemplateChange = useCallback((value: string) =>
@@ -359,8 +373,6 @@ export function InspirationPanel({ projectId, hasOutline = false }: InspirationP
     const newErrors: Record<string, string> = {}
     if (!targetReader) newErrors.targetReader = '请选择目标读者'
     if (!novelType) newErrors.novelType = '请选择小说类型'
-    if (!targetWords) newErrors.targetWords = '请输入目标字数'
-    else if (targetWords < 10000) newErrors.targetWords = '目标字数不能少于1万字'
     if (!wordsPerChapter) newErrors.wordsPerChapter = '请选择每章字数'
     if (!era) newErrors.era = '请选择年代'
     if (!coreTheme) newErrors.coreTheme = '请选择核心主题'
@@ -383,7 +395,7 @@ export function InspirationPanel({ projectId, hasOutline = false }: InspirationP
       }
 
       if (novelType) collectedInfoData.novelType = novelType
-      if (targetWords) collectedInfoData.targetWords = targetWords
+      collectedInfoData.targetWords = getTargetWordsForNovelLength(novelLength)
       if (coreTheme) collectedInfoData.coreTheme = coreTheme
       if (worldSetting)
       {
@@ -578,27 +590,36 @@ export function InspirationPanel({ projectId, hasOutline = false }: InspirationP
                   {errors.era && <p className="text-red-500 text-xs mt-2">{errors.era}</p>}
                 </div>
 
-                {/* 字数设定 */}
-                <div className="grid grid-cols-2 gap-4">
+                {/* 篇幅类型 + 每章字数 */}
+                <div className="space-y-3">
                   <div>
                     <label className="text-sm text-muted-foreground mb-2 block">
-                      目标字数 <span className="text-red-500">*</span>
+                      篇幅类型 <span className="text-red-500">*</span>
                     </label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="number"
-                        value={targetWords || ''}
-                        onChange={(e) =>
-                        {
-                          setTargetWords(parseInt(e.target.value) || 0)
-                          if (errors.targetWords) setErrors(prev => ({ ...prev, targetWords: '' }))
-                        }}
-                        placeholder="输入目标字数"
-                        className={errors.targetWords ? 'border-red-500' : ''}
-                      />
-                      <span className="text-sm text-muted-foreground">字</span>
-                    </div>
-                    {errors.targetWords && <p className="text-red-500 text-xs mt-1">{errors.targetWords}</p>}
+                    <RadioGroup
+                      value={novelLength}
+                      onValueChange={handleNovelLengthChange}
+                      className="space-y-2"
+                    >
+                      {NOVEL_LENGTH_OPTIONS.map((option) => (
+                        <div key={option.value} className="flex items-center space-x-2">
+                          <RadioGroupItem
+                            value={option.value}
+                            id={`length-${option.value}`}
+                            disabled={option.disabled}
+                          />
+                          <label
+                            htmlFor={`length-${option.value}`}
+                            className={`text-sm ${option.disabled ? 'text-muted-foreground cursor-not-allowed' : 'cursor-pointer'}`}
+                          >
+                            {option.label}（{option.range}）— {option.contextStrategy}
+                            {option.disabledReason && (
+                              <span className="ml-1 text-xs text-muted-foreground">({option.disabledReason})</span>
+                            )}
+                          </label>
+                        </div>
+                      ))}
+                    </RadioGroup>
                   </div>
                   <div>
                     <label className="text-sm text-muted-foreground mb-2 block">
