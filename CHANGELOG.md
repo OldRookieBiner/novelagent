@@ -2,7 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
-## v0.8.6 - 2026-05-11
+## v0.8.7 - 2026-05-12
+
+### 修复
+
+- **修复已规划项目重新规划报错"保存失败"** - 根因：replan 端点不接受 collected_info/inspiration_template，前端 handleReplan 不构建表单数据直接打开进度对话框。同时大纲标题为空导致 hasOutline=false，显示"开始规划"而非"重新规划"按钮，走 update_collected_info 路径被 outline.confirmed=True 拒绝
+  - 后端 WorkflowReplanRequest 新增 collected_info/inspiration_template 字段，replan_workflow 端点在重置大纲前保存这些数据
+  - 前端 handleReplan 构建与 handleConfirm 相同的 collectedInfo 数据存入 state，通过 OutlineProgressDialog → workflowApi.replanWorkflow 传到后端
+  - OutlineProgressDialog 拆分 if(isReplan)/else 分支分别调用 replanWorkflow/runWorkflow
+
+- **修复规划完成后大纲标题为空不显示** - 根因：LLM 输出格式为 `## 一、标题\n\n**《凡骨》**`，但正则不支持 `\n+` 多行间隔和 `\*{0,2}` 加粗标记，标题清理顺序错误（先删《》再删**导致残留）
+  - RE_TITLE_CHAPTER 更新为支持 `\n+` 和 `**` 的模式
+  - 新增 RE_TITLE_NEXT_LINE 匹配标题在下一行的格式
+  - 标题清理顺序修正：先删 `**` 再删 `《》`
+  - RE_SUMMARY_CHAPTER 同步支持多行间隔
+
+- **章节大纲重新生成** - Phase 4 功能，支持保留大纲/人物/关系仅重新生成章节大纲
+  - 后端新增 `POST /workflow/replan-chapter-outlines` 端点
+  - 前端新增 ChapterOutlinePanel "重新生成章节大纲" 按钮和确认对话框
+  - 前端灵感面板新增小说长度选项（短篇 3 万字 / 中篇 5 万字 / 长篇 10 万字 / 超长篇 20 万字）
+  - 后端根据小说长度计算章节数和目标字数
+
+### 测试
+
+- 总计 221 测试通过（5 个预存失败与本次修复无关）
 
 ### 新功能
 
