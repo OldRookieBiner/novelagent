@@ -351,8 +351,7 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
             toast.error(`重新生成失败: ${error}`)
           }
         },
-        { signal: controller.signal },
-        selectedModelKey || undefined
+        { signal: controller.signal, llmConfigId: selectedModelKey ? (() => { const p = parseInt(selectedModelKey.split(':')[0]); return isNaN(p) ? undefined : p })() : undefined }
       )
     }
     catch (err)
