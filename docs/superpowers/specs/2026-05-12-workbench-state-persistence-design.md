@@ -17,10 +17,11 @@
 
 **现象**：章节大纲正在生成时切换标签页再切回来，已生成的章节大纲内容和进度条全部清空。
 
-**根因**：`ChapterOutlinePanel` 使用 React 本地状态（`chapters`、`progress`、`generating`），组件卸载后状态丢失。后端 SSE 流仍在继续，但前端无法恢复显示。
+**根因**：SSE 流管理在 `ChapterOutlinePanel` 组件内部，与组件生命周期绑定。组件卸载时 `useEffect` cleanup 调用 `abortControllerRef.current.abort()` 终止 SSE 流，状态随之丢失。
 
 **代码路径**：
-- `ChapterOutlinePanel.tsx` — `useState` 管理章节列表和进度
+- `ChapterOutlinePanel.tsx:83-93` — useEffect cleanup 中 abort SSE
+- `ChapterOutlinePanel.tsx:283-365` — handleReplanChapterOutlines 在组件内管理 SSE
 - `ProjectWorkbench.tsx:32-33` — 标签页切换时组件直接卸载
 
 ---
@@ -33,10 +34,8 @@
 
 **具体修改**：
 
-1. **InspirationPanel.tsx**：接收 `onPlanningComplete` prop（或直接传入 refreshOutline）
-
+1. **InspirationPanel.tsx**：新增 `onPlanningComplete` prop
 2. **ProjectWorkbench.tsx**：将 `refreshOutline` 传入 InspirationPanel
-
 3. **InspirationPanel.tsx**：在 `onComplete` 回调中调用 `onPlanningComplete`
 
 **数据流**：
@@ -47,43 +46,69 @@
 
 **影响范围**：仅 InspirationPanel 和 ProjectWorkbench，不涉及后端。
 
-### 问题2修复：章节大纲状态提升到 Zustand store
+### 问题2修复：SSE 流管理提升到 workflowStore
 
-**方案**：将 `ChapterOutlinePanel` 中的生成相关状态提升到 `workflowStore`，组件卸载后状态保留在 store 中，重新挂载时从 store 恢复。
+**核心理念**：将 SSE 流的创建、回调、状态管理从组件内提升到 `workflowStore`，使 SSE 生命周期与组件解耦。
 
-**需要提升的状态**：
+**架构变化**：
 
-| 状态 | 当前位置 | 提升后 |
-|------|----------|--------|
-| `chapters` | `useState<ChapterOutline[]>` | `workflowStore.chapterOutlines`（已有） |
-| `progress` | `useState` | `workflowStore.chapterOutlineProgress`（新增） |
-| `generating` | `useState` | `workflowStore.chapterOutlineGenerating`（新增） |
-| `replaning` | `useState` | `workflowStore.chapterOutlineReplaning`（新增） |
-| `abortControllerRef` | `useRef` | `workflowStore.chapterOutlineAbortController`（新增） |
+```
+当前架构（问题根因）：
+ChapterOutlinePanel (组件内部)
+├── AbortController (组件局部变量)
+├── useState: chapters, progress, generating
+├── SSE 回调 → 更新本地 state
+└── useEffect cleanup → abort() 终止 SSE
+→ 标签页切换 → 组件卸载 → SSE 流断开 → 进度丢失
 
-**具体修改**：
+改进后架构：
+workflowStore (全局 store)
+├── AbortController (store 持有)
+├── state: chapterOutlineProgress, chapterOutlineGenerating 等
+├── startReplanChapterOutlines() action
+│   └── 调用 workflowApi.replanChapterOutlines()
+│       └── 回调 → 更新 store 状态
+└── (组件卸载不触发 abort)
+→ 标签页切换 → 组件卸载 → Store 保留 → SSE 继续 → 进度保留
+```
 
-1. **workflowStore.ts**：新增章节大纲生成相关状态和 actions
+**新增 store 状态**：
 
-2. **ChapterOutlinePanel.tsx**：将本地状态替换为 store 状态
+| 状态 | 类型 | 说明 |
+|------|------|------|
+| `chapterOutlineProgress` | `{ current: number; total: number; currentTitle?: string; completed?: string[] } \| null` | 生成进度 |
+| `chapterOutlineGenerating` | `boolean` | 是否正在生成 |
+| `chapterOutlineReplaning` | `boolean` | 是否正在重新生成 |
+| `chapterOutlineAbortController` | `AbortController \| null` | SSE 流取消控制器 |
 
-3. **组件挂载逻辑**：
-   - 如果 store 中 `generating=true`，说明后台 SSE 流仍在进行
-   - 如果 store 中已有 `chapters` 数据，直接显示
-   - 如果 SSE 流已结束但 store 未清理，组件挂载时从后端刷新一次数据
+**新增 store actions**：
 
-**SSE 流处理**：
+| Action | 说明 |
+|--------|------|
+| `startGenerateChapterOutlines(projectId, llmConfigId)` | 启动章节大纲生成 SSE 流 |
+| `startReplanChapterOutlines(projectId, llmConfigId)` | 启动章节大纲重新生成 SSE 流 |
+| `cancelChapterOutlineGeneration()` | 取消生成（abort SSE + 清理状态） |
+| `clearChapterOutlineProgress()` | 清理进度状态（生成完成后调用） |
 
-- 切换标签页时组件卸载，但 SSE 流（fetch + ReadableStream）继续运行
-- SSE 回调中更新 store 状态（而非本地 state），数据持久化
-- 切回来时组件从 store 读取状态，恢复显示
+**SSE 回调处理**（在 store action 内部）：
 
-**注意事项**：
+- `onProgress`：更新 `chapterOutlines`（复用已有 action `addChapterOutline`）和 `chapterOutlineProgress`
+- `onDone`：重置 `chapterOutlineGenerating`/`chapterOutlineReplaning`，清理 `chapterOutlineAbortController`，从后端刷新完整数据
+- `onError`：重置所有生成状态，显示错误 toast
 
-- SSE 流的 `onProgress`、`onDone`、`onError` 回调需更新 store 而非本地 state
-- `onDone` 完成后应清理 `generating` 标志
-- 组件卸载时不 abort SSE 流（用户可能在生成中切走再切回）
-- 用户主动取消生成时才 abort 并清理状态
+**ChapterOutlinePanel 修改**：
+
+1. 移除本地 `generating`、`replaning`、`progress`、`abortControllerRef` 状态
+2. 从 store 读取：`const { generating, replaning, progress } = useWorkflowStore()`
+3. 调用 store action 启动生成：`startReplanChapterOutlines(projectId, llmConfigId)`
+4. **移除** useEffect cleanup 中的 `abort()` 调用
+5. 保留 `chapters` 本地状态用于编辑交互（非生成相关）
+
+**组件挂载恢复逻辑**：
+
+- 挂载时检查 store 中 `chapterOutlineGenerating` 或 `chapterOutlineReplaning`
+- 如果为 true，说明 SSE 流仍在进行，直接从 store 读取进度
+- 如果为 false 但 `chapterOutlineProgress` 有残留，说明上次的流已完成但未清理，从后端刷新数据
 
 ---
 
@@ -91,10 +116,24 @@
 
 | 文件 | 修改内容 |
 |------|----------|
-| `frontend/src/stores/workflowStore.ts` | 新增 chapterOutlineProgress、chapterOutlineGenerating、chapterOutlineReplaning、chapterOutlineAbortController 状态和 actions |
-| `frontend/src/components/workbench/creation/ChapterOutlinePanel.tsx` | 本地状态替换为 store 状态；SSE 回调更新 store |
-| `frontend/src/components/workbench/planning/InspirationPanel.tsx` | 接收 onPlanningComplete prop，onComplete 回调调用刷新 |
+| `frontend/src/stores/workflowStore.ts` | 新增章节大纲生成状态和 actions（含 SSE 流管理） |
+| `frontend/src/components/workbench/creation/ChapterOutlinePanel.tsx` | 本地状态替换为 store；调用 store action 启动 SSE；移除 useEffect abort |
+| `frontend/src/components/workbench/planning/InspirationPanel.tsx` | 新增 onPlanningComplete prop，onComplete 回调调用刷新 |
 | `frontend/src/pages/ProjectWorkbench.tsx` | 传入 refreshOutline 给 InspirationPanel |
+
+---
+
+## 改动评估
+
+| 维度 | 评估 |
+|------|------|
+| 改动文件数 | 4 个前端文件 |
+| 后端改动 | 无 |
+| API 层改动 | 无（workflowApi.ts、sseParser.ts 不动） |
+| 其他面板影响 | 无 |
+| 用户操作流程 | 完全不变 |
+| 系统稳定性 | 低风险，逻辑不变只是状态位置从组件挪到 store |
+| 技术债 | 无，是项目架构的自然演进 |
 
 ---
 
