@@ -203,7 +203,7 @@ export const workflowApi = {
   async replanWorkflow(
     projectId: number,
     callbacks: WorkflowStreamCallbacks,
-    options?: StreamOptions & { llmConfigId?: number; modelName?: string }
+    options?: StreamOptions & { llmConfigId?: number; modelName?: string; collectedInfo?: Record<string, unknown> | null; inspirationTemplate?: string }
   ): Promise<void>
   {
     // 事件处理函数
@@ -274,6 +274,14 @@ export const workflowApi = {
     if (options?.modelName)
     {
       requestBody.llm_model_name = options.modelName
+    }
+    if (options?.collectedInfo)
+    {
+      requestBody.collected_info = options.collectedInfo
+    }
+    if (options?.inspirationTemplate)
+    {
+      requestBody.inspiration_template = options.inspirationTemplate
     }
 
     await createSSEStream(

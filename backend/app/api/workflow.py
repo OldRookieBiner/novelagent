@@ -114,6 +114,9 @@ class WorkflowReplanRequest(BaseModel):
     """重新规划请求"""
     llm_config_id: Optional[int] = None
     llm_model_name: Optional[str] = None
+    # 重新规划时同步保存的灵感采集数据
+    collected_info: Optional[dict] = None
+    inspiration_template: Optional[str] = None
 
 
 class WorkflowReplanChapterOutlinesRequest(BaseModel):
@@ -749,7 +752,16 @@ async def replan_workflow(
         workflow_state.confirmation_type = None
         workflow_state.current_chapter = 1
 
-    # 3. 重置大纲生成字段（保留 collected_info 和 inspiration_template）
+    # 3. 更新灵感采集数据（重新规划时前端传入最新表单数据）
+    if request:
+        if request.collected_info:
+            current_info = dict(outline.collected_info or {})
+            current_info.update(request.collected_info)
+            outline.collected_info = current_info
+        if request.inspiration_template:
+            outline.inspiration_template = request.inspiration_template
+
+    # 4. 重置大纲生成字段（保留 collected_info 和 inspiration_template）
     outline.title = None
     outline.summary = None
     outline.plot_points = []
@@ -760,7 +772,7 @@ async def replan_workflow(
     outline.chapter_count_suggested = 0
     outline.chapter_count_confirmed = False
 
-    # 4. 删除旧的人物和关系
+    # 5. 删除旧的人物和关系
     from app.models.character import Character, Relation
     from app.models.outline import ChapterOutline
 
@@ -768,14 +780,14 @@ async def replan_workflow(
     db.query(Relation).filter(Relation.project_id == project_id).delete()
     db.query(Character).filter(Character.project_id == project_id).delete()
 
-    # 5. 删除章节大纲（cascade 会自动删除关联的 Chapter）
+    # 6. 删除章节大纲（cascade 会自动删除关联的 Chapter）
     db.query(ChapterOutline).filter(ChapterOutline.project_id == project_id).delete()
 
     # 提交所有清理
     db.commit()
     db.refresh(outline)
 
-    # 6. 构建初始状态
+    # 7. 构建初始状态
     if not workflow_state:
         workflow_state = WorkflowState(project_id=project_id)
         db.add(workflow_state)
@@ -791,7 +803,7 @@ async def replan_workflow(
     # 预加载 prompts
     initial_state["_prompts"] = _build_prompts_dict(db)
 
-    # 7. 创建带检查点的图并启动工作流
+    # 8. 创建带检查点的图并启动工作流
     graph = create_novel_graph_with_checkpointer(project_id, "default")
     config = {"configurable": {"thread_id": "default"}}
 

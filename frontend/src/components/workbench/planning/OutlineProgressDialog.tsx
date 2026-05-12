@@ -34,6 +34,10 @@ interface OutlineProgressDialogProps
   modelName?: string
   /** 是否为重新规划模式 */
   isReplan?: boolean
+  /** 重新规划时同步保存的灵感采集数据 */
+  collectedInfo?: Record<string, unknown> | null
+  /** 重新规划时同步保存的灵感模板 */
+  inspirationTemplate?: string
   onComplete: () => void
   onViewOutline: () => void
 }
@@ -51,6 +55,8 @@ export function OutlineProgressDialog({
   modelConfigId,
   modelName,
   isReplan = false,
+  collectedInfo,
+  inspirationTemplate,
   onComplete,
   onViewOutline,
 }: OutlineProgressDialogProps)
@@ -115,50 +121,69 @@ export function OutlineProgressDialog({
 
     try
     {
-      const workflowFn = isReplan ? workflowApi.replanWorkflow.bind(workflowApi) : workflowApi.runWorkflow.bind(workflowApi)
-      await workflowFn(
-        projectId,
+      // 共享的回调函数
+      const callbacks = {
+        onNodeStart: (nodeName: string) =>
         {
-          onNodeStart: (nodeName: string) =>
-          {
-            setSteps(prev => prev.map(s =>
-              s.nodeName === nodeName ? { ...s, status: 'active' } : s
-            ))
-          },
-          onNodeDone: (nodeName: string) =>
-          {
-            markNodeDone(nodeName)
-          },
-          onChunk: () =>
-          {
-            // 大纲流式输出中的文本块，进度条不需要处理
-          },
-          onWaiting: () =>
-          {
-            // 收到 waiting 事件（规划阶段暂停等待确认），视为规划完成
-            abortRef.current = null
-            setSteps(prev => prev.map(s => ({ ...s, status: 'done' })))
-            setCompleted(true)
-            onComplete()
-          },
-          onDone: () =>
-          {
-            abortRef.current = null
-            setSteps(prev => prev.map(s => ({ ...s, status: 'done' })))
-            setCompleted(true)
-            onComplete()
-          },
-          onError: (errMsg: string) =>
-          {
-            abortRef.current = null
-            setError(errMsg)
-            setSteps(prev => prev.map(s =>
-              s.status === 'active' ? { ...s, status: 'pending' } : s
-            ))
-          },
+          setSteps(prev => prev.map(s =>
+            s.nodeName === nodeName ? { ...s, status: 'active' } : s
+          ))
         },
-        { signal: controller.signal, llmConfigId: modelConfigId, modelName: modelName }
-      )
+        onNodeDone: (nodeName: string) =>
+        {
+          markNodeDone(nodeName)
+        },
+        onChunk: () =>
+        {
+          // 大纲流式输出中的文本块，进度条不需要处理
+        },
+        onWaiting: () =>
+        {
+          // 收到 waiting 事件（规划阶段暂停等待确认），视为规划完成
+          abortRef.current = null
+          setSteps(prev => prev.map(s => ({ ...s, status: 'done' })))
+          setCompleted(true)
+          onComplete()
+        },
+        onDone: () =>
+        {
+          abortRef.current = null
+          setSteps(prev => prev.map(s => ({ ...s, status: 'done' })))
+          setCompleted(true)
+          onComplete()
+        },
+        onError: (errMsg: string) =>
+        {
+          abortRef.current = null
+          setError(errMsg)
+          setSteps(prev => prev.map(s =>
+            s.status === 'active' ? { ...s, status: 'pending' } : s
+          ))
+        },
+      }
+
+      if (isReplan)
+      {
+        await workflowApi.replanWorkflow(
+          projectId,
+          callbacks,
+          {
+            signal: controller.signal,
+            llmConfigId: modelConfigId,
+            modelName: modelName,
+            collectedInfo,
+            inspirationTemplate,
+          }
+        )
+      }
+      else
+      {
+        await workflowApi.runWorkflow(
+          projectId,
+          callbacks,
+          { signal: controller.signal, llmConfigId: modelConfigId, modelName: modelName }
+        )
+      }
     }
     catch (err)
     {

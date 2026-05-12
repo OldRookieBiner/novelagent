@@ -122,6 +122,7 @@ export function InspirationPanel({ projectId, hasOutline = false }: InspirationP
   const [rightCollapsed, setRightCollapsed] = useState(false)
   const [showProgressDialog, setShowProgressDialog] = useState(false)
   const [showReplanConfirm, setShowReplanConfirm] = useState(false)
+  const [replanCollectedInfo, setReplanCollectedInfo] = useState<Record<string, unknown> | null>(null)
 
   // 模型选择器状态
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([])
@@ -359,10 +360,63 @@ export function InspirationPanel({ projectId, hasOutline = false }: InspirationP
     })
   }
 
-  // 重新规划处理
-  const handleReplan = () =>
+  // 重新规划处理：先保存表单数据，再打开进度弹窗
+  const handleReplan = async () =>
   {
     setShowReplanConfirm(false)
+
+    // 构建灵感采集数据并保存到后端（与 handleConfirm 相同逻辑）
+    try
+    {
+      const collectedInfoData: Record<string, unknown> = {
+        inspiration_template: template,
+      }
+
+      if (novelType) collectedInfoData.novelType = novelType
+      collectedInfoData.targetWords = getTargetWordsForNovelLength(novelLength)
+      if (coreTheme) collectedInfoData.coreTheme = coreTheme
+      if (worldSetting)
+      {
+        collectedInfoData.worldSetting = worldSetting
+        if (customWorldSetting) collectedInfoData.customWorldSetting = customWorldSetting
+      }
+      if (targetReader) collectedInfoData.targetReader = targetReader
+      if (wordsPerChapter)
+      {
+        collectedInfoData.wordsPerChapter = wordsPerChapter
+        if (customWordsPerChapter) collectedInfoData.customWordsPerChapter = customWordsPerChapter
+      }
+      if (narrative) collectedInfoData.narrative = narrative
+      if (stylePreference) collectedInfoData.stylePreference = stylePreference
+      if (era) collectedInfoData.era = era
+
+      if (targetReader === 'male')
+      {
+        if (maleLead) collectedInfoData.maleLead = maleLead
+        if (customMaleLead) collectedInfoData.customMaleLead = customMaleLead
+        const lead = maleLead === 'custom' ? customMaleLead : maleLead
+        if (lead) collectedInfoData.protagonist = lead
+        const genreVal = genre === 'custom' ? customGenre : genre
+        if (genreVal) collectedInfoData.genre = genreVal
+        const gf = goldFinger === 'custom' ? customGoldFinger : goldFinger
+        if (gf) collectedInfoData.goldFinger = gf
+      }
+      else if (targetReader === 'female')
+      {
+        if (femaleLead) collectedInfoData.femaleLead = femaleLead
+        if (customFemaleLead) collectedInfoData.customFemaleLead = customFemaleLead
+        const lead = femaleLead === 'custom' ? customFemaleLead : femaleLead
+        if (lead) collectedInfoData.protagonist = lead
+      }
+
+      // 将灵感数据暂存，供 OutlineProgressDialog 传递给 replan API
+      setReplanCollectedInfo(collectedInfoData)
+    }
+    catch (err)
+    {
+      console.error('Failed to prepare replan data:', err)
+    }
+
     setShowProgressDialog(true)
   }
 
@@ -1080,6 +1134,8 @@ export function InspirationPanel({ projectId, hasOutline = false }: InspirationP
         modelConfigId={selectedModelKey ? parseInt(selectedModelKey.split(':')[0]) : undefined}
         modelName={selectedModelKey ? selectedModelKey.split(':').slice(1).join(':') : undefined}
         isReplan={hasOutline}
+        collectedInfo={replanCollectedInfo}
+        inspirationTemplate={template}
         onComplete={() => {}}
         onViewOutline={() =>
         {

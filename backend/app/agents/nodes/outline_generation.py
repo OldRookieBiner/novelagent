@@ -21,10 +21,12 @@ from app.utils.llm import get_llm_from_state_async
 RE_TITLE = re.compile(r"(?:#{1,6}\s*)?(?:\*\*)?标题(?:\*\*)?[：:]\s*(.+?)(?:\n|$)")
 RE_TITLE_OUTLINE = re.compile(r"#{1,6}\s*小说大纲[：:]\s*(.+?)(?:\n|$)")
 RE_TITLE_BRACKET = re.compile(r"#{1,6}\s*《(.+?)》")
-# 匹配编号标题（### 一、标题）后跟书名号标题
-RE_TITLE_CHAPTER = re.compile(r"#{1,6}\s*[一二三四五六七八九十]+[、.].*\n\s*《(.+?)》")
+# 匹配编号标题（### 一、标题）后跟书名号标题（支持 **《xxx》** 格式和多行间距）
+RE_TITLE_CHAPTER = re.compile(r"#{1,6}\s*[一二三四五六七八九十]+[、.].*\n+\s*\*{0,2}《(.+?)》\*{0,2}")
 # 匹配无#前缀的编号标题后跟书名号（如"一、标题\n《xxx》"）
-RE_TITLE_CHAPTER_NO_HASH = re.compile(r"[一二三四五六七八九十]+[、.].*\n《(.+?)》")
+RE_TITLE_CHAPTER_NO_HASH = re.compile(r"[一二三四五六七八九十]+[、.].*\n+\s*\*{0,2}《(.+?)》\*{0,2}")
+# 匹配 "标题" 标题行后标题内容在下一行（LLM 常见格式：## 一、标题\n\n**《xxx》**）
+RE_TITLE_NEXT_LINE = re.compile(r"(?:#{0,6}\s*(?:[一二三四五六七八九十]+[、.])?\s*)?标题[：:]?\s*\n+\s*(.+?)(?:\n|$)")
 # 匹配编号标题后跟"标题："字段（### 一、标题\n标题：《xxx》已由 RE_TITLE 匹配）
 
 # 概述匹配模式：支持 “三、人物设定” / “# 三、人物设定” 等后续标题格式
@@ -36,9 +38,9 @@ RE_SUMMARY_MD = re.compile(
     r"(?:#{0,6}\s*)?(?:\*\*)?概述(?:\*\*)?\s*\n+(.+?)(?=(?:\n#{0,6}\s*(?:[一二三四五六七八九十]+[、.])?\s*)?(?:人物设定|世界观|主要情节节点|情节节点)|$)",
     re.DOTALL,
 )
-# 新增：支持 # 二、概述 后面直接跟内容的格式
+# 新增：支持 # 二、概述 后面直接跟内容的格式（含多行间距）
 RE_SUMMARY_CHAPTER = re.compile(
-    r"#\s*[一二三四五六七八九十]+[、.].*\n概述\s*\n+(.+?)(?=(?:\n#|\n##)|$)",
+    r"#\s*[一二三四五六七八九十]+[、.].*概述\s*\n+(.+?)(?=(?:\n#|\n##)|$)",
     re.DOTALL,
 )
 
@@ -118,12 +120,15 @@ def parse_outline(response: str) -> Dict[str, Any]:
         title_match = RE_TITLE_CHAPTER.search(response)  # 新增
     if not title_match:
         title_match = RE_TITLE_CHAPTER_NO_HASH.search(response)  # 新增：无#前缀的格式
+    if not title_match:
+        title_match = RE_TITLE_NEXT_LINE.search(response)  # 标题在下一行（如 ## 一、标题\n\n**《xxx》**）
     if title_match:
         title = title_match.group(1).strip()
-        # 清理标题 - 移除书名号和 markdown 粗体标记
+        # 清理标题 - 先移除 markdown 粗体标记，再移除书名号
+        title = re.sub(r"\*+", "", title).strip()
         if title.startswith("《") and title.endswith("》"):
             title = title[1:-1]
-        title = re.sub(r"\*+", "", title).strip()
+        title = title.strip()
         outline["title"] = title
 
     # 提取概述 - 支持多种格式
@@ -578,10 +583,6 @@ async def outline_generation_node(state: NovelState) -> NovelState:
 
     import logging
     logger = logging.getLogger(__name__)
-    # [DEBUG-a3f1] 临时日志：输出 LLM 返回的前 500 字符，用于调试正则解析
-    logger.warning(
-        f"[DEBUG-a3f1] LLM response first 500 chars:\n{response[:500]}"
-    )
     logger.info(
         f"outline parsed: title='{outline.get('title', '')}', "
         f"char={len(outline.get('characters', []))}, "
