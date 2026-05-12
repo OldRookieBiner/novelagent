@@ -185,7 +185,7 @@ class TestPromptTemplates:
 
     def test_generate_outline_prompt_format(self):
         """Outline generation prompt should format correctly"""
-        from app.agents.prompts import OUTLINE_GENERATION_PROMPT
+        from app.agents.prompts import DEFAULT_PROMPTS
 
         inspiration_template = """# 小说创作灵感
 
@@ -200,7 +200,8 @@ class TestPromptTemplates:
 - **世界观**：修仙世界
 """
 
-        prompt = OUTLINE_GENERATION_PROMPT.format(
+        # 使用 DEFAULT_PROMPTS（已替换 forbidden_words_brief 占位符）
+        prompt = DEFAULT_PROMPTS["outline_generation"].format(
             inspiration_template=inspiration_template, chapter_count=40
         )
 

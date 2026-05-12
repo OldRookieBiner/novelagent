@@ -225,6 +225,7 @@ async def generate_single_chapter_outline(
         chapter_count=chapter_count,
         chapter_number=chapter_number,
         previous_chapters_info=previous_info,
+        min_words=min_words,
     )
 
     response = ""
@@ -364,11 +365,13 @@ def _build_chapter_content_messages(
                 previous_ending = ch_content[-500:] if len(ch_content) > 500 else ch_content
                 break
 
-    # 上下文策略：构建前文全文上下文
+    # 上下文策略：构建前文上下文
     target_words = info.get("targetWords", 100000)
     if isinstance(target_words, str):
         target_words = int(target_words)
-    strategy = get_context_strategy(target_words)
+    # 优先使用用户选择的策略，否则根据目标字数自动选择
+    strategy_name = info.get("contextStrategy")
+    strategy = get_context_strategy(target_words, strategy_name)
     previous_context = strategy.build_previous_context(written_chapters, chapter_number)
 
     # 获取 system/user 模板

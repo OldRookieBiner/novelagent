@@ -190,6 +190,15 @@ async def generate_relations_node(state: NovelState, config: dict = None) -> Nov
     # 获取大纲概述
     outline_summary = state.get("outline_summary", "未提供")
 
+    # 获取情节节点和情感曲线
+    plot_points = state.get("outline_plot_points", [])
+    plot_points_str = "\n".join([
+        f"{i+1}. {p.get('event', '')} | 冲突: {p.get('conflict', '')}"
+        for i, p in enumerate(plot_points)
+    ]) if plot_points else "未提供"
+
+    emotional_curve = state.get("outline_emotional_curve", "") or "未提供"
+
     # 从 state 获取预加载的 prompts
     prompts = state.get("_prompts", {})
     if prompts and "relation_generation" in prompts:
@@ -197,6 +206,8 @@ async def generate_relations_node(state: NovelState, config: dict = None) -> Nov
             characters_text=characters_text,
             world_era=world_era,
             outline_summary=outline_summary,
+            plot_points=plot_points_str,
+            emotional_curve=emotional_curve,
         )
         logger_rn.info(f"relation_gen_node: Using prompt from state, length={len(prompt)}")
     else:
@@ -208,6 +219,8 @@ async def generate_relations_node(state: NovelState, config: dict = None) -> Nov
                 characters_text=characters_text,
                 world_era=world_era,
                 outline_summary=outline_summary,
+                plot_points=plot_points_str,
+                emotional_curve=emotional_curve,
             )
             logger_rn.info(f"relation_gen_node: Using DEFAULT_PROMPTS fallback, length={len(prompt)}")
         else:

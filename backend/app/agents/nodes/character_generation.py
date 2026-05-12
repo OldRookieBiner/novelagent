@@ -139,12 +139,23 @@ async def create_characters_from_outline_node(state: NovelState, config: dict = 
         prompts = state.get("_prompts", {})
         logger.info(f"character_gen_node: prompts_keys={list(prompts.keys()) if prompts else 'empty'}")
 
+        # 获取情节节点和情感曲线
+        plot_points = state.get("outline_plot_points", [])
+        plot_points_str = "\n".join([
+            f"{i+1}. {p.get('event', '')} | 冲突: {p.get('conflict', '')} | 钩子: {p.get('hook', '')}"
+            for i, p in enumerate(plot_points)
+        ]) if plot_points else "未提供"
+
+        emotional_curve = state.get("outline_emotional_curve", "") or "未提供"
+
         if prompts and "character_generation" in prompts:
             prompt_template = prompts["character_generation"]
             logger.info(f"character_gen_node: Using prompt from state, template_length={len(prompt_template)}")
             prompt = prompt_template.format(
                 outline_summary=outline_summary,
                 world_era=world_era,
+                plot_points=plot_points_str,
+                emotional_curve=emotional_curve,
             )
         else:
             # 回退：使用默认 prompt
@@ -154,6 +165,8 @@ async def create_characters_from_outline_node(state: NovelState, config: dict = 
                 prompt = default_prompt.format(
                     outline_summary=outline_summary,
                     world_era=world_era,
+                    plot_points=plot_points_str,
+                    emotional_curve=emotional_curve,
                 )
                 logger.info(f"character_gen_node: Using DEFAULT_PROMPTS fallback, length={len(prompt)}")
             else:
