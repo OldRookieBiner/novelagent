@@ -1,12 +1,14 @@
 // frontend/src/components/workbench/creation/ChapterOutlinePanel.tsx
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Save, Sparkles, Check, X, ChevronLeft, ChevronRight, FileText } from 'lucide-react'
+import { Save, Sparkles, Check, X, ChevronLeft, ChevronRight, FileText, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { chapterOutlinesApi } from '@/lib/api'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
+import { workflowApi } from '@/lib/workflowApi'
 import { toast } from 'sonner'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
 import type { ChapterOutline } from '@/types'
@@ -34,6 +36,8 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
   const [editingTargetWords, setEditingTargetWords] = useState(3000)
   const [saving, setSaving] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [showReplanDialog, setShowReplanDialog] = useState(false)
+  const [replaning, setReplaning] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
   const [progress, setProgress] = useState<{ current: number; total: number; currentTitle?: string; completed?: string[] } | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -270,8 +274,93 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
       abortControllerRef.current.abort()
       abortControllerRef.current = null
       setGenerating(false)
+      setReplaning(false)
       setProgress(null)
       toast.info('已取消生成')
+    }
+  }
+
+  const handleReplanChapterOutlines = async () =>
+  {
+    setShowReplanDialog(false)
+    setReplaning(true)
+    setProgress(null)
+    completedTitlesRef.current = []
+
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
+    try
+    {
+      await workflowApi.replanChapterOutlines(
+        projectId,
+        {
+          onProgress: (data) =>
+          {
+            const chapter = data.chapter
+            const newChapter: ChapterOutline = {
+              id: Date.now() + chapter.chapter_number,
+              project_id: projectId,
+              chapter_number: chapter.chapter_number,
+              title: chapter.title || '',
+              scene: chapter.scene || '',
+              characters: chapter.characters || '',
+              plot: chapter.plot || '',
+              conflict: chapter.conflict || '',
+              ending: chapter.ending || '',
+              target_words: chapter.target_words || 3000,
+              confirmed: false,
+              has_content: false,
+              created_at: new Date().toISOString(),
+            }
+            setChapters(prev =>
+            {
+              if (prev.some(c => c.chapter_number === chapter.chapter_number)) return prev
+              return [...prev, newChapter].sort((a, b) => a.chapter_number - b.chapter_number)
+            })
+
+            completedTitlesRef.current.push(chapter.title || `第${chapter.chapter_number}章`)
+            setProgress({
+              current: data.chapter_number,
+              total: data.total,
+              currentTitle: chapter.title || `第${chapter.chapter_number}章`,
+              completed: [...completedTitlesRef.current]
+            })
+          },
+          onDone: async (data) =>
+          {
+            setReplaning(false)
+            setProgress(null)
+            abortControllerRef.current = null
+            try
+            {
+              const refreshedData = await chapterOutlinesApi.list(projectId)
+              setChapters(refreshedData)
+              toast.success(`已重新生成 ${data.total} 个章节大纲`)
+            }
+            catch (err)
+            {
+              toast.success(`已重新生成 ${data.total} 个章节大纲，请刷新页面查看`)
+            }
+          },
+          onError: (error) =>
+          {
+            setReplaning(false)
+            setProgress(null)
+            abortControllerRef.current = null
+            toast.error(`重新生成失败: ${error}`)
+          }
+        },
+        { signal: controller.signal },
+        selectedModelKey || undefined
+      )
+    }
+    catch (err)
+    {
+      setReplaning(false)
+      setProgress(null)
+      abortControllerRef.current = null
+      toast.error('重新生成失败')
     }
   }
 
@@ -305,15 +394,30 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
       <div className="w-40 border-r bg-white flex flex-col">
         <div className="p-2.5 border-b flex items-center justify-between">
           <span className="text-xs font-medium">章节 ({chapters.length})</span>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0"
-            onClick={generating ? handleCancelGenerate : handleGenerateAll}
-            title={generating ? '取消生成' : '批量生成所有章节大纲'}
-          >
-            {generating ? <X className="h-3.5 w-3.5" /> : <Sparkles className="h-3.5 w-3.5" />}
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0"
+              onClick={generating || replaning ? handleCancelGenerate : handleGenerateAll}
+              disabled={replaning}
+              title={generating ? '取消生成' : '批量生成所有章节大纲'}
+            >
+              {generating ? <X className="h-3.5 w-3.5" /> : <Sparkles className="h-3.5 w-3.5" />}
+            </Button>
+            {chapters.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                onClick={() => setShowReplanDialog(true)}
+                disabled={generating || replaning}
+                title="重新生成章节大纲"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
         </div>
         {/* 进度条 */}
         {progress && (
@@ -511,6 +615,22 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
           </div>
         )}
       </div>
+      <AlertDialog open={showReplanDialog} onOpenChange={setShowReplanDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>重新生成章节大纲</AlertDialogTitle>
+            <AlertDialogDescription>
+              重新生成将清除所有章节大纲和已写正文，基于当前大纲重新规划章节结构。此操作不可撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={handleReplanChapterOutlines}>
+              确认重新生成
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
