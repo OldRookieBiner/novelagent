@@ -104,6 +104,91 @@ async def list_chapter_outlines(
     return response
 
 
+async def _stream_chapter_outlines_sse(
+    initial_state: dict,
+    project_id: int,
+    db: Session,
+):
+    """章节大纲 SSE 流式生成共享函数
+
+    供 create_chapter_outlines 和 replan_chapter_outlines 复用。
+    逐章生成章节大纲，progress/done 事件格式统一。
+    使用独立 Session 写入 DB，避免请求级 Session 失效。
+    """
+    from app.database import SessionLocal
+    from app.models.outline import ChapterOutline
+    from app.agents.nodes.chapter_generation import generate_chapter_outlines_stream
+    from app.utils.llm import get_llm_from_state_async
+    from app.utils.workflow import get_or_create_workflow_state
+    from app.agents.state import STAGE_CHAPTER_OUTLINES
+
+    try:
+        llm = await get_llm_from_state_async(initial_state, db)
+        generated_chapters = []
+
+        async for event in generate_chapter_outlines_stream(initial_state, llm):
+            if event.get("type") == "progress":
+                chapter_data = event.get("chapter", {})
+                generated_chapters.append(chapter_data)
+
+                progress_payload = {
+                    "chapter_number": event.get("chapter_number"),
+                    "total": event.get("total"),
+                    "chapter": {
+                        "chapter_number": chapter_data.get("chapter_number"),
+                        "title": chapter_data.get("title", ""),
+                        "scene": chapter_data.get("scene", ""),
+                        "characters": chapter_data.get("characters", ""),
+                        "plot": chapter_data.get("plot", ""),
+                        "conflict": chapter_data.get("conflict", ""),
+                        "ending": chapter_data.get("ending", ""),
+                        "target_words": chapter_data.get("target_words", 3000),
+                    }
+                }
+                yield f"event: progress\ndata: {json.dumps(progress_payload)}\n\n"
+
+            elif event.get("type") == "done":
+                # 使用独立 Session 写入 DB（避免请求级 Session 失效）
+                save_db = SessionLocal()
+                try:
+                    chapter_outlines = event.get("chapter_outlines", generated_chapters)
+                    created_count = 0
+
+                    for co_data in chapter_outlines:
+                        chapter_outline = ChapterOutline(
+                            project_id=project_id,
+                            chapter_number=co_data.get("chapter_number", 1),
+                            title=co_data.get("title"),
+                            scene=co_data.get("scene"),
+                            characters=co_data.get("characters"),
+                            plot=co_data.get("plot"),
+                            conflict=co_data.get("conflict"),
+                            ending=co_data.get("ending"),
+                            target_words=co_data.get("target_words", 3000),
+                            confirmed=False
+                        )
+                        save_db.add(chapter_outline)
+                        created_count += 1
+
+                    # 更新 WorkflowState
+                    wf = get_or_create_workflow_state(save_db, project_id)
+                    wf.stage = STAGE_CHAPTER_OUTLINES
+                    wf.waiting_for_confirmation = True
+                    wf.confirmation_type = "chapter_outlines"
+                    save_db.commit()
+                finally:
+                    save_db.close()
+
+                done_payload = {
+                    "total": created_count,
+                    "stage": STAGE_CHAPTER_OUTLINES
+                }
+                yield f"event: done\ndata: {json.dumps(done_payload)}\n\n"
+
+    except Exception as e:
+        yield format_sse_error(e)
+
+
 @router.post("/{project_id}/chapter-outlines")
 async def create_chapter_outlines(
     project_id: int,
@@ -157,70 +242,8 @@ async def create_chapter_outlines(
 
     async def stream_generator():
         """逐章生成章节大纲并流式发送进度事件"""
-        try:
-            # 通过与 LangGraph 节点相同的机制获取 LLM 服务
-            llm = await get_llm_from_state_async(initial_state, db)
-
-            # 逐章生成，每完成一章发送 progress 事件
-            generated_chapters = []
-            async for event in generate_chapter_outlines_stream(initial_state, llm):
-                if event.get("type") == "progress":
-                    # 保存已生成的章节
-                    chapter_data = event.get("chapter", {})
-                    generated_chapters.append(chapter_data)
-
-                    # 发送 progress 事件给前端（包含完整章节大纲数据）
-                    progress_payload = {
-                        "chapter_number": event.get("chapter_number"),
-                        "total": event.get("total"),
-                        "chapter": {
-                            "chapter_number": chapter_data.get("chapter_number"),
-                            "title": chapter_data.get("title", ""),
-                            "scene": chapter_data.get("scene", ""),
-                            "characters": chapter_data.get("characters", ""),
-                            "plot": chapter_data.get("plot", ""),
-                            "conflict": chapter_data.get("conflict", ""),
-                            "ending": chapter_data.get("ending", ""),
-                            "target_words": chapter_data.get("target_words", 3000),
-                        }
-                    }
-                    yield f"event: progress\ndata: {json.dumps(progress_payload)}\n\n"
-
-                elif event.get("type") == "done":
-                    # 所有章节已生成，写入数据库
-                    chapter_outlines = event.get("chapter_outlines", generated_chapters)
-                    created_count = 0
-
-                    for co_data in chapter_outlines:
-                        chapter_outline = ChapterOutline(
-                            project_id=project_id,
-                            chapter_number=co_data.get("chapter_number", 1),
-                            title=co_data.get("title"),
-                            scene=co_data.get("scene"),
-                            characters=co_data.get("characters"),
-                            plot=co_data.get("plot"),
-                            conflict=co_data.get("conflict"),
-                            ending=co_data.get("ending"),
-                            target_words=co_data.get("target_words", 3000),
-                            confirmed=False
-                        )
-                        db.add(chapter_outline)
-                        created_count += 1
-
-                    # 更新工作流状态
-                    workflow_state = get_or_create_workflow_state(db, project_id)
-                    workflow_state.stage = STAGE_CHAPTER_OUTLINES
-                    db.commit()
-
-                    # 发送包含 total 的 done 事件
-                    done_payload = {
-                        "total": created_count,
-                        "stage": STAGE_CHAPTER_OUTLINES
-                    }
-                    yield f"event: done\ndata: {json.dumps(done_payload)}\n\n"
-
-        except Exception as e:
-            yield format_sse_error(e)
+        async for sse_event in _stream_chapter_outlines_sse(initial_state, project_id, db):
+            yield sse_event
 
     return StreamingResponse(
         stream_generator(),
