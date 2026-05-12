@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import get_db, SessionLocal
 from app.models.user import User
 from app.models.project import Project
 from app.models.outline import Outline, ChapterOutline
@@ -26,6 +26,7 @@ from app.utils.project import get_project_for_user
 from app.utils.workflow import get_or_create_workflow_state
 from app.utils.error import format_sse_error
 from app.agents.state import (
+    NovelState,
     STAGE_CHAPTER_OUTLINES,
     STAGE_WRITING
 )
@@ -105,7 +106,7 @@ async def list_chapter_outlines(
 
 
 async def _stream_chapter_outlines_sse(
-    initial_state: dict,
+    initial_state: NovelState,
     project_id: int,
     db: Session,
 ):
@@ -115,13 +116,6 @@ async def _stream_chapter_outlines_sse(
     逐章生成章节大纲，progress/done 事件格式统一。
     使用独立 Session 写入 DB，避免请求级 Session 失效。
     """
-    from app.database import SessionLocal
-    from app.models.outline import ChapterOutline
-    from app.agents.nodes.chapter_generation import generate_chapter_outlines_stream
-    from app.utils.llm import get_llm_from_state_async
-    from app.utils.workflow import get_or_create_workflow_state
-    from app.agents.state import STAGE_CHAPTER_OUTLINES
-
     try:
         llm = await get_llm_from_state_async(initial_state, db)
         generated_chapters = []
