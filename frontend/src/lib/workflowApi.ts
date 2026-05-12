@@ -289,6 +289,88 @@ export const workflowApi = {
   },
 
   /**
+   * 重新生成章节大纲（SSE 流式）
+   * 保留大纲/人物/关系，仅重新生成章节大纲
+   * @param projectId - 项目 ID
+   * @param callbacks - 回调函数
+   * @param options - 流式请求选项
+   */
+  async replanChapterOutlines(
+    projectId: number,
+    callbacks: {
+      onProgress?: (data: { chapter_number: number; total: number; chapter: { chapter_number: number; title: string; scene: string; characters: string; plot: string; conflict: string; ending: string; target_words: number } }) => void
+      onDone?: (data: { total: number; stage: string }) => void
+      onError?: (error: string) => void
+    },
+    options?: StreamOptions & { llmConfigId?: number; modelName?: string }
+  ): Promise<void>
+  {
+    const handleEvent = (eventType: string, data: SSEData) =>
+    {
+      switch (eventType)
+      {
+        case 'progress':
+        {
+          const progressData = data as unknown as {
+            chapter_number: number
+            total: number
+            chapter: {
+              chapter_number: number
+              title: string
+              scene: string
+              characters: string
+              plot: string
+              conflict: string
+              ending: string
+              target_words: number
+            }
+          }
+          callbacks.onProgress?.(progressData)
+        }
+        break
+
+        case 'done':
+          callbacks.onDone?.(data as unknown as { total: number; stage: string })
+          break
+
+        case 'error':
+        {
+          const errorData = data as unknown as { error?: string } | string
+          const errorMsg = typeof errorData === 'object' && errorData !== null
+            ? (errorData.error || JSON.stringify(errorData))
+            : String(errorData)
+          callbacks.onError?.(errorMsg)
+        }
+        break
+
+        default:
+          break
+      }
+    }
+
+    const requestBody: Record<string, unknown> = {}
+    if (options?.llmConfigId)
+    {
+      requestBody.llm_config_id = options.llmConfigId
+    }
+    if (options?.modelName)
+    {
+      requestBody.llm_model_name = options.modelName
+    }
+
+    await createSSEStream(
+      {
+        url: `/api/projects/${projectId}/workflow/replan-chapter-outlines`,
+        method: 'POST',
+        body: Object.keys(requestBody).length > 0 ? requestBody : undefined,
+        signal: options?.signal,
+      },
+      handleEvent,
+      (error) => callbacks.onError?.(error)
+    )
+  },
+
+  /**
    * 确认工作流当前节点
    * @param projectId - 项目 ID
    */
