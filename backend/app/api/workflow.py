@@ -116,6 +116,12 @@ class WorkflowReplanRequest(BaseModel):
     llm_model_name: Optional[str] = None
 
 
+class WorkflowReplanChapterOutlinesRequest(BaseModel):
+    """章节大纲重新生成请求"""
+    llm_config_id: Optional[int] = None
+    llm_model_name: Optional[str] = None
+
+
 class WorkflowStateResponse(BaseModel):
     """工作流状态响应"""
     project_id: int
@@ -452,6 +458,31 @@ async def confirm_workflow(
     checkpoint_state = get_latest_checkpoint(project_id, "default", db)
 
     if not checkpoint_state:
+        # Fallback：从 WorkflowState 确认（replan-chapter-outlines 场景）
+        workflow_state = db.query(WorkflowState).filter(
+            WorkflowState.project_id == project_id,
+            WorkflowState.thread_id == "main"
+        ).first()
+
+        if workflow_state and workflow_state.waiting_for_confirmation:
+            confirmation_type = workflow_state.confirmation_type
+
+            if confirmation_type == "chapter_outlines":
+                # 确认所有章节大纲
+                from app.models.outline import ChapterOutline
+                chapter_outlines = db.query(ChapterOutline).filter(
+                    ChapterOutline.project_id == project_id
+                ).all()
+                for co in chapter_outlines:
+                    co.confirmed = True
+
+                workflow_state.waiting_for_confirmation = False
+                workflow_state.confirmation_type = None
+                workflow_state.stage = "writing"
+                db.commit()
+
+                return {"message": "Chapter outlines confirmed", "confirmation_type": "chapter_outlines"}
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No active workflow to confirm"
@@ -766,6 +797,97 @@ async def replan_workflow(
 
     def stream_generator():
         return stream_workflow_events(graph, config, initial_state)
+
+    return StreamingResponse(
+        stream_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.post("/{project_id}/workflow/replan-chapter-outlines")
+async def replan_chapter_outlines(
+    project_id: int,
+    request: WorkflowReplanChapterOutlinesRequest = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    重新生成章节大纲（保留大纲、人物、关系数据）。
+
+    清理章节大纲和已写正文，保留大纲/人物/关系，
+    直接调用 generate_chapter_outlines_stream 流式生成。
+    生成完成后设置 WorkflowState.waiting_for_confirmation=True，
+    通过 confirm 端点确认（不依赖检查点）。
+    """
+    from app.models.outline import ChapterOutline
+    from app.api.chapters import _stream_chapter_outlines_sse
+    from app.agents.state import STAGE_CHAPTER_OUTLINES
+
+    # 1. 验证项目
+    project = get_project_for_user(project_id, current_user.id, db)
+
+    # 2. 验证大纲已确认
+    outline = db.query(Outline).filter(
+        Outline.project_id == project_id
+    ).first()
+
+    if not outline:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Outline not found"
+        )
+
+    if not outline.confirmed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Outline must be confirmed before regenerating chapter outlines"
+        )
+
+    # 3. 删除 ChapterOutline（级联删 Chapter）
+    db.query(ChapterOutline).filter(
+        ChapterOutline.project_id == project_id
+    ).delete()
+
+    # 4. 重置 WorkflowState
+    workflow_state = db.query(WorkflowState).filter(
+        WorkflowState.project_id == project_id,
+        WorkflowState.thread_id == "main"
+    ).first()
+
+    if workflow_state:
+        workflow_state.stage = STAGE_CHAPTER_OUTLINES
+        workflow_state.current_chapter = 1
+        workflow_state.waiting_for_confirmation = False
+        workflow_state.confirmation_type = None
+
+    # 5. 删除检查点
+    delete_project_checkpoints(project_id, "default", db)
+    db.commit()
+    db.refresh(outline)
+
+    # 6. 构建初始状态
+    if not workflow_state:
+        workflow_state = WorkflowState(project_id=project_id)
+        db.add(workflow_state)
+        db.commit()
+        db.refresh(workflow_state)
+
+    llm_config_id = None
+    if request:
+        llm_config_id = request.llm_config_id
+
+    initial_state = build_initial_state(project, outline, workflow_state, llm_config_id, db=db)
+    initial_state["_prompts"] = _build_prompts_dict(db)
+
+    # 7. 调用共享 SSE 流式函数
+    async def stream_generator():
+        async for sse_event in _stream_chapter_outlines_sse(initial_state, project_id, db):
+            yield sse_event
 
     return StreamingResponse(
         stream_generator(),
