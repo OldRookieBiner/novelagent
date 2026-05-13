@@ -610,6 +610,22 @@ async def generate_chapter(
             detail="Chapter outline must be confirmed before generating content"
         )
 
+    # 按序生成校验：前一章必须已生成内容
+    if chapter_num > 1:
+        prev_outline = db.query(ChapterOutline).filter(
+            ChapterOutline.project_id == project_id,
+            ChapterOutline.chapter_number == chapter_num - 1
+        ).first()
+        if prev_outline:
+            prev_chapter = db.query(Chapter).filter(
+                Chapter.chapter_outline_id == prev_outline.id
+            ).first()
+            if not prev_chapter or not prev_chapter.content:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"请先完成第 {chapter_num - 1} 章的生成"
+                )
+
     # 保存 chapter_outline_id 供流内部使用（不预先创建空记录）
     chapter_outline_id = chapter_outline.id
 
