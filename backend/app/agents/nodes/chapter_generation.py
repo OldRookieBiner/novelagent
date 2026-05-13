@@ -189,15 +189,22 @@ async def generate_single_chapter_outline(
     collected_info = state.get("collected_info", {})
     min_words, _ = parse_words_per_chapter(collected_info)
 
-    # Build previous chapters info for context
+    # 构建已生成章节大纲的上下文（全部章节，完整字段）
     previous_info = ""
     if previous_chapters and len(previous_chapters) > 0:
-        # Only show last 3 chapters for context
-        recent = previous_chapters[-3:]
-        previous_info = "前几章概要：\n" + "\n".join([
-            f"- 第{c['chapter_number']}章《{c.get('title', '')}》：{c.get('plot', '')[:50]}..."
-            for c in recent
-        ])
+        parts = []
+        for c in previous_chapters:
+            part = f"第{c['chapter_number']}章《{c.get('title', '')}》\n"
+            part += f"场景：{c.get('scene', '')}\n"
+            part += f"人物：{c.get('characters', '')}\n"
+            part += f"情节：{c.get('plot', '')}\n"
+            part += f"冲突：{c.get('conflict', '')}\n"
+            part += f"转折：{c.get('turning_point', '无')}\n"
+            part += f"钩子：{c.get('hook', '')}\n"
+            part += f"衔接：{c.get('transition', '')}\n"
+            part += f"结局：{c.get('ending', '')}"
+            parts.append(part)
+        previous_info = "已生成章节大纲：\n" + "\n\n".join(parts)
 
     # 格式化人物设定（使用共享工具函数）
     chars_str = format_characters_info(state)
