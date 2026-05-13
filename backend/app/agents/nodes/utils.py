@@ -171,3 +171,32 @@ def parse_words_per_chapter(collected_info: dict | None) -> tuple[int, str]:
             pass
 
     return DEFAULT_MIN, DEFAULT_DISPLAY
+
+def get_prompts_from_state(state: dict, key: str) -> tuple[str, str]:
+    """从 state["_prompts"] 获取 system/user 模板
+
+    支持 dict 格式 {"system": ..., "user": ...} 和旧字符串格式。
+    旧字符串格式时 system 返回空串，整个模板作为 user message。
+
+    Args:
+        state: LangGraph 状态字典
+        key: prompt 键名（如 "review", "rewrite", "chapter_content_generation"）
+
+    Returns:
+        (system_template, user_template)
+    """
+    prompts = state.get("_prompts", {})
+    prompt_data = prompts.get(key) if prompts else None
+
+    if prompt_data and isinstance(prompt_data, dict):
+        return prompt_data.get("system", ""), prompt_data.get("user", "")
+    elif prompt_data and isinstance(prompt_data, str):
+        # 旧格式兼容：整个模板作为 user message
+        return "", prompt_data
+    else:
+        from app.agents.prompts import DEFAULT_PROMPTS
+        default = DEFAULT_PROMPTS.get(key, {})
+        if isinstance(default, dict):
+            return default.get("system", ""), default.get("user", "")
+        return "", default
+

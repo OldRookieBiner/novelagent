@@ -13,6 +13,7 @@ from app.agents.nodes.utils import (
     format_relations_info,
     format_evolution_info,
     format_world_setting,
+    get_prompts_from_state,
     parse_words_per_chapter,
 )
 
@@ -313,25 +314,8 @@ def _calc_max_tokens(target_words: int) -> int:
 
 
 def _get_chapter_content_prompts(state: NovelState) -> tuple[str, str]:
-    """获取章节正文生成的 system/user 模板
-
-    Returns:
-        (system_template, user_template) — 旧格式兼容时 system 为空串
-    """
-    prompts = state.get("_prompts", {})
-    prompt_data = prompts.get("chapter_content_generation") if prompts else None
-
-    if prompt_data and isinstance(prompt_data, dict):
-        return prompt_data.get("system", ""), prompt_data.get("user", "")
-    elif prompt_data and isinstance(prompt_data, str):
-        # 旧格式兼容：整个模板作为 user message
-        return "", prompt_data
-    else:
-        from app.agents.prompts import DEFAULT_PROMPTS
-        default = DEFAULT_PROMPTS.get("chapter_content_generation", {})
-        if isinstance(default, dict):
-            return default.get("system", ""), default.get("user", "")
-        return "", default
+    """获取章节正文生成的 system/user 模板"""
+    return get_prompts_from_state(state, "chapter_content_generation")
 
 
 def _build_chapter_content_messages(
