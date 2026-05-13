@@ -91,6 +91,15 @@ export function WritingPanel({ projectId }: WritingPanelProps)
     clearWritingGenerationState: s.clearWritingGenerationState,
   })))
 
+  // 判断章节是否可生成（前一章已生成 或 为第1章且已确认）
+  const canGenerateChapter = (chapter: ChapterOutline): boolean =>
+  {
+    if (!chapter.confirmed) return false
+    if (chapter.chapter_number === 1) return true
+    const prevChapter = chapters.find(c => c.chapter_number === chapter.chapter_number - 1)
+    return prevChapter?.has_content === true
+  }
+
   const [chapters, setChapters] = useState<ChapterOutline[]>([])
   const [selectedChapter, setSelectedChapter] = useState<ChapterOutline | null>(null)
   const [chapterContent, setChapterContent] = useState<Chapter | null>(null)
@@ -221,6 +230,12 @@ export function WritingPanel({ projectId }: WritingPanelProps)
     if (!selectedChapter.confirmed)
     {
       toast.error('请先确认章节大纲')
+      return
+    }
+
+    if (!canGenerateChapter(selectedChapter))
+    {
+      toast.error('请先生成前一章的正文')
       return
     }
 
@@ -419,6 +434,7 @@ export function WritingPanel({ projectId }: WritingPanelProps)
               {
                 const icon = getChapterIcon(chapter, generatingChapterId)
                 const isActive = selectedChapter?.id === chapter.id
+                const canGenerate = canGenerateChapter(chapter)
 
                 return (
                   <button
@@ -426,7 +442,8 @@ export function WritingPanel({ projectId }: WritingPanelProps)
                     onClick={() => setSelectedChapter(chapter)}
                     className={`w-full px-2.5 py-2 text-left text-xs border-b hover:bg-muted/50 transition-colors ${
                       isActive ? 'bg-primary/10 border-l-2 border-l-primary' : ''
-                    }`}
+                    } ${!canGenerate && chapter.confirmed ? 'opacity-50' : ''}`}
+                    title={!canGenerate && chapter.confirmed ? '请先生成前一章正文' : undefined}
                   >
                     <div className="flex items-center gap-1.5">
                       <span className="text-muted-foreground text-[10px] min-w-[14px]">{chapter.chapter_number}.</span>
@@ -457,6 +474,7 @@ export function WritingPanel({ projectId }: WritingPanelProps)
               {
                 const icon = getChapterIcon(chapter, generatingChapterId)
                 const isActive = selectedChapter?.id === chapter.id
+                const canGenerate = canGenerateChapter(chapter)
 
                 return (
                   <button
@@ -464,8 +482,8 @@ export function WritingPanel({ projectId }: WritingPanelProps)
                     onClick={() => setSelectedChapter(chapter)}
                     className={`w-6 h-6 rounded flex items-center justify-center text-[10px] transition-colors ${
                       isActive ? 'bg-primary/20 text-primary font-medium' : 'text-muted-foreground hover:bg-muted'
-                    }`}
-                    title={chapter.title || `第${chapter.chapter_number}章`}
+                    } ${!canGenerate && chapter.confirmed ? 'opacity-50' : ''}`}
+                    title={!canGenerate && chapter.confirmed ? '请先生成前一章正文' : (chapter.title || `第${chapter.chapter_number}章`)}
                   >
                     {icon || chapter.chapter_number}
                   </button>
@@ -491,7 +509,7 @@ export function WritingPanel({ projectId }: WritingPanelProps)
                     </Button>
                   ) : (
                     <>
-                      <Button size="sm" variant="outline" onClick={handleGenerate} title="Ctrl+Enter">
+                      <Button size="sm" variant="outline" onClick={handleGenerate} disabled={!canGenerateChapter(selectedChapter)} title="Ctrl+Enter">
                         <Sparkles className="h-4 w-4 mr-1.5" />
                         AI 生成
                       </Button>
