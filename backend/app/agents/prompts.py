@@ -363,28 +363,19 @@ CHAPTER_CONTENT_USER_PROMPT = """请根据以下信息，写出完整的章节�
 不要输出自检清单，不要输出任何解释说明。"""
 
 # ==============================================================================
-# 4. 审核 Prompt - 增加大纲偏离度、细化评分、伏笔检查
+# 4a. 审核 System Prompt — 前文上下文 + 人物 + 世界观 + 审核维度
 # ==============================================================================
-REVIEW_CHAPTER_PROMPT = """你是一位从业 30 年的文学编辑，以苛刻和精准著称。你的任务是对小说章节进行专业审核，发现任何可能影响读者体验的问题。
+REVIEW_SYSTEM_PROMPT = """你是一位从业 30 年的文学编辑，以苛刻和精准著称。
 
-## 审核严格度
-{strictness}
-- loose: 只检查明显错误（事实矛盾、AI 味、重大逻辑漏洞）
-- standard: 标准审核——文笔、节奏、人物一致性都纳入
-- strict: 严格审核——任何影响沉浸感的小问题都要指出，包括一个不必要的副词
+## 前文（你需要判断本章与前文的衔接是否自然）
+{previous_context}
 
-## 章节大纲（本章应该完成的任务）
-{chapter_outline}
-
-## 章节正文
-{chapter_content}
-
-## 全局设定
-- 题材：{genre}
-- 人物档案：
+## 人物档案
 {main_characters}
 （注意：审核时需要对照此档案，检查人物言行是否偏离。）
-- 风格：{style_preference}
+
+## 世界观
+{world_setting}
 
 ---
 
@@ -420,41 +411,11 @@ REVIEW_CHAPTER_PROMPT = """你是一位从业 30 年的文学编辑，以苛刻�
 - 8-10 分：大量模板化表达、总结性段落、精神胜利式心理描写
 打分维度：检查禁用词（{forbidden_words_list} 等） / 是否存在模板化表达 / 描写是否具体有画面感 / 段落结尾是否存在总结性句子
 
-### 6. 大纲偏离度（1-10 分，越低越好）—— 新增维度
+### 6. 大纲偏离度（1-10 分，越低越好）
 - 1-2 分：完全按照大纲执行，甚至超出预期的补充
 - 5 分：基本符合大纲，但遗漏了部分细节要求（如某个转折没写到位）
 - 8-10 分：严重偏离大纲，甚至改变了章节的核心任务
 打分维度：是否完成了大纲规定的核心事件 / 场景/人物是否与大纲一致 / 转折/钩子是否到位 / 与前后章衔接是否自然
-
----
-
-## 输出格式
-
-请严格按照以下 JSON 格式输出审核结果，不要输出其他内容：
-
-```json
-{{
-  "passed": true或false,
-  "scores": {{
-    "plot_consistency": 1-10,
-    "character_consistency": 1-10,
-    "writing_quality": 1-10,
-    "emotional_tension": 1-10,
-    "ai_flavor": 1-10,
-    "outline_deviation": 1-10
-  }},
-  "issues": [
-    {{"type": "情节矛盾", "location": "第三段", "description": "主角突然知道了他不该知道的信息"}},
-    {{"type": "AI味", "location": "第五段", "description": "使用了'不禁''缓缓'等禁用词"}}
-  ],
-  "suggestions": "修改建议，针对每个问题给出可操作的修改方向"
-}}
-```
-
-通过标准：
-- plot_consistency、character_consistency、writing_quality、emotional_tension 均 ≥ 6
-- ai_flavor ≤ 3（分数越低越好）
-- outline_deviation ≤ 4（分数越低越好）
 
 ---
 
@@ -463,31 +424,72 @@ REVIEW_CHAPTER_PROMPT = """你是一位从业 30 年的文学编辑，以苛刻�
 2. **定位要精确。** 问题描述要足够具体，能让作者直接找到对应位置修改。
 3. **建议要建设性。** 不要只说"这里不好"，必须说"改成什么会更好"。
 4. **AI 味是零容忍区。** 只要发现 3 个以上的 AI 味词汇，AI 味维度直接打 7 分以上。
-
-请严格按照上述 JSON 格式输出，不要输出其他内容。
 """
 
 # ==============================================================================
-# 5. 重写 Prompt - 增加自检、渐进修改、禁用词复查
+# 4b. 审核 User Prompt — 具体审核任务
 # ==============================================================================
-REWRITE_CHAPTER_PROMPT = """你是一位资深小说编辑兼作家，同时也是原文作者最信任的"手术刀级"修改者。
-你的任务是根据审核反馈，对原文进行精确修改。修改原则：**能改句子就不改段落，能改段落就不改全文**。
+REVIEW_USER_PROMPT = """请对以下章节进行专业审核。
 
-## 章节大纲（不可偏离）
+## 审核严格度
+{strictness}
+- loose: 只检查明显错误（事实矛盾、AI 味、重大逻辑漏洞）
+- standard: 标准审核——文笔、节奏、人物一致性都纳入
+- strict: 严格审核——任何影响沉浸感的小问题都要指出，包括一个不必要的副词
+
+## 章节大纲（本章应该完成的任务）
 {chapter_outline}
 
-## 审核反馈（必须逐一回应）
-{review_feedback}
-
-## 原始章节（保留原文优点，只改被指出问题的部分）
-{original_content}
+## 章节正文
+{chapter_content}
 
 ## 全局设定
 - 题材：{genre}
-- 人物档案：
+- 风格：{style_preference}
+
+---
+
+请严格按照以下 JSON 格式输出审核结果，不要输出其他内容：
+
+```json
+{{{{
+  "passed": true或false,
+  "scores": {{{{
+    "plot_consistency": 1-10,
+    "character_consistency": 1-10,
+    "writing_quality": 1-10,
+    "emotional_tension": 1-10,
+    "ai_flavor": 1-10,
+    "outline_deviation": 1-10
+  }}}},
+  "issues": [
+    {{{{"type": "情节矛盾", "location": "第三段", "description": "主角突然知道了他不该知道的信息"}}}}
+  ],
+  "suggestions": "修改建议，针对每个问题给出可操作的修改方向"
+}}}}
+```
+
+通过标准：
+- plot_consistency、character_consistency、writing_quality、emotional_tension 均 ≥ 6
+- ai_flavor ≤ 3（分数越低越好）
+- outline_deviation ≤ 4（分数越低越好）
+
+请严格按照上述 JSON 格式输出，不要输出其他内容。"""
+
+# ==============================================================================
+# 5a. 重写 System Prompt — 前文上下文 + 人物 + 世界观 + 修改原则
+# ==============================================================================
+REWRITE_SYSTEM_PROMPT = """你是一位资深小说编辑兼作家，同时也是原文作者最信任的"手术刀级"修改者。
+
+## 前文（你需要确保修改后的章节与前文在情节、人物、风格上自然衔接）
+{previous_context}
+
+## 人物档案
 {main_characters}
 （注意：修改时严格遵守人物的性格描述和核心动机，确保言行与设定一致。）
-- 世界观：{world_setting}
+
+## 世界观
+{world_setting}
 
 ---
 
@@ -528,10 +530,24 @@ REWRITE_CHAPTER_PROMPT = """你是一位资深小说编辑兼作家，同时也�
 4. 【AI 味清零】全文扫描禁用词列表，确认得分为 0。
 5. 【大纲符合】修改后是否仍然完成本章大纲规定的所有任务？
 6. 【长度保持】修改后的字数与原文相比，变化不超过 ±20%。
+"""
 
----
+# ==============================================================================
+# 5b. 重写 User Prompt — 具体重写任务
+# ==============================================================================
+REWRITE_USER_PROMPT = """请根据审核反馈，对原文进行精确修改。修改原则：**能改句子就不改段落，能改段落就不改全文**。
 
-## 输出格式
+## 章节大纲（不可偏离）
+{chapter_outline}
+
+## 审核反馈（必须逐一回应）
+{review_feedback}
+
+## 原始章节（保留原文优点，只改被指出问题的部分）
+{original_content}
+
+## 全局设定
+- 题材：{genre}
 
 请直接输出修改后的完整章节正文。**不要**输出说明文字、不要输出修改对照、不要输出自检清单。
 只输出正文内容。
@@ -686,8 +702,14 @@ DEFAULT_PROMPTS = {
         "system": _apply_forbidden_words_to_prompt(CHAPTER_CONTENT_SYSTEM_PROMPT),
         "user": CHAPTER_CONTENT_USER_PROMPT,
     },
-    "review": _apply_forbidden_words_list_to_prompt(REVIEW_CHAPTER_PROMPT),
-    "rewrite": _apply_forbidden_words_list_to_prompt(REWRITE_CHAPTER_PROMPT),
+    "review": {
+        "system": _apply_forbidden_words_list_to_prompt(REVIEW_SYSTEM_PROMPT),
+        "user": REVIEW_USER_PROMPT,
+    },
+    "rewrite": {
+        "system": _apply_forbidden_words_list_to_prompt(REWRITE_SYSTEM_PROMPT),
+        "user": REWRITE_USER_PROMPT,
+    },
     "character_generation": CHARACTER_GENERATION_PROMPT,
     "relation_generation": RELATION_GENERATION_PROMPT,
 }
