@@ -850,8 +850,9 @@ async def review_chapter(
             # 发送完成事件
             result_data = {
                 "passed": ch.review_passed if ch else False,
-                "feedback": ch.review_feedback if ch else "",
+                "feedback": review_result.get("suggestions", ""),
                 "issues": review_result.get("issues", []),
+                "scores": review_result.get("scores", {}),
             }
             yield f"event: done\ndata: {json.dumps(result_data)}\n\n"
 
