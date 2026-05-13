@@ -8,7 +8,69 @@ from app.agents.state import NovelState, STAGE_WRITING
 from app.database import SessionLocal
 from app.services.llm import LLMService
 from app.utils.llm import get_llm_from_state_async
-from app.agents.nodes.utils import _format_chapter_outline_str, format_characters_info
+from app.agents.context_strategy import FulltextContentStrategy
+from app.agents.nodes.utils import (
+    _format_chapter_outline_str,
+    format_characters_info,
+    format_relations_info,
+    format_evolution_info,
+    format_world_setting,
+    get_prompts_from_state,
+)
+
+async def _build_rewrite_messages(
+    state: NovelState,
+    chapter_outline: dict,
+    original_content: str,
+    review_feedback: str,
+) -> list[dict]:
+    """构建重写的 system/user 消息列表
+
+    将前文上下文、人物档案、世界观、修改原则放入 system message，
+    章节大纲、审核反馈、原始章节、题材放入 user message。
+    """
+    info = state.get("collected_info", {})
+    written_chapters = state.get("written_chapters", [])
+    chapter_number = chapter_outline.get("chapter_number", 1)
+
+    # 格式化章节大纲
+    outline_str = _format_chapter_outline_str(chapter_outline)
+
+    # 格式化人物设定、关系、演变
+    chars_str = format_characters_info(state)
+    relations_str = format_relations_info(state, chapter_number)
+    evolution_str, _ = format_evolution_info(state, chapter_number)
+    combined_characters_str = chars_str + relations_str + evolution_str
+
+    # 格式化世界观
+    world_str = format_world_setting(state)
+
+    # 前文上下文
+    strategy = FulltextContentStrategy()
+    previous_context = strategy.build_previous_context(written_chapters, chapter_number)
+
+    # 获取 system/user 模板
+    system_template, user_template = get_prompts_from_state(state, "rewrite")
+
+    # 构建 messages
+    messages = []
+    if system_template:
+        system_content = system_template.format(
+            previous_context=previous_context,
+            main_characters=combined_characters_str,
+            world_setting=world_str,
+        )
+        messages.append({"role": "system", "content": system_content})
+
+    user_content = user_template.format(
+        chapter_outline=outline_str,
+        review_feedback=review_feedback,
+        original_content=original_content,
+        genre=info.get("novelType", "未指定"),
+    )
+    messages.append({"role": "user", "content": user_content})
+
+    return messages
 
 
 async def rewrite_chapter_node(
@@ -19,53 +81,18 @@ async def rewrite_chapter_node(
     llm: LLMService,
     db: Session | None = None,
 ) -> str:
-    """根据审核反馈重写章节
-
-    Args:
-        state: 当前状态
-        chapter_outline: 章节大纲
-        original_content: 原始章节内容
-        review_feedback: 审核反馈
-        llm: LLM 服务
-        db: 可选的数据库会话，如果不传则内部创建
-
-    Returns:
-        重写后的章节内容
-    """
+    """根据审核反馈重写章节（使用 system/user 双层消息 + 前文上下文）"""
     should_close = False
     if db is None:
         db = SessionLocal()
         should_close = True
     try:
-        info = state.get("collected_info", {})
+        # 构建 system/user 消息
+        messages = _build_rewrite_messages(state, chapter_outline, original_content, review_feedback)
 
-        # 格式化章节大纲（使用共享工具函数）
-        outline_str = _format_chapter_outline_str(chapter_outline)
-
-        # 格式化人物设定（使用共享工具函数）
-        chars_str = format_characters_info(state)
-
-        # 优先从 state["_prompts"] 获取，回退到 DEFAULT_PROMPTS
-        prompts = state.get("_prompts", {})
-        if prompts and "rewrite" in prompts:
-            prompt_template = prompts["rewrite"]
-        else:
-            from app.agents.prompts import DEFAULT_PROMPTS
-            prompt_template = DEFAULT_PROMPTS.get("rewrite", "")
-
-        prompt = prompt_template.format(
-            chapter_outline=outline_str,
-            original_content=original_content,
-            review_feedback=review_feedback,
-            genre=info.get("novelType", "未指定"),
-            main_characters=chars_str,
-            world_setting=info.get("customWorldSetting")
-            or info.get("worldSetting", "未指定"),
-        )
-
-        # 流式调用 LLM，使 LangGraph 能捕获 on_chat_model_stream 事件实时推送给前端
+        # 流式调用 LLM
         response = ""
-        async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
+        async for chunk in llm.chat_stream(messages):
             response += chunk
 
         return response
