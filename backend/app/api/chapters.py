@@ -824,26 +824,16 @@ async def review_chapter(
             # 通过与 LangGraph 节点相同的机制获取 LLM 服务
             llm = await get_llm_from_state_async(initial_state, db)
 
-            # 构建审核 prompt（与 review_chapter_node 相同逻辑）
-            from app.services.prompt_loader import get_system_prompt
-            from app.agents.nodes.utils import _format_chapter_outline_str, format_characters_info
+            # 构建审核消息（使用共享的 _build_review_messages）
+            from app.agents.nodes.review import _build_review_messages
 
-            info = initial_state.get("collected_info", {})
-            outline_str = _format_chapter_outline_str(chapter_outline_dict)
-            chars_str = format_characters_info(initial_state)
-
-            prompt = get_system_prompt(save_db, "review").format(
-                strictness=strictness,
-                chapter_outline=outline_str,
-                chapter_content=chapter.content,
-                genre=info.get("novelType", "未指定"),
-                main_characters=chars_str,
-                style_preference=info.get("stylePreference", "未指定"),
+            messages = _build_review_messages(
+                initial_state, chapter.content, chapter_outline_dict, strictness
             )
 
             # 流式调用 LLM，逐块发送审核文本
             response = ""
-            async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
+            async for chunk in llm.chat_stream(messages):
                 response += chunk
                 yield f"event: chunk\ndata: {json.dumps({'content': chunk})}\n\n"
 
