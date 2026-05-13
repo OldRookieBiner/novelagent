@@ -7,6 +7,16 @@ import { createSSEStream } from '@/lib/sseParser'
 import { toast } from 'sonner'
 import type { ReviewResponse } from '@/types'
 
+// 审核评分维度中文标签
+const SCORE_LABELS: Record<string, string> = {
+  plot_consistency: '情节一致性',
+  character_consistency: '人物一致性',
+  writing_quality: '文笔质量',
+  emotional_tension: '情感张力',
+  ai_flavor: 'AI味程度',
+  outline_deviation: '大纲偏离度',
+}
+
 interface AIAssistantPanelProps
 {
   projectId?: number
@@ -139,24 +149,56 @@ export function AIAssistantPanel({ projectId, chapterNumber, chapterContent, onR
               <div className="text-xs text-muted-foreground mt-1">审核结果</div>
             </div>
 
-            {/* 反馈 */}
-            <div className="p-3 bg-muted rounded-md">
-              <span className="text-xs font-medium">反馈意见</span>
-              <p className="text-xs text-muted-foreground mt-1 leading-relaxed whitespace-pre-wrap">
-                {reviewResult.feedback}
-              </p>
-            </div>
+            {/* 修改建议 */}
+            {reviewResult.feedback && (
+              <div className="p-3 bg-muted rounded-md">
+                <span className="text-xs font-medium">修改建议</span>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed whitespace-pre-wrap">
+                  {reviewResult.feedback}
+                </p>
+              </div>
+            )}
+
+            {/* 评分详情 */}
+            {reviewResult.scores && Object.keys(reviewResult.scores).length > 0 && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                <span className="text-xs font-medium text-blue-800">评分详情</span>
+                <div className="mt-1.5 space-y-1">
+                  {Object.entries(reviewResult.scores).map(([key, value]) => (
+                    <div key={key} className="flex items-center justify-between text-xs">
+                      <span className="text-blue-700">{SCORE_LABELS[key] || key}</span>
+                      <span className={`font-medium ${
+                        (key === 'ai_flavor' || key === 'outline_deviation')
+                          ? (value <= 3 ? 'text-green-600' : value <= 5 ? 'text-yellow-600' : 'text-red-600')
+                          : (value >= 7 ? 'text-green-600' : value >= 5 ? 'text-yellow-600' : 'text-red-600')
+                      }`}>
+                        {value}/10
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* 问题列表 */}
             {reviewResult.issues.length > 0 && (
               <div className="space-y-1.5">
                 <span className="text-xs font-medium">发现问题 ({reviewResult.issues.length})</span>
-                {reviewResult.issues.map((issue, index) => (
-                  <div key={index} className="p-2 bg-yellow-50 border border-yellow-200 rounded text-xs flex items-start gap-1.5">
-                    <AlertCircle className="h-3 w-3 text-yellow-600 mt-0.5 flex-shrink-0" />
-                    <span className="leading-relaxed">{issue}</span>
-                  </div>
-                ))}
+                {reviewResult.issues.map((issue, index) =>
+                {
+                  // 兼容：后端旧格式 issues 是 string，新格式是 ReviewIssue 对象
+                  const description = typeof issue === 'string' ? issue : issue.description
+                  const type = typeof issue === 'string' ? '' : issue.type
+                  const location = typeof issue === 'string' ? '' : issue.location
+                  return (
+                    <div key={index} className="p-2 bg-yellow-50 border border-yellow-200 rounded text-xs flex items-start gap-1.5">
+                      <AlertCircle className="h-3 w-3 text-yellow-600 mt-0.5 flex-shrink-0" />
+                      <span className="leading-relaxed">
+                        {type ? <span className="font-medium text-yellow-800">[{type}]</span> : ''}{type ? ' ' : ''}{location ? `${location}：` : ''}{description}
+                      </span>
+                    </div>
+                  )
+                })}
               </div>
             )}
 
