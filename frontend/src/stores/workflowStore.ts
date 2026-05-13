@@ -38,6 +38,10 @@ interface WorkflowState {
   } | null
   chapterOutlineAbortController: AbortController | null
 
+  // ========== 章节正文生成状态 ==========
+  writingChapterGenerating: boolean
+  writingGeneratingChapterId: number | null
+
   // ========== 写作状态 ==========
   writtenChapters: WrittenChapter[]
   currentChapter: number
@@ -90,6 +94,11 @@ interface WorkflowState {
   addWrittenChapter: (chapter: WrittenChapter) => void
   setCurrentChapter: (chapter: number) => void
 
+  // 章节正文生成
+  setWritingChapterGenerating: (generating: boolean) => void
+  setWritingGeneratingChapterId: (id: number | null) => void
+  clearWritingGenerationState: () => void
+
   // 审核
   setReviewResult: (result: ReviewResponse | null) => void
   incrementRewriteCount: () => void
@@ -121,6 +130,8 @@ const initialState = {
   chapterOutlineReplaning: false,
   chapterOutlineProgress: null,
   chapterOutlineAbortController: null,
+  writingChapterGenerating: false,
+  writingGeneratingChapterId: null,
   writtenChapters: [],
   currentChapter: 0,
   writtenChaptersCount: 0,
@@ -213,6 +224,18 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
   }),
 
   setCurrentChapter: (chapter) => set({ currentChapter: chapter }),
+
+  // ========== 章节正文生成 Actions ==========
+
+  setWritingChapterGenerating: (generating) => set({ writingChapterGenerating: generating }),
+
+  setWritingGeneratingChapterId: (id) => set({ writingGeneratingChapterId: id }),
+
+  // 生成完成后清理状态
+  clearWritingGenerationState: () => set({
+    writingChapterGenerating: false,
+    writingGeneratingChapterId: null,
+  }),
 
   // ========== 审核 Actions ==========
 
