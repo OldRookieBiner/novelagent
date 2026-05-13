@@ -11,6 +11,8 @@ import { AIAssistantPanel } from './AIAssistantPanel'
 import TipTapEditor from '@/components/common/TipTapEditor'
 import type { ChapterOutline, Chapter } from '@/types'
 import { toast } from 'sonner'
+import { useWorkflowStore } from '@/stores/workflowStore'
+import { useShallow } from 'zustand/react/shallow'
 
 interface WritingPanelProps
 {
@@ -74,6 +76,21 @@ function EditorSkeleton()
 
 export function WritingPanel({ projectId }: WritingPanelProps)
 {
+  // 从 workflowStore 读取章节正文生成状态（持久化，切换标签不丢失）
+  const {
+    writingChapterGenerating: generating,
+    writingGeneratingChapterId: generatingChapterId,
+    setWritingChapterGenerating,
+    setWritingGeneratingChapterId,
+    clearWritingGenerationState,
+  } = useWorkflowStore(useShallow(s => ({
+    writingChapterGenerating: s.writingChapterGenerating,
+    writingGeneratingChapterId: s.writingGeneratingChapterId,
+    setWritingChapterGenerating: s.setWritingChapterGenerating,
+    setWritingGeneratingChapterId: s.setWritingGeneratingChapterId,
+    clearWritingGenerationState: s.clearWritingGenerationState,
+  })))
+
   const [chapters, setChapters] = useState<ChapterOutline[]>([])
   const [selectedChapter, setSelectedChapter] = useState<ChapterOutline | null>(null)
   const [chapterContent, setChapterContent] = useState<Chapter | null>(null)
@@ -82,11 +99,9 @@ export function WritingPanel({ projectId }: WritingPanelProps)
   const [loadingContent, setLoadingContent] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [generating, setGenerating] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
   const [mode, setMode] = useState<'preview' | 'edit'>('preview')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [generatingChapterId, setGeneratingChapterId] = useState<number | null>(null)
   const [rightCollapsed, setRightCollapsed] = useState(false)
 
   useEffect(() =>
@@ -109,6 +124,13 @@ export function WritingPanel({ projectId }: WritingPanelProps)
       finally
       {
         setLoading(false)
+        // 如果 store 中标记为正在生成，说明上次生成可能因切换标签中断
+        const { writingChapterGenerating } = useWorkflowStore.getState()
+        if (writingChapterGenerating)
+        {
+          clearWritingGenerationState()
+          toast.info('生成因切换页面中断，请重新生成')
+        }
       }
     }
     fetchChapters()
@@ -157,17 +179,6 @@ export function WritingPanel({ projectId }: WritingPanelProps)
     loadContent()
   }, [projectId, selectedChapter])
 
-  useEffect(() =>
-  {
-    return () =>
-    {
-      if (abortControllerRef.current)
-      {
-        abortControllerRef.current.abort()
-      }
-    }
-  }, [])
-
   const handleSave = useCallback(async () =>
   {
     if (!selectedChapter) return
@@ -213,8 +224,8 @@ export function WritingPanel({ projectId }: WritingPanelProps)
       return
     }
 
-    setGenerating(true)
-    setGeneratingChapterId(selectedChapter.id)
+    setWritingChapterGenerating(true)
+    setWritingGeneratingChapterId(selectedChapter.id)
     setContent('')
     setMode('preview')
 
@@ -317,8 +328,7 @@ export function WritingPanel({ projectId }: WritingPanelProps)
     }
     finally
     {
-      setGenerating(false)
-      setGeneratingChapterId(null)
+      clearWritingGenerationState()
       abortControllerRef.current = null
     }
   }, [selectedChapter, projectId])
@@ -328,10 +338,10 @@ export function WritingPanel({ projectId }: WritingPanelProps)
     if (abortControllerRef.current)
     {
       abortControllerRef.current.abort()
-      setGenerating(false)
-      setGeneratingChapterId(null)
-      toast.info('已取消生成')
+      abortControllerRef.current = null
     }
+    clearWritingGenerationState()
+    toast.info('已取消生成')
   }
 
   const navigateChapter = (direction: 'prev' | 'next') =>
