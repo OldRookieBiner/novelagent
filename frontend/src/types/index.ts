@@ -203,10 +203,18 @@ export interface ReviewRequest {
   strictness?: "loose" | "standard" | "strict";
 }
 
+// 审核问题条目（兼容后端两种格式：JSON 返回结构化对象，旧格式返回字符串）
+export interface ReviewIssue {
+  type?: string;
+  location?: string;
+  description: string;
+}
+
 export interface ReviewResponse {
   passed: boolean;
   feedback: string;
-  issues: string[];
+  issues: ReviewIssue[];
+  scores?: Record<string, number>;
 }
 
 // ==================== Settings Types ====================
