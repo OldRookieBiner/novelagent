@@ -10,7 +10,15 @@ from app.agents.state import NovelState, STAGE_REVIEW
 from app.database import SessionLocal
 from app.services.llm import LLMService
 from app.utils.llm import get_llm_from_state_async
-from app.agents.nodes.utils import _format_chapter_outline_str, format_characters_info
+from app.agents.context_strategy import FulltextContentStrategy
+from app.agents.nodes.utils import (
+    _format_chapter_outline_str,
+    format_characters_info,
+    format_relations_info,
+    format_evolution_info,
+    format_world_setting,
+    get_prompts_from_state,
+)
 
 
 def parse_review_result(response: str) -> Dict[str, Any]:
@@ -79,6 +87,62 @@ def _parse_review_result_legacy(response: str) -> Dict[str, Any]:
     return result
 
 
+def _build_review_messages(
+    state: NovelState,
+    chapter_content: str,
+    chapter_outline: dict,
+    strictness: str = "standard",
+) -> list[dict]:
+    """构建审核的 system/user 消息列表
+
+    将前文上下文、人物档案、世界观、审核维度放入 system message，
+    章节大纲、章节正文、题材/风格/严格度放入 user message。
+    """
+    info = state.get("collected_info", {})
+    written_chapters = state.get("written_chapters", [])
+    chapter_number = chapter_outline.get("chapter_number", 1)
+
+    # 格式化章节大纲
+    outline_str = _format_chapter_outline_str(chapter_outline)
+
+    # 格式化人物设定、关系、演变
+    chars_str = format_characters_info(state)
+    relations_str = format_relations_info(state, chapter_number)
+    evolution_str, _ = format_evolution_info(state, chapter_number)
+    combined_characters_str = chars_str + relations_str + evolution_str
+
+    # 格式化世界观
+    world_str = format_world_setting(state)
+
+    # 前文上下文
+    strategy = FulltextContentStrategy()
+    previous_context = strategy.build_previous_context(written_chapters, chapter_number)
+
+    # 获取 system/user 模板
+    system_template, user_template = get_prompts_from_state(state, "review")
+
+    # 构建 messages
+    messages = []
+    if system_template:
+        system_content = system_template.format(
+            previous_context=previous_context,
+            main_characters=combined_characters_str,
+            world_setting=world_str,
+        )
+        messages.append({"role": "system", "content": system_content})
+
+    user_content = user_template.format(
+        strictness=strictness,
+        chapter_outline=outline_str,
+        chapter_content=chapter_content,
+        genre=info.get("novelType", "未指定"),
+        style_preference=info.get("stylePreference", "未指定"),
+    )
+    messages.append({"role": "user", "content": user_content})
+
+    return messages
+
+
 async def review_chapter_node(
     state: NovelState,
     chapter_content: str,
@@ -87,52 +151,18 @@ async def review_chapter_node(
     strictness: str = "standard",
     db: Session | None = None,
 ) -> Dict[str, Any]:
-    """审核章节内容
-
-    Args:
-        state: 当前状态
-        chapter_content: 章节正文
-        chapter_outline: 章节大纲
-        llm: LLM 服务
-        strictness: 审核严格度 (loose/standard/strict)
-        db: 可选的数据库会话，如果不传则内部创建
-
-    Returns:
-        审核结果字典
-    """
+    """审核章节内容（使用 system/user 双层消息 + 前文上下文）"""
     should_close = False
     if db is None:
         db = SessionLocal()
         should_close = True
     try:
-        info = state.get("collected_info", {})
+        # 构建 system/user 消息
+        messages = _build_review_messages(state, chapter_content, chapter_outline, strictness)
 
-        # 格式化章节大纲（使用共享工具函数）
-        outline_str = _format_chapter_outline_str(chapter_outline)
-
-        # 格式化人物设定（使用共享工具函数）
-        chars_str = format_characters_info(state)
-
-        # 优先从 state["_prompts"] 获取，回退到 DEFAULT_PROMPTS
-        prompts = state.get("_prompts", {})
-        if prompts and "review" in prompts:
-            prompt_template = prompts["review"]
-        else:
-            from app.agents.prompts import DEFAULT_PROMPTS
-            prompt_template = DEFAULT_PROMPTS.get("review", "")
-
-        prompt = prompt_template.format(
-            strictness=strictness,
-            chapter_outline=outline_str,
-            chapter_content=chapter_content,
-            genre=info.get("novelType", "未指定"),
-            main_characters=chars_str,
-            style_preference=info.get("stylePreference", "未指定"),
-        )
-
-        # 流式调用 LLM，使 LangGraph 能捕获 on_chat_model_stream 事件实时推送给前端
+        # 流式调用 LLM
         response = ""
-        async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
+        async for chunk in llm.chat_stream(messages):
             response += chunk
 
         result = parse_review_result(response)
