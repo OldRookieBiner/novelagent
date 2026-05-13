@@ -18,7 +18,7 @@ from app.agents.nodes.utils import (
     get_prompts_from_state,
 )
 
-async def _build_rewrite_messages(
+def _build_rewrite_messages(
     state: NovelState,
     chapter_outline: dict,
     original_content: str,
