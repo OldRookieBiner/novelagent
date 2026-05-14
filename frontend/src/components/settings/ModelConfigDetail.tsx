@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Globe, Search, Trash2 } from 'lucide-react'
+import { Globe, Search, Star, Trash2 } from 'lucide-react'
 
 /**
  * 模型配置详情 Props
@@ -22,6 +22,7 @@ interface ModelConfigDetailProps
   config: ModelConfig | null  // null = 新建模式
   providers: ProviderInfo[]
   onSave: (data: ModelConfigCreate, configId?: number) => Promise<void>
+  onSetDefault: (configId: number) => Promise<void>
   onDelete: () => void
   onCheckHealth: () => void
   saving: boolean
@@ -36,6 +37,7 @@ export function ModelConfigDetail({
   config,
   providers,
   onSave,
+  onSetDefault,
   onDelete,
   onCheckHealth,
   saving,
@@ -186,6 +188,22 @@ export function ModelConfigDetail({
 
         {isEditMode && (
           <div className="flex items-center gap-2 shrink-0">
+            {/* 设为默认按钮 */}
+            {!config?.is_default && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                {
+                  if (config?.id) onSetDefault(config.id)
+                }}
+                className="text-xs h-7"
+              >
+                <Star className="h-3.5 w-3.5 mr-1" />
+                设为默认
+              </Button>
+            )}
+
             {/* 健康检查按钮 */}
             <Button
               variant="outline"

@@ -1,76 +1,94 @@
+import { useState, useEffect } from 'react'
+import { ModelConfig, ModelConfigCreate, ProviderInfo } from '@/types'
+import { modelConfigsApi } from '@/lib/api'
 import LoadingSpinner from '@/components/ui/LoadingSpinner'
-import ModelConfigItem from '@/components/settings/ModelConfigItem'
-import ModelConfigDialog from '@/components/settings/ModelConfigDialog'
-import type { ModelConfig, ModelConfigCreate } from '@/types'
+import { ModelConfigSidebar } from './ModelConfigSidebar'
+import { ModelConfigDetail } from './ModelConfigDetail'
 
 interface ModelConfigPanelProps
 {
   modelConfigs: ModelConfig[]
   configsLoading: boolean
-  onSetDefault: (configId: number) => Promise<void>
-  onEdit: (config: ModelConfig) => void
-  onDelete: (configId: number) => Promise<void>
-  onCheckHealth: (configId: number) => Promise<void>
-  onAdd: () => void
-  showConfigDialog: boolean
+  selectedConfigId: number | null
   savingConfig: boolean
-  editingConfig: ModelConfig | null
-  onSaveModel: (data: ModelConfigCreate) => Promise<void>
-  onCloseConfigDialog: () => void
+  onSaveModel: (data: ModelConfigCreate, configId?: number) => Promise<void>
+  onSetDefault: (configId: number) => Promise<void>
+  onDeleteModel: (configId: number) => Promise<void>
+  onCheckHealth: (configId: number) => Promise<void>
+  onToggleEnabled: (configId: number, enabled: boolean) => void
+  onSelectConfig: (configId: number | null) => void
 }
 
 export default function ModelConfigPanel({
   modelConfigs,
   configsLoading,
-  onSetDefault,
-  onEdit,
-  onDelete,
-  onCheckHealth,
-  onAdd,
-  showConfigDialog,
+  selectedConfigId,
   savingConfig,
-  editingConfig,
   onSaveModel,
-  onCloseConfigDialog,
+  onSetDefault,
+  onDeleteModel,
+  onCheckHealth,
+  onToggleEnabled,
+  onSelectConfig,
 }: ModelConfigPanelProps)
 {
+  const [providers, setProviders] = useState<ProviderInfo[]>([])
+
+  // 加载提供商列表
+  useEffect(() =>
+  {
+    modelConfigsApi.getProviders().then((data) =>
+    {
+      setProviders(data.providers)
+    }).catch(console.error)
+  }, [])
+
+  // 获取选中的配置
+  const selectedConfig = modelConfigs.find((c) => c.id === selectedConfigId) ?? null
+
+  // 添加新配置
+  const handleAdd = () =>
+  {
+    onSelectConfig(null)  // null = 新建模式
+  }
+
+  if (configsLoading)
+  {
+    return <LoadingSpinner text="加载中..." />
+  }
+
   return (
-    <div id="model-panel" role="tabpanel" className="max-w-2xl">
-      <h3 className="text-lg font-semibold mb-1">模型配置</h3>
-      <p className="text-muted-foreground text-sm mb-6">管理 AI 模型配置，设置默认模型</p>
+    <div className="flex border rounded-xl overflow-hidden bg-white min-h-[520px]">
+      {/* 左栏：配置列表 */}
+      <ModelConfigSidebar
+        configs={modelConfigs}
+        selectedId={selectedConfigId}
+        onSelect={onSelectConfig}
+        onToggleEnabled={onToggleEnabled}
+        onAdd={handleAdd}
+      />
 
-      {configsLoading ? (
-        <LoadingSpinner text="加载中..." />
-      ) : (
-        <>
-          {modelConfigs.map((config) => (
-            <ModelConfigItem
-              key={config.id}
-              config={config}
-              onSetDefault={() => onSetDefault(config.id)}
-              onEdit={onEdit}
-              onDelete={config.is_default ? undefined : () => onDelete(config.id)}
-              onRefresh={() => onCheckHealth(config.id)}
-            />
-          ))}
-
-          {/* 添加自定义模型按钮 */}
-          <button
-            onClick={onAdd}
-            className="w-full border-2 border-dashed border-gray-300 rounded-lg p-4 text-gray-500 hover:border-blue-400 hover:text-blue-500 transition-all"
-          >
-            + 添加自定义模型
-          </button>
-        </>
-      )}
-
-      {/* 模型配置弹窗 */}
-      <ModelConfigDialog
-        open={showConfigDialog}
-        onClose={onCloseConfigDialog}
-        onSubmit={onSaveModel}
-        loading={savingConfig}
-        editConfig={editingConfig}
+      {/* 右栏：配置详情 */}
+      <ModelConfigDetail
+        config={selectedConfig}
+        providers={providers}
+        onSave={onSaveModel}
+        onSetDefault={onSetDefault}
+        onDelete={() =>
+        {
+          if (selectedConfigId)
+          {
+            onDeleteModel(selectedConfigId)
+          }
+        }}
+        onCheckHealth={() =>
+        {
+          if (selectedConfigId)
+          {
+            onCheckHealth(selectedConfigId)
+          }
+        }}
+        saving={savingConfig}
       />
     </div>
   )

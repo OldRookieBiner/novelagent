@@ -36,17 +36,15 @@ export default function Settings()
     // 模型配置
     modelConfigs,
     configsLoading,
-    showConfigDialog,
+    selectedConfigId,
     savingConfig,
-    editingConfig,
     loadModelConfigs,
     handleSaveModel,
-    handleEditModel,
-    handleAddModel,
     handleSetDefault,
     handleDeleteModel,
     handleCheckHealth,
-    handleCloseConfigDialog,
+    handleToggleEnabled,
+    handleSelectConfig,
     // 审核设置
     reviewMode,
     setReviewMode,
@@ -151,16 +149,14 @@ export default function Settings()
             <ModelConfigPanel
               modelConfigs={modelConfigs}
               configsLoading={configsLoading}
-              onSetDefault={handleSetDefault}
-              onEdit={handleEditModel}
-              onDelete={handleDeleteModel}
-              onCheckHealth={handleCheckHealth}
-              onAdd={handleAddModel}
-              showConfigDialog={showConfigDialog}
+              selectedConfigId={selectedConfigId}
               savingConfig={savingConfig}
-              editingConfig={editingConfig}
               onSaveModel={handleSaveModel}
-              onCloseConfigDialog={handleCloseConfigDialog}
+              onSetDefault={handleSetDefault}
+              onDeleteModel={handleDeleteModel}
+              onCheckHealth={handleCheckHealth}
+              onToggleEnabled={handleToggleEnabled}
+              onSelectConfig={handleSelectConfig}
             />
           )}
 
