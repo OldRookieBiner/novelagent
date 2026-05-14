@@ -28,9 +28,8 @@ export function useSettings()
   // 模型配置状态
   const [modelConfigs, setModelConfigs] = useState<ModelConfig[]>([])
   const [configsLoading, setConfigsLoading] = useState(false)
-  const [showConfigDialog, setShowConfigDialog] = useState(false)
   const [savingConfig, setSavingConfig] = useState(false)
-  const [editingConfig, setEditingConfig] = useState<ModelConfig | null>(null)
+  const [selectedConfigId, setSelectedConfigId] = useState<number | null>(null)
 
   // 审核设置状态
   const [reviewMode, setReviewMode] = useState<'off' | 'manual' | 'auto'>('manual')
@@ -207,14 +206,14 @@ export function useSettings()
   }, [reviewMode])
 
   // 添加或更新模型配置
-  const handleSaveModel = useCallback(async (data: ModelConfigCreate) =>
+  const handleSaveModel = useCallback(async (data: ModelConfigCreate, configId?: number) =>
   {
     setSavingConfig(true)
     try
     {
-      if (editingConfig)
+      if (configId)
       {
-        await modelConfigsApi.update(editingConfig.id, data)
+        await modelConfigsApi.update(configId, data)
       }
       else
       {
@@ -226,21 +225,7 @@ export function useSettings()
     {
       setSavingConfig(false)
     }
-  }, [editingConfig, loadModelConfigs])
-
-  // 打开编辑对话框
-  const handleEditModel = useCallback((config: ModelConfig) =>
-  {
-    setEditingConfig(config)
-    setShowConfigDialog(true)
-  }, [])
-
-  // 打开新增对话框
-  const handleAddModel = useCallback(() =>
-  {
-    setEditingConfig(null)
-    setShowConfigDialog(true)
-  }, [])
+  }, [loadModelConfigs])
 
   // 设置默认模型
   const handleSetDefault = useCallback(async (configId: number) =>
@@ -265,13 +250,18 @@ export function useSettings()
     {
       await modelConfigsApi.delete(configId)
       await loadModelConfigs()
+      // 删除后若该配置被选中，清除选中状态
+      if (selectedConfigId === configId)
+      {
+        setSelectedConfigId(null)
+      }
     }
     catch (err)
     {
       console.error('Failed to delete:', err)
       toast.error('删除模型配置失败')
     }
-  }, [loadModelConfigs])
+  }, [loadModelConfigs, selectedConfigId])
 
   // 健康检查
   const handleCheckHealth = useCallback(async (configId: number) =>
@@ -287,11 +277,25 @@ export function useSettings()
     }
   }, [loadModelConfigs])
 
-  // 关闭配置对话框
-  const handleCloseConfigDialog = useCallback(() =>
+  // 切换模型启用状态
+  const handleToggleEnabled = useCallback(async (configId: number, enabled: boolean) =>
   {
-    setShowConfigDialog(false)
-    setEditingConfig(null)
+    try
+    {
+      await modelConfigsApi.update(configId, { is_enabled: enabled })
+      await loadModelConfigs()
+    }
+    catch (err)
+    {
+      console.error('Failed to toggle enabled:', err)
+      toast.error('切换启用状态失败')
+    }
+  }, [loadModelConfigs])
+
+  // 选中模型配置
+  const handleSelectConfig = useCallback((configId: number | null) =>
+  {
+    setSelectedConfigId(configId)
   }, [])
 
   return {
@@ -299,17 +303,15 @@ export function useSettings()
     // 模型配置
     modelConfigs,
     configsLoading,
-    showConfigDialog,
     savingConfig,
-    editingConfig,
+    selectedConfigId,
     loadModelConfigs,
     handleSaveModel,
-    handleEditModel,
-    handleAddModel,
     handleSetDefault,
     handleDeleteModel,
     handleCheckHealth,
-    handleCloseConfigDialog,
+    handleToggleEnabled,
+    handleSelectConfig,
     // 审核设置
     reviewMode,
     setReviewMode,
