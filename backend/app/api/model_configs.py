@@ -42,28 +42,30 @@ def get_user_model_configs(db: Session, user_id: int) -> list[ModelConfig]:
 
 def build_config_response(c: ModelConfig) -> ModelConfigResponse:
     """构建模型配置响应"""
-    # 转换 models 字段
+    # 处理 models 列表：透传所有字段 + 填充默认值
     models = None
     if c.models:
-        models = [
-            {
+        models = []
+        for m in c.models:
+            item = {
                 "id": m.get("id"),
                 "name": m.get("name"),
                 "is_enabled": m.get("is_enabled", True),
                 "health_status": m.get("health_status"),
+                "temperature": m.get("temperature", 0.7),
+                "reasoning_effort": m.get("reasoning_effort"),
             }
-            for m in c.models
-        ]
+            models.append(item)
     elif c.model_name:
-        # 旧数据兼容：model_name 回退为单元素 models 列表
-        models = [
-            {
-                "id": c.model_name,
-                "name": c.model_name,
-                "is_enabled": True,
-                "health_status": c.health_status,
-            }
-        ]
+        # 旧 single 类型数据：从 model_name 生成单元素 models 列表
+        models = [{
+            "id": c.model_name,
+            "name": c.model_name,
+            "is_enabled": True,
+            "health_status": None,
+            "temperature": 0.7,
+            "reasoning_effort": None,
+        }]
 
     return ModelConfigResponse(
         id=c.id,
