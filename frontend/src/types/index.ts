@@ -191,6 +191,14 @@ export interface Chapter {
   word_count: number;
   review_passed: boolean;
   review_feedback?: string;
+  review_result?: {
+    passed: boolean;
+    scores: Record<string, number>;
+    issues: ReviewIssue[];
+    suggestions: string;
+    raw_response?: string;
+  } | null;
+  rewrite_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -215,6 +223,19 @@ export interface ReviewResponse {
   feedback: string;
   issues: ReviewIssue[];
   scores?: Record<string, number>;
+}
+
+/** 从后端 review_result JSON 映射为前端 ReviewResponse */
+export function mapReviewResult(result: Chapter['review_result']): ReviewResponse | null {
+  if (!result) return null
+  return {
+    passed: result.passed ?? false,
+    feedback: result.suggestions || '',
+    issues: (result.issues || []).map(issue =>
+      typeof issue === 'string' ? { description: issue } : issue
+    ),
+    scores: result.scores || {},
+  }
 }
 
 // ==================== Settings Types ====================
