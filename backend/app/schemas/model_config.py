@@ -1,8 +1,10 @@
 """模型配置 Schemas"""
 
-from typing import Optional
+from typing import Literal, Optional
 from datetime import datetime
 from pydantic import BaseModel
+
+ReasoningEffort = Literal["none", "low", "medium", "high", "xhigh"]
 
 
 class ModelItem(BaseModel):
@@ -12,6 +14,8 @@ class ModelItem(BaseModel):
     name: str
     is_enabled: bool = True
     health_status: Optional[str] = None
+    temperature: float = 0.7
+    reasoning_effort: Optional[ReasoningEffort] = None
 
 
 class ModelConfigBase(BaseModel):
