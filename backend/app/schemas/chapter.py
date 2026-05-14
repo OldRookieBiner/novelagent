@@ -71,4 +71,10 @@ class ReviewRequest(BaseModel):
 class ReviewResponse(BaseModel):
     passed: bool
     feedback: str
-    issues: list[str] = []
+    issues: list[dict] = []  # ReviewIssue 对象列表
+    scores: dict = {}         # 评分详情
+
+
+class RewriteRequest(BaseModel):
+    """章节重写请求"""
+    llm_config_id: Optional[int] = None
