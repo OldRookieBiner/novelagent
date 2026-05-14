@@ -1,11 +1,12 @@
 // frontend/src/components/workbench/creation/AIAssistantPanel.tsx
 
-import { useState, useRef } from 'react'
-import { AlertCircle, RefreshCw, ShieldCheck, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { AlertCircle, RefreshCw, ShieldCheck, ChevronLeft, ChevronRight, PenLine } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { createSSEStream } from '@/lib/sseParser'
 import { toast } from 'sonner'
 import type { ReviewResponse } from '@/types'
+import { mapReviewResult } from '@/types'
 
 // 审核评分维度中文标签
 const SCORE_LABELS: Record<string, string> = {
@@ -22,29 +23,47 @@ interface AIAssistantPanelProps
   projectId?: number
   chapterNumber?: number
   chapterContent?: string
+  initialReviewResult?: ReviewResponse | null
   onReviewComplete?: (result: ReviewResponse) => void
+  onRewriteChunk?: (chunk: string) => void
+  onRewriteDone?: (data: { chapter: { id?: number; content?: string; word_count?: number } }) => void
+  onReviewCleared?: () => void
   collapsed?: boolean
   onToggleCollapse?: () => void
 }
 
-export function AIAssistantPanel({ projectId, chapterNumber, chapterContent, onReviewComplete, collapsed, onToggleCollapse }: AIAssistantPanelProps)
+export function AIAssistantPanel({
+  projectId,
+  chapterNumber,
+  chapterContent,
+  initialReviewResult,
+  onReviewComplete,
+  onRewriteChunk,
+  onRewriteDone,
+  onReviewCleared,
+  collapsed,
+  onToggleCollapse,
+}: AIAssistantPanelProps)
 {
+  const [reviewResult, setReviewResult] = useState<ReviewResponse | null>(initialReviewResult ?? null)
   const [reviewing, setReviewing] = useState(false)
-  const [reviewResult, setReviewResult] = useState<ReviewResponse | null>(null)
-  // 审核流式文本
-  const [reviewText, setReviewText] = useState('')
+  const [rewriting, setRewriting] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
+
+  // 章节切换时重置审核结果
+  useEffect(() =>
+  {
+    setReviewResult(initialReviewResult ?? null)
+  }, [initialReviewResult, chapterNumber])
 
   const handleReview = async () =>
   {
     if (!projectId || !chapterNumber) return
     setReviewing(true)
     setReviewResult(null)
-    setReviewText('')
 
     const controller = new AbortController()
     abortControllerRef.current = controller
-    const accumulated: string[] = []
 
     try
     {
@@ -56,20 +75,8 @@ export function AIAssistantPanel({ projectId, chapterNumber, chapterContent, onR
         },
         (type, data) =>
         {
-          if (type === 'chunk')
+          if (type === 'done')
           {
-            // 从 chunk 事件中提取 content 字段
-            const chunkData = data as { content: string } | string
-            const chunkText = typeof chunkData === 'string' ? chunkData : chunkData.content
-            if (chunkText)
-            {
-              accumulated.push(chunkText)
-              setReviewText(accumulated.join(''))
-            }
-          }
-          else if (type === 'done')
-          {
-            // 从 done 事件获取结构化审核结果
             const result = data as unknown as ReviewResponse
             setReviewResult(result)
             onReviewComplete?.(result)
@@ -80,7 +87,7 @@ export function AIAssistantPanel({ projectId, chapterNumber, chapterContent, onR
             }
             else
             {
-              toast.warning('审核未通过，请根据建议修改')
+              toast.warning('审核未通过，可根据建议修改或重写')
             }
           }
           else if (type === 'error')
@@ -92,6 +99,7 @@ export function AIAssistantPanel({ projectId, chapterNumber, chapterContent, onR
             console.error('Review error:', errorMsg)
             toast.error(`审核失败: ${errorMsg}`)
           }
+          // SSE 注释行（heartbeat）和 chunk 事件都被忽略
         },
         (error) =>
         {
@@ -107,16 +115,81 @@ export function AIAssistantPanel({ projectId, chapterNumber, chapterContent, onR
     }
   }
 
-  const handleCancelReview = () =>
+  const handleRewrite = async () =>
+  {
+    if (!projectId || !chapterNumber) return
+    setRewriting(true)
+    setReviewResult(null)
+    onReviewCleared?.()
+
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
+    try
+    {
+      await createSSEStream(
+        {
+          url: `/api/projects/${projectId}/chapters/${chapterNumber}/rewrite`,
+          method: 'POST',
+          signal: controller.signal
+        },
+        (type, data) =>
+        {
+          if (type === 'chunk')
+          {
+            const chunkData = data as { content: string } | string
+            const chunkText = typeof chunkData === 'string' ? chunkData : chunkData.content
+            if (chunkText)
+            {
+              onRewriteChunk?.(chunkText)
+            }
+          }
+          else if (type === 'done')
+          {
+            const doneData = data as { chapter?: { id?: number; content?: string; word_count?: number } }
+            if (doneData?.chapter)
+            {
+              onRewriteDone?.(doneData)
+            }
+            toast.success('重写完成，可重新审核验证效果')
+          }
+          else if (type === 'error')
+          {
+            const errorData = data as { error?: string } | string
+            const errorMsg = typeof errorData === 'object' && errorData !== null
+              ? (errorData.error || JSON.stringify(errorData))
+              : String(errorData)
+            console.error('Rewrite error:', errorMsg)
+            toast.error(`重写失败: ${errorMsg}`)
+          }
+        },
+        (error) =>
+        {
+          console.error('Failed to rewrite:', error)
+          toast.error('重写失败')
+        }
+      )
+    }
+    finally
+    {
+      setRewriting(false)
+      abortControllerRef.current = null
+    }
+  }
+
+  const handleCancel = () =>
   {
     if (abortControllerRef.current)
     {
       abortControllerRef.current.abort()
       setReviewing(false)
+      setRewriting(false)
       abortControllerRef.current = null
-      toast.info('已取消审核')
+      toast.info('已取消操作')
     }
   }
+
+  const isLoading = reviewing || rewriting
 
   return (
     <div className={`border-l bg-white flex flex-col h-full shrink-0 transition-all duration-300 ${collapsed ? 'w-12' : 'w-[360px]'} relative`}>
@@ -186,7 +259,6 @@ export function AIAssistantPanel({ projectId, chapterNumber, chapterContent, onR
                 <span className="text-xs font-medium">发现问题 ({reviewResult.issues.length})</span>
                 {reviewResult.issues.map((issue, index) =>
                 {
-                  // 兼容：后端旧格式 issues 是 string，新格式是 ReviewIssue 对象
                   const description = typeof issue === 'string' ? issue : issue.description
                   const type = typeof issue === 'string' ? '' : issue.type
                   const location = typeof issue === 'string' ? '' : issue.location
@@ -202,46 +274,48 @@ export function AIAssistantPanel({ projectId, chapterNumber, chapterContent, onR
               </div>
             )}
 
-            {/* 重新审核 */}
-            <Button
-              onClick={() => { setReviewResult(null); setReviewText('') }}
-              variant="outline"
-              size="sm"
-              className="w-full text-xs"
-            >
-              <RefreshCw className="h-3 w-3 mr-1" />
-              重新审核
-            </Button>
+            {/* 操作按钮 */}
+            <div className="space-y-2">
+              <Button
+                onClick={handleRewrite}
+                disabled={rewriting}
+                variant={reviewResult.passed ? 'outline' : 'default'}
+                size="sm"
+                className="w-full text-xs"
+              >
+                <PenLine className="h-3 w-3 mr-1" />
+                {rewriting ? '重写中...' : '重写'}
+              </Button>
+              <Button
+                onClick={() => { setReviewResult(null) }}
+                variant="outline"
+                size="sm"
+                className="w-full text-xs"
+              >
+                <RefreshCw className="h-3 w-3 mr-1" />
+                重新审核
+              </Button>
+            </div>
           </div>
-        ) : reviewing ? (
+        ) : isLoading ? (
           <div className="space-y-3">
-            {/* 流式审核文本预览 */}
-            {reviewText && (
-              <div className="p-3 bg-muted rounded-md max-h-[calc(100vh-280px)] overflow-auto">
-                <span className="text-xs font-medium">审核中...</span>
-                <p className="text-xs text-muted-foreground mt-1 leading-relaxed whitespace-pre-wrap">
-                  {reviewText}
-                </p>
+            <div className="p-4 bg-muted rounded-md text-center">
+              <RefreshCw className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2 animate-spin" />
+              <div className="text-xs text-muted-foreground">
+                {reviewing ? '正在审核中...' : '正在重写中...'}
               </div>
-            )}
-            {!reviewText && (
-              <div className="p-4 bg-muted rounded-md text-center">
-                <RefreshCw className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2 animate-spin" />
-                <div className="text-xs text-muted-foreground">正在审核中...</div>
-              </div>
-            )}
+            </div>
             <Button
-              onClick={handleCancelReview}
+              onClick={handleCancel}
               variant="destructive"
               size="sm"
               className="w-full text-xs"
             >
-              取消审核
+              取消
             </Button>
           </div>
         ) : (
           <div className="space-y-3">
-            {/* 引导提示 */}
             <div className="p-4 bg-muted rounded-md text-center">
               <ShieldCheck className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
               <div className="text-xs text-muted-foreground leading-relaxed">
@@ -250,8 +324,6 @@ export function AIAssistantPanel({ projectId, chapterNumber, chapterContent, onR
                   : '请先生成章节内容后再进行审核'}
               </div>
             </div>
-
-            {/* 审核按钮 */}
             <Button
               onClick={handleReview}
               disabled={!chapterContent || !chapterNumber}
