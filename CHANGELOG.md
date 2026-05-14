@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.8.9 - 2026-05-14
+
+### 新功能
+
+- **章节重写 SSE 端点** - 新增 `POST /chapters/{id}/rewrite` SSE 流式重写端点
+  - 重写时携带已写章节上下文和审核结果，LLM 可参考审核意见改写
+  - 重写请求支持 `max_tokens` 参数，默认按目标字数动态计算
+  - 前端 AIAssistantPanel 新增"重写"按钮，一键根据审核意见重写章节
+
+- **SSE 心跳保活** - 新增 `format_heartbeat` 工具函数，审核 SSE 流使用注释行心跳保持连接
+  - 审核 SSE 不再发送 chunk 事件，改用心跳注释行防止代理/网关超时断连
+
+### 优化
+
+- **审核 JSON 解析增强** - 3 策略解析：markdown 代码块提取 → 花括号逐层匹配 → 旧格式正则回退
+  - 兼容 LLM 输出的多种 JSON 字段名（feedback/改进建议/problems）
+  - 修复 LLM 返回多个 JSON 对象或包裹在代码块中时解析失败的问题
+
+- **审核/重写上下文保留** - 修复重写时丢失 written_chapters 上下文的问题
+  - `_build_rewrite_messages` 现在完整传入已写章节内容，确保重写时与前文风格一致
+
+- **前端审核状态管理** - 修复 SSE 审核结果被 prop 数据覆盖的问题
+  - 新增 `sseResultSetRef` 追踪 SSE 是否已设置结果，防止异步加载的 prop 数据覆盖实时结果
+  - WritingPanel 中 `initialReviewResult` 使用 useMemo 缓存，避免不必要的重渲染
+
+### 修复
+
+- **SSE 流清理** - 组件卸载时正确中止进行中的 SSE 流，防止内存泄漏和状态错乱
+
+### 测试
+
+- 新增审核 SSE 事件格式测试（test_review.py）
+- 新增重写 SSE 端点测试（test_rewrite.py）
+- 新增 JSON 解析边界测试：feedback 字段、多对象、markdown 代码块
+
 ## v0.8.8 - 2026-05-14
 
 ### 优化
