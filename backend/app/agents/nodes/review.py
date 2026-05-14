@@ -18,6 +18,8 @@ from app.agents.nodes.utils import (
     format_evolution_info,
     format_world_setting,
     get_prompts_from_state,
+    find_chapter_by_number,
+    find_chapter_outline_by_number,
 )
 
 
@@ -224,35 +226,14 @@ async def review_node(state: NovelState) -> NovelState:
     written_chapters = state.get("written_chapters", [])
     chapter_outlines = state.get("chapter_outlines", [])
 
-    # 找到当前章节的内容
-    chapter_content = None
-    for chapter in written_chapters:
-        if (
-            chapter.get("chapter_number") == current_chapter - 1
-        ):  # current_chapter 已递增
-            chapter_content = chapter.get("content", "")
-            break
-
-    if not chapter_content:
-        # 如果没找到，尝试用当前章节号
-        for chapter in written_chapters:
-            if chapter.get("chapter_number") == current_chapter:
-                chapter_content = chapter.get("content", "")
-                break
-
-    if not chapter_content:
+    # 找到当前章节的内容（current_chapter 已递增，指向下一个待写章节）
+    chapter = find_chapter_by_number(written_chapters, current_chapter)
+    if not chapter:
         raise ValueError("Chapter content not found for review")
+    chapter_content = chapter.get("content", "")
 
     # 找到当前章节的大纲
-    chapter_outline = None
-    for outline in chapter_outlines:
-        if (
-            outline.get("chapter_number") == current_chapter - 1
-            or outline.get("chapter_number") == current_chapter
-        ):
-            chapter_outline = outline
-            break
-
+    chapter_outline = find_chapter_outline_by_number(chapter_outlines, current_chapter)
     if not chapter_outline:
         raise ValueError("Chapter outline not found for review")
 

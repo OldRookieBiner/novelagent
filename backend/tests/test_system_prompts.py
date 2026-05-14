@@ -85,8 +85,10 @@ class TestSystemPromptsAPI:
         assert response.status_code == 200
 
         data = response.json()
-        # The content should be back to default
-        assert data["prompt_content"] == DEFAULT_PROMPTS["review"]
+        # The content should be back to default (dict format returns user part)
+        default_review = DEFAULT_PROMPTS["review"]
+        expected = default_review["user"] if isinstance(default_review, dict) else default_review
+        assert data["prompt_content"] == expected
 
     def test_reset_unknown_agent_type(self, client, auth_header):
         """Test resetting with unknown agent type"""

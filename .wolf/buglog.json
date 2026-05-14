@@ -774,6 +774,1294 @@
       "related_bugs": [],
       "occurrences": 1,
       "last_seen": "2026-05-10T15:16:18.487Z"
+    },
+    {
+      "id": "bug-047",
+      "timestamp": "2026-05-11T02:53:33.985Z",
+      "error_message": "Function not marked async",
+      "file": "backend/app/api/workflow.py",
+      "root_cause": "Function uses await but wasn't declared async",
+      "fix": "Added async modifier",
+      "tags": [
+        "auto-detected",
+        "async-fix",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T02:53:33.985Z"
+    },
+    {
+      "id": "bug-048",
+      "timestamp": "2026-05-11T03:00:13.209Z",
+      "error_message": "Function not marked async",
+      "file": "backend/app/api/workflow.py",
+      "root_cause": "Function uses await but wasn't declared async",
+      "fix": "Added async modifier",
+      "tags": [
+        "auto-detected",
+        "async-fix",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T03:00:13.209Z"
+    },
+    {
+      "id": "bug-049",
+      "timestamp": "2026-05-11T03:04:08.413Z",
+      "error_message": "Null/undefined access in ",
+      "file": "frontend/src/lib/workflowApi.ts",
+      "root_cause": "Property access on potentially null/undefined value",
+      "fix": "Added null safety (optional chaining or null check)",
+      "tags": [
+        "auto-detected",
+        "null-safety",
+        "ts"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T03:04:08.413Z"
+    },
+    {
+      "id": "bug-050",
+      "timestamp": "2026-05-11T03:05:48.906Z",
+      "error_message": "Type error",
+      "file": "frontend/src/components/workbench/planning/OutlineProgressDialog.tsx",
+      "root_cause": "Missing or incorrect type annotation",
+      "fix": "Added type assertion/annotation",
+      "tags": [
+        "auto-detected",
+        "type-fix",
+        "tsx"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T03:05:48.906Z"
+    },
+    {
+      "id": "bug-051",
+      "timestamp": "2026-05-11T03:07:55.217Z",
+      "error_message": "Null/undefined access in ",
+      "file": "frontend/src/pages/ProjectWorkbench.tsx",
+      "root_cause": "Property access on potentially null/undefined value",
+      "fix": "Added null safety (optional chaining or null check)",
+      "tags": [
+        "auto-detected",
+        "null-safety",
+        "tsx"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T03:07:55.217Z"
+    },
+    {
+      "id": "bug-052",
+      "timestamp": "2026-05-11T03:07:55.551Z",
+      "error_message": "Incorrect value in code",
+      "file": "frontend/src/components/workbench/planning/InspirationPanel.tsx",
+      "root_cause": "Had '@/stores/workbenchStore'",
+      "fix": "Changed to '@/components/ui/alert-dialog'",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "tsx"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T03:07:55.551Z"
+    },
+    {
+      "id": "bug-053",
+      "timestamp": "2026-05-11T03:07:55.870Z",
+      "error_message": "Wrong reference: InspirationPanelProps should be hasOutline",
+      "file": "frontend/src/components/workbench/planning/InspirationPanel.tsx",
+      "root_cause": "Used \"InspirationPanelProps\" instead of \"hasOutline\"",
+      "fix": "Changed InspirationPanelProps → hasOutline",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "tsx"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-05-11T03:10:43.310Z"
+    },
+    {
+      "id": "bug-054",
+      "timestamp": "2026-05-11T03:10:42.907Z",
+      "error_message": "Type error",
+      "file": "frontend/src/components/workbench/planning/InspirationPanel.tsx",
+      "root_cause": "Missing or incorrect type annotation",
+      "fix": "Added type assertion/annotation",
+      "tags": [
+        "auto-detected",
+        "type-fix",
+        "tsx"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T03:10:42.907Z"
+    },
+    {
+      "id": "bug-055",
+      "timestamp": "2026-05-11T07:55:47.418Z",
+      "error_message": "Significant refactor of ",
+      "file": "docs/superpowers/specs/2026-05-11-prompt-context-optimization-design.md",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 17→20 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "md"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T07:55:47.418Z"
+    },
+    {
+      "id": "bug-056",
+      "timestamp": "2026-05-11T08:06:26.159Z",
+      "error_message": "Significant refactor of ",
+      "file": "docs/superpowers/plans/2026-05-11-prompt-context-optimization.md",
+      "root_cause": "45 lines replaced/restructured",
+      "fix": "Rewrote 57→11 lines (45 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "md"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T08:06:26.159Z"
+    },
+    {
+      "id": "bug-057",
+      "timestamp": "2026-05-11T08:13:19.479Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/app/agents/nodes/utils.py",
+      "root_cause": "4 lines replaced/restructured",
+      "fix": "Rewrote 13→28 lines (4 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T08:13:19.479Z"
+    },
+    {
+      "id": "bug-058",
+      "timestamp": "2026-05-11T08:13:00.000Z",
+      "error_message": "format_relations_info 无法解析 ID 字段格式的关系数据，导致章节生成时人物关系信息为空",
+      "file": "backend/app/agents/nodes/utils.py",
+      "root_cause": "format_relations_info 只读取 character1/character2/description 字段，但 build_initial_state 和 generate_relations_node 写入的是 character_a_id/character_b_id/relation_type/current_status 格式，字段名不匹配导致所有关系信息解析为空字符串",
+      "fix": "重写 format_relations_info 兼容两种字段命名：构建 ID→name 映射从 state[\"characters\"]，旧格式（character1/character2/relationship_type/description）优先，新格式（character_a_id/character_b_id/relation_type/current_status）回退。无匹配时显示\"未知\"。",
+      "tags": [
+        "relations",
+        "field-mismatch",
+        "ID-mapping",
+        "backward-compatibility",
+        "root-cause"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T08:13:00.000Z"
+    },
+    {
+      "id": "bug-059",
+      "timestamp": "2026-05-11T08:20:10.298Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/app/agents/nodes/chapter_generation.py",
+      "root_cause": "7 lines replaced/restructured",
+      "fix": "Rewrote 7→3 lines (7 removed) | Also: # 获取每章字数区间（优先使用用户设定，回退到章节大纲的 target_words）; _, _, words_display = parse_words_per_chapter(info",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-05-11T08:20:51.316Z"
+    },
+    {
+      "id": "bug-060",
+      "timestamp": "2026-05-11T08:20:41.266Z",
+      "error_message": "Wrong reference: words_lower should be min_words",
+      "file": "backend/app/agents/nodes/chapter_generation.py",
+      "root_cause": "Used \"words_lower\" instead of \"min_words\"",
+      "fix": "Changed words_lower → min_words",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T08:20:41.266Z"
+    },
+    {
+      "id": "bug-061",
+      "timestamp": "2026-05-11T08:24:41.650Z",
+      "error_message": "Wrong reference: target_words should be min_words",
+      "file": "backend/app/agents/prompts.py",
+      "root_cause": "Used \"target_words\" instead of \"min_words\"",
+      "fix": "Changed target_words → min_words",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-05-11T08:24:41.838Z"
+    },
+    {
+      "id": "bug-062",
+      "timestamp": "2026-05-11T08:28:36.384Z",
+      "error_message": "Wrong reference: Dict should be AsyncIterator",
+      "file": "backend/app/agents/nodes/chapter_generation.py",
+      "root_cause": "Used \"Dict\" instead of \"AsyncIterator\"",
+      "fix": "Changed Dict → AsyncIterator",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T08:28:36.384Z"
+    },
+    {
+      "id": "bug-063",
+      "timestamp": "2026-05-11T08:31:57.758Z",
+      "error_message": "Incorrect value in code",
+      "file": "frontend/src/lib/inspiration.ts",
+      "root_cause": "Had 'option_3000'",
+      "fix": "Changed to '3000'",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "ts"
+      ],
+      "related_bugs": [],
+      "occurrences": 3,
+      "last_seen": "2026-05-11T08:31:58.104Z"
+    },
+    {
+      "id": "bug-064",
+      "timestamp": "2026-05-11T10:27:00.889Z",
+      "error_message": "Significant refactor of ",
+      "file": "docs/superpowers/plans/2026-05-11-prompt-context-optimization-phase2.md",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 7→18 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "md"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T10:27:00.889Z"
+    },
+    {
+      "id": "bug-065",
+      "timestamp": "2026-05-11T10:37:54.431Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/app/agents/prompts.py",
+      "root_cause": "10 lines replaced/restructured",
+      "fix": "Rewrote 15→5 lines (10 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T10:37:54.431Z"
+    },
+    {
+      "id": "bug-066",
+      "timestamp": "2026-05-11T10:43:07.721Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/app/agents/prompts.py",
+      "root_cause": "9 lines replaced/restructured",
+      "fix": "Rewrote 18→24 lines (9 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T10:43:07.721Z"
+    },
+    {
+      "id": "bug-067",
+      "timestamp": "2026-05-11T11:12:53.485Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/app/api/workflow.py",
+      "root_cause": "10 lines replaced/restructured",
+      "fix": "Rewrote 13→4 lines (10 removed) | Also: from app.services.prompt_loader import get_system_; initial_state[\"_prompts\"] = {",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-05-11T11:13:02.641Z"
+    },
+    {
+      "id": "bug-068",
+      "timestamp": "2026-05-11T14:04:41.472Z",
+      "error_message": "Significant refactor of ",
+      "file": "docs/superpowers/specs/2026-05-11-prompt-context-optimization-phase3-design.md",
+      "root_cause": "4 lines replaced/restructured",
+      "fix": "Rewrote 26→39 lines (4 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "md"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T14:04:41.472Z"
+    },
+    {
+      "id": "bug-069",
+      "timestamp": "2026-05-11T14:44:52.658Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/tests/test_agents.py",
+      "root_cause": "5 lines replaced/restructured",
+      "fix": "Rewrote 18→31 lines (5 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T14:44:52.658Z"
+    },
+    {
+      "id": "bug-070",
+      "timestamp": "2026-05-11T14:46:11.254Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/tests/test_prompt_loader.py",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 6→11 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T14:46:11.254Z"
+    },
+    {
+      "id": "bug-071",
+      "timestamp": "2026-05-11T14:50:37.594Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/app/api/workflow.py",
+      "root_cause": "3 lines replaced/restructured",
+      "fix": "Rewrote 12→26 lines (3 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T14:50:37.594Z"
+    },
+    {
+      "id": "bug-072",
+      "timestamp": "2026-05-11T14:59:43.962Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/app/agents/nodes/chapter_generation.py",
+      "root_cause": "47 lines replaced/restructured",
+      "fix": "Rewrote 70→18 lines (47 removed) | Also: 3. 获取已写章节用于上下文 (written_chapters); written_chapters = state.get(\"written_chapters\", [",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-05-11T15:00:21.523Z"
+    },
+    {
+      "id": "bug-073",
+      "timestamp": "2026-05-11T15:04:59.146Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/tests/test_review.py",
+      "root_cause": "3 lines replaced/restructured",
+      "fix": "Rewrote 195→299 lines (3 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T15:04:59.146Z"
+    },
+    {
+      "id": "bug-074",
+      "timestamp": "2026-05-11T17:19:46.211Z",
+      "error_message": "Significant refactor of ",
+      "file": "docs/superpowers/specs/2026-05-11-phase4-chapter-outline-regen-novel-length-design.md",
+      "root_cause": "7 lines replaced/restructured",
+      "fix": "Rewrote 24→34 lines (7 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "md"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T17:19:46.211Z"
+    },
+    {
+      "id": "bug-075",
+      "timestamp": "2026-05-11T17:20:12.450Z",
+      "error_message": "Wrong reference: replan should be create_chapter_outlines",
+      "file": "docs/superpowers/specs/2026-05-11-phase4-chapter-outline-regen-novel-length-design.md",
+      "root_cause": "Used \"replan\" instead of \"create_chapter_outlines\"",
+      "fix": "Changed replan → create_chapter_outlines",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "md"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T17:20:12.450Z"
+    },
+    {
+      "id": "bug-076",
+      "timestamp": "2026-05-12T02:20:33.935Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/app/api/chapters.py",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 6→4 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T02:20:33.935Z"
+    },
+    {
+      "id": "bug-077",
+      "timestamp": "2026-05-12T02:22:47.131Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/tests/test_chapter_outlines_fix.py",
+      "root_cause": "85 lines replaced/restructured",
+      "fix": "Rewrote 256→215 lines (85 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T02:22:47.131Z"
+    },
+    {
+      "id": "bug-078",
+      "timestamp": "2026-05-12T02:26:15.444Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/app/api/chapters.py",
+      "root_cause": "4 lines replaced/restructured",
+      "fix": "Rewrote 8→3 lines (4 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T02:26:15.444Z"
+    },
+    {
+      "id": "bug-079",
+      "timestamp": "2026-05-12T02:30:36.053Z",
+      "error_message": "Function not marked async",
+      "file": "backend/app/api/workflow.py",
+      "root_cause": "Function uses await but wasn't declared async",
+      "fix": "Added async modifier",
+      "tags": [
+        "auto-detected",
+        "async-fix",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T02:30:36.053Z"
+    },
+    {
+      "id": "bug-080",
+      "timestamp": "2026-05-12T02:39:12.438Z",
+      "error_message": "Null/undefined access in ",
+      "file": "frontend/src/lib/workflowApi.ts",
+      "root_cause": "Property access on potentially null/undefined value",
+      "fix": "Added null safety (optional chaining or null check)",
+      "tags": [
+        "auto-detected",
+        "null-safety",
+        "ts"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T02:39:12.438Z"
+    },
+    {
+      "id": "bug-081",
+      "timestamp": "2026-05-12T02:39:23.554Z",
+      "error_message": "Null/undefined access in ",
+      "file": "frontend/src/lib/inspiration.ts",
+      "root_cause": "Property access on potentially null/undefined value",
+      "fix": "Added null safety (optional chaining or null check)",
+      "tags": [
+        "auto-detected",
+        "null-safety",
+        "ts"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T02:39:23.554Z"
+    },
+    {
+      "id": "bug-082",
+      "timestamp": "2026-05-12T02:39:35.201Z",
+      "error_message": "Missing error handling in unknown",
+      "file": "frontend/src/components/workbench/creation/ChapterOutlinePanel.tsx",
+      "root_cause": "Code path had no error handling — exceptions would propagate uncaught",
+      "fix": "Added try/catch block",
+      "tags": [
+        "auto-detected",
+        "error-handling",
+        "tsx"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T02:39:35.201Z"
+    },
+    {
+      "id": "bug-083",
+      "timestamp": "2026-05-12T02:40:45.110Z",
+      "error_message": "Type error",
+      "file": "frontend/src/components/workbench/planning/InspirationPanel.tsx",
+      "root_cause": "Missing or incorrect type annotation",
+      "fix": "Added type assertion/annotation",
+      "tags": [
+        "auto-detected",
+        "type-fix",
+        "tsx"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T02:40:45.110Z"
+    },
+    {
+      "id": "bug-084",
+      "timestamp": "2026-05-12T02:41:28.838Z",
+      "error_message": "Significant refactor of ",
+      "file": "frontend/src/components/workbench/planning/InspirationPanel.tsx",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 5→3 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "tsx"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T02:41:28.838Z"
+    },
+    {
+      "id": "bug-085",
+      "timestamp": "2026-05-12T02:45:57.316Z",
+      "error_message": "CSS fix: signal",
+      "file": "frontend/src/components/workbench/creation/ChapterOutlinePanel.tsx",
+      "root_cause": "signal: controller.signal → controller.signal, llmConfigId: selectedModelKey || undefined",
+      "fix": "Changed signal: controller.signal → controller.signal, llmConfigId: selectedModelKey || undefined",
+      "tags": [
+        "auto-detected",
+        "style-fix",
+        "tsx"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T02:45:57.316Z"
+    },
+    {
+      "id": "bug-086",
+      "timestamp": "2026-05-12T02:47:50.483Z",
+      "error_message": "Wrong reference: undefined should be const",
+      "file": "frontend/src/components/workbench/creation/ChapterOutlinePanel.tsx",
+      "root_cause": "Used \"undefined\" instead of \"const\"",
+      "fix": "Changed undefined → const",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "tsx"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T02:47:50.483Z"
+    },
+    {
+      "id": "bug-087",
+      "timestamp": "2026-05-12T04:48:23.220Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/app/agents/nodes/outline_generation.py",
+      "root_cause": "3 lines replaced/restructured",
+      "fix": "Rewrote 7→9 lines (3 removed) | Also: # [DEBUG-a3f1] 临时日志：输出 LLM 返回的前 500 字符，用于调试正则解析; logger.warning(",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-05-12T04:53:21.382Z"
+    },
+    {
+      "id": "bug-088",
+      "timestamp": "2026-05-12T04:49:37.206Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/app/api/workflow.py",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 12→21 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T04:49:37.206Z"
+    },
+    {
+      "id": "bug-089",
+      "timestamp": "2026-05-12T04:50:25.220Z",
+      "error_message": "Missing error handling in unknown",
+      "file": "frontend/src/components/workbench/planning/InspirationPanel.tsx",
+      "root_cause": "Code path had no error handling — exceptions would propagate uncaught",
+      "fix": "Added try/catch block",
+      "tags": [
+        "auto-detected",
+        "error-handling",
+        "tsx"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T04:50:25.220Z"
+    },
+    {
+      "id": "bug-090",
+      "timestamp": "2026-05-12T04:52:34.414Z",
+      "error_message": "CSS fix: signal",
+      "file": "frontend/src/components/workbench/planning/OutlineProgressDialog.tsx",
+      "root_cause": "signal: controller.signal, llmConfigId: modelConfigId, modelName: modelName → controller.signal,",
+      "fix": "Changed signal: controller.signal, llmConfigId: modelConfigId, modelName: modelName → controller.signal,",
+      "tags": [
+        "auto-detected",
+        "style-fix",
+        "tsx"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T04:52:34.414Z"
+    },
+    {
+      "id": "bug-091",
+      "timestamp": "2026-05-12T06:17:25.663Z",
+      "error_message": "CSS fix: signal",
+      "file": "frontend/src/components/workbench/planning/OutlineProgressDialog.tsx",
+      "root_cause": "signal: controller.signal, → controller.signal, llmConfigId: modelConfigId, modelName: modelName",
+      "fix": "Changed signal: controller.signal, → controller.signal, llmConfigId: modelConfigId, modelName: modelName",
+      "tags": [
+        "auto-detected",
+        "style-fix",
+        "tsx"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T06:17:25.663Z"
+    },
+    {
+      "id": "bug-092",
+      "timestamp": "2026-05-12T06:32:36.978789Z",
+      "error_message": "已规划项目重新规划时报错\"保存失败\"",
+      "file": "backend/app/api/workflow.py, frontend/src/components/workbench/planning/InspirationPanel.tsx",
+      "root_cause": "replan 端点不接受 collected_info/inspiration_template，前端 handleReplan 不构建表单数据直接打开进度对话框。同时 BUG 2（标题为空）导致 hasOutline=false，显示\"开始规划\"而非\"重新规划\"按钮，走 update_collected_info 路径被 outline.confirmed=True 拒绝（400错误）",
+      "fix": "1) WorkflowReplanRequest 添加 collected_info/inspiration_template 字段，replan_workflow 端点在重置大纲前保存这些数据；2) 前端 handleReplan 构建与 handleConfirm 相同的 collectedInfo 数据存入 state，通过 OutlineProgressDialog → workflowApi.replanWorkflow 传到后端；3) OutlineProgressDialog 拆分 if(isReplan)/else 分支分别调用 replanWorkflow/runWorkflow",
+      "tags": [
+        "replan",
+        "collected-info",
+        "outline-confirmed",
+        "frontend-backend-data-flow"
+      ],
+      "related_bugs": [
+        "bug-093"
+      ],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T06:32:36.978789Z"
+    },
+    {
+      "id": "bug-093",
+      "timestamp": "2026-05-12T06:32:36.978789Z",
+      "error_message": "规划完成后大纲内容中的标题为空不显示",
+      "file": "backend/app/agents/nodes/outline_generation.py",
+      "root_cause": "LLM 输出格式为 ## 一、标题\n\n**《凡骨》**，但 RE_TITLE_CHAPTER 正则不支持 \n+ 多行间隔和 \\*{0,2} 加粗标记，RE_TITLE 要求冒号格式匹配不到无冒号输出，标题清理顺序错误（先删《》再删**导致残留）",
+      "fix": "1) RE_TITLE_CHAPTER 更新为 r\"#{1,6}\\s*[一二三四五六七八九十]+[、.].*\n+\\s*\\*{0,2}《(.+?)》\\*{0,2}\" 支持 \n+ 和 **；2) RE_TITLE_CHAPTER_NO_HASH 同步更新；3) 新增 RE_TITLE_NEXT_LINE 匹配标题内容在下一行的格式；4) 标题清理顺序修正：先删 ** 再删 《》；5) RE_SUMMARY_CHAPTER 支持 \n+ 多行间隔",
+      "tags": [
+        "regex",
+        "title",
+        "outline",
+        "llm-output-format"
+      ],
+      "related_bugs": [
+        "bug-092"
+      ],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T06:32:36.978789Z"
+    },
+    {
+      "id": "bug-094",
+      "timestamp": "2026-05-12T09:34:33.860Z",
+      "error_message": "Wrong reference: InspirationPanelProps should be onPlanningComplete",
+      "file": "frontend/src/components/workbench/planning/InspirationPanel.tsx",
+      "root_cause": "Used \"InspirationPanelProps\" instead of \"onPlanningComplete\"",
+      "fix": "Changed InspirationPanelProps → onPlanningComplete",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "tsx"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T09:34:33.860Z"
+    },
+    {
+      "id": "bug-095",
+      "timestamp": "2026-05-12T09:35:07.432Z",
+      "error_message": "Null/undefined access in ",
+      "file": "frontend/src/components/workbench/planning/InspirationPanel.tsx",
+      "root_cause": "Property access on potentially null/undefined value",
+      "fix": "Added null safety (optional chaining or null check)",
+      "tags": [
+        "auto-detected",
+        "null-safety",
+        "tsx"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T09:35:07.432Z"
+    },
+    {
+      "id": "bug-096",
+      "timestamp": "2026-05-12T09:35:53.749Z",
+      "error_message": "Wrong return value",
+      "file": "frontend/src/pages/ProjectWorkbench.tsx",
+      "root_cause": "Was returning: <InspirationPanel projectId={projectId!} hasOutlin",
+      "fix": "Now returns: <InspirationPanel projectId={projectId!} hasOutlin",
+      "tags": [
+        "auto-detected",
+        "return-value",
+        "tsx"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T09:35:53.749Z"
+    },
+    {
+      "id": "bug-097",
+      "timestamp": "2026-05-12T09:51:24.147Z",
+      "error_message": "Significant refactor of ",
+      "file": "frontend/src/components/workbench/creation/ChapterOutlinePanel.tsx",
+      "root_cause": "5 lines replaced/restructured",
+      "fix": "Rewrote 24→12 lines (5 removed) | Also: if (abortControllerRef.current); abortControllerRef.current.abort()",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "tsx"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-05-12T09:52:15.099Z"
+    },
+    {
+      "id": "bug-098",
+      "timestamp": "2026-05-12T09:52:03.791Z",
+      "error_message": "CSS fix: completed",
+      "file": "frontend/src/components/workbench/creation/ChapterOutlinePanel.tsx",
+      "root_cause": "completed: [...completedTitlesRef.current] → [...completedTitles]",
+      "fix": "Changed completed: [...completedTitlesRef.current] → [...completedTitles]",
+      "tags": [
+        "auto-detected",
+        "style-fix",
+        "tsx"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-05-12T09:52:38.820Z"
+    },
+    {
+      "id": "bug-099",
+      "timestamp": "2026-05-12T10:00:04.367Z",
+      "error_message": "CSS fix: chapterOutlineGenerating, chapterOutlineReplaning, chapterOutlineProgress",
+      "file": "frontend/src/components/workbench/creation/ChapterOutlinePanel.tsx",
+      "root_cause": "chapterOutlineGenerating: generating, → s.chapterOutlineGenerating,; chapterOutlineReplaning: replaning, → s.chapterOutlineReplaning,; chapterOutlineProgress: progress, → s.chapterOutlineProgress,",
+      "fix": "Changed chapterOutlineGenerating: generating, → s.chapterOutlineGenerating,; chapterOutlineReplaning: replaning, → s.chapterOutlineReplaning,; chapterOutlineProgress: progress, → s.chapterOutlineProgress,",
+      "tags": [
+        "auto-detected",
+        "style-fix",
+        "tsx"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-05-12T10:02:06.748Z"
+    },
+    {
+      "id": "bug-100",
+      "timestamp": "2026-05-12T12:45:35.434Z",
+      "error_message": "Significant refactor of ",
+      "file": "frontend/src/lib/inspiration.ts",
+      "root_cause": "41 lines replaced/restructured",
+      "fix": "Rewrote 49→11 lines (41 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "ts"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T12:45:35.434Z"
+    },
+    {
+      "id": "bug-101",
+      "timestamp": "2026-05-12T12:47:08.481Z",
+      "error_message": "Significant refactor of ",
+      "file": "frontend/src/components/workbench/planning/InspirationPanel.tsx",
+      "root_cause": "5 lines replaced/restructured",
+      "fix": "Rewrote 9→15 lines (5 removed) | Also: {/* 篇幅类型 + 每章字数 */}; <div className=\"space-y-3\">",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "tsx"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-05-12T12:49:54.733Z"
+    },
+    {
+      "id": "bug-102",
+      "timestamp": "2026-05-12T12:51:06.337Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/app/agents/context_strategy.py",
+      "root_cause": "5 lines replaced/restructured",
+      "fix": "Rewrote 49→65 lines (5 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T12:51:06.337Z"
+    },
+    {
+      "id": "bug-103",
+      "timestamp": "2026-05-12T12:51:39.990Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/app/agents/nodes/chapter_generation.py",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 6→8 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T12:51:39.990Z"
+    },
+    {
+      "id": "bug-104",
+      "timestamp": "2026-05-12T17:26:00.000Z",
+      "error_message": "大纲生成 Prompt 显示测试数据 \"Test prompt content for outline generation.\" 而非正确模板",
+      "file": "backend/app/api/system_prompts.py",
+      "root_cause": "数据库 system_config 表中 prompt_outline_generation 的值被 2026-05-03 的测试数据覆盖，API 优先读取 DB 中的值而非默认值",
+      "fix": "通过 POST /api/system/prompts/outline_generation/reset 重置为默认 prompt 模板",
+      "tags": [
+        "prompt",
+        "test-data",
+        "database"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T17:26:00.000Z"
+    },
+    {
+      "id": "bug-105",
+      "timestamp": "2026-05-13T06:20:08.682Z",
+      "error_message": "Significant refactor of ",
+      "file": "docs/superpowers/specs/2026-05-13-writing-panel-fixes-design.md",
+      "root_cause": "4 lines replaced/restructured",
+      "fix": "Rewrote 16→17 lines (4 removed) | Also: 2. `AIAssistantPanel.tsx` 中 issues 渲染改为结构化显示：; {reviewResult.issues.map((issue, index) => (",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "md"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-05-13T06:20:21.452Z"
+    },
+    {
+      "id": "bug-106",
+      "timestamp": "2026-05-13T07:16:32.182Z",
+      "error_message": "Significant refactor of ",
+      "file": "docs/superpowers/plans/2026-05-13-writing-panel-fixes.md",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 25→31 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "md"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-13T07:16:32.182Z"
+    },
+    {
+      "id": "bug-107",
+      "timestamp": "2026-05-13T07:56:19.458Z",
+      "error_message": "Significant refactor of ",
+      "file": "frontend/src/components/workbench/creation/WritingPanel.tsx",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 16→29 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "tsx"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-13T07:56:19.458Z"
+    },
+    {
+      "id": "bug-108",
+      "timestamp": "2026-05-13T08:59:32.263Z",
+      "error_message": "Null/undefined access in ",
+      "file": "frontend/src/components/workbench/creation/WritingPanel.tsx",
+      "root_cause": "Property access on potentially null/undefined value",
+      "fix": "Added null safety (optional chaining or null check)",
+      "tags": [
+        "auto-detected",
+        "null-safety",
+        "tsx"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-13T08:59:32.263Z"
+    },
+    {
+      "id": "bug-109",
+      "timestamp": "2026-05-13T09:01:20.277Z",
+      "error_message": "Type error",
+      "file": "frontend/src/components/workbench/creation/AIAssistantPanel.tsx",
+      "root_cause": "Missing or incorrect type annotation",
+      "fix": "Added type assertion/annotation",
+      "tags": [
+        "auto-detected",
+        "type-fix",
+        "tsx"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-13T09:01:20.277Z"
+    },
+    {
+      "id": "bug-110",
+      "timestamp": "2026-05-13T09:01:40.757Z",
+      "error_message": "Significant refactor of ",
+      "file": "frontend/src/components/workbench/creation/AIAssistantPanel.tsx",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 7→30 lines (2 removed) | Also: {reviewResult.issues.map((issue, index) => (; <span className=\"leading-relaxed\">{issue}</span>",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "tsx"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-05-13T09:02:27.277Z"
+    },
+    {
+      "id": "bug-111",
+      "timestamp": "2026-05-13T12:37:43.491Z",
+      "error_message": "Incorrect value in code",
+      "file": "docs/superpowers/specs/2026-05-13-context-passing-optimization-design.md",
+      "root_cause": "Had `state`",
+      "fix": "Changed to `previous_context`",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "md"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-13T12:37:43.491Z"
+    },
+    {
+      "id": "bug-112",
+      "timestamp": "2026-05-13T12:40:10.432Z",
+      "error_message": "Significant refactor of ",
+      "file": "docs/superpowers/specs/2026-05-13-context-passing-optimization-design.md",
+      "root_cause": "15 lines replaced/restructured",
+      "fix": "Rewrote 22→5 lines (15 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "md"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-13T12:40:10.432Z"
+    },
+    {
+      "id": "bug-113",
+      "timestamp": "2026-05-13T12:45:26.384Z",
+      "error_message": "Significant refactor of ",
+      "file": "docs/superpowers/specs/2026-05-13-context-passing-optimization-design.md",
+      "root_cause": "3 lines replaced/restructured",
+      "fix": "Rewrote 9→17 lines (3 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "md"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-13T12:45:26.384Z"
+    },
+    {
+      "id": "bug-114",
+      "timestamp": "2026-05-13T12:53:36.261Z",
+      "error_message": "Incorrect value in code",
+      "file": "docs/superpowers/specs/2026-05-13-context-passing-optimization-design.md",
+      "root_cause": "Had `backend/app/agents/nodes/chapter_generation.py`",
+      "fix": "Changed to `backend/app/api/workflow.py`",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "md"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-13T12:53:36.261Z"
+    },
+    {
+      "id": "bug-115",
+      "timestamp": "2026-05-13T13:24:17.528Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/app/agents/nodes/chapter_generation.py",
+      "root_cause": "7 lines replaced/restructured",
+      "fix": "Rewrote 9→16 lines (7 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-13T13:24:17.528Z"
+    },
+    {
+      "id": "bug-116",
+      "timestamp": "2026-05-13T14:23:38.034Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/app/agents/nodes/chapter_generation.py",
+      "root_cause": "17 lines replaced/restructured",
+      "fix": "Rewrote 20→3 lines (17 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-13T14:23:38.034Z"
+    },
+    {
+      "id": "bug-117",
+      "timestamp": "2026-05-13T14:40:29.455Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/app/agents/nodes/review.py",
+      "root_cause": "33 lines replaced/restructured",
+      "fix": "Rewrote 55→21 lines (33 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-13T14:40:29.455Z"
+    },
+    {
+      "id": "bug-118",
+      "timestamp": "2026-05-13T15:02:34.909Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/app/agents/nodes/rewrite.py",
+      "root_cause": "34 lines replaced/restructured",
+      "fix": "Rewrote 50→15 lines (34 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-13T15:02:34.909Z"
+    },
+    {
+      "id": "bug-119",
+      "timestamp": "2026-05-13T15:07:23.728Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/app/api/chapters.py",
+      "root_cause": "14 lines replaced/restructured",
+      "fix": "Rewrote 20→10 lines (14 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-13T15:07:23.728Z"
+    },
+    {
+      "id": "bug-120",
+      "timestamp": "2026-05-13T15:24:29.660Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/app/agents/nodes/review.py",
+      "root_cause": "21 lines replaced/restructured",
+      "fix": "Rewrote 36→15 lines (21 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-13T15:24:29.660Z"
+    },
+    {
+      "id": "bug-121",
+      "timestamp": "2026-05-13T15:25:39.847Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/app/agents/nodes/rewrite.py",
+      "root_cause": "21 lines replaced/restructured",
+      "fix": "Rewrote 36→15 lines (21 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-13T15:25:39.847Z"
+    },
+    {
+      "id": "bug-122",
+      "timestamp": "2026-05-13T16:31:33.169Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/app/api/workflow.py",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 7→9 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-13T16:31:33.169Z"
+    },
+    {
+      "id": "bug-123",
+      "timestamp": "2026-05-13T16:41:55.966Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/alembic/versions/50019c738b72_add_llm_config_to_workflow_state.py",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 6→8 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-13T16:41:55.966Z"
+    },
+    {
+      "id": "bug-124",
+      "timestamp": "2026-05-13T16:43:59.110Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/app/api/workflow.py",
+      "root_cause": "3 lines replaced/restructured",
+      "fix": "Rewrote 3→3 lines (3 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-13T16:43:59.110Z"
+    },
+    {
+      "id": "bug-125",
+      "timestamp": "2026-05-13T16:47:36.914Z",
+      "error_message": "Significant refactor of ",
+      "file": "backend/app/api/chapters.py",
+      "root_cause": "3 lines replaced/restructured",
+      "fix": "Rewrote 5→4 lines (3 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-13T16:47:36.914Z"
+    },
+    {
+      "id": "bug-126",
+      "timestamp": "2026-05-13T16:50:00Z",
+      "error_message": "审核章节时报错 Model Qwen3.5-397B-A17B-w8a8-mtp does not exist，与灵感页配置的模型不一致",
+      "file": "backend/app/api/workflow.py, backend/app/api/chapters.py, backend/app/models/workflow_state.py",
+      "root_cause": "1. WorkflowRunRequest缺少llm_model_name字段; 2. build_initial_state未将llm_model_name存入状态; 3. workflow_states表缺少llm_config_id和llm_model_name字段导致无法持久化; 4. 审核/正文生成SSE端点未从DB读取LLM配置",
+      "fix": "1. 给WorkflowRunRequest添加llm_model_name字段; 2. build_initial_state接收llm_model_name参数并优先从workflow_state DB读取; 3. 给workflow_states表添加llm_config_id和llm_model_name字段并创建迁移; 4. run_workflow/replan端点在请求带来时持久化LLM配置到DB; 5. chapters.py SSE端点不再手动传llm_config_id，从DB自动读取",
+      "tags": [
+        "LLM配置",
+        "workflow",
+        "模型统一"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-13"
     }
   ]
 }

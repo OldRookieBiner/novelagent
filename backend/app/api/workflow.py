@@ -100,6 +100,7 @@ async def stream_workflow_events(
 class WorkflowRunRequest(BaseModel):
     """工作流运行请求"""
     llm_config_id: Optional[int] = None  # 指定模型配置 ID
+    llm_model_name: Optional[str] = None  # 指定模型名称（覆盖配置中的默认模型）
 
 
 class WorkflowConfirmRequest(BaseModel):
@@ -142,6 +143,7 @@ def build_initial_state(
     outline: Outline,
     workflow_state: WorkflowState,
     llm_config_id: Optional[int] = None,
+    llm_model_name: Optional[str] = None,
     db: Optional["Session"] = None
 ) -> NovelState:
     """
@@ -155,6 +157,7 @@ def build_initial_state(
         outline: 大纲实例
         workflow_state: 工作流状态实例
         llm_config_id: 模型配置 ID
+        llm_model_name: 模型名称（覆盖配置中的默认模型）
         db: 可选的数据库会话，用于预加载角色/关系数据
 
     Returns:
@@ -227,8 +230,9 @@ def build_initial_state(
         "waiting_for_confirmation": workflow_state.waiting_for_confirmation,
         "confirmation_type": workflow_state.confirmation_type,
 
-        # LLM 服务
-        "llm_config_id": llm_config_id,
+        # LLM 服务（优先级：参数 > workflow_state DB > None）
+        "llm_config_id": llm_config_id or workflow_state.llm_config_id,
+        "llm_model_name": llm_model_name or workflow_state.llm_model_name,
 
         # 预加载：角色和关系（从 DB 获取最新数据）
         "characters": [],
@@ -412,13 +416,21 @@ async def run_workflow(
         db.commit()
         db.refresh(workflow_state)
 
-    # 获取 LLM 配置 ID
+    # 获取 LLM 配置
     llm_config_id = None
+    llm_model_name = None
     if request:
         llm_config_id = request.llm_config_id
+        llm_model_name = request.llm_model_name
+
+    # 持久化 LLM 配置到 workflow_state（确保所有端点使用同一模型）
+    if llm_config_id or llm_model_name:
+        workflow_state.llm_config_id = llm_config_id
+        workflow_state.llm_model_name = llm_model_name
+        db.commit()
 
     # 构建初始状态（预加载 DB 数据）
-    initial_state = build_initial_state(project, outline, workflow_state, llm_config_id, db=db)
+    initial_state = build_initial_state(project, outline, workflow_state, llm_config_id, llm_model_name, db=db)
 
     # 预加载 prompts 到 state（使所有节点都能访问）
     initial_state["_prompts"] = _build_prompts_dict(db)
@@ -802,10 +814,18 @@ async def replan_workflow(
         db.refresh(workflow_state)
 
     llm_config_id = None
+    llm_model_name = None
     if request:
         llm_config_id = request.llm_config_id
+        llm_model_name = request.llm_model_name
 
-    initial_state = build_initial_state(project, outline, workflow_state, llm_config_id, db=db)
+    # 持久化 LLM 配置到 workflow_state
+    if llm_config_id or llm_model_name:
+        workflow_state.llm_config_id = llm_config_id
+        workflow_state.llm_model_name = llm_model_name
+        db.commit()
+
+    initial_state = build_initial_state(project, outline, workflow_state, llm_config_id, llm_model_name, db=db)
 
     # 预加载 prompts
     initial_state["_prompts"] = _build_prompts_dict(db)
@@ -897,10 +917,18 @@ async def replan_chapter_outlines(
         db.refresh(workflow_state)
 
     llm_config_id = None
+    llm_model_name = None
     if request:
         llm_config_id = request.llm_config_id
+        llm_model_name = request.llm_model_name
 
-    initial_state = build_initial_state(project, outline, workflow_state, llm_config_id, db=db)
+    # 持久化 LLM 配置到 workflow_state
+    if llm_config_id or llm_model_name:
+        workflow_state.llm_config_id = llm_config_id
+        workflow_state.llm_model_name = llm_model_name
+        db.commit()
+
+    initial_state = build_initial_state(project, outline, workflow_state, llm_config_id, llm_model_name, db=db)
     initial_state["_prompts"] = _build_prompts_dict(db)
 
     # 7. 调用共享 SSE 流式函数

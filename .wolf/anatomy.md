@@ -1,28 +1,25 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-05-10T15:18:45.256Z
-> Files: 568 tracked | Anatomy hits: 0 | Misses: 0
-
-## ../../../root/.claude/plans/
-
-- `abstract-nibbling-patterson.md` — Issue #5: 大纲生成端点改造 — 实施计划 (~861 tok)
+> Auto-maintained by OpenWolf. Last scanned: 2026-05-14T02:21:09.393Z
+> Files: 561 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ./
 
 - `.gitignore` — Git ignore rules (~92 tok)
+- `.tag_message` (~50 tok)
 - `AGENT.md` — CLAUDE.md (~2799 tok)
-- `CHANGELOG.md` — Changelog (~1583 tok)
+- `CHANGELOG.md` — Changelog (~2561 tok)
 - `CLAUDE.md` — OpenWolf (~3812 tok)
 - `docker-compose.yml` — Docker Compose services (~286 tok)
 - `mockup-step-nav.html` — v0.4.0 步骤导航栏 Mockup (~3350 tok)
 - `README.md` — Project documentation (~275 tok)
 - `requirements.txt` — Python dependencies (~4 tok)
-- `test_workflow_sse.py` — test_workflow_run (~914 tok)
+- `test_workflow_sse.py` — Tests: workflow_run (~914 tok)
 
 ## .claude/
 
 - `settings.json` (~441 tok)
-- `settings.local.json` (~5804 tok)
+- `settings.local.json` (~7002 tok)
 
 ## .claude/rules/
 
@@ -841,110 +838,91 @@
 - `test_agents.py` — Tests for Agent node functions (~986 tok)
 - `test_api.py` — Tests for API endpoints (~3198 tok)
 - `test_auth.py` — Tests for authentication utilities (~1366 tok)
-- `test_chapter_content_clean.py` — backend/tests/test_chapter_content_clean.py (~495 tok)
-- `test_checkpointer.py` — Tests for PostgreSQL checkpoint saver (~1627 tok)
-- `test_review.py` — Tests for chapter review node (~1531 tok)
+
+## backend/alembic/versions/
+
+- `50019c738b72_add_llm_config_to_workflow_state.py` — add_llm_config_to_workflow_state (~237 tok)
 
 ## backend/app/agents/
 
-- `streaming.py` — LangGraph 流式执行工具 (~588 tok)
+- `constants.py` — Agent 共享常量 (~233 tok)
+- `context_strategy.py` — 上下文策略 — 管理章节生成时的前文上下文构建方式 (~566 tok)
+- `prompts.py` — Prompt templates for the agent - v0.6.5 优化版 (~4612 tok)
+- `state.py` — LangGraph agent state definitions (~1232 tok)
 
 ## backend/app/agents/nodes/
 
-- `chapter_generation.py` — Chapter generation nodes (~4147 tok)
-- `character_generation.py` — 角色生成节点 - 从大纲提取角色并写入数据库 (~2180 tok)
-- `outline_generation.py` — 大纲生成节点 (~6513 tok)
-- `relation_generation.py` — 关系生成节点 - AI 基于角色生成关系网络 (~2362 tok)
-- `utils.py` — 节点共享工具函数 (~1515 tok)
+- `chapter_generation.py` — Chapter generation nodes (~4223 tok)
+- `character_generation.py` — 角色生成节点 - 从大纲提取角色并写入数据库 (~2345 tok)
+- `outline_generation.py` — 大纲生成节点 (~6747 tok)
+- `relation_generation.py` — 关系生成节点 - AI 基于角色生成关系网络 (~2490 tok)
+- `review.py` — 章节审核节点 (~2026 tok)
+- `rewrite.py` — 章节重写节点 (~1828 tok)
+- `utils.py` — 节点共享工具函数 (~2223 tok)
 
 ## backend/app/api/
 
-- `chapters.py` — Chapters API routes (~8300 tok)
-- `model_configs.py` — 模型配置 API 路由 (~3624 tok)
-- `outline.py` — Outline API routes (~3870 tok)
-- `system_prompts.py` — System prompts API routes (~1172 tok)
-- `workflow.py` — Workflow API routes for LangGraph integration (~5820 tok)
+- `chapters.py` — Chapters API routes (~8400 tok)
+- `outline.py` — Outline API routes (~3875 tok)
+- `system_prompts.py` — System prompts API routes (~1256 tok)
+- `workflow.py` — Workflow API routes for LangGraph integration (~8818 tok)
 
-## backend/app/schemas/
+## backend/app/models/
 
-- `chapter.py` — Chapter schemas (~483 tok)
-- `model_config.py` — 模型配置 Schemas (~638 tok)
-- `system_prompt.py` — Pydantic schemas for system prompts (~1328 tok)
-
-## backend/app/services/
-
-- `chapter_service.py` — Chapter Service - Business logic for chapter generation. (~1171 tok)
-- `llm.py` — LLM service for interacting with AI models (~2024 tok)
-- `outline_service.py` — Outline Service - Business logic for outline generation. (~1294 tok)
-- `workflow_orchestrator.py` — Workflow Orchestrator - Central SSE streaming service for LangGraph endpoints. (~1748 tok)
-
-## backend/app/utils/
-
-- `llm.py` — LLM utility functions (~1062 tok)
+- `workflow_state.py` — WorkflowState model for storing workflow state (~597 tok)
 
 ## backend/tests/
 
-- `test_build_initial_state.py` — Tests for build_initial_state DB preloading logic. (~1295 tok)
-- `test_chapter_auto_save.py` — 回归测试：章节正文生成后自动保存 (~1075 tok)
-- `test_chapter_generate_fix.py` — 回归测试：章节正文生成端点 bug 修复 (~1907 tok)
-- `test_chapter_outlines_fix.py` — backend/tests/test_chapter_outlines_fix.py (~3647 tok)
-- `test_chapter_service.py` — backend/tests/test_chapter_service.py (~811 tok)
-- `test_llm_choices_guard.py` — 回归测试：LLM chat_stream/chat 的 choices 空列表 IndexError 防护 (~1207 tok)
-- `test_nodes_utils.py` — 节点共享工具函数的单元测试 (~5166 tok)
-- `test_outline_service.py` — backend/tests/test_outline_service.py (~806 tok)
-- `test_sse_workflow_streamer.py` — Tests for shared SSE workflow event streamer (~2527 tok)
-- `test_system_prompts.py` — Tests for system prompts API (~960 tok)
-- `test_workflow_orchestrator.py` — Tests for WorkflowOrchestrator central SSE streaming service. (~1967 tok)
+- `test_agents.py` — Tests for Agent node functions (~2057 tok)
+- `test_chapter_outlines_fix.py` — backend/tests/test_chapter_outlines_fix.py (~2441 tok)
+- `test_constants.py` — Agent 常量测试 (~167 tok)
+- `test_context_strategy.py` — 上下文策略测试 (~706 tok)
+- `test_prompt_loader.py` — 测试 prompt loader 的有效性检查逻辑 (~534 tok)
+- `test_review.py` — Tests for chapter review node (~2435 tok)
+- `test_system_prompts.py` — Tests for system prompts API (~1006 tok)
 
 ## docs/superpowers/plans/
 
-- `2026-05-08-backend-architecture-optimization.md` — Backend Architecture Optimization Implementation Plan (~14607 tok)
-- `2026-05-08-frontend-api-client-merge.md` — 前端 API 客户端合并实现计划 (~1679 tok)
-- `2026-05-10-chapter-word-count-unification.md` — 章节字数统一优化 Implementation Plan (~3673 tok)
-- `2026-05-10-settings-page-refactor.md` — 设置页面重构 Implementation Plan (~5923 tok)
+- `2026-05-11-prompt-context-optimization-phase2.md` — Prompt 质量与上下文传递优化 — Phase 2 实现计划 (~883 tok)
+- `2026-05-11-prompt-context-optimization-phase3.md` — Phase 3: System Message + 上下文策略 + 审核解析解耦 实现计划 (~5870 tok)
+- `2026-05-12-phase4-chapter-outline-regen-novel-length.md` — Phase 4: 章节大纲重新生成 + 篇幅选择改造 Implementation Plan (~7467 tok)
+- `2026-05-12-workbench-state-persistence.md` — 工作台状态持久化优化 实现计划 (~3451 tok)
+- `2026-05-13-context-passing-optimization.md` — 上下文传递机制优化 Implementation Plan (~5585 tok)
+- `2026-05-13-writing-panel-fixes.md` — 章节正文生成状态持久化与校验优化 实现计划 (~5008 tok)
 
 ## docs/superpowers/specs/
 
-- `2026-05-08-architecture-optimization-design.md` — NovelAgent 架构优化设计文档 (~4311 tok)
-- `2026-05-10-chapter-word-count-unification-design.md` — 章节字数统一优化设计文档 (~867 tok)
-- `2026-05-10-settings-page-refactor-design.md` — 设置页面重构设计文档 (~1836 tok)
-
-## frontend/src/
-
-- `App.tsx` — frontend/src/App.tsx (~692 tok)
-
-## frontend/src/components/settings/
-
-- `ModelConfigDialog.tsx` — ModelConfigDialog — renders modal (~3850 tok)
-- `ModelConfigItem.tsx` — ModelConfigItem (~1670 tok)
-
-## frontend/src/components/settings/hooks/
-
-- `useSettings.ts` — Exports useSettings (~2273 tok)
+- `2026-05-11-phase4-chapter-outline-regen-novel-length-design.md` — Phase 4 设计文档：章节大纲重新生成 + 篇幅选择改造 (~1015 tok)
+- `2026-05-11-prompt-context-optimization-phase3-design.md` — Phase 3 设计文档：System Message + 上下文策略 + 审核解析解耦 (~2457 tok)
+- `2026-05-12-prompt-quality-optimization-design.md` — 提示词质量优化设计文档 (~1417 tok)
+- `2026-05-12-workbench-state-persistence-design.md` — 工作台状态持久化优化设计 (~1057 tok)
+- `2026-05-13-context-passing-optimization-design.md` — 上下文传递机制优化设计 (~932 tok)
+- `2026-05-13-writing-panel-fixes-design.md` — 章节正文生成状态持久化与校验优化设计 (~2158 tok)
 
 ## frontend/src/components/workbench/creation/
 
-- `AIAssistantPanel.tsx` — frontend/src/components/workbench/creation/AIAssistantPanel.tsx (~2294 tok)
-- `ChapterOutlinePanel.tsx` — frontend/src/components/workbench/creation/ChapterOutlinePanel.tsx (~5046 tok)
-- `WritingPanel.tsx` — frontend/src/components/workbench/creation/WritingPanel.tsx (~5557 tok)
+- `AIAssistantPanel.tsx` — frontend/src/components/workbench/creation/AIAssistantPanel.tsx (~2866 tok)
+- `ChapterOutlinePanel.tsx` — frontend/src/components/workbench/creation/ChapterOutlinePanel.tsx (~6427 tok)
+- `WritingPanel.tsx` — frontend/src/components/workbench/creation/WritingPanel.tsx (~6003 tok)
 
 ## frontend/src/components/workbench/planning/
 
-- `OutlineProgressDialog.tsx` — 可选的模型配置 ID (~2480 tok)
+- `InspirationPanel.tsx` — 扁平化后的模型选项 (~13650 tok)
+- `OutlineProgressDialog.tsx` — 可选的模型配置 ID (~2659 tok)
 
 ## frontend/src/lib/
 
-- `api.ts` — API client for NovelAgent frontend (~4328 tok)
-- `sseParser.ts` — SSE 解析工具 (~1329 tok)
+- `inspiration.ts` — 已废弃：保留向后兼容 (~4952 tok)
+- `workflowApi.ts` — Workflow API Client - 工作流 API 客户端 (~3297 tok)
 
 ## frontend/src/pages/
 
-- `Settings.tsx` — SETTINGS_NAV (~1685 tok)
+- `ProjectWorkbench.tsx` — frontend/src/pages/ProjectWorkbench.tsx (~639 tok)
 
-## frontend/src/pages/__tests__/
+## frontend/src/stores/
 
-- `Settings.test.tsx` — mock useSettings hook (~575 tok)
+- `workflowStore.ts` — Workflow Store - LangGraph 工作流状态管理 + 章节正文生成状态 (~2221 tok)
 
 ## frontend/src/types/
 
-- `index.ts` — TypeScript type definitions for NovelAgent frontend (~2497 tok)
+- `index.ts` — TypeScript type definitions for NovelAgent frontend (~2548 tok)

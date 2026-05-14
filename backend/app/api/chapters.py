@@ -228,10 +228,9 @@ async def create_chapter_outlines(
     workflow_state.stage = STAGE_CHAPTER_OUTLINES
     db.commit()
 
-    # 构建初始状态（传入 db 预加载角色/关系数据）
-    llm_config_id = request.llm_config_id if request else None
+    # 构建初始状态（LLM 配置从 workflow_state DB 自动读取）
     initial_state = build_initial_state(
-        project, outline, workflow_state, llm_config_id, db=db
+        project, outline, workflow_state, db=db
     )
 
     async def stream_generator():
@@ -751,7 +750,11 @@ async def review_chapter(
     - done: 审核完成 {passed: bool, feedback: string, issues: string[]}
     - error: 审核失败 {error: string}
     """
-    from app.agents.nodes.review import review_chapter_node, check_review_passed
+    from app.agents.nodes.review import (
+        check_review_passed,
+        _build_review_messages,
+        parse_review_result,
+    )
 
     project = get_project_for_user(project_id, current_user.id, db)
     outline = get_outline_for_project(project_id, db)
@@ -825,8 +828,6 @@ async def review_chapter(
             llm = await get_llm_from_state_async(initial_state, db)
 
             # 构建审核消息（使用共享的 _build_review_messages）
-            from app.agents.nodes.review import _build_review_messages
-
             messages = _build_review_messages(
                 initial_state, chapter.content, chapter_outline_dict, strictness
             )
@@ -838,7 +839,6 @@ async def review_chapter(
                 yield f"event: chunk\ndata: {json.dumps({'content': chunk})}\n\n"
 
             # 解析审核结果
-            from app.agents.nodes.review import parse_review_result
             review_result = parse_review_result(response)
             review_result["raw_response"] = response
 

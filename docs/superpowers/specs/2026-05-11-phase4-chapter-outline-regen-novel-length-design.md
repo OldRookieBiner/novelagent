@@ -39,6 +39,7 @@ Phase 3 完成了 System Message 机制、Fulltext 上下文策略、审核 JSON
 7. **直接调用 `generate_chapter_outlines_stream`** 流式生成章节大纲（与现有 `create_chapter_outlines` 端点相同模式）
 8. SSE 流式返回 progress + done 事件
 9. 生成完成后写入 DB
+10. 生成完成后设置 WorkflowState（waiting_for_confirmation=True, confirmation_type="chapter_outlines"），`POST /workflow/confirm` 端点支持从 WorkflowState 确认（无检查点时 fallback），确认后不恢复 LangGraph 图（replan 不在图内执行）
 
 **LangGraph 合规性说明：**
 
@@ -105,6 +106,7 @@ UI 设计：
 - 用户之前保存的 `collected_info.targetWords` 可能是任意数字
 - 加载草稿时根据 targetWords 值匹配到对应篇幅选项（≤10万→短篇，10-30万→中篇，>30万→长篇）
 - 中篇/长篇置灰但能高亮显示之前的选择，用户只能切换回短篇
+- targetWords 匹配后更新为对应档位默认值（如 80000→50000），保证与后端 `get_context_strategy` 判断一致
 - targetWords 匹配逻辑与后端 `get_context_strategy` 一致
 
 **后端改动：** 无。`collected_info.targetWords` 仍然是数字，后端 `get_context_strategy(target_words)` 已有映射逻辑。

@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.8.8 - 2026-05-14
+
+### 优化
+
+- **审核/重写消息结构优化** - 审核和重写节点采用与章节正文相同的 system/user 双层消息结构，提升 LLM 对角色定位和写作规则的遵循度
+  - `_build_review_messages()` 和 `_build_rewrite_messages()` 改为同步函数，返回 {"system": ..., "user": ...} 结构
+  - Review/Rewrite prompts 从 DB 加载后自动适配 dict 格式
+  - 修复 review SSE 端点使用 `_build_review_messages` 的一致性问题
+  - 修复 rewrite 节点 `_build_rewrite_messages` 异步调用问题
+
+- **上下文传递优化** - 优化审核/重写节点传递前文上下文的方式
+  - 新增 `context_strategy.py` 中的辅助函数用于构建前文上下文
+  - 前端灵感面板新增小说长度选项（短篇/中篇/长篇/超长篇）
+
+### 修复
+
+- **写作面板修复** - 修复灵感面板相关 UI 问题
+  - 修复 InspirationPanel 组件中的状态管理问题
+  - 优化 inspiration.ts 中的数据处理逻辑
+
 ## v0.8.7 - 2026-05-12
 
 ### 修复

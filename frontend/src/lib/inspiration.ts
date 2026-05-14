@@ -8,7 +8,8 @@ export interface SelectOption {
 
 export interface InspirationData {
   novelType: string
-  targetWords: number           // 改为 number 类型
+  targetWords: number
+  contextStrategy: string          // 上下文策略：fulltext | hybrid | summary
   coreTheme: string
   worldSetting?: string
   customWorldSetting?: string
@@ -32,7 +33,37 @@ export interface InspirationData {
   customFemaleLead?: string
 }
 
-// 篇幅类型选项
+// 上下文策略选项（替代篇幅类型）
+export interface ContextStrategyOption {
+  value: string
+  label: string
+  desc: string
+  recommendedWords: string  // 推荐字数范围
+}
+
+export const CONTEXT_STRATEGY_OPTIONS: ContextStrategyOption[] = [
+  {
+    value: 'fulltext',
+    label: '全文上下文',
+    desc: '保留全部历史章节，适合短篇',
+    recommendedWords: '≤10万字',
+  },
+  {
+    value: 'hybrid',
+    label: '混合上下文',
+    desc: '保留摘要+最新章节，适合中篇',
+    recommendedWords: '10-30万字',
+  },
+  {
+    value: 'summary',
+    label: '摘要上下文',
+    desc: '仅保留章节摘要，适合长篇',
+    recommendedWords: '>30万字',
+  },
+]
+
+// 篇幅类型选项（已废弃，仅保留向后兼容）
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export interface NovelLengthOption {
   value: string
   label: string
@@ -44,54 +75,16 @@ export interface NovelLengthOption {
   defaultWordsPerChapter: string
 }
 
-export const NOVEL_LENGTH_OPTIONS: NovelLengthOption[] = [
-  {
-    value: 'short',
-    label: '短篇',
-    range: '≤10万字',
-    defaultTargetWords: 50000,
-    contextStrategy: '全文上下文',
-    disabled: false,
-    defaultWordsPerChapter: '3000',
-  },
-  {
-    value: 'medium',
-    label: '中篇',
-    range: '10-30万字',
-    defaultTargetWords: 200000,
-    contextStrategy: '混合上下文',
-    disabled: true,
-    disabledReason: '待开发',
-    defaultWordsPerChapter: '5000',
-  },
-  {
-    value: 'long',
-    label: '长篇',
-    range: '>30万字',
-    defaultTargetWords: 500000,
-    contextStrategy: '摘要上下文',
-    disabled: true,
-    disabledReason: '待开发',
-    defaultWordsPerChapter: '5000',
-  },
-]
+/** 已废弃：保留向后兼容 */
+export const NOVEL_LENGTH_OPTIONS: NovelLengthOption[] = []
 
 /**
- * 根据 targetWords 值匹配篇幅选项
- * 与后端 get_context_strategy 阈值一致：≤100000 → short, ≤300000 → medium, >300000 → long
+ * 根据 targetWords 推荐上下文策略
  */
-export function getNovelLengthFromTargetWords(targetWords: number): string {
-  if (targetWords <= 100000) return 'short'
-  if (targetWords <= 300000) return 'medium'
-  return 'long'
-}
-
-/**
- * 获取篇幅选项对应的 targetWords 值
- */
-export function getTargetWordsForNovelLength(novelLength: string): number {
-  const option = NOVEL_LENGTH_OPTIONS.find(o => o.value === novelLength)
-  return option?.defaultTargetWords || 50000
+export function getContextStrategyFromTargetWords(targetWords: number): string {
+  if (targetWords <= 100000) return 'fulltext'
+  if (targetWords <= 300000) return 'hybrid'
+  return 'summary'
 }
 
 // ============================================
@@ -306,6 +299,7 @@ export function generateInspirationTemplate(data: InspirationData): string {
   const style = getOptionLabel(options.stylePreferences, data.stylePreference)
   const narrative = getOptionLabel(options.narrative, data.narrative)
   const era = getOptionLabel(options.era, data.era)
+  const contextStrategy = getOptionLabel(CONTEXT_STRATEGY_OPTIONS.map(o => ({ value: o.value, label: o.label })), data.contextStrategy)
 
   // 根据目标读者生成不同的主角设定
   let protagonistSection = ''
@@ -334,6 +328,7 @@ export function generateInspirationTemplate(data: InspirationData): string {
 - **目标读者**：${data.targetReader === 'male' ? '男频' : data.targetReader === 'female' ? '女频' : '未设置'}
 - **小说类型**：${novelType || '未设置'}
 - **目标字数**：${targetWords}
+- **上下文策略**：${contextStrategy || '全文上下文'}
 - **每章字数**：${wordsPerChapter || '未设置'}
 - **年代**：${era || '未设置'}
 
@@ -385,6 +380,11 @@ export function parseTemplateToData(template: string): Partial<InspirationData> 
       if (numStr && !isNaN(parseInt(numStr))) {
         data.targetWords = parseInt(numStr)
       }
+    }
+    if (line.includes('**上下文策略**')) {
+      const value = line.split('：')[1]?.trim()
+      const option = CONTEXT_STRATEGY_OPTIONS.find(o => o.label === value)
+      if (option) data.contextStrategy = option.value
     }
     if (line.includes('**每章字数**')) {
       const value = line.split('：')[1]?.trim()
@@ -519,6 +519,7 @@ export const QUICK_TEMPLATES: QuickTemplate[] = [
     data: {
       novelType: 'xuanhuan',
       targetWords: 500000,
+      contextStrategy: 'summary',
       coreTheme: 'nixi',
       worldSetting: 'xiuzhen',
       era: 'ancient',
@@ -538,6 +539,7 @@ export const QUICK_TEMPLATES: QuickTemplate[] = [
     data: {
       novelType: 'yanqing',
       targetWords: 300000,
+      contextStrategy: 'hybrid',
       coreTheme: 'nixi',
       era: 'modern',
       targetReader: 'female',
@@ -554,6 +556,7 @@ export const QUICK_TEMPLATES: QuickTemplate[] = [
     data: {
       novelType: 'kehuan',
       targetWords: 400000,
+      contextStrategy: 'hybrid',
       coreTheme: 'chengzhang',
       worldSetting: 'kehuan',
       era: 'future',

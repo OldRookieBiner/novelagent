@@ -36,6 +36,10 @@ class WorkflowState(Base):
     waiting_for_confirmation = Column(Boolean, nullable=False, default=False)
     confirmation_type = Column(String(30), nullable=True)
 
+    # LLM 配置（持久化，确保所有端点使用同一模型）
+    llm_config_id = Column(Integer, nullable=True)
+    llm_model_name = Column(String(100), nullable=True)
+
     # 时间戳
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

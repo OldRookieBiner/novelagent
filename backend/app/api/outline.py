@@ -334,7 +334,7 @@ async def update_collected_info(
 
     # 处理新增灵感采集字段
     new_fields = [
-        'novelType', 'targetWords', 'coreTheme', 'targetReader', 'era',
+        'novelType', 'targetWords', 'contextStrategy', 'coreTheme', 'targetReader', 'era',
         'wordsPerChapter', 'customWordsPerChapter', 'maleLead', 'customMaleLead',
         'femaleLead', 'customFemaleLead', 'protagonist', 'narrative',
         'goldFinger', 'customGoldFinger', 'customGenre', 'customWorldSetting',

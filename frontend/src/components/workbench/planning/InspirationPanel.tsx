@@ -12,9 +12,8 @@ import {
   COMMON_OPTIONS,
   MALE_OPTIONS,
   FEMALE_OPTIONS,
-  NOVEL_LENGTH_OPTIONS,
-  getNovelLengthFromTargetWords,
-  getTargetWordsForNovelLength,
+  CONTEXT_STRATEGY_OPTIONS,
+  getContextStrategyFromTargetWords,
 generateInspirationTemplate,
   saveInspirationDraft,
   loadInspirationDraft,
@@ -93,7 +92,8 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
   // 必填项状态
   const [targetReader, setTargetReader] = useState('')
   const [novelType, setNovelType] = useState('')
-  const [novelLength, setNovelLength] = useState<string>('short')
+  const [targetWords, setTargetWords] = useState<number>(50000)  // 独立的目标字数
+  const [contextStrategy, setContextStrategy] = useState<string>('fulltext')
   const [wordsPerChapter, setWordsPerChapter] = useState('')
   const [customWordsPerChapter, setCustomWordsPerChapter] = useState<number | undefined>()
   const [era, setEra] = useState('')
@@ -131,20 +131,27 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
 
   const { setActiveMenuItem, selectedModelKey, setSelectedModelKey } = useWorkbenchStore()
 
-  const handleNovelLengthChange = (value: string) =>
+  const handleTargetWordsChange = (value: string) =>
   {
-    setNovelLength(value)
-    const option = NOVEL_LENGTH_OPTIONS.find(o => o.value === value)
-    if (option && !option.disabled)
+    const num = parseInt(value)
+    if (!isNaN(num) && num > 0)
     {
-      setWordsPerChapter(option.defaultWordsPerChapter)
+      setTargetWords(num)
     }
+  }
+
+  // 目标字数变化时智能推荐上下文策略
+  const handleTargetWordsBlur = () =>
+  {
+    const recommended = getContextStrategyFromTargetWords(targetWords)
+    setContextStrategy(recommended)
   }
 
   // 构建完整的表单数据对象（用于生成模板）
   const formData = useMemo((): InspirationData => ({
     novelType,
-    targetWords: getTargetWordsForNovelLength(novelLength),
+    targetWords,
+    contextStrategy,
     coreTheme,
     worldSetting,
     customWorldSetting,
@@ -162,7 +169,7 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
     narrative,
     goldFinger,
     customGoldFinger,
-  }), [novelType, novelLength, coreTheme, worldSetting, customWorldSetting, era, genre, customGenre, maleLead, customMaleLead, femaleLead, customFemaleLead, stylePreference, targetReader, wordsPerChapter, customWordsPerChapter, narrative, goldFinger, customGoldFinger])
+  }), [novelType, targetWords, contextStrategy, coreTheme, worldSetting, customWorldSetting, era, genre, customGenre, maleLead, customMaleLead, femaleLead, customFemaleLead, stylePreference, targetReader, wordsPerChapter, customWordsPerChapter, narrative, goldFinger, customGoldFinger])
 
   // 实时更新模板（用户未手动编辑时）
   useEffect(() =>
@@ -192,7 +199,8 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
     {
       if (draft.targetReader) setTargetReader(draft.targetReader)
       if (draft.novelType) setNovelType(draft.novelType)
-      if (draft.targetWords) { setNovelLength(getNovelLengthFromTargetWords(draft.targetWords)) }
+      if (draft.targetWords) setTargetWords(draft.targetWords)
+      if (draft.contextStrategy) setContextStrategy(draft.contextStrategy)
       if (draft.wordsPerChapter) setWordsPerChapter(draft.wordsPerChapter)
       if (draft.customWordsPerChapter) setCustomWordsPerChapter(draft.customWordsPerChapter)
       if (draft.era) setEra(draft.era)
@@ -311,7 +319,8 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
   {
     const data: InspirationData = {
       novelType,
-      targetWords: getTargetWordsForNovelLength(novelLength),
+      targetWords,
+      contextStrategy,
       coreTheme,
       worldSetting,
       customWorldSetting,
@@ -330,11 +339,11 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
       goldFinger,
       customGoldFinger,
     }
-    if (novelType || novelLength || coreTheme || targetReader)
+    if (novelType || targetWords || contextStrategy || coreTheme || targetReader)
     {
       saveInspirationDraft(data)
     }
-  }, [novelType, novelLength, coreTheme, worldSetting, customWorldSetting, era, genre, customGenre, maleLead, customMaleLead, femaleLead, customFemaleLead, stylePreference, targetReader, wordsPerChapter, customWordsPerChapter, narrative, goldFinger, customGoldFinger])
+  }, [novelType, targetWords, contextStrategy, coreTheme, worldSetting, customWorldSetting, era, genre, customGenre, maleLead, customMaleLead, femaleLead, customFemaleLead, stylePreference, targetReader, wordsPerChapter, customWordsPerChapter, narrative, goldFinger, customGoldFinger])
 
   // 用户手动编辑模板
   const handleTemplateChange = useCallback((value: string) =>
@@ -374,7 +383,8 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
       }
 
       if (novelType) collectedInfoData.novelType = novelType
-      collectedInfoData.targetWords = getTargetWordsForNovelLength(novelLength)
+      collectedInfoData.targetWords = targetWords
+      collectedInfoData.contextStrategy = contextStrategy
       if (coreTheme) collectedInfoData.coreTheme = coreTheme
       if (worldSetting)
       {
@@ -428,6 +438,8 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
     const newErrors: Record<string, string> = {}
     if (!targetReader) newErrors.targetReader = '请选择目标读者'
     if (!novelType) newErrors.novelType = '请选择小说类型'
+    if (!targetWords || targetWords < 10000) newErrors.targetWords = '目标字数至少1万字'
+    if (!contextStrategy) newErrors.contextStrategy = '请选择上下文策略'
     if (!wordsPerChapter) newErrors.wordsPerChapter = '请选择每章字数'
     if (!era) newErrors.era = '请选择年代'
     if (!coreTheme) newErrors.coreTheme = '请选择核心主题'
@@ -450,7 +462,8 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
       }
 
       if (novelType) collectedInfoData.novelType = novelType
-      collectedInfoData.targetWords = getTargetWordsForNovelLength(novelLength)
+      collectedInfoData.targetWords = targetWords
+      collectedInfoData.contextStrategy = contextStrategy
       if (coreTheme) collectedInfoData.coreTheme = coreTheme
       if (worldSetting)
       {
@@ -645,36 +658,62 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
                   {errors.era && <p className="text-red-500 text-xs mt-2">{errors.era}</p>}
                 </div>
 
-                {/* 篇幅类型 + 每章字数 */}
-                <div className="space-y-3">
+                {/* 上下文策略 */}
+                <div>
+                  <label className="text-sm text-muted-foreground mb-2 block">
+                    上下文策略 <span className="text-red-500">*</span>
+                  </label>
+                  <RadioGroup
+                    value={contextStrategy}
+                    onValueChange={setContextStrategy}
+                    className="space-y-2"
+                  >
+                    {CONTEXT_STRATEGY_OPTIONS.map((option) => (
+                      <div key={option.value} className="flex items-center space-x-2">
+                        <RadioGroupItem
+                          value={option.value}
+                          id={`strategy-${option.value}`}
+                          disabled={option.value !== 'fulltext'}
+                        />
+                        <label
+                          htmlFor={`strategy-${option.value}`}
+                          className={`text-sm ${option.value !== 'fulltext' ? 'text-muted-foreground cursor-not-allowed' : 'cursor-pointer'}`}
+                        >
+                          {option.label} — {option.desc}
+                          <span className="ml-1 text-xs text-muted-foreground">（推荐{option.recommendedWords}）</span>
+                          {option.value !== 'fulltext' && (
+                            <span className="ml-1 text-xs text-muted-foreground">（待开发）</span>
+                          )}
+                        </label>
+                      </div>
+                    ))}
+                  </RadioGroup>
+                </div>
+
+                {/* 目标字数 + 每章字数 并排 */}
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-sm text-muted-foreground mb-2 block">
-                      篇幅类型 <span className="text-red-500">*</span>
+                      目标字数 <span className="text-red-500">*</span>
                     </label>
-                    <RadioGroup
-                      value={novelLength}
-                      onValueChange={handleNovelLengthChange}
-                      className="space-y-2"
-                    >
-                      {NOVEL_LENGTH_OPTIONS.map((option) => (
-                        <div key={option.value} className="flex items-center space-x-2">
-                          <RadioGroupItem
-                            value={option.value}
-                            id={`length-${option.value}`}
-                            disabled={option.disabled}
-                          />
-                          <label
-                            htmlFor={`length-${option.value}`}
-                            className={`text-sm ${option.disabled ? 'text-muted-foreground cursor-not-allowed' : 'cursor-pointer'}`}
-                          >
-                            {option.label}（{option.range}）— {option.contextStrategy}
-                            {option.disabledReason && (
-                              <span className="ml-1 text-xs text-muted-foreground">({option.disabledReason})</span>
-                            )}
-                          </label>
-                        </div>
-                      ))}
-                    </RadioGroup>
+                    <div className="relative">
+                      <Input
+                        type="number"
+                        min={10000}
+                        step={10000}
+                        value={targetWords || ''}
+                        onChange={(e) =>
+                        {
+                          handleTargetWordsChange(e.target.value)
+                          if (errors.targetWords) setErrors(prev => ({ ...prev, targetWords: '' }))
+                        }}
+                        onBlur={handleTargetWordsBlur}
+                        placeholder="50000"
+                        className={`pr-8 ${errors.targetWords ? 'border-red-500' : ''}`}
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">字</span>
+                    </div>
+                    {errors.targetWords && <p className="text-red-500 text-xs mt-1">{errors.targetWords}</p>}
                   </div>
                   <div>
                     <label className="text-sm text-muted-foreground mb-2 block">

@@ -198,5 +198,56 @@ def get_prompts_from_state(state: dict, key: str) -> tuple[str, str]:
         default = DEFAULT_PROMPTS.get(key, {})
         if isinstance(default, dict):
             return default.get("system", ""), default.get("user", "")
-        return "", default
+        return "", default or ""
+
+
+def find_chapter_by_number(written_chapters: list[dict], current_chapter: int) -> dict | None:
+    """根据 current_chapter 查找已写章节内容
+
+    优先查找 current_chapter - 1（因为 current_chapter 已递增，指向下一个待写章节），
+    如果没找到则回退到 current_chapter。
+
+    Args:
+        written_chapters: 已写章节列表
+        current_chapter: 当前章节号（通常已递增 1）
+
+    Returns:
+        找到的章节字典，没有则返回 None
+    """
+    # 先尝试 current_chapter - 1（已写入的当前章节）
+    for chapter in written_chapters:
+        if chapter.get("chapter_number") == current_chapter - 1:
+            return chapter
+
+    # 回退：尝试 current_chapter
+    for chapter in written_chapters:
+        if chapter.get("chapter_number") == current_chapter:
+            return chapter
+
+    return None
+
+
+def find_chapter_outline_by_number(chapter_outlines: list[dict], current_chapter: int) -> dict | None:
+    """根据 current_chapter 查找章节大纲
+
+    优先查找 current_chapter - 1，如果没有则回退到 current_chapter。
+
+    Args:
+        chapter_outlines: 章节大纲列表
+        current_chapter: 当前章节号（通常已递增 1）
+
+    Returns:
+        找到的大纲字典，没有则返回 None
+    """
+    # 先尝试 current_chapter - 1
+    for outline in chapter_outlines:
+        if outline.get("chapter_number") == current_chapter - 1:
+            return outline
+
+    # 回退：尝试 current_chapter
+    for outline in chapter_outlines:
+        if outline.get("chapter_number") == current_chapter:
+            return outline
+
+    return None
 

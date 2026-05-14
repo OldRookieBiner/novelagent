@@ -2,7 +2,7 @@
 
 > OpenWolf's learning memory. Updated automatically as the AI learns from interactions.
 > Do not edit manually unless correcting an error.
-> Last updated: 2026-05-07
+> Last updated: 2026-05-12
 
 ## User Preferences
 
@@ -16,6 +16,8 @@
 - **SSE 流式完成信号：** `waiting` 事件表示工作流暂停，前端需要处理此事件作为当前阶段完成的信号，同时后端应在 `waiting` 后发送 `done` 事件确保前端收到完成通知。
 - **LangGraph 图入口点问题：** `graph.astream_events(initial_state, config)` 始终从图的入口点（entry point）开始新执行，无论是否有检查点。不能用它来只执行图中某个特定节点。要执行特定节点，应使用子图（sub-graph）或直接调用节点函数。
 - **build_initial_state 必须传 db 参数：** 调用 `build_initial_state` 时必须传入 `db=db` 参数，否则角色、关系、演变计划等数据不会被预加载，生成的章节内容会缺少人物设定和关系上下文。
+- **前端 SSE 流状态管理：** 当需要"切换标签页保留进度"时，应将 SSE 流管理和生成状态提升到 Zustand store 层，而非仅提升状态。删除组件卸载时的 abort 调用，让 SSE 流在 store 层管理。这样组件卸载后 SSE 流继续运行，切回来时从 store 恢复进度。使用 useShallow selector 避免 store 变化触发不必要重渲染。
+- **LLM 模型配置必须持久化到 workflow_states 表：** 工作流运行 Req 带来的 llm_config_id/llm_model_name 必须持久化到 DB，后续的审核/正文生成 SSE 端点从 DB 读取而不是让前端每次传递。符合 LangGraph 框架规范的模式：LLM 配置作为工作流状态的一部分存储，所有节点和端点从统一状态读取。
 
 ## Do-Not-Repeat
 
@@ -31,6 +33,8 @@
 - [2026-05-09] **LLM chat/chat_stream 必须防护 choices 空列表：** 某些 OpenAI 兼容 API 返回 choices=[] 的 chunk（usage chunk、ping chunk 等），chat() 的 response.choices[0] 和 chat_stream() 的 chunk.choices[0] 都必须在访问前检查列表非空。否则抛出裸 IndexError "list index out of range"，所有 LLM 调用全部崩溃且无上下文信息。
 - [2026-05-10] **outline_generation_node 必须设置足够 max_tokens：** 大纲输出包含标题/概述/世界观/人物设定/情节节点/情感曲线等多个板块，默认 max_tokens=4096 远不够（需 8192+），否则 LLM 截断导致标题等字段解析失败。
 - [2026-05-10] **parse_outline 标题正则必须支持 ### 标题：** prompt 模板（OUTLINE_GENERATION_PROMPT）使用 ### 三级标题格式，LLM 输出 `### 一、标题` 形式。正则必须使用 `#{1,6}` 而非 `#` 或 `##` 才能匹配。
+- [2026-05-12] **LLM 自由文本输出正则必须防御格式变异：** LLM 输出格式不稳定，正则必须：(1) 用 `\n+` 而非 `\n` 匹配标题和内容之间的空行；(2) 用 `\*{0,2}` 处理加粗标记 `**...**`；(3) 字符串清理顺序必须先删外层包裹再删内层，如先删 `**` 再删 `《》`；(4) 添加"标题在下一行"的回退正则。
+- [2026-05-12] **replan 端点必须同步保存前端灵感数据：** 重新规划时前端表单数据（collected_info、inspiration_template）必须通过 replan 请求传到后端，在重置大纲字段之前保存。否则前端数据丢失、后端用旧数据生成。
 
 ## Decision Log
 
