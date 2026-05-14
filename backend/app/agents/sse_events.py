@@ -57,3 +57,12 @@ def extract_chunk_from_event(event_data: dict[str, Any]) -> str | None:
         if content:
             return content
     return None
+
+
+def format_heartbeat() -> str:
+    """格式化 SSE 注释行，保持连接活跃
+
+    SSE 规范：以冒号开头的行是注释，客户端应忽略。
+    用于审核等不需要发送中间内容的 SSE 流中，保持连接不被中间代理断开。
+    """
+    return ": heartbeat\n\n"
