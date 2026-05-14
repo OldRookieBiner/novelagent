@@ -41,6 +41,9 @@ export function ModelConfigSidebar(
 
       {/* 配置列表 */}
       <div className="flex-1 overflow-y-auto py-1">
+        {configs.length === 0 && (
+          <div className="p-4 text-sm text-slate-400 text-center">暂无配置</div>
+        )}
         {configs.map((config) =>
         {
           const isSelected = config.id === selectedId

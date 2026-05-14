@@ -183,7 +183,6 @@ export function useSettings()
   const handleSaveReviewSettings = useCallback(async () =>
   {
     setSaving(true)
-    setSaved(false)
     try
     {
       const update: SettingsUpdate = {
@@ -220,6 +219,11 @@ export function useSettings()
         await modelConfigsApi.create(data)
       }
       await loadModelConfigs()
+    }
+    catch (err)
+    {
+      console.error('Failed to save model config:', err)
+      toast.error('保存模型配置失败')
     }
     finally
     {

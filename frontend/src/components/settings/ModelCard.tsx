@@ -72,9 +72,9 @@ export default function ModelCard({
                 key={option.value}
                 type="button"
                 onClick={() => onReasoningEffortChange(option.value)}
-                className={`flex-1 text-center py-0.5 px-0.5 rounded text-[10px] border transition-colors ${
+                className={`flex-1 text-center py-0.5 px-0.5 rounded text-[10px] border-2 transition-colors ${
                   isSelected
-                    ? 'border-blue-500 bg-blue-50 text-blue-500 font-medium border-2'
+                    ? 'border-blue-500 bg-blue-50 text-blue-500 font-medium'
                     : 'border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-500'
                 }`}
               >

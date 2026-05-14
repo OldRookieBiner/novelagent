@@ -5,6 +5,7 @@ import FetchModelsDialog from './FetchModelsDialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
+import { toast } from 'sonner'
 import {
   Select,
   SelectContent,
@@ -163,6 +164,11 @@ export function ModelConfigDetail({
    */
   const handleSave = async () =>
   {
+    if (!provider || !baseUrl.trim())
+    {
+      toast.error('请填写提供商和API地址')
+      return
+    }
     const data: ModelConfigCreate = {
       name,
       provider,

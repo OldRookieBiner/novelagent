@@ -2,7 +2,7 @@
 
 from typing import Literal, Optional
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 ReasoningEffort = Literal["none", "low", "medium", "high", "xhigh"]
 
@@ -14,7 +14,7 @@ class ModelItem(BaseModel):
     name: str
     is_enabled: bool = True
     health_status: Optional[str] = None
-    temperature: float = 0.7
+    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     reasoning_effort: Optional[ReasoningEffort] = None
 
 
