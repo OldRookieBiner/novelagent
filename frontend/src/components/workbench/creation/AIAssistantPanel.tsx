@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button'
 import { createSSEStream } from '@/lib/sseParser'
 import { toast } from 'sonner'
 import type { ReviewResponse } from '@/types'
-import { mapReviewResult } from '@/types'
 
 // 审核评分维度中文标签
 const SCORE_LABELS: Record<string, string> = {
@@ -149,7 +148,7 @@ export function AIAssistantPanel({
             const doneData = data as { chapter?: { id?: number; content?: string; word_count?: number } }
             if (doneData?.chapter)
             {
-              onRewriteDone?.(doneData)
+              onRewriteDone?.({ chapter: doneData.chapter })
             }
             toast.success('重写完成，可重新审核验证效果')
           }
