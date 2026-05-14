@@ -37,6 +37,8 @@ class LLMService:
         api_key: str = None,
         base_url: str = None,
         model: str = None,
+        temperature: float = 0.7,
+        reasoning_effort: str = None,
     ):
         """
         初始化 LLM 服务
@@ -46,9 +48,13 @@ class LLMService:
             api_key: API Key
             base_url: 自定义 API 地址 (当 provider 为 "custom" 时使用)
             model: 自定义模型名称
+            temperature: 生成温度 (默认 0.7)
+            reasoning_effort: 推理努力程度 (如 "low"/"medium"/"high"，None 或 "none" 表示不传)
         """
         self.provider = provider or settings.default_model_provider
         self.api_key = api_key
+        self.temperature = temperature
+        self.reasoning_effort = reasoning_effort
 
         if not self.api_key:
             raise ValueError("API key is required")
@@ -85,18 +91,26 @@ class LLMService:
         return False
 
     async def chat(
-        self, messages: list[dict], temperature: float = 0.7, max_tokens: int = 4096
+        self, messages: list[dict], temperature: float = None,
+        max_tokens: int = 4096, reasoning_effort: str = None
     ) -> str:
         """Send a chat request and get response with retry"""
+        # 使用实例默认值回退
+        temp = temperature if temperature is not None else self.temperature
+        effort = reasoning_effort if reasoning_effort is not None else self.reasoning_effort
+
         last_error = None
         for attempt in range(MAX_RETRIES + 1):
             try:
-                response = await self.client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                )
+                kwargs = {
+                    "model": self.model,
+                    "messages": messages,
+                    "temperature": temp,
+                    "max_tokens": max_tokens,
+                }
+                if effort and effort != "none":
+                    kwargs["reasoning_effort"] = effort
+                response = await self.client.chat.completions.create(**kwargs)
                 if not response.choices:
                     raise ValueError("LLM response has empty choices, no content available")
                 return response.choices[0].message.content
@@ -113,23 +127,31 @@ class LLMService:
         raise last_error
 
     async def chat_stream(
-        self, messages: list[dict], temperature: float = 0.7, max_tokens: int = 4096
+        self, messages: list[dict], temperature: float = None,
+        max_tokens: int = 4096, reasoning_effort: str = None
     ) -> AsyncIterator[str]:
         """Send a chat request and stream response with retry
 
         当输出因 max_tokens 截断时（finish_reason="length"），
         在日志中记录警告。调用方应根据 target_words 计算足够的 max_tokens。
         """
+        # 使用实例默认值回退
+        temp = temperature if temperature is not None else self.temperature
+        effort = reasoning_effort if reasoning_effort is not None else self.reasoning_effort
+
         last_error = None
         for attempt in range(MAX_RETRIES + 1):
             try:
-                stream = await self.client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    stream=True,
-                )
+                kwargs = {
+                    "model": self.model,
+                    "messages": messages,
+                    "temperature": temp,
+                    "max_tokens": max_tokens,
+                    "stream": True,
+                }
+                if effort and effort != "none":
+                    kwargs["reasoning_effort"] = effort
+                stream = await self.client.chat.completions.create(**kwargs)
 
                 async for chunk in stream:
                     delta = chunk.choices[0].delta if chunk.choices else None
@@ -157,11 +179,12 @@ class LLMService:
         raise last_error
 
     async def chat_with_system(
-        self, system_prompt: str, messages: list[dict], temperature: float = 0.7
+        self, system_prompt: str, messages: list[dict], temperature: float = None,
+        reasoning_effort: str = None
     ) -> str:
         """Chat with system prompt"""
         full_messages = [{"role": "system", "content": system_prompt}] + messages
-        return await self.chat(full_messages, temperature)
+        return await self.chat(full_messages, temperature=temperature, reasoning_effort=reasoning_effort)
 
 
 def get_llm_service_from_config(model_config, user_id: int, model_override: str = None) -> LLMService:
@@ -191,11 +214,23 @@ def get_llm_service_from_config(model_config, user_id: int, model_override: str 
                 model = m["name"]
                 break
 
+    # 从模型列表中读取当前启用模型的 temperature/reasoning_effort
+    model_temperature = None
+    model_reasoning_effort = None
+    if model and model_config.models:
+        for m in model_config.models:
+            if m.get("name") == model and m.get("is_enabled", True):
+                model_temperature = m.get("temperature")
+                model_reasoning_effort = m.get("reasoning_effort")
+                break
+
     return LLMService(
         provider=model_config.provider,
         api_key=api_key,
         base_url=model_config.base_url,
         model=model,
+        temperature=model_temperature if model_temperature is not None else 0.7,
+        reasoning_effort=model_reasoning_effort,
     )
 
 
