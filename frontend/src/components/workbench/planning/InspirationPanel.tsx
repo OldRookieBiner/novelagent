@@ -245,9 +245,9 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
           // 只显示已启用的配置
           if (!config.is_enabled) continue
           const providerDisplayName = providerNames[config.provider] || config.provider
-          if (config.provider_type === 'coding_plan' && config.models && config.models.length > 0)
+          // 统一遍历 config.models，不再按 provider_type 分支
+          if (config.models && config.models.length > 0)
           {
-            // coding_plan 类型：展开 models 数组，每个 model 一个选项
             for (const model of config.models)
             {
               if (!model.is_enabled) continue
@@ -262,7 +262,7 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
           }
           else if (config.model_name)
           {
-            // single 类型：一个配置一个选项
+            // 旧数据回退：无 models 但有 model_name
             options.push({
               modelConfigId: config.id,
               modelName: config.model_name,
