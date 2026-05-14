@@ -25,6 +25,7 @@ from app.utils.deps import get_user_settings_or_raise
 from app.utils.project import get_project_for_user
 from app.utils.workflow import get_or_create_workflow_state
 from app.utils.error import format_sse_error
+from app.agents.sse_events import format_heartbeat
 from app.agents.state import (
     NovelState,
     STAGE_CHAPTER_OUTLINES,
@@ -743,11 +744,11 @@ async def review_chapter(
 
     使用 review_chapter_node LangGraph 节点函数进行审核，LLM 通过
     get_llm_from_state_async 获取（与 LangGraph 节点相同机制）。
-    审核过程流式输出审核文本，完成后发送审核结果。
+    审核过程后台静默执行（SSE 注释行保持连接），完成后发送结构化结果。
 
     SSE 事件：
-    - chunk: 审核文本片段 {content: string}
-    - done: 审核完成 {passed: bool, feedback: string, issues: string[]}
+    - heartbeat: SSE 注释行保持连接活跃（无业务数据）
+    - done: 审核完成 {passed: bool, feedback: string, issues: list, scores: dict}
     - error: 审核失败 {error: string}
     """
     from app.agents.nodes.review import (
@@ -832,11 +833,12 @@ async def review_chapter(
                 initial_state, chapter.content, chapter_outline_dict, strictness
             )
 
-            # 流式调用 LLM，逐块发送审核文本
+            # 流式调用 LLM，使用 SSE 注释行保持连接
+            # 审核结果只有结构化数据有意义，不发送原始 JSON 文本
             response = ""
             async for chunk in llm.chat_stream(messages):
                 response += chunk
-                yield f"event: chunk\ndata: {json.dumps({'content': chunk})}\n\n"
+                yield format_heartbeat()
 
             # 解析审核结果
             review_result = parse_review_result(response)
