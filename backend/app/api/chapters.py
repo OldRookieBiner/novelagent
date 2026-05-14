@@ -797,7 +797,16 @@ async def review_chapter(
         project, outline, workflow_state, llm_config_id, db=db
     )
     initial_state["current_chapter"] = chapter_num
-    initial_state["written_chapters"] = [{"chapter_number": chapter_num, "content": chapter.content}]
+    # build_initial_state 已从 DB 加载所有已写章节，不再覆盖 written_chapters
+    # 仅确保当前章节内容在列表中（处理未通过 build_initial_state 加载的情况）
+    current_in_list = any(
+        wc.get("chapter_number") == chapter_num
+        for wc in initial_state.get("written_chapters", [])
+    )
+    if not current_in_list:
+        initial_state.setdefault("written_chapters", []).append(
+            {"chapter_number": chapter_num, "content": chapter.content}
+        )
 
     # 构建章节大纲数据（从 DB 获取完整字段）
     chapter_outline_dict = {
@@ -959,7 +968,16 @@ async def rewrite_chapter(
         project, outline, workflow_state, llm_config_id, db=db
     )
     initial_state["current_chapter"] = chapter_num
-    initial_state["written_chapters"] = [{"chapter_number": chapter_num, "content": chapter.content}]
+    # build_initial_state 已从 DB 加载所有已写章节，不再覆盖 written_chapters
+    # 仅确保当前章节内容在列表中（处理未通过 build_initial_state 加载的情况）
+    current_in_list = any(
+        wc.get("chapter_number") == chapter_num
+        for wc in initial_state.get("written_chapters", [])
+    )
+    if not current_in_list:
+        initial_state.setdefault("written_chapters", []).append(
+            {"chapter_number": chapter_num, "content": chapter.content}
+        )
 
     # 构建章节大纲数据
     chapter_outline_dict = {
@@ -997,8 +1015,12 @@ async def rewrite_chapter(
             )
 
             # 流式调用 LLM，发送重写内容
+            # 根据目标字数动态计算 max_tokens，避免长章节重写被截断
+            from app.agents.nodes.chapter_generation import _calc_max_tokens
+            target_words = chapter_outline_dict.get("target_words", 3000)
+            max_tokens = _calc_max_tokens(target_words)
             rewritten_content = ""
-            async for chunk in llm.chat_stream(messages):
+            async for chunk in llm.chat_stream(messages, max_tokens=max_tokens):
                 rewritten_content += chunk
                 yield f"event: chunk\ndata: {json.dumps({'content': chunk})}\n\n"
 

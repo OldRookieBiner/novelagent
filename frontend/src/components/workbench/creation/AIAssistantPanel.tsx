@@ -55,6 +55,18 @@ export function AIAssistantPanel({
     setReviewResult(initialReviewResult ?? null)
   }, [initialReviewResult, chapterNumber])
 
+  // 组件卸载时中止进行中的 SSE 流
+  useEffect(() =>
+  {
+    return () =>
+    {
+      if (abortControllerRef.current)
+      {
+        abortControllerRef.current.abort()
+      }
+    }
+  }, [])
+
   const handleReview = async () =>
   {
     if (!projectId || !chapterNumber) return
