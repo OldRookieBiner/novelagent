@@ -17,7 +17,8 @@ from app.schemas.chapter import (
     ChapterResponse,
     ChapterContentUpdate,
     ChapterGenerateRequest,
-    ReviewRequest
+    ReviewRequest,
+    RewriteRequest,
 )
 from app.schemas.outline import ChapterOutlinesGenerateRequest
 from app.utils.auth import get_current_user
@@ -863,6 +864,174 @@ async def review_chapter(
                 "scores": review_result.get("scores", {}),
             }
             yield f"event: done\ndata: {json.dumps(result_data)}\n\n"
+
+        except Exception as e:
+            yield format_sse_error(e)
+        finally:
+            save_db.close()
+
+    return StreamingResponse(
+        stream_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+
+@router.post("/{project_id}/chapters/{chapter_num}/rewrite")
+async def rewrite_chapter(
+    project_id: int,
+    chapter_num: int,
+    request: RewriteRequest = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """根据审核建议重写章节（SSE 流式）
+
+    复用 LangGraph rewrite 节点的核心逻辑（_build_rewrite_messages），
+    通过 get_llm_from_state_async 获取 LLM 服务（与 LangGraph 节点相同机制），
+    通过 build_initial_state 构建上下文（含 DB 预加载的角色/关系数据）。
+    重写完成后原子性更新数据库内容，清除审核状态。
+
+    架构说明：此端点走"单节点 SSE"模式（与 review/generate 一致），
+    不走 LangGraph 图执行，因为用户手动触发的单次操作需要用户控制节奏。
+
+    SSE 事件：
+    - chunk: 重写文本片段 {content: string}
+    - done: 重写完成 {chapter: {id, chapter_outline_id, content, word_count}}
+    - error: 重写失败 {error: string}
+    """
+    from app.agents.nodes.rewrite import _build_rewrite_messages
+
+    project = get_project_for_user(project_id, current_user.id, db)
+    outline = get_outline_for_project(project_id, db)
+
+    # 查找章节大纲
+    chapter_outline = db.query(ChapterOutline).filter(
+        ChapterOutline.project_id == project_id,
+        ChapterOutline.chapter_number == chapter_num
+    ).first()
+
+    if not chapter_outline:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Chapter outline {chapter_num} not found"
+        )
+
+    # 查找章节内容
+    chapter = db.query(Chapter).filter(
+        Chapter.chapter_outline_id == chapter_outline.id
+    ).first()
+
+    if not chapter:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Chapter {chapter_num} content not found"
+        )
+
+    if not chapter.content:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Chapter has no content to rewrite"
+        )
+
+    # 必须有审核结果才能重写（重写需要审核建议作为输入）
+    if not chapter.review_result and not chapter.review_feedback:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="请先审核章节，重写需要审核建议作为输入"
+        )
+
+    # 提取审核反馈（与 rewrite_node 中 review_feedback 提取逻辑一致）
+    review_feedback = ""
+    if chapter.review_result:
+        review_feedback = chapter.review_result.get("raw_response", "") or chapter.review_result.get("suggestions", "")
+    if not review_feedback and chapter.review_feedback:
+        review_feedback = chapter.review_feedback
+
+    # 构建初始状态（传入 db 预加载角色/关系数据）
+    llm_config_id = request.llm_config_id if request else None
+    workflow_state = get_or_create_workflow_state(db, project_id)
+    initial_state = build_initial_state(
+        project, outline, workflow_state, llm_config_id, db=db
+    )
+    initial_state["current_chapter"] = chapter_num
+    initial_state["written_chapters"] = [{"chapter_number": chapter_num, "content": chapter.content}]
+
+    # 构建章节大纲数据
+    chapter_outline_dict = {
+        "chapter_number": chapter_outline.chapter_number,
+        "title": chapter_outline.title or "",
+        "scene": chapter_outline.scene,
+        "characters": chapter_outline.characters,
+        "plot": chapter_outline.plot or "",
+        "conflict": chapter_outline.conflict,
+        "ending": chapter_outline.ending,
+        "target_words": chapter_outline.target_words,
+    }
+
+    # 保存参数供流内部使用
+    original_content = chapter.content
+    chapter_outline_id = chapter_outline.id
+
+    async def stream_generator():
+        """流式重写章节
+
+        重写完成后原子性更新数据库：使用独立 Session 更新内容、
+        清除审核状态、递增 rewrite_count。使用独立 Session 而非
+        请求级 db，原因与 generate_chapter 相同。
+        """
+        from app.database import SessionLocal
+
+        save_db = SessionLocal()
+        try:
+            # 通过与 LangGraph 节点相同的机制获取 LLM 服务
+            llm = await get_llm_from_state_async(initial_state, db)
+
+            # 构建重写消息（使用共享的 _build_rewrite_messages）
+            messages = _build_rewrite_messages(
+                initial_state, chapter_outline_dict, original_content, review_feedback
+            )
+
+            # 流式调用 LLM，发送重写内容
+            rewritten_content = ""
+            async for chunk in llm.chat_stream(messages):
+                rewritten_content += chunk
+                yield f"event: chunk\ndata: {json.dumps({'content': chunk})}\n\n"
+
+            # 后处理：清理 LLM 可能添加的结尾数字
+            rewritten_content = clean_chapter_content(rewritten_content)
+            if not rewritten_content:
+                yield format_sse_error(ValueError("重写内容为空"))
+                return
+
+            # 原子性更新数据库（使用独立 Session）
+            word_count = len(rewritten_content)
+            ch = save_db.query(Chapter).filter(
+                Chapter.chapter_outline_id == chapter_outline_id
+            ).first()
+
+            if ch:
+                ch.content = rewritten_content
+                ch.word_count = word_count
+                ch.rewrite_count = (ch.rewrite_count or 0) + 1
+                # 重写后需重新审核，清除审核状态
+                ch.review_passed = False
+                ch.review_result = None
+                ch.review_feedback = None
+                save_db.commit()
+
+            # 发送完成事件
+            chapter_data = {
+                "id": ch.id if ch else None,
+                "chapter_outline_id": ch.chapter_outline_id if ch else None,
+                "content": rewritten_content,
+                "word_count": word_count,
+            }
+            yield f"event: done\ndata: {json.dumps({'chapter': chapter_data})}\n\n"
 
         except Exception as e:
             yield format_sse_error(e)
