@@ -24,23 +24,74 @@ from app.agents.nodes.utils import (
 
 
 def parse_review_result(response: str) -> Dict[str, Any]:
-    """解析审核结果（优先 JSON，回退旧格式正则）"""
-    # 尝试 JSON 解析
-    json_match = re.search(r'\{[\s\S]*\}', response)
-    if json_match:
+    """解析审核结果（优先 JSON，回退旧格式正则）
+
+    JSON 解析策略：
+    1. 先尝试从 markdown 代码块中提取 JSON（```json ... ```）
+    2. 再尝试直接匹配最外层花括号（逐层尝试，避免贪婪匹配跨对象）
+    3. 以上都失败则回退旧格式正则解析
+    """
+    # 策略 1：从 markdown 代码块中提取 JSON
+    code_block_match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', response)
+    if code_block_match:
         try:
-            data = json.loads(json_match.group())
-            return {
-                "passed": bool(data.get("passed", False)),
-                "scores": data.get("scores", {}),
-                "issues": data.get("issues", []),
-                "suggestions": data.get("suggestions", ""),
-            }
+            data = json.loads(code_block_match.group(1))
+            if "passed" in data:
+                return _extract_review_fields(data)
         except json.JSONDecodeError:
             pass
 
-    # 回退：旧格式正则解析
+    # 策略 2：直接匹配花括号（非贪婪，找到包含审核字段的 JSON 对象）
+    brace_start = response.find('{')
+    while brace_start != -1:
+        # 找到与起始花括号配对的结束花括号
+        depth = 0
+        for i in range(brace_start, len(response)):
+            if response[i] == '{':
+                depth += 1
+            elif response[i] == '}':
+                depth -= 1
+                if depth == 0:
+                    candidate = response[brace_start:i + 1]
+                    try:
+                        data = json.loads(candidate)
+                        # 验证是否为审核结果（必须含 passed 字段）
+                        if "passed" in data:
+                            return _extract_review_fields(data)
+                    except json.JSONDecodeError:
+                        pass
+                    break
+        # 此位置无法解析或不含审核字段，尝试下一个 { 的位置
+        brace_start = response.find('{', brace_start + 1)
+
+    # 策略 3：回退旧格式正则解析
     return _parse_review_result_legacy(response)
+
+
+def _extract_review_fields(data: dict) -> Dict[str, Any]:
+    """从 JSON 解析结果中提取审核字段
+
+    兼容 LLM 可能使用的不同字段名：
+    - suggestions / feedback / 改进建议 → suggestions
+    - issues / problems / 问题列表 → issues
+    """
+    # 提取修改建议（兼容多种字段名）
+    suggestions = (
+        data.get("suggestions")
+        or data.get("feedback")
+        or data.get("改进建议")
+        or ""
+    )
+
+    # 提取问题列表
+    issues = data.get("issues") or data.get("problems") or []
+
+    return {
+        "passed": bool(data.get("passed", False)),
+        "scores": data.get("scores", {}),
+        "issues": issues,
+        "suggestions": suggestions,
+    }
 
 
 def _parse_review_result_legacy(response: str) -> Dict[str, Any]:

@@ -72,6 +72,30 @@ class TestParseReviewResultJSON:
         assert result["passed"] is True
         assert result["scores"]["plot_consistency"] == 7
 
+    def test_parse_json_feedback_field(self):
+        """Should extract suggestions from 'feedback' field name"""
+        response = '{"passed": false, "scores": {"plot_consistency": 7}, "issues": [], "feedback": "增加过渡描写"}'
+        result = parse_review_result(response)
+        assert result["passed"] is False
+        assert "过渡描写" in result["suggestions"]
+
+    def test_parse_json_multiple_objects(self):
+        """Should parse the first valid JSON object when multiple exist"""
+        response = '分析：{"analysis": "good"}\n审核：{"passed": true, "scores": {"plot_consistency": 8}, "issues": [], "suggestions": ""}'
+        result = parse_review_result(response)
+        # 第一个 { 到最后一个 } 的贪婪匹配失败后，应逐层找到正确的 JSON
+        assert result["passed"] is True
+        assert result["scores"]["plot_consistency"] == 8
+
+    def test_parse_json_markdown_code_block(self):
+        """Should extract JSON from markdown code block"""
+        response = '审核结果如下：\n```json\n{"passed": false, "scores": {"ai_flavor": 6}, "issues": [{"type": "AI味", "description": "用词生硬"}], "suggestions": "优化用词"}\n```\n以上是结果。'
+        result = parse_review_result(response)
+        assert result["passed"] is False
+        assert result["scores"]["ai_flavor"] == 6
+        assert len(result["issues"]) == 1
+        assert "优化用词" in result["suggestions"]
+
     def test_parse_json_invalid_fallback(self):
         """Should fallback to legacy when JSON is invalid"""
         response = """【审核结果】通过

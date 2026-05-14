@@ -49,11 +49,31 @@ export function AIAssistantPanel({
   const [rewriting, setRewriting] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
 
-  // 章节切换时重置审核结果
+  // 追踪 SSE 是否已设置审核结果，防止 useEffect 用 prop 数据覆盖 SSE 结果
+  const sseResultSetRef = useRef(false)
+
+  // 仅在以下情况从 prop 同步审核结果：
+  // 1. 章节切换（key 变化导致组件重新挂载，ref 自动重置）
+  // 2. 异步加载完成（initialReviewResult 从 null 变为非 null）
+  // 不在 SSE 已设置结果后覆盖，避免本地状态与 prop 状态冲突
+  const prevInitialRef = useRef(initialReviewResult)
   useEffect(() =>
   {
-    setReviewResult(initialReviewResult ?? null)
-  }, [initialReviewResult, chapterNumber])
+    if (!sseResultSetRef.current)
+    {
+      // 异步加载场景：prop 从 null 变为非 null 时同步
+      if (!prevInitialRef.current && initialReviewResult)
+      {
+        setReviewResult(initialReviewResult)
+      }
+      // 章节切换时重置（key 变化已通过 useState 初始化处理，此处保险兜底）
+      else if (prevInitialRef.current && !initialReviewResult)
+      {
+        setReviewResult(null)
+      }
+    }
+    prevInitialRef.current = initialReviewResult
+  }, [initialReviewResult])
 
   // 组件卸载时中止进行中的 SSE 流
   useEffect(() =>
@@ -72,6 +92,7 @@ export function AIAssistantPanel({
     if (!projectId || !chapterNumber) return
     setReviewing(true)
     setReviewResult(null)
+    sseResultSetRef.current = false
 
     const controller = new AbortController()
     abortControllerRef.current = controller
@@ -88,6 +109,7 @@ export function AIAssistantPanel({
         {
           if (type === 'done')
           {
+            sseResultSetRef.current = true
             const result = data as unknown as ReviewResponse
             setReviewResult(result)
             onReviewComplete?.(result)
@@ -131,6 +153,7 @@ export function AIAssistantPanel({
     if (!projectId || !chapterNumber) return
     setRewriting(true)
     setReviewResult(null)
+    sseResultSetRef.current = false
     onReviewCleared?.()
 
     const controller = new AbortController()

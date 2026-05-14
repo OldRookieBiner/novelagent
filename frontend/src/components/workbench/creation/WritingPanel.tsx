@@ -433,6 +433,12 @@ export function WritingPanel({ projectId }: WritingPanelProps)
     }
   }, [chapterContent])
 
+  // 审核结果缓存：仅在 review_result 数据变化时重新计算，避免每次渲染创建新对象
+  const initialReviewResultMemo = useMemo(
+    () => chapterContent ? mapReviewResult(chapterContent.review_result) : null,
+    [chapterContent?.review_result]
+  )
+
   const navigateChapter = (direction: 'prev' | 'next') =>
   {
     if (!selectedChapter) return
@@ -694,7 +700,7 @@ export function WritingPanel({ projectId }: WritingPanelProps)
         projectId={projectId}
         chapterNumber={selectedChapter?.chapter_number}
         chapterContent={content}
-        initialReviewResult={chapterContent ? mapReviewResult(chapterContent.review_result) : null}
+        initialReviewResult={initialReviewResultMemo}
         onReviewComplete={handleReviewComplete}
         onRewriteChunk={handleRewriteChunk}
         onRewriteDone={handleRewriteDone}
