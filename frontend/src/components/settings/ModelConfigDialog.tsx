@@ -157,6 +157,8 @@ export default function ModelConfigDialog({
           name: m.name,
           is_enabled: true,
           health_status: undefined,
+          temperature: 0.7,
+          reasoning_effort: null,
         }))
         setAvailableModels(models)
       }

@@ -298,13 +298,15 @@ export interface SystemPromptUpdate {
 // ==================== Model Config Types ====================
 
 /**
- * 模型项（用于 coding_plan 类型配置）
+ * 模型项
  */
 export interface ModelItem {
   id: string
   name: string
   is_enabled: boolean
   health_status?: string
+  temperature: number
+  reasoning_effort?: string | null
 }
 
 /**

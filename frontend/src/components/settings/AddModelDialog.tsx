@@ -138,6 +138,8 @@ export default function AddModelDialog({
           name: m.name,
           is_enabled: true,
           health_status: undefined,
+          temperature: 0.7,
+          reasoning_effort: null,
         }))
         setAvailableModels(models)
       }
