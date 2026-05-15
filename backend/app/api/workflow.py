@@ -258,9 +258,15 @@ def build_initial_state(
                     "id": c.id,
                     "name": c.name,
                     "role": c.role,
+                    "appearance": c.appearance or "",
                     "personality": c.personality or "",
+                    "backstory": c.backstory or "",
+                    "catchphrase": c.catchphrase or "",
+                    "habit_action": c.habit_action or "",
+                    "deep_fear": c.deep_fear or "",
                     "core_motivation": c.core_motivation or "",
                     "growth_arc": c.growth_arc or "",
+                    "signature_item": c.signature_item or "",
                 }
                 for c in db_characters
             ]
@@ -283,6 +289,61 @@ def build_initial_state(
                 }
                 for r in db_relations
             ]
+
+        # 预加载演变计划和记录（通过 Relation join 查询，EvolutionPlan/Record 无 project_id）
+        relation_ids = [r.id for r in db_relations]
+        if relation_ids:
+            from app.models.character import EvolutionPlan, EvolutionRecord
+
+            db_plans = db.query(EvolutionPlan).filter(
+                EvolutionPlan.relation_id.in_(relation_ids)
+            ).order_by(EvolutionPlan.trigger_chapter).all()
+
+            db_records = db.query(EvolutionRecord).filter(
+                EvolutionRecord.relation_id.in_(relation_ids)
+            ).order_by(EvolutionRecord.chapter_number).all()
+
+            # 批量构建：id → Character 映射（O(1) 查找）
+            char_map = {c.id: c for c in db_characters}
+
+            # 批量构建：relation_id → (character_a_name, character_b_name)
+            relation_name_map = {}
+            for r in db_relations:
+                a = char_map.get(r.character_a_id)
+                b = char_map.get(r.character_b_id)
+                relation_name_map[r.id] = (a.name if a else "未知", b.name if b else "未知")
+
+            if db_plans:
+                state["evolution_plans"] = [
+                    {
+                        "chapter_number": p.trigger_chapter,
+                        "character_name": "、".join(relation_name_map.get(p.relation_id, ("未知", "未知"))),
+                        "changes": f"{p.status_before or ''} → {p.status_after}",
+                    }
+                    for p in db_plans
+                ]
+
+            if db_records:
+                state["evolution_records"] = [
+                    {
+                        "chapter_number": r.chapter_number,
+                        "character_name": "、".join(relation_name_map.get(r.relation_id, ("未知", "未知"))),
+                        "actual_changes": r.content,
+                    }
+                    for r in db_records
+                ]
+
+    # 预加载 prompts（过渡方案：统一 SSE 端点和 LangGraph 节点的 prompt 获取）
+    # TODO: _prompts 应通过 LangGraph config 传递而非 state 字段，
+    # 重构时移入 config["configurable"]["prompts"]，节点通过 config 获取
+    if db is not None:
+        try:
+            state["_prompts"] = _build_prompts_dict(db)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to load custom prompts, using defaults: {e}")
+            from app.agents.prompts import DEFAULT_PROMPTS
+            state["_prompts"] = DEFAULT_PROMPTS
 
     return state
 
@@ -432,11 +493,8 @@ async def run_workflow(
         workflow_state.llm_model_name = llm_model_name
         db.commit()
 
-    # 构建初始状态（预加载 DB 数据）
+    # 构建初始状态（预加载 DB 数据，含 _prompts）
     initial_state = build_initial_state(project, outline, workflow_state, llm_config_id, llm_model_name, db=db)
-
-    # 预加载 prompts 到 state（使所有节点都能访问）
-    initial_state["_prompts"] = _build_prompts_dict(db)
 
     # 创建带检查点的图（复用 db 会话）
     graph = create_novel_graph_with_checkpointer(project_id, "default")
@@ -830,9 +888,6 @@ async def replan_workflow(
 
     initial_state = build_initial_state(project, outline, workflow_state, llm_config_id, llm_model_name, db=db)
 
-    # 预加载 prompts
-    initial_state["_prompts"] = _build_prompts_dict(db)
-
     # 8. 创建带检查点的图并启动工作流
     graph = create_novel_graph_with_checkpointer(project_id, "default")
     config = {"configurable": {"thread_id": "default"}}
@@ -932,7 +987,6 @@ async def replan_chapter_outlines(
         db.commit()
 
     initial_state = build_initial_state(project, outline, workflow_state, llm_config_id, llm_model_name, db=db)
-    initial_state["_prompts"] = _build_prompts_dict(db)
 
     # 7. 调用共享 SSE 流式函数
     async def stream_generator():
