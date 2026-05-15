@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.8.11 - 2026-05-15
+
+### 修复
+
+- **修复章节正文生成报错 `'dict' object has no attribute 'format'`** - 根因：`get_system_prompt` 在 DB 无自定义 prompt 时回退到 `DEFAULT_PROMPTS`，但 `chapter_content_generation`/`review`/`rewrite` 三个键的默认值是 dict 格式 `{"system": ..., "user": ...}`，直接返回 dict 导致下游 `.format()` 调用报错。修复：回退时检测 dict 格式并提取 user 部分
+
+### 优化
+
+- **上下文策略增强** - HybridContentStrategy 支持 chapter_outlines 参数，章节正文生成可参考后续大纲规划
+- **章节大纲生成上下文补充** - 传递人物关系和演变计划到章节大纲生成节点，提升大纲与人物设定的一致性
+- **节点工具函数改进** - `format_characters_info` 使用 DB 字段名，`_format_chapter_outline_str` 新增 transition/ending 字段
+
+### 测试
+
+- 新增 `test_prompt_loader.py` 回归测试：dict 格式 prompt 返回字符串验证、全 agent_type 类型检查
+
 ## v0.8.10 - 2026-05-15
 
 ### 优化

@@ -38,6 +38,10 @@ def get_system_prompt(db: Session, agent_type: str) -> str:
 
     # 数据库中无有效 prompt，使用代码默认值
     default = DEFAULT_PROMPTS.get(agent_type, "")
+    # dict 格式的 prompt（如 chapter_content_generation/review/rewrite），
+    # DB 仅存储 user 模板，回退时也只取 user 部分
+    if isinstance(default, dict):
+        default = default.get("user", "")
     _prompt_cache[key] = (default, now)
     return default
 
