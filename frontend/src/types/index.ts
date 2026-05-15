@@ -305,6 +305,7 @@ export interface ModelItem {
   name: string
   is_enabled: boolean
   health_status?: string
+  health_latency?: number
   temperature: number
   reasoning_effort?: string | null
 }
@@ -372,6 +373,7 @@ export interface ModelConfigCreate {
 
 export interface ModelConfigUpdate {
   name?: string
+  provider?: string
   base_url?: string
   model_name?: string
   models?: ModelItem[]
@@ -380,10 +382,20 @@ export interface ModelConfigUpdate {
   clear_api_key?: boolean
 }
 
+/** 单个模型健康检查结果 */
+export interface ModelHealthResult {
+  model_id: string
+  model_name: string
+  status: 'healthy' | 'unhealthy'
+  latency?: number
+  error?: string
+}
+
 export interface HealthCheckResponse {
   status: 'healthy' | 'unhealthy'
   latency?: number
   error?: string
+  model_results?: ModelHealthResult[]
 }
 
 // ==================== Workflow Types ====================
