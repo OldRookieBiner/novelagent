@@ -4,36 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## v0.8.10 - 2026-05-15
 
-### 新功能
-
-- **模型配置编辑模式防抖自动保存** - 编辑已有模型配置时，字段变更 500ms 后自动保存到后端，无需手动点击保存按钮
-  - 使用 `formStateRef` + `dirtyFieldsRef` 模式避免 React 闭包陷阱，仅发送变更字段
-  - 新建模式保持底部"添加配置"按钮，编辑模式无底部栏
-  - 创建和更新使用独立的 `handleCreateModel` / `handleUpdateModel`，类型分别为 `ModelConfigCreate` / `ModelConfigUpdate`
-
-- **灵感页模型下拉按配置名称分组** - AI 模型选择器按用户自定义的配置显示名称（`config.name`）分组，替代按 `provider` 硬编码分组
-  - 删除 `providerNames` 硬编码映射，同一 provider 下多个配置可独立区分
-
-- **健康检查并发测试所有模型** - 点击"健康检查"按钮后并发测试该配置下所有已添加模型，替代仅测试第一个模型
-  - 后端 `asyncio.gather` 并发测试，逐模型 30s 超时 + 总 60s 超时
-  - 逐模型 `health_status` / `health_latency` 写回 `config.models` JSON
-  - 顶层 `health_status` 改为聚合值（全部健康 → healthy，任一异常 → unhealthy）
-  - 前端 ModelCard 显示每个模型的健康状态指示器（绿色圆点+延迟 / 红色圆点+异常）
-
 ### 优化
 
-- **LLM 服务从模型配置读取参数** - `get_llm_service_from_config` 改为通过 model id/name 匹配 ModelItem，从中读取 temperature 和 reasoning_effort，替代两次遍历
-- **后端 update 保留健康状态** - `update_model_config` 更新 models 列表时保留已有模型的 `health_status` / `health_latency`，不被前端传来的值覆盖
-- **API 类型统一** - `modelConfigsApi.checkHealth` 返回类型从内联重复定义改为使用 `HealthCheckResponse` 类型
-- **datetime 弃用修复** - 健康检查时间戳从 `datetime.utcnow()` 改为 `datetime.now(timezone.utc)`
-- **静默刷新分离** - 新增 `refreshModelConfigs`（不带 loading 状态），自动保存后使用静默刷新，避免 `configsLoading=true` 导致组件卸载
+- **重构模型配置** - 现在模型配置更方便更好用了
 
 ### 修复
 
-- **获取模型弹窗无法滚动** - ScrollArea 的 `max-h-[280px]` 改为 `h-[280px]`。根因：CSS `height: 100%` 无法对 `max-height` 求值，Radix ScrollArea Viewport 高度解析为 auto，内部滚动永不触发
-- **模型配置左栏边框未完全包围** - ModelConfigPanel 外层 div 添加 `h-full`。根因：子组件 `h-full` 无法对 `min-height` 求值，sidebar 高度仅为内容高度
-- **获取模型弹窗点击添加后自动关闭** - `handleUpdateModel` 改用 `refreshModelConfigs` 替代 `loadModelConfigs`。根因：`loadModelConfigs` 设置 `configsLoading=true`，导致 `ModelConfigPanel` 切换到 LoadingSpinner，`ModelConfigDetail` 卸载，`fetchDialogOpen` 状态丢失
-- **models handler 在 state updater 内执行副作用** - 五个 models handler 从 `setModels(prev => { 副作用; return updated })` 改为先计算 `updated` 再 `setModels(updated)` + 外部副作用，符合 React 纯函数规则
+- **修复了灵感页面模型选择显示错误的问题** - 现在模型选择显示的是模型名称，而不是模型 ID
 
 ### 测试
 
