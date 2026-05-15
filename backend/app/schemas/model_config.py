@@ -40,6 +40,7 @@ class ModelConfigUpdate(BaseModel):
     """更新模型配置"""
 
     name: Optional[str] = None
+    provider: Optional[str] = None  # 新增：支持编辑提供商
     base_url: Optional[str] = None
     model_name: Optional[str] = None
     models: Optional[list[ModelItem]] = None
@@ -77,12 +78,23 @@ class ModelConfigListResponse(BaseModel):
     models: list[ModelConfigResponse]
 
 
+class ModelHealthResult(BaseModel):
+    """单个模型健康检查结果"""
+
+    model_id: str
+    model_name: str
+    status: str  # "healthy" | "unhealthy"
+    latency: Optional[int] = None
+    error: Optional[str] = None
+
+
 class HealthCheckResponse(BaseModel):
     """健康检查响应"""
 
     status: str  # "healthy" | "unhealthy"
     latency: Optional[int] = None
     error: Optional[str] = None
+    model_results: Optional[list[ModelHealthResult]] = None
 
 
 class FetchModelsRequest(BaseModel):
@@ -90,7 +102,8 @@ class FetchModelsRequest(BaseModel):
 
     provider: str
     base_url: str
-    api_key: str
+    api_key: Optional[str] = None
+    config_id: Optional[int] = None  # 已有配置的 ID，优先从数据库解密 api_key
 
 
 class FetchModelsResponse(BaseModel):

@@ -1,5 +1,6 @@
 """模型配置 API 路由"""
 
+import asyncio
 import time
 import httpx
 from datetime import datetime
@@ -14,6 +15,7 @@ from app.schemas.model_config import (
     ModelConfigUpdate,
     ModelConfigResponse,
     ModelConfigListResponse,
+    ModelHealthResult,
     HealthCheckResponse,
     FetchModelsRequest,
     FetchModelsResponse,
@@ -52,6 +54,7 @@ def build_config_response(c: ModelConfig) -> ModelConfigResponse:
                 "name": m.get("name"),
                 "is_enabled": m.get("is_enabled", True),
                 "health_status": m.get("health_status"),
+                "health_latency": m.get("health_latency"),
                 "temperature": m.get("temperature", 0.7),
                 "reasoning_effort": m.get("reasoning_effort"),
             }
@@ -104,9 +107,31 @@ async def list_providers():
 
 @router.post("/fetch-models", response_model=FetchModelsResponse)
 async def fetch_available_models(
-    request: FetchModelsRequest, current_user: User = Depends(get_current_user)
+    request: FetchModelsRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """从提供商 API 获取可用模型列表（支持所有配置了 models_api 的提供商）"""
+    # 解析 api_key：优先从数据库解密，回退到请求体
+    api_key = request.api_key
+
+    if request.config_id:
+        config = (
+            db.query(ModelConfig)
+            .filter(
+                ModelConfig.id == request.config_id,
+                ModelConfig.user_id == current_user.id,
+            )
+            .first()
+        )
+        if config and config.api_key_encrypted:
+            api_key = decrypt_api_key(config.api_key_encrypted, current_user.id)
+
+    if not api_key or not api_key.strip():
+        return FetchModelsResponse(
+            models=[], error="请输入 API Key", allow_manual=True
+        )
+
     provider_config = get_provider_config(request.provider)
 
     if not provider_config:
@@ -125,7 +150,7 @@ async def fetch_available_models(
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(
                 f"{request.base_url.rstrip('/')}{models_api}",
-                headers={"Authorization": f"Bearer {request.api_key}"},
+                headers={"Authorization": f"Bearer {api_key}"},
             )
 
             if response.status_code == 200:
@@ -273,12 +298,29 @@ async def update_model_config(
 
     if request.name is not None:
         config.name = request.name
+    if request.provider is not None:
+        config.provider = request.provider
     if request.base_url is not None:
         config.base_url = request.base_url
     if request.model_name is not None:
         config.model_name = request.model_name
     if request.models is not None:
-        config.models = [m.model_dump() for m in request.models]
+        # 保留已有模型的健康状态
+        existing_health = {}
+        if config.models:
+            for m in config.models:
+                existing_health[m.get("id")] = {
+                    "health_status": m.get("health_status"),
+                    "health_latency": m.get("health_latency"),
+                }
+        updated_models = []
+        for m in request.models:
+            item = m.model_dump()
+            if m.id in existing_health:
+                item["health_status"] = existing_health[m.id].get("health_status")
+                item["health_latency"] = existing_health[m.id].get("health_latency")
+            updated_models.append(item)
+        config.models = updated_models
     if request.is_enabled is not None:
         config.is_enabled = request.is_enabled
     if request.api_key is not None:
@@ -322,7 +364,7 @@ async def check_model_health(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """检查模型健康状态"""
+    """检查模型健康状态 — 并发测试所有已添加模型"""
     config = (
         db.query(ModelConfig)
         .filter(ModelConfig.id == config_id, ModelConfig.user_id == current_user.id)
@@ -335,51 +377,81 @@ async def check_model_health(
         )
 
     if not config.api_key_encrypted:
-        return HealthCheckResponse(status="unhealthy", error="API Key not configured")
+        return HealthCheckResponse(status="unhealthy", error="API Key 未配置")
 
     api_key = decrypt_api_key(config.api_key_encrypted, current_user.id)
 
-    # 确定 model_name
-    model_name = config.model_name
+    # 收集所有需要测试的模型
+    models_to_test = []
     if config.models:
-        # 从 models 列表选择第一个启用的模型（支持所有 provider_type）
-        enabled_models = [m for m in config.models if m.get("is_enabled", True)]
-        if enabled_models:
-            model_name = enabled_models[0].get("id")
+        for m in config.models:
+            models_to_test.append({"id": m.get("id"), "name": m.get("name", m.get("id"))})
+    elif config.model_name:
+        models_to_test.append({"id": config.model_name, "name": config.model_name})
 
-    if not model_name:
-        return HealthCheckResponse(
-            status="unhealthy", error="No model available for health check"
-        )
+    if not models_to_test:
+        return HealthCheckResponse(status="unhealthy", error="无可测试的模型")
 
+    # 并发测试所有模型
+    async def test_single_model(model_id: str, model_name: str) -> ModelHealthResult:
+        try:
+            llm = LLMService(
+                provider="custom",
+                api_key=api_key,
+                base_url=config.base_url,
+                model=model_id,
+            )
+            start = time.time()
+            await asyncio.wait_for(
+                llm.chat(messages=[{"role": "user", "content": "Hi"}], max_tokens=5),
+                timeout=30,
+            )
+            latency = int((time.time() - start) * 1000)
+            return ModelHealthResult(model_id=model_id, model_name=model_name, status="healthy", latency=latency)
+        except Exception as e:
+            return ModelHealthResult(model_id=model_id, model_name=model_name, status="unhealthy", error=str(e)[:200])
+
+    # 并发执行，总超时 60s
     try:
-        llm = LLMService(
-            provider="custom",
-            api_key=api_key,
-            base_url=config.base_url,
-            model=model_name,
+        results = await asyncio.wait_for(
+            asyncio.gather(*[test_single_model(m["id"], m["name"]) for m in models_to_test]),
+            timeout=60,
         )
+    except asyncio.TimeoutError:
+        return HealthCheckResponse(status="unhealthy", error="健康检查超时")
 
-        start_time = time.time()
-        # 发送最小请求测试连通性
-        await llm.chat(messages=[{"role": "user", "content": "Hi"}], max_tokens=5)
-        latency = int((time.time() - start_time) * 1000)
+    # 将逐模型健康状态写回 config.models JSON
+    if config.models:
+        result_map = {r.model_id: r for r in results}
+        updated_models = []
+        for m in config.models:
+            item = dict(m)
+            r = result_map.get(m.get("id"))
+            if r:
+                item["health_status"] = r.status
+                item["health_latency"] = r.latency
+            updated_models.append(item)
+        config.models = updated_models
 
-        # 更新健康状态
+    # 聚合顶层健康状态
+    healthy_count = sum(1 for r in results if r.status == "healthy")
+    unhealthy_count = len(results) - healthy_count
+
+    if unhealthy_count == 0:
         config.health_status = "healthy"
-        config.health_latency = latency
-        config.last_health_check = datetime.utcnow()
-        db.commit()
-
-        return HealthCheckResponse(status="healthy", latency=latency)
-    except Exception as e:
-        # 更新健康状态
+        config.health_latency = min((r.latency for r in results if r.latency is not None), default=None)
+    else:
         config.health_status = "unhealthy"
         config.health_latency = None
-        config.last_health_check = datetime.utcnow()
-        db.commit()
 
-        return HealthCheckResponse(status="unhealthy", error=str(e))
+    config.last_health_check = datetime.utcnow()
+    db.commit()
+
+    return HealthCheckResponse(
+        status=config.health_status,
+        latency=config.health_latency,
+        model_results=results,
+    )
 
 
 @router.put("/{config_id}/default", response_model=ModelConfigResponse)
