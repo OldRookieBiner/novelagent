@@ -31,9 +31,24 @@ export default function ModelCard({
 
   return (
     <div className="border border-slate-200 rounded-lg p-2.5 mb-2 bg-white">
-      {/* 头部：模型名称 + 移除按钮 */}
+      {/* 头部：模型名称 + 健康状态 + 移除按钮 */}
       <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-medium truncate">{model.name}</span>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-sm font-medium truncate">{model.name}</span>
+          {/* 健康状态指示器 */}
+          {model.health_status === 'healthy' && (
+            <span className="flex items-center gap-1 text-[10px] text-green-600 shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+              {model.health_latency != null ? `${model.health_latency}ms` : ''}
+            </span>
+          )}
+          {model.health_status === 'unhealthy' && (
+            <span className="flex items-center gap-1 text-[10px] text-red-500 shrink-0" title="连接异常">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+              异常
+            </span>
+          )}
+        </div>
         <button
           type="button"
           onClick={onRemove}
