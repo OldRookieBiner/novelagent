@@ -207,8 +207,13 @@ async def generate_single_chapter_outline(
             parts.append(part)
         previous_info = "已生成章节大纲：\n" + "\n\n".join(parts)
 
-    # 格式化人物设定（使用共享工具函数）
+    # 格式化人物设定
     chars_str = format_characters_info(state)
+
+    # 格式化人物关系和演变计划
+    relations_str = format_relations_info(state, chapter_number)
+    evolution_str, _ = format_evolution_info(state, chapter_number)
+    combined_chars = chars_str + relations_str + evolution_str
 
     # 格式化世界观（使用共享工具函数）
     world_str = format_world_setting(state)
@@ -227,7 +232,7 @@ async def generate_single_chapter_outline(
     prompt = prompt_template.format(
         outline=outline,
         plot_points=plot_points_str,
-        characters=chars_str,
+        characters=combined_chars,
         world_setting=world_str,
         emotional_curve=emotional_curve,
         chapter_count=chapter_count,
