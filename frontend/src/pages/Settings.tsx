@@ -39,7 +39,8 @@ export default function Settings()
     selectedConfigId,
     savingConfig,
     loadModelConfigs,
-    handleSaveModel,
+    handleCreateModel,
+    handleUpdateModel,
     handleSetDefault,
     handleDeleteModel,
     handleCheckHealth,
@@ -151,7 +152,8 @@ export default function Settings()
               configsLoading={configsLoading}
               selectedConfigId={selectedConfigId}
               savingConfig={savingConfig}
-              onSaveModel={handleSaveModel}
+              onCreateModel={handleCreateModel}
+              onUpdateModel={handleUpdateModel}
               onSetDefault={handleSetDefault}
               onDeleteModel={handleDeleteModel}
               onCheckHealth={handleCheckHealth}

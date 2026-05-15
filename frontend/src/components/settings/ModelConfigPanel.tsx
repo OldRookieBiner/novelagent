@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { ModelConfig, ModelConfigCreate, ProviderInfo } from '@/types'
+import { ModelConfig, ModelConfigCreate, ModelConfigUpdate, ProviderInfo } from '@/types'
 import { modelConfigsApi } from '@/lib/api'
 import LoadingSpinner from '@/components/ui/LoadingSpinner'
 import { ModelConfigSidebar } from './ModelConfigSidebar'
@@ -11,7 +11,8 @@ interface ModelConfigPanelProps
   configsLoading: boolean
   selectedConfigId: number | null
   savingConfig: boolean
-  onSaveModel: (data: ModelConfigCreate, configId?: number) => Promise<void>
+  onCreateModel: (data: ModelConfigCreate) => Promise<void>
+  onUpdateModel: (configId: number, data: ModelConfigUpdate) => Promise<void>
   onSetDefault: (configId: number) => Promise<void>
   onDeleteModel: (configId: number) => Promise<void>
   onCheckHealth: (configId: number) => Promise<void>
@@ -24,7 +25,8 @@ export default function ModelConfigPanel({
   configsLoading,
   selectedConfigId,
   savingConfig,
-  onSaveModel,
+  onCreateModel,
+  onUpdateModel,
   onSetDefault,
   onDeleteModel,
   onCheckHealth,
@@ -72,7 +74,8 @@ export default function ModelConfigPanel({
       <ModelConfigDetail
         config={selectedConfig}
         providers={providers}
-        onSave={onSaveModel}
+        onCreate={onCreateModel}
+        onUpdate={onUpdateModel}
         onSetDefault={onSetDefault}
         onDelete={() =>
         {
@@ -81,13 +84,7 @@ export default function ModelConfigPanel({
             onDeleteModel(selectedConfigId)
           }
         }}
-        onCheckHealth={() =>
-        {
-          if (selectedConfigId)
-          {
-            onCheckHealth(selectedConfigId)
-          }
-        }}
+        onCheckHealth={onCheckHealth}
         saving={savingConfig}
       />
     </div>
