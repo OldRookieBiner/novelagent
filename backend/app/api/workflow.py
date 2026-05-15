@@ -340,8 +340,7 @@ def build_initial_state(
         try:
             state["_prompts"] = _build_prompts_dict(db)
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(f"Failed to load custom prompts, using defaults: {e}")
+            logger.warning(f"Failed to load custom prompts, using defaults: {e}")
             from app.agents.prompts import DEFAULT_PROMPTS
             state["_prompts"] = DEFAULT_PROMPTS
 

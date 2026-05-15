@@ -53,7 +53,8 @@ class HybridContentStrategy(ContextStrategy):
     """
 
     def __init__(self, recent_count: int = 3):
-        self.recent_count = recent_count
+        # 防御性校验：近章数量限制在 [1, 10]
+        self.recent_count = max(1, min(recent_count, 10))
 
     def build_previous_context(
         self,

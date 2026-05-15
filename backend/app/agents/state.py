@@ -81,7 +81,7 @@ class NovelState(TypedDict):
     # ========== 人物设定（v0.8.0）==========
     characters: list[
         dict
-    ]  # [{name, role, age, appearance, personality, background, skills, goals, conflicts}]
+    ]  # [{id, name, role, appearance, personality, backstory, catchphrase, habit_action, deep_fear, core_motivation, growth_arc, signature_item}]
     relations: list[
         dict
     ]  # [{character1, character2, relationship_type, description, development}]
