@@ -493,7 +493,8 @@ export const modelConfigsApi = {
   async fetchModels(data: {
     provider: string
     base_url: string
-    api_key: string
+    api_key?: string
+    config_id?: number
   }): Promise<FetchModelsResponse> {
     return request<FetchModelsResponse>("/api/model_configs/fetch-models", {
       method: "POST",
@@ -540,7 +541,7 @@ export const modelConfigsApi = {
   /**
    * 健康检查
    */
-  async checkHealth(configId: number): Promise<{ status: string; latency?: number; error?: string }> {
+  async checkHealth(configId: number): Promise<{ status: string; latency?: number; error?: string; model_results?: { model_id: string; model_name: string; status: string; latency?: number; error?: string }[] }> {
     return request(`/api/model_configs/${configId}/health`, {
       method: "POST",
     });

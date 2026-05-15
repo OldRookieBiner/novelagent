@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { settingsApi, systemPromptsApi, modelConfigsApi } from '@/lib/api'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { toast } from 'sonner'
-import type { SettingsUpdate, SystemPrompt, ModelConfig, ModelConfigCreate } from '@/types'
+import type { SettingsUpdate, SystemPrompt, ModelConfig, ModelConfigCreate, ModelConfigUpdate } from '@/types'
 
 const AGENT_TABS = [
   { id: 'outline_generation', label: '大纲生成' },
@@ -204,30 +204,38 @@ export function useSettings()
     }
   }, [reviewMode])
 
-  // 添加或更新模型配置
-  const handleSaveModel = useCallback(async (data: ModelConfigCreate, configId?: number) =>
+  // 创建模型配置
+  const handleCreateModel = useCallback(async (data: ModelConfigCreate) =>
   {
     setSavingConfig(true)
     try
     {
-      if (configId)
-      {
-        await modelConfigsApi.update(configId, data)
-      }
-      else
-      {
-        await modelConfigsApi.create(data)
-      }
+      await modelConfigsApi.create(data)
       await loadModelConfigs()
     }
     catch (err)
     {
-      console.error('Failed to save model config:', err)
-      toast.error('保存模型配置失败')
+      console.error('Failed to create model config:', err)
+      toast.error('创建模型配置失败')
     }
     finally
     {
       setSavingConfig(false)
+    }
+  }, [loadModelConfigs])
+
+  // 更新模型配置（部分更新）
+  const handleUpdateModel = useCallback(async (configId: number, data: ModelConfigUpdate) =>
+  {
+    try
+    {
+      await modelConfigsApi.update(configId, data)
+      await loadModelConfigs()
+    }
+    catch (err)
+    {
+      console.error('Failed to update model config:', err)
+      toast.error('更新模型配置失败')
     }
   }, [loadModelConfigs])
 
@@ -272,12 +280,35 @@ export function useSettings()
   {
     try
     {
-      await modelConfigsApi.checkHealth(configId)
+      const result = await modelConfigsApi.checkHealth(configId)
       await loadModelConfigs()
+      // 反馈检查结果
+      if (result.model_results && result.model_results.length > 0)
+      {
+        const healthy = result.model_results.filter(r => r.status === 'healthy').length
+        const unhealthy = result.model_results.length - healthy
+        if (unhealthy === 0)
+        {
+          toast.success(`全部 ${healthy} 个模型健康`)
+        }
+        else
+        {
+          toast.error(`${healthy} 个模型健康，${unhealthy} 个模型异常`)
+        }
+      }
+      else if (result.status === 'healthy')
+      {
+        toast.success('模型连接正常')
+      }
+      else
+      {
+        toast.error(`模型异常：${result.error || '未知错误'}`)
+      }
     }
     catch (err)
     {
       console.error('Health check failed:', err)
+      toast.error('健康检查失败')
     }
   }, [loadModelConfigs])
 
@@ -310,7 +341,7 @@ export function useSettings()
     savingConfig,
     selectedConfigId,
     loadModelConfigs,
-    handleSaveModel,
+    handleCreateModel, handleUpdateModel,
     handleSetDefault,
     handleDeleteModel,
     handleCheckHealth,
