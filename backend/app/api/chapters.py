@@ -96,6 +96,9 @@ async def list_chapter_outlines(
             "characters": co.characters,
             "plot": co.plot,
             "conflict": co.conflict,
+            "turning_point": co.turning_point,
+            "hook": co.hook,
+            "transition": co.transition,
             "ending": co.ending,
             "target_words": co.target_words,
             "confirmed": co.confirmed,
@@ -137,6 +140,9 @@ async def _stream_chapter_outlines_sse(
                         "characters": chapter_data.get("characters", ""),
                         "plot": chapter_data.get("plot", ""),
                         "conflict": chapter_data.get("conflict", ""),
+                        "turning_point": chapter_data.get("turning_point", ""),
+                        "hook": chapter_data.get("hook", ""),
+                        "transition": chapter_data.get("transition", ""),
                         "ending": chapter_data.get("ending", ""),
                         "target_words": chapter_data.get("target_words", 3000),
                     }
@@ -159,6 +165,9 @@ async def _stream_chapter_outlines_sse(
                             characters=co_data.get("characters"),
                             plot=co_data.get("plot"),
                             conflict=co_data.get("conflict"),
+                            turning_point=co_data.get("turning_point"),
+                            hook=co_data.get("hook"),
+                            transition=co_data.get("transition"),
                             ending=co_data.get("ending"),
                             target_words=co_data.get("target_words", 3000),
                             confirmed=False
@@ -292,6 +301,12 @@ async def update_chapter_outline(
         chapter_outline.plot = request.plot
     if request.conflict is not None:
         chapter_outline.conflict = request.conflict
+    if request.turning_point is not None:
+        chapter_outline.turning_point = request.turning_point
+    if request.hook is not None:
+        chapter_outline.hook = request.hook
+    if request.transition is not None:
+        chapter_outline.transition = request.transition
     if request.ending is not None:
         chapter_outline.ending = request.ending
     if request.target_words is not None:
@@ -314,6 +329,9 @@ async def update_chapter_outline(
         characters=chapter_outline.characters,
         plot=chapter_outline.plot,
         conflict=chapter_outline.conflict,
+        turning_point=chapter_outline.turning_point,
+        hook=chapter_outline.hook,
+        transition=chapter_outline.transition,
         ending=chapter_outline.ending,
         target_words=chapter_outline.target_words,
         confirmed=chapter_outline.confirmed,
@@ -398,6 +416,9 @@ async def confirm_chapter_outline(
         characters=chapter_outline.characters,
         plot=chapter_outline.plot,
         conflict=chapter_outline.conflict,
+        turning_point=chapter_outline.turning_point,
+        hook=chapter_outline.hook,
+        transition=chapter_outline.transition,
         ending=chapter_outline.ending,
         target_words=chapter_outline.target_words,
         confirmed=chapter_outline.confirmed,
@@ -646,6 +667,9 @@ async def generate_chapter(
         "characters": chapter_outline.characters,
         "plot": chapter_outline.plot,
         "conflict": chapter_outline.conflict,
+        "turning_point": chapter_outline.turning_point,
+        "hook": chapter_outline.hook,
+        "transition": chapter_outline.transition,
         "ending": chapter_outline.ending,
         "target_words": chapter_outline.target_words,
     }
@@ -816,6 +840,9 @@ async def review_chapter(
         "characters": chapter_outline.characters,
         "plot": chapter_outline.plot or "",
         "conflict": chapter_outline.conflict,
+        "turning_point": chapter_outline.turning_point,
+        "hook": chapter_outline.hook,
+        "transition": chapter_outline.transition,
         "ending": chapter_outline.ending,
         "target_words": chapter_outline.target_words,
     }
@@ -987,6 +1014,9 @@ async def rewrite_chapter(
         "characters": chapter_outline.characters,
         "plot": chapter_outline.plot or "",
         "conflict": chapter_outline.conflict,
+        "turning_point": chapter_outline.turning_point,
+        "hook": chapter_outline.hook,
+        "transition": chapter_outline.transition,
         "ending": chapter_outline.ending,
         "target_words": chapter_outline.target_words,
     }

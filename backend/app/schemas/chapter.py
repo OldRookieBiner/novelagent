@@ -11,6 +11,9 @@ class ChapterOutlineBase(BaseModel):
     characters: Optional[str] = None
     plot: Optional[str] = None
     conflict: Optional[str] = None
+    turning_point: Optional[str] = None  # 转折点
+    hook: Optional[str] = None  # 悬念钩子
+    transition: Optional[str] = None  # 过渡衔接
     ending: Optional[str] = None
     target_words: Optional[int] = 3000
 
@@ -21,6 +24,9 @@ class ChapterOutlineUpdate(BaseModel):
     characters: Optional[str] = None
     plot: Optional[str] = None
     conflict: Optional[str] = None
+    turning_point: Optional[str] = None  # 转折点
+    hook: Optional[str] = None  # 悬念钩子
+    transition: Optional[str] = None  # 过渡衔接
     ending: Optional[str] = None
     target_words: Optional[int] = None
 

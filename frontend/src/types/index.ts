@@ -167,6 +167,9 @@ export interface ChapterOutline {
   characters?: string;
   plot?: string;
   conflict?: string;
+  turning_point?: string;
+  hook?: string;
+  transition?: string;
   ending?: string;
   target_words: number;
   confirmed: boolean;
@@ -180,6 +183,9 @@ export interface ChapterOutlineUpdate {
   characters?: string;
   plot?: string;
   conflict?: string;
+  turning_point?: string;
+  hook?: string;
+  transition?: string;
   ending?: string;
   target_words?: number;
 }

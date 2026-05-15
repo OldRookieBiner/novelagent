@@ -68,6 +68,9 @@ class ChapterOutline(Base):
     characters = Column(Text, nullable=True)
     plot = Column(Text, nullable=True)
     conflict = Column(Text, nullable=True)
+    turning_point = Column(Text, nullable=True)  # 转折点
+    hook = Column(Text, nullable=True)  # 悬念钩子
+    transition = Column(Text, nullable=True)  # 过渡衔接
     ending = Column(Text, nullable=True)
     target_words = Column(Integer, default=3000)
     confirmed = Column(Boolean, default=False)

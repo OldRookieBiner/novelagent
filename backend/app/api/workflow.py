@@ -172,6 +172,9 @@ def build_initial_state(
             "characters": co.characters,
             "plot": co.plot,
             "conflict": co.conflict,
+            "turning_point": co.turning_point,
+            "hook": co.hook,
+            "transition": co.transition,
             "ending": co.ending,
             "target_words": co.target_words,
         }
