@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { ModelConfig, ModelConfigCreate, ModelItem, ProviderInfo } from '@/types'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { ModelConfig, ModelConfigCreate, ModelConfigUpdate, ModelItem, ProviderInfo } from '@/types'
 import ModelCard from './ModelCard'
 import FetchModelsDialog from './FetchModelsDialog'
 import { Input } from '@/components/ui/input'
@@ -22,10 +22,11 @@ interface ModelConfigDetailProps
 {
   config: ModelConfig | null  // null = 新建模式
   providers: ProviderInfo[]
-  onSave: (data: ModelConfigCreate, configId?: number) => Promise<void>
+  onCreate: (data: ModelConfigCreate) => Promise<void>
+  onUpdate: (configId: number, data: ModelConfigUpdate) => Promise<void>
   onSetDefault: (configId: number) => Promise<void>
   onDelete: () => void
-  onCheckHealth: () => void
+  onCheckHealth: (configId: number) => Promise<void>
   saving: boolean
 }
 
@@ -37,7 +38,8 @@ interface ModelConfigDetailProps
 export function ModelConfigDetail({
   config,
   providers,
-  onSave,
+  onCreate,
+  onUpdate,
   onSetDefault,
   onDelete,
   onCheckHealth,
@@ -54,6 +56,65 @@ export function ModelConfigDetail({
 
   // 记录 baseUrl 是否由提供商自动填充（用于自动填充逻辑）
   const [baseUrlAutoFilled, setBaseUrlAutoFilled] = useState(false)
+
+  // 防抖自动保存（编辑模式）— 使用 ref 避免闭包陷阱
+  const configIdRef = useRef<number | null>(config?.id ?? null)
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [healthChecking, setHealthChecking] = useState(false)
+
+  // 用 ref 追踪最新表单状态，防抖回调从 ref 读取（避免 useCallback 闭包捕获旧值）
+  const formStateRef = useRef({ name, provider, baseUrl, apiKey, models })
+  useEffect(() =>
+  {
+    formStateRef.current = { name, provider, baseUrl, apiKey, models }
+  }, [name, provider, baseUrl, apiKey, models])
+
+  // 同步 configId ref
+  useEffect(() =>
+  {
+    configIdRef.current = config?.id ?? null
+  }, [config?.id])
+
+  // 组件卸载时清理防抖计时器
+  useEffect(() =>
+  {
+    return () =>
+    {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
+    }
+  }, [])
+
+  /**
+   * 触发防抖自动保存（仅编辑模式）
+   * 500ms 内无新变更才执行保存
+   * 从 formStateRef 读取最新状态，避免闭包陷阱
+   */
+  const triggerAutoSave = useCallback(() =>
+  {
+    if (debounceTimerRef.current)
+    {
+      clearTimeout(debounceTimerRef.current)
+    }
+    debounceTimerRef.current = setTimeout(() =>
+    {
+      const currentConfigId = configIdRef.current
+      if (!currentConfigId) return  // 新建模式不自动保存
+
+      // 从 ref 读取最新表单状态
+      const { name, provider, baseUrl, apiKey, models } = formStateRef.current
+      const data: ModelConfigUpdate = {
+        name,
+        provider,
+        base_url: baseUrl,
+        models,
+      }
+      if (apiKey)
+      {
+        data.api_key = apiKey
+      }
+      onUpdate(currentConfigId, data)
+    }, 500)
+  }, [onUpdate])  // 只依赖 onUpdate，不依赖表单状态（从 ref 读取）
 
   // 当 config prop 变化时（用户选择不同配置），重置本地状态
   useEffect(() =>
@@ -73,18 +134,16 @@ export function ModelConfigDetail({
   const handleProviderChange = (newProvider: string) =>
   {
     setProvider(newProvider)
-
-    // 查找匹配的提供商，自动填充 baseUrl
     const found = providers.find(p => p.id === newProvider)
     if (found)
     {
-      // 仅在未手动编辑过、或之前是自动填充时才覆盖
       if (!baseUrl || baseUrlAutoFilled)
       {
         setBaseUrl(found.base_url)
         setBaseUrlAutoFilled(true)
       }
     }
+    if (config?.id) triggerAutoSave()
   }
 
   /**
@@ -94,6 +153,7 @@ export function ModelConfigDetail({
   {
     setBaseUrl(value)
     setBaseUrlAutoFilled(false)
+    if (config?.id) triggerAutoSave()
   }
 
   /**
@@ -117,6 +177,7 @@ export function ModelConfigDetail({
         },
       ]
     })
+    setTimeout(() => { if (config?.id) triggerAutoSave() }, 0)
   }
 
   /**
@@ -125,6 +186,7 @@ export function ModelConfigDetail({
   const handleRemoveModel = (modelId: string) =>
   {
     setModels(prev => prev.filter(m => m.id !== modelId))
+    setTimeout(() => { if (config?.id) triggerAutoSave() }, 0)
   }
 
   /**
@@ -137,6 +199,7 @@ export function ModelConfigDetail({
         m.id === modelId ? { ...m, temperature: val } : m
       )
     )
+    setTimeout(() => { if (config?.id) triggerAutoSave() }, 0)
   }
 
   /**
@@ -149,6 +212,7 @@ export function ModelConfigDetail({
         m.id === modelId ? { ...m, reasoning_effort: val } : m
       )
     )
+    setTimeout(() => { if (config?.id) triggerAutoSave() }, 0)
   }
 
   /**
@@ -157,10 +221,11 @@ export function ModelConfigDetail({
   const handleModelCardRemove = (modelId: string) =>
   {
     setModels(prev => prev.filter(m => m.id !== modelId))
+    setTimeout(() => { if (config?.id) triggerAutoSave() }, 0)
   }
 
   /**
-   * 保存配置
+   * 保存配置（仅新建模式使用）
    */
   const handleSave = async () =>
   {
@@ -172,13 +237,13 @@ export function ModelConfigDetail({
     const data: ModelConfigCreate = {
       name,
       provider,
-      provider_type: 'single',  // 固定为 single，前端不再用它做分支判断
+      provider_type: 'single',
       base_url: baseUrl,
       model_name: models.length > 0 ? models[0].name : undefined,
       models,
       api_key: apiKey || undefined,
     }
-    await onSave(data, config?.id)
+    await onCreate(data)
   }
 
   // 是否为编辑模式
@@ -214,11 +279,19 @@ export function ModelConfigDetail({
             <Button
               variant="outline"
               size="sm"
-              onClick={onCheckHealth}
+              onClick={() =>
+              {
+                if (config?.id)
+                {
+                  setHealthChecking(true)
+                  onCheckHealth(config.id).finally(() => setHealthChecking(false))
+                }
+              }}
+              disabled={healthChecking}
               className="text-xs h-7"
             >
               <Globe className="h-3.5 w-3.5 mr-1" />
-              健康检查
+              {healthChecking ? '检查中...' : '健康检查'}
             </Button>
 
             {/* 删除按钮 */}
@@ -264,7 +337,7 @@ export function ModelConfigDetail({
             <Label className="text-xs text-slate-500 mb-1 block">显示名称</Label>
             <Input
               value={name}
-              onChange={e => setName(e.target.value)}
+              onChange={e => { setName(e.target.value); if (config?.id) triggerAutoSave() }}
               placeholder="输入显示名称"
               className="h-8 text-sm"
             />
@@ -287,7 +360,7 @@ export function ModelConfigDetail({
             <Input
               type="password"
               value={apiKey}
-              onChange={e => setApiKey(e.target.value)}
+              onChange={e => { setApiKey(e.target.value); if (config?.id) triggerAutoSave() }}
               placeholder={isEditMode && config?.has_api_key ? 'sk-••••••••' : '输入 API Key'}
               className="h-8 text-sm"
             />
@@ -376,6 +449,7 @@ export function ModelConfigDetail({
         provider={provider}
         baseUrl={baseUrl}
         apiKey={apiKey}
+        configId={config?.id}
       />
     </div>
   )
