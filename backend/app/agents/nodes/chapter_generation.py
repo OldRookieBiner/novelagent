@@ -368,7 +368,7 @@ def _build_chapter_content_messages(
     # 优先使用用户选择的策略，否则根据目标字数自动选择
     strategy_name = info.get("contextStrategy")
     strategy = get_context_strategy(target_words, strategy_name)
-    previous_context = strategy.build_previous_context(written_chapters, chapter_number)
+    previous_context = strategy.build_previous_context(written_chapters, chapter_number, state.get("chapter_outlines", []))
 
     # 获取 system/user 模板
     system_template, user_template = _get_chapter_content_prompts(state)

@@ -10,7 +10,7 @@ from app.agents.state import NovelState, STAGE_REVIEW
 from app.database import SessionLocal
 from app.services.llm import LLMService
 from app.utils.llm import get_llm_from_state_async
-from app.agents.context_strategy import FulltextContentStrategy
+from app.agents.context_strategy import get_context_strategy
 from app.agents.nodes.utils import (
     _format_chapter_outline_str,
     format_characters_info,
@@ -167,9 +167,14 @@ def _build_review_messages(
     # 格式化世界观
     world_str = format_world_setting(state)
 
-    # 前文上下文
-    strategy = FulltextContentStrategy()
-    previous_context = strategy.build_previous_context(written_chapters, chapter_number)
+    # 上下文策略：构建前文上下文
+    target_words = info.get("targetWords", 100000)
+    if isinstance(target_words, str):
+        target_words = int(target_words)
+    strategy_name = info.get("contextStrategy")
+    strategy = get_context_strategy(target_words, strategy_name)
+    chapter_outlines_list = state.get("chapter_outlines", [])
+    previous_context = strategy.build_previous_context(written_chapters, chapter_number, chapter_outlines_list)
 
     # 获取 system/user 模板
     system_template, user_template = get_prompts_from_state(state, "review")
