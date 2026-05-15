@@ -46,8 +46,7 @@ interface ModelOption
 {
   modelConfigId: number  // model_configs 表 ID
   modelName: string      // 具体模型名
-  providerName: string   // 提供商显示名
-  provider: string       // 提供商标识
+  configName: string     // 模型配置的显示名称（用于分组标签）
   isDefault: boolean     // 是否为默认配置
 }
 
@@ -230,22 +229,11 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
       {
         const response = await modelConfigsApi.list()
         const options: ModelOption[] = []
-        // 提供商的显示名称映射
-        const providerNames: Record<string, string> = {
-          deepseek: 'DeepSeek (深度求索)',
-          openai: 'OpenAI',
-          anthropic: 'Anthropic',
-          baidu: '百度文心',
-          volcengine: '火山引擎',
-          unicom: '联通云',
-          custom: '自定义',
-        }
         for (const config of response.models)
         {
           // 只显示已启用的配置
           if (!config.is_enabled) continue
-          const providerDisplayName = providerNames[config.provider] || config.provider
-          // 统一遍历 config.models，不再按 provider_type 分支
+          // 统一遍历 config.models
           if (config.models && config.models.length > 0)
           {
             for (const model of config.models)
@@ -254,26 +242,24 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
               options.push({
                 modelConfigId: config.id,
                 modelName: model.name,
-                providerName: providerDisplayName,
-                provider: config.provider,
+                configName: config.name,
                 isDefault: config.is_default,
               })
             }
           }
           else if (config.model_name)
           {
-            // 旧数据回退：无 models 但有 model_name
+            // 旧数据回退
             options.push({
               modelConfigId: config.id,
               modelName: config.model_name,
-              providerName: providerDisplayName,
-              provider: config.provider,
+              configName: config.name,
               isDefault: config.is_default,
             })
           }
         }
         setModelOptions(options)
-        // 设置默认选中：仅当 store 中没有选择时
+        // 设置默认选中
         if (!selectedModelKey)
         {
           const defaultOption = options.find(o => o.isDefault) || options[0]
@@ -1037,22 +1023,22 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
                   <SelectValue placeholder={loadingModels ? '加载中...' : '请选择模型'} />
                 </SelectTrigger>
                 <SelectContent>
-                  {/* 按提供商分组 */}
+                  {/* 按模型配置名称分组 */}
                   {(() =>
                   {
-                    // 按 provider 分组
-                    const grouped = new Map<string, ModelOption[]>()
+                    // 按 modelConfigId 分组（同一配置下的模型归为一组）
+                    const grouped = new Map<number, ModelOption[]>()
                     for (const opt of modelOptions)
                     {
-                      if (!grouped.has(opt.provider))
+                      if (!grouped.has(opt.modelConfigId))
                       {
-                        grouped.set(opt.provider, [])
+                        grouped.set(opt.modelConfigId, [])
                       }
-                      grouped.get(opt.provider)!.push(opt)
+                      grouped.get(opt.modelConfigId)!.push(opt)
                     }
-                    return Array.from(grouped.entries()).map(([provider, options]) => (
-                      <SelectGroup key={provider}>
-                        <SelectLabel>{options[0].providerName}</SelectLabel>
+                    return Array.from(grouped.entries()).map(([configId, options]) => (
+                      <SelectGroup key={configId}>
+                        <SelectLabel>{options[0].configName}</SelectLabel>
                         {options.map(opt => (
                           <SelectItem
                             key={`${opt.modelConfigId}:${opt.modelName}`}
