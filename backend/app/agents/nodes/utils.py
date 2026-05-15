@@ -11,6 +11,8 @@ def _format_chapter_outline_str(chapter_outline: dict) -> str:
 冲突：{chapter_outline.get("conflict", "")}
 转折：{chapter_outline.get("turning_point", "无")}
 钩子：{chapter_outline.get("hook", "")}
+衔接：{chapter_outline.get("transition", "")}
+结局：{chapter_outline.get("ending", "")}
 """
 
 
@@ -32,12 +34,20 @@ def format_characters_info(state: dict) -> str:
                 chars_str += f"  外貌：{c.get('appearance')}\n"
             if c.get("personality"):
                 chars_str += f"  性格：{c.get('personality')}\n"
-            if c.get("background"):
-                chars_str += f"  背景：{c.get('background')}\n"
-            if c.get("skills"):
-                chars_str += f"  能力：{c.get('skills')}\n"
-            if c.get("goals"):
-                chars_str += f"  目标：{c.get('goals')}\n"
+            if c.get("backstory"):
+                chars_str += f"  背景：{c.get('backstory')}\n"
+            if c.get("catchphrase"):
+                chars_str += f"  口头禅：{c.get('catchphrase')}\n"
+            if c.get("habit_action"):
+                chars_str += f"  习惯动作：{c.get('habit_action')}\n"
+            if c.get("deep_fear"):
+                chars_str += f"  深层恐惧：{c.get('deep_fear')}\n"
+            if c.get("core_motivation"):
+                chars_str += f"  核心动机：{c.get('core_motivation')}\n"
+            if c.get("growth_arc"):
+                chars_str += f"  成长弧线：{c.get('growth_arc')}\n"
+            if c.get("signature_item"):
+                chars_str += f"  标志性物品：{c.get('signature_item')}\n"
         return chars_str
     elif characters:
         return "\n".join(

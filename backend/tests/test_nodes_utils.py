@@ -53,6 +53,24 @@ class TestFormatChapterOutlineStr:
         assert "转折：无" in result
         assert "钩子：" in result
 
+    def test_includes_transition_and_ending(self):
+        """transition 和 ending 字段应被格式化"""
+        chapter_outline = {
+            "title": "初入江湖",
+            "scene": "古城",
+            "characters": "林风",
+            "plot": "遭遇劫匪",
+            "conflict": "对抗",
+            "turning_point": "获得秘籍",
+            "hook": "神秘符号",
+            "transition": "黎明时分离开",
+            "ending": "踏上征途",
+        }
+        result = _format_chapter_outline_str(chapter_outline)
+
+        assert "衔接：黎明时分离开" in result
+        assert "结局：踏上征途" in result
+
 
 class TestFormatCharactersInfo:
     """测试格式化人物设定信息"""
@@ -66,9 +84,13 @@ class TestFormatCharactersInfo:
                     "role": "主角",
                     "appearance": "剑眉星目",
                     "personality": "坚毅果敢",
-                    "background": "山村少年",
-                    "skills": "剑术",
-                    "goals": "成为仙帝",
+                    "backstory": "山村少年",
+                    "catchphrase": "剑来",
+                    "habit_action": "摩挲剑柄",
+                    "deep_fear": "失去至亲",
+                    "core_motivation": "守护苍生",
+                    "growth_arc": "少年→仙帝",
+                    "signature_item": "玄铁剑",
                 }
             ]
         }
@@ -79,8 +101,12 @@ class TestFormatCharactersInfo:
         assert "外貌：剑眉星目" in result
         assert "性格：坚毅果敢" in result
         assert "背景：山村少年" in result
-        assert "能力：剑术" in result
-        assert "目标：成为仙帝" in result
+        assert "口头禅：剑来" in result
+        assert "习惯动作：摩挲剑柄" in result
+        assert "深层恐惧：失去至亲" in result
+        assert "核心动机：守护苍生" in result
+        assert "成长弧线：少年→仙帝" in result
+        assert "标志性物品：玄铁剑" in result
 
     def test_detailed_characters_partial_fields(self):
         """详细人物设定缺少部分字段时，只输出已有字段"""
@@ -141,6 +167,52 @@ class TestFormatCharactersInfo:
         result = format_characters_info({})
 
         assert result == "未指定"
+
+
+class TestFormatCharactersInfoFieldMapping:
+    """测试 format_characters_info 使用 DB 实际字段名"""
+
+    def test_uses_backstory_not_background(self):
+        """backstory 字段应显示为'背景'"""
+        state = {"characters": [
+            {"name": "张三", "role": "主角", "backstory": "曾是军人"},
+        ]}
+        result = format_characters_info(state)
+        assert "曾是军人" in result
+        assert "背景" in result
+
+    def test_uses_db_model_fields(self):
+        """DB Character 模型所有字段都应被格式化"""
+        state = {"characters": [
+            {
+                "name": "张三", "role": "主角",
+                "appearance": "高大", "personality": "沉稳",
+                "backstory": "军人出身", "catchphrase": "走",
+                "habit_action": "敲桌面", "deep_fear": "背叛",
+                "core_motivation": "复仇", "growth_arc": "隐忍→觉醒",
+                "signature_item": "旧怀表",
+            },
+        ]}
+        result = format_characters_info(state)
+        assert "高大" in result
+        assert "沉稳" in result
+        assert "军人出身" in result
+        assert "走" in result
+        assert "敲桌面" in result
+        assert "背叛" in result
+        assert "复仇" in result
+        assert "隐忍→觉醒" in result
+        assert "旧怀表" in result
+
+    def test_old_fields_not_recognized(self):
+        """旧字段名 background/skills/goals 不应被读取"""
+        state = {"characters": [
+            {"name": "张三", "role": "主角", "background": "旧背景", "skills": "旧能力", "goals": "旧目标"},
+        ]}
+        result = format_characters_info(state)
+        assert "旧背景" not in result
+        assert "旧能力" not in result
+        assert "旧目标" not in result
 
 
 class TestFormatRelationsInfo:
