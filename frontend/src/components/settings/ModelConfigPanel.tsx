@@ -60,7 +60,7 @@ export default function ModelConfigPanel({
   }
 
   return (
-    <div className="flex border rounded-xl overflow-hidden bg-white min-h-[520px]">
+    <div className="flex border rounded-xl overflow-hidden bg-white h-full min-h-[520px]">
       {/* 左栏：配置列表 */}
       <ModelConfigSidebar
         configs={modelConfigs}

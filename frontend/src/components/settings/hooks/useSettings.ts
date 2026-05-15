@@ -79,7 +79,7 @@ export function useSettings()
     fetchSettings()
   }, [])
 
-  // 加载模型配置
+  // 加载模型配置（带 loading 状态，用于用户主动触发的加载）
   const loadModelConfigs = useCallback(async () =>
   {
     setConfigsLoading(true)
@@ -96,6 +96,20 @@ export function useSettings()
     finally
     {
       setConfigsLoading(false)
+    }
+  }, [])
+
+  // 静默刷新模型配置（不带 loading 状态，用于自动保存后同步最新数据）
+  const refreshModelConfigs = useCallback(async () =>
+  {
+    try
+    {
+      const data = await modelConfigsApi.list()
+      setModelConfigs(data.models)
+    }
+    catch (err)
+    {
+      console.error('Failed to refresh model configs:', err)
     }
   }, [])
 
@@ -224,20 +238,20 @@ export function useSettings()
     }
   }, [loadModelConfigs])
 
-  // 更新模型配置（部分更新）
+  // 更新模型配置（部分更新，静默刷新）
   const handleUpdateModel = useCallback(async (configId: number, data: ModelConfigUpdate) =>
   {
     try
     {
       await modelConfigsApi.update(configId, data)
-      await loadModelConfigs()
+      await refreshModelConfigs()
     }
     catch (err)
     {
       console.error('Failed to update model config:', err)
       toast.error('更新模型配置失败')
     }
-  }, [loadModelConfigs])
+  }, [refreshModelConfigs])
 
   // 设置默认模型
   const handleSetDefault = useCallback(async (configId: number) =>

@@ -31,6 +31,7 @@ import type {
   ModelConfigListResponse,
   ModelConfigCreate,
   ModelConfigUpdate,
+  HealthCheckResponse,
   ProvidersListResponse,
   FetchModelsResponse,
 } from "@/types";
@@ -541,7 +542,7 @@ export const modelConfigsApi = {
   /**
    * 健康检查
    */
-  async checkHealth(configId: number): Promise<{ status: string; latency?: number; error?: string; model_results?: { model_id: string; model_name: string; status: string; latency?: number; error?: string }[] }> {
+  async checkHealth(configId: number): Promise<HealthCheckResponse> {
     return request(`/api/model_configs/${configId}/health`, {
       method: "POST",
     });

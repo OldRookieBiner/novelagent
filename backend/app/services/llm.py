@@ -206,31 +206,29 @@ def get_llm_service_from_config(model_config, user_id: int, model_override: str 
     if not api_key:
         raise ValueError("API key not configured for this model")
 
-    # 确定模型名：优先使用 model_override > model_config.model_name > models 列表第一个启用模型
+    # 确定模型名和参数：优先 model_override > model_name > models 列表第一个启用模型
     model = model_override or model_config.model_name
-    if not model and model_config.models:
+    target_item = None
+
+    if model_config.models:
         for m in model_config.models:
             if m.get("is_enabled", True):
-                model = m["name"]
-                break
+                if not model or m.get("id") == model or m.get("name") == model:
+                    model = m.get("id") or m.get("name")
+                    target_item = m
+                    break
 
-    # 从模型列表中读取当前启用模型的 temperature/reasoning_effort
-    model_temperature = None
-    model_reasoning_effort = None
-    if model and model_config.models:
-        for m in model_config.models:
-            if m.get("name") == model and m.get("is_enabled", True):
-                model_temperature = m.get("temperature")
-                model_reasoning_effort = m.get("reasoning_effort")
-                break
+    # 从匹配的 ModelItem 读取 temperature/reasoning_effort
+    temperature = target_item.get("temperature", 0.7) if target_item else 0.7
+    reasoning_effort = target_item.get("reasoning_effort") if target_item else None
 
     return LLMService(
         provider=model_config.provider,
         api_key=api_key,
         base_url=model_config.base_url,
         model=model,
-        temperature=model_temperature if model_temperature is not None else 0.7,
-        reasoning_effort=model_reasoning_effort,
+        temperature=temperature,
+        reasoning_effort=reasoning_effort,
     )
 
 

@@ -21,6 +21,7 @@ interface FetchModelsDialogProps
   provider: string
   baseUrl: string
   apiKey: string
+  configId?: number  // 已有配置的 ID，优先从后端解密 api_key
 }
 
 // 模型项类型（API 返回）
@@ -39,6 +40,7 @@ export default function FetchModelsDialog({
   provider,
   baseUrl,
   apiKey,
+  configId,
 }: FetchModelsDialogProps)
 {
   // 搜索关键字
@@ -69,6 +71,7 @@ export default function FetchModelsDialog({
           provider,
           base_url: baseUrl,
           api_key: apiKey,
+          config_id: configId,
         })
 
         if (cancelled) return
@@ -95,7 +98,7 @@ export default function FetchModelsDialog({
 
     fetchModels()
     return () => { cancelled = true }
-  }, [open, provider, baseUrl, apiKey])
+  }, [open, provider, baseUrl, apiKey, configId])
 
   // 按搜索关键字过滤模型
   const filteredModels = searchQuery.trim()
@@ -149,7 +152,7 @@ export default function FetchModelsDialog({
             </div>
           ) : (
             // 模型列表
-            <ScrollArea className="max-h-[280px]">
+            <ScrollArea className="h-[280px]">
               {filteredModels.map(model =>
               {
                 const isAdded = existingModelIds.includes(model.id)

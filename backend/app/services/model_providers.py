@@ -53,7 +53,7 @@ PRESET_PROVIDERS: dict[str, ProviderConfig] = {
         "base_url": "",
         "provider_type": "single",
         "default_model": "",
-        "models_api": "/v1/models",
+        "models_api": "/models",
         "auth_type": "bearer",
     },
 }

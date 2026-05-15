@@ -60,6 +60,7 @@ export function ModelConfigDetail({
   // 防抖自动保存（编辑模式）— 使用 ref 避免闭包陷阱
   const configIdRef = useRef<number | null>(config?.id ?? null)
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const dirtyFieldsRef = useRef<Set<keyof ModelConfigUpdate>>(new Set())
   const [healthChecking, setHealthChecking] = useState(false)
 
   // 用 ref 追踪最新表单状态，防抖回调从 ref 读取（避免 useCallback 闭包捕获旧值）
@@ -87,7 +88,7 @@ export function ModelConfigDetail({
   /**
    * 触发防抖自动保存（仅编辑模式）
    * 500ms 内无新变更才执行保存
-   * 从 formStateRef 读取最新状态，避免闭包陷阱
+   * 从 formStateRef 读取最新状态，仅发送变更字段（dirtyFieldsRef）
    */
   const triggerAutoSave = useCallback(() =>
   {
@@ -100,21 +101,27 @@ export function ModelConfigDetail({
       const currentConfigId = configIdRef.current
       if (!currentConfigId) return  // 新建模式不自动保存
 
-      // 从 ref 读取最新表单状态
+      const dirty = dirtyFieldsRef.current
+      if (dirty.size === 0) return  // 无变更字段
+
+      // 从 ref 读取最新表单状态，仅包含变更字段
       const { name, provider, baseUrl, apiKey, models } = formStateRef.current
-      const data: ModelConfigUpdate = {
-        name,
-        provider,
-        base_url: baseUrl,
-        models,
-      }
-      if (apiKey)
+      const data: ModelConfigUpdate = {}
+      if (dirty.has('name')) data.name = name
+      if (dirty.has('provider')) data.provider = provider
+      if (dirty.has('base_url')) data.base_url = baseUrl
+      if (dirty.has('models')) data.models = models
+      if (dirty.has('api_key') && apiKey) data.api_key = apiKey
+
+      // 清空脏字段集合（已读取，防止重复发送）
+      dirtyFieldsRef.current = new Set()
+
+      if (Object.keys(data).length > 0)
       {
-        data.api_key = apiKey
+        onUpdate(currentConfigId, data)
       }
-      onUpdate(currentConfigId, data)
     }, 500)
-  }, [onUpdate])  // 只依赖 onUpdate，不依赖表单状态（从 ref 读取）
+  }, [onUpdate])
 
   // 当 config prop 变化时（用户选择不同配置），重置本地状态
   useEffect(() =>
@@ -140,9 +147,16 @@ export function ModelConfigDetail({
       if (!baseUrl || baseUrlAutoFilled)
       {
         setBaseUrl(found.base_url)
+        formStateRef.current = { ...formStateRef.current, provider: newProvider, baseUrl: found.base_url }
+        dirtyFieldsRef.current.add('provider')
+        dirtyFieldsRef.current.add('base_url')
         setBaseUrlAutoFilled(true)
+        if (config?.id) triggerAutoSave()
+        return
       }
     }
+    formStateRef.current = { ...formStateRef.current, provider: newProvider }
+    dirtyFieldsRef.current.add('provider')
     if (config?.id) triggerAutoSave()
   }
 
@@ -152,6 +166,8 @@ export function ModelConfigDetail({
   const handleBaseUrlChange = (value: string) =>
   {
     setBaseUrl(value)
+    formStateRef.current = { ...formStateRef.current, baseUrl: value }
+    dirtyFieldsRef.current.add('base_url')
     setBaseUrlAutoFilled(false)
     if (config?.id) triggerAutoSave()
   }
@@ -161,23 +177,23 @@ export function ModelConfigDetail({
    */
   const handleAddModel = (model: { id: string; name: string }) =>
   {
-    setModels(prev =>
-    {
-      // 避免重复添加
-      if (prev.some(m => m.id === model.id)) return prev
-      return [
-        ...prev,
-        {
-          id: model.id,
-          name: model.name,
-          is_enabled: true,
-          health_status: undefined,
-          temperature: 0.7,
-          reasoning_effort: 'none',
-        },
-      ]
-    })
-    setTimeout(() => { if (config?.id) triggerAutoSave() }, 0)
+    // 避免重复添加
+    if (models.some(m => m.id === model.id)) return
+    const updated = [
+      ...models,
+      {
+        id: model.id,
+        name: model.name,
+        is_enabled: true,
+        health_status: undefined,
+        temperature: 0.7,
+        reasoning_effort: 'none',
+      },
+    ]
+    setModels(updated)
+    formStateRef.current = { ...formStateRef.current, models: updated }
+    dirtyFieldsRef.current.add('models')
+    if (config?.id) triggerAutoSave()
   }
 
   /**
@@ -185,8 +201,11 @@ export function ModelConfigDetail({
    */
   const handleRemoveModel = (modelId: string) =>
   {
-    setModels(prev => prev.filter(m => m.id !== modelId))
-    setTimeout(() => { if (config?.id) triggerAutoSave() }, 0)
+    const updated = models.filter(m => m.id !== modelId)
+    setModels(updated)
+    formStateRef.current = { ...formStateRef.current, models: updated }
+    dirtyFieldsRef.current.add('models')
+    if (config?.id) triggerAutoSave()
   }
 
   /**
@@ -194,12 +213,13 @@ export function ModelConfigDetail({
    */
   const handleTemperatureChange = (modelId: string, val: number) =>
   {
-    setModels(prev =>
-      prev.map(m =>
-        m.id === modelId ? { ...m, temperature: val } : m
-      )
+    const updated = models.map(m =>
+      m.id === modelId ? { ...m, temperature: val } : m
     )
-    setTimeout(() => { if (config?.id) triggerAutoSave() }, 0)
+    setModels(updated)
+    formStateRef.current = { ...formStateRef.current, models: updated }
+    dirtyFieldsRef.current.add('models')
+    if (config?.id) triggerAutoSave()
   }
 
   /**
@@ -207,12 +227,13 @@ export function ModelConfigDetail({
    */
   const handleReasoningEffortChange = (modelId: string, val: string) =>
   {
-    setModels(prev =>
-      prev.map(m =>
-        m.id === modelId ? { ...m, reasoning_effort: val } : m
-      )
+    const updated = models.map(m =>
+      m.id === modelId ? { ...m, reasoning_effort: val } : m
     )
-    setTimeout(() => { if (config?.id) triggerAutoSave() }, 0)
+    setModels(updated)
+    formStateRef.current = { ...formStateRef.current, models: updated }
+    dirtyFieldsRef.current.add('models')
+    if (config?.id) triggerAutoSave()
   }
 
   /**
@@ -220,8 +241,11 @@ export function ModelConfigDetail({
    */
   const handleModelCardRemove = (modelId: string) =>
   {
-    setModels(prev => prev.filter(m => m.id !== modelId))
-    setTimeout(() => { if (config?.id) triggerAutoSave() }, 0)
+    const updated = models.filter(m => m.id !== modelId)
+    setModels(updated)
+    formStateRef.current = { ...formStateRef.current, models: updated }
+    dirtyFieldsRef.current.add('models')
+    if (config?.id) triggerAutoSave()
   }
 
   /**
@@ -337,7 +361,7 @@ export function ModelConfigDetail({
             <Label className="text-xs text-slate-500 mb-1 block">显示名称</Label>
             <Input
               value={name}
-              onChange={e => { setName(e.target.value); if (config?.id) triggerAutoSave() }}
+              onChange={e => { setName(e.target.value); formStateRef.current = { ...formStateRef.current, name: e.target.value }; dirtyFieldsRef.current.add('name'); if (config?.id) triggerAutoSave() }}
               placeholder="输入显示名称"
               className="h-8 text-sm"
             />
@@ -360,7 +384,7 @@ export function ModelConfigDetail({
             <Input
               type="password"
               value={apiKey}
-              onChange={e => { setApiKey(e.target.value); if (config?.id) triggerAutoSave() }}
+              onChange={e => { setApiKey(e.target.value); formStateRef.current = { ...formStateRef.current, apiKey: e.target.value }; dirtyFieldsRef.current.add('api_key'); if (config?.id) triggerAutoSave() }}
               placeholder={isEditMode && config?.has_api_key ? 'sk-••••••••' : '输入 API Key'}
               className="h-8 text-sm"
             />

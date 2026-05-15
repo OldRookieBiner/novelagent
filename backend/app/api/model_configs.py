@@ -3,7 +3,7 @@
 import asyncio
 import time
 import httpx
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -444,7 +444,7 @@ async def check_model_health(
         config.health_status = "unhealthy"
         config.health_latency = None
 
-    config.last_health_check = datetime.utcnow()
+    config.last_health_check = datetime.now(timezone.utc)
     db.commit()
 
     return HealthCheckResponse(
