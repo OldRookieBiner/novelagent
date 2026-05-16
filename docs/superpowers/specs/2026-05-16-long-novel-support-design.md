@@ -145,7 +145,7 @@ def merge_chapter_summaries(existing: list[dict], new_items: list[dict]) -> list
   1. LLM 根据大纲生成卷/弧划分，每弧指定章节数。**目标总章节数作为硬约束传入 prompt**，LLM 输出的各弧章节数之和不得偏离目标值 ±20%
   2. 总章节数 = 各弧章节数之和，覆盖 `state.chapter_count`
   3. 将 volumes、arcs 写入 state
-- **之后**：暂停等待用户确认（`confirmation_type = "volume_arc"`）
+- **之后**：暂停等待用户确认（`confirmation_type = "volume_arc"`）。节点输出中必须设置 `waiting_for_confirmation: True` 和 `confirmation_type: "volume_arc"`，与其他需要确认的节点（outline_generation_node、character_generation_node）模式一致
 - **LLM 调用方式**：流式 `llm.chat_stream()`，长篇弧/卷规划输出量大（5卷×5弧=25个弧），需要 10-20 秒。SSE 发送 chunk 事件让前端知道 LLM 在工作
 
 #### chapter_summary_node
@@ -176,9 +176,18 @@ def merge_chapter_summaries(existing: list[dict], new_items: list[dict]) -> list
 | 路由函数 | 变更 |
 |----------|------|
 | `route_after_relations` | 新增判断：`novel_length == "long"` 且 relations 确认后 → `volume_arc_planning_node`；否则 → `chapter_outlines_node` |
-| `route_after_volume_arc` | **新增路由**：确认后 → `chapter_outlines_node` |
+| `route_after_volume_arc` | **新增路由**：首次执行（waiting_for_confirmation=True）→ END（暂停等确认）；confirm 恢复后 → `chapter_outlines_node` |
 | `route_after_review` | 新增判断：审核通过且 `novel_length == "long"` → `chapter_summary_node`；否则 → next_chapter/end |
 | `route_after_summary` | **新增路由**：summary 完成后判断，有下一章 → `generate_chapter_content_node`；无 → end |
+
+`route_after_volume_arc` 实现与现有路由模式一致：
+
+```python
+def route_after_volume_arc(state: NovelState) -> Literal["wait_confirm", "chapter_outlines"]:
+    if state.get("waiting_for_confirmation"):
+        return "wait_confirm"
+    return "chapter_outlines"
+```
 
 `route_after_summary` 逻辑与 `route_after_review` 中审核通过的分支一致：
 
@@ -192,6 +201,25 @@ def route_after_summary(state: NovelState) -> Literal["next_chapter", "end"]:
 图的边变更：
 
 ```python
+# 关系 → 弧/卷规划或章节大纲（条件路由）
+graph.add_conditional_edges(
+    "generate_relations_node",
+    route_after_relations,
+    {
+        "wait_confirm": END,
+        "volume_arc": "volume_arc_planning_node",  # 新增：长篇走弧/卷规划
+        "chapter_outlines": "chapter_outlines_node",
+        "end": END,
+    },
+)
+
+# 弧/卷规划 → 等待确认或继续章节大纲
+graph.add_conditional_edges(
+    "volume_arc_planning_node",
+    route_after_volume_arc,
+    {"wait_confirm": END, "chapter_outlines": "chapter_outlines_node"},
+)
+
 # 审核 → 摘要或下一章/结束
 graph.add_conditional_edges(
     "review_node",
@@ -292,7 +320,7 @@ for co in project.chapter_outlines:
 state["chapter_summaries"] = chapter_summaries
 ```
 
-### 4.6 弧/卷规划确认
+### 4.6 持久化
 
 新增节点必须注册到 `NODE_PERSIST_MAP`（workflow_persistence.py），确保节点输出写入 DB。
 
@@ -575,16 +603,21 @@ class SummaryContentStrategy(ContextStrategy):
         """判断章节是否属于指定弧
 
         优先通过 chapter_outlines.arc_id 精确匹配。
-        回退时用 _find_arc_for_chapter 找到章节实际所属的弧，比较是否等于目标弧。
+        回退时用 _find_arc_for_chapter 找到章节实际所属的弧，用 (volume_number, arc_number) 元组比较。
+        不使用 id 比较——volume_arc_planning_node 输出的 arcs 尚无 DB id，id 为 None 时所有弧都匹配。
         """
         # 精确匹配
         if chapter_outlines:
             for co in chapter_outlines:
                 if co.get("chapter_number") == chapter.get("chapter_number") and co.get("arc_id") == arc.get("id"):
                     return True
-        # 回退：找到章节实际所属的弧，比较是否为目标弧
+        # 回退：找到章节实际所属的弧，用 (volume_number, arc_number) 比较
         actual_arc = self._find_arc_for_chapter(arcs, chapter.get("chapter_number", 0))
-        return actual_arc is not None and actual_arc.get("id") == arc.get("id")
+        if actual_arc is None:
+            return False
+        actual_key = (actual_arc.get("volume_number", 1), actual_arc.get("arc_number", 0))
+        target_key = (arc.get("volume_number", 1), arc.get("arc_number", 0))
+        return actual_key == target_key
 
     def _find_outline(self, chapter: dict, chapter_outlines: list[dict] | None) -> dict | None:
         if not chapter_outlines:
@@ -735,6 +768,44 @@ interface Arc {
 
 弧/卷确认步骤复用现有 `waiting` 事件，confirmation_type = "volume_arc"。
 
+### 8.1 SSE 审核端点摘要生成
+
+SSE 流式审核端点（`api/chapters.py` 的 review 端点）走 `WorkflowOrchestrator` 而非 LangGraph 图。长篇审核通过后，需要在该 SSE 流内顺带生成摘要，避免前端多次请求。
+
+具体变更：审核通过的 SSE 端点在 yield 审核结果后，判断 `novel_length == "long"`，如果是则追加摘要生成：
+
+```python
+# 审核通过后，长篇自动生成摘要
+if review_passed and novel_length == "long":
+    yield sse_event("node_start", {"node": "chapter_summary_node"})
+    summary = await generate_chapter_summary(content, llm)
+    # 摘要写入 DB
+    chapter.summary = summary
+    db.commit()
+    yield sse_event("node_done", {"node": "chapter_summary_node"})
+```
+
+SSE rewrite 端点不变——rewrite 后会再审核，审核通过时再生成摘要。
+
+### 8.2 弧/卷规划的流式输出
+
+弧/卷规划使用 `llm.chat_stream()` 流式输出，但**不需要逐条解析**（不像章节大纲每章一个 progress 事件）。弧/卷数量少（5-25个），LLM 一次输出完整结果。
+
+SSE 中透传 LLM 的 chunk 事件让前端显示"正在规划弧/卷结构..."，LLM 输出完毕后一次性解析为 volumes 和 arcs 列表。解析函数 `parse_volume_arc_plan(response)` 需要实现，输入 LLM 完整文本输出，输出结构化数据。
+
+LLM 输出格式规范（写入 prompt 模板）：
+
+```
+卷1《卷名》
+  弧1《弧名》：15章
+  概要：弧的概要描述...
+  弧2《弧名》：20章
+  概要：弧的概要描述...
+卷2《卷名》
+  弧3《弧名》：18章
+  概要：弧的概要描述...
+```
+
 ## 九、Prompt 模板
 
 ### 9.1 弧/卷规划 Prompt
@@ -786,4 +857,4 @@ interface Arc {
 2. **数据向后兼容**：volumes/arcs 表为新增，chapter_outlines.arc_id 和 chapters.summary 为 nullable，旧数据不受影响
 3. **工作流图兼容**：路由函数增加条件判断，短/中篇走原路径
 4. **前端兼容**：ChapterOutlinePanel 根据是否有弧数据决定展示方式（有弧→树形，无弧→平铺）
-5. **reducer 向后兼容**：合并逻辑对现有数据格式完全兼容，新字段 summary 不存在时 old 行为不变
+5. **reducer 向后兼容**：`replace_or_append_chapters` 保持原有逻辑不变，新增的 `merge_chapter_summaries` 是独立字段，对现有数据无影响
