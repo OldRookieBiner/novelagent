@@ -20,6 +20,8 @@
 
 传到后端 collected_info 新增字段：`novelLength: "short" | "medium" | "long"`
 
+**保存时机**：novelLength 随灵感表单的防抖自动保存一起写入 `outline.collected_info`，而非仅在运行工作流时传入。这样 `build_initial_state` 总能从 `outline.collected_info` 中读到 novelLength，不需要运行工作流时额外传递。
+
 现有 NovelState 的 `novel_length` 字段（当前闲置）将被启用，值来源于 collected_info.novelLength。
 
 ## 二、数据模型
@@ -96,10 +98,13 @@ Relationship：
 |------|------|------|
 | volumes | list[dict] | [{id, volume_number, title, summary}]。短/中篇为空列表 |
 | arcs | list[dict] | [{id, volume_id, volume_number, arc_number, title, summary, chapter_count}]。短/中篇为空列表。volume_number 用于全局排序（arc_number 是卷内递增，不能单独排序） |
+| chapter_summaries | Annotated[list[dict], merge_chapter_summaries] | [{chapter_number, summary}]。独立于 written_chapters，语义清晰 |
+
+`merge_chapter_summaries` reducer 逻辑：同 chapter_number 的摘要替换，否则追加。与 written_chapters 的 reducer 模式一致但独立。
 
 ### 3.2 修改字段
 
-**written_chapters** dict 内新增 summary 字段：`{chapter_number, content, word_count, summary}`
+**written_chapters** 结构不变：`{chapter_number, content, word_count, title}`
 
 **novel_length** 从闲置变为驱动逻辑：`short`/`medium` → 不生成弧/卷，`long` → 触发弧/卷规划节点
 
@@ -107,19 +112,25 @@ Relationship：
 
 ### 3.3 修改 reducer
 
-`replace_or_append_chapters` 从整条替换改为合并逻辑：
+`replace_or_append_chapters` 保持原有整条替换逻辑不变。摘要写入走独立的 `chapter_summaries` 字段和 `merge_chapter_summaries` reducer，不再通过 written_chapters 的合并副作用。
 
 ```python
-# 旧：整条替换，summary_node 输出 {chapter_number, summary} 会覆盖 content/word_count
-result[existing_idx] = new_chapter
-
-# 新：合并更新，保留已有字段，仅覆盖同名字段
-existing = result[existing_idx]
-merged = {**existing, **new_chapter}
-result[existing_idx] = merged
+def merge_chapter_summaries(existing: list[dict], new_items: list[dict]) -> list[dict]:
+    """摘要 reducer：替换同章节号的摘要或追加新摘要"""
+    result = list(existing)
+    for new_item in new_items:
+        chapter_num = new_item.get("chapter_number")
+        existing_idx = None
+        for i, s in enumerate(result):
+            if s.get("chapter_number") == chapter_num:
+                existing_idx = i
+                break
+        if existing_idx is not None:
+            result[existing_idx] = new_item
+        else:
+            result.append(new_item)
+    return result
 ```
-
-这保证 chapter_summary_node 只输出 `{chapter_number, summary}` 时不会丢失 content 和 word_count。
 
 ## 四、LangGraph 工作流变更
 
@@ -128,24 +139,24 @@ result[existing_idx] = merged
 #### volume_arc_planning_node
 
 - **触发条件**：`novel_length == "long"`
-- **输入**：大纲数据（title、summary、plot_points、world_setting、outline_emotional_curve）
+- **输入**：大纲数据（title、summary、plot_points、world_setting、outline_emotional_curve）+ 目标总章节数（`state.chapter_count`）
 - **输出**：volumes 和 arcs 列表（含每弧 chapter_count），自动计算总 chapter_count
 - **行为**：
-  1. LLM 根据大纲生成卷/弧划分，每弧指定章节数
+  1. LLM 根据大纲生成卷/弧划分，每弧指定章节数。**目标总章节数作为硬约束传入 prompt**，LLM 输出的各弧章节数之和不得偏离目标值 ±20%
   2. 总章节数 = 各弧章节数之和，覆盖 `state.chapter_count`
   3. 将 volumes、arcs 写入 state
 - **之后**：暂停等待用户确认（`confirmation_type = "volume_arc"`）
-- **LLM 调用方式**：同步 `llm.chat()`，生成量小不需要流式
+- **LLM 调用方式**：流式 `llm.chat_stream()`，长篇弧/卷规划输出量大（5卷×5弧=25个弧），需要 10-20 秒。SSE 发送 chunk 事件让前端知道 LLM 在工作
 
 #### chapter_summary_node
 
 - **触发条件**：`novel_length == "long"` 且审核通过后
 - **输入**：当前章节的 content（从 written_chapters 获取）
-- **输出**：`{chapter_number, summary}`（~200字）
+- **输出**：`chapter_summaries: [{chapter_number, summary}]`（~200字），写入独立的 `chapter_summaries` 字段，不经过 written_chapters
 - **行为**：
-  1. LLM 同步调用 `llm.chat()` 生成摘要，不走流式
-  2. 将 summary 写入 written_chapters（通过 reducer 合并）
-  3. SSE 只发 node_start/node_done 事件，不发 chunk
+  1. LLM 流式调用 `llm.chat_stream()` 生成摘要，SSE 发送 chunk 事件让前端显示进度
+  2. 将 `{chapter_number, summary}` 写入 state.chapter_summaries（通过 merge_chapter_summaries reducer）
+  3. 摘要完成后发送 node_done 事件
 - **之后**：进入下一章节生成或结束
 
 ### 4.2 工作流图路由
@@ -206,16 +217,20 @@ graph.add_conditional_edges(
 
 ### 4.3 chapter_outlines_node 变更
 
-生成章节大纲时，若 `novel_length == "long"` 且 arcs 非空，根据 arcs 的 chapter_count 顺序分配 arc_id：
+生成章节大纲时，若 `novel_length == "long"` 且 arcs 非空，根据 arcs 的 chapter_count 顺序分配弧标识：
 
 ```python
 # 弧规划示例：弧1(15章), 弧2(20章), 弧3(18章)
-# 生成第1-15章大纲 → arc_id = 弧1.id
-# 生成第16-35章大纲 → arc_id = 弧2.id
-# 生成第36-53章大纲 → arc_id = 弧3.id
+# 生成第1-15章大纲 → volume_number=1, arc_number=1
+# 生成第16-35章大纲 → volume_number=1, arc_number=2
+# 生成第36-53章大纲 → volume_number=2, arc_number=1
 ```
 
-短/中篇 arc_id 为 NULL，行为不变。
+注意：volume_arc_planning_node 输出到 state 时 arcs 尚无 DB id（persist 还未执行）。chapter_outlines_node 在 chapter_outlines 数据中写入 `volume_number` 和 `arc_number` 标识弧归属，而非直接写 arc_id。
+
+**persist_chapter_outlines 在持久化时查询 DB 获取 arc_id**：根据 `co_data.get("volume_number")` 和 `co_data.get("arc_number")` 从 DB 查询 Arc 记录，获取真实的 arc_id 写入 ChapterOutline。
+
+短/中篇无 volume_number/arc_number，行为不变。
 
 章节大纲生成的 prompt 中需包含弧/卷信息：`generate_single_chapter_outline` 函数新增 `arc_info` 参数，格式为"当前弧：第N弧《弧名》，本章是本弧第M章"。prompt 模板新增 `{arc_info}` 占位符，长篇填充具体信息，短/中篇填充空字符串。
 
@@ -262,27 +277,22 @@ chapter_outlines = [
 ]
 ```
 
-written_chapters 加载时新增 summary（P2-11）：
+written_chapters 加载时不含 summary（摘要走独立字段 chapter_summaries）。
+
+chapter_summaries 加载（从 chapters 表的 summary 字段聚合）：
 
 ```python
-written_chapters.append({
-    "chapter_number": co.chapter_number,
-    "title": co.title,
-    "content": co.chapter.content,
-    "word_count": co.chapter.word_count,
-    "summary": co.chapter.summary,  # 新增
-})
+chapter_summaries = []
+for co in project.chapter_outlines:
+    if co.chapter and co.chapter.summary:
+        chapter_summaries.append({
+            "chapter_number": co.chapter_number,
+            "summary": co.chapter.summary,
+        })
+state["chapter_summaries"] = chapter_summaries
 ```
 
 ### 4.6 弧/卷规划确认
-
-新增确认步骤，confirmation_type = "volume_arc"。
-
-用户在章节大纲面板预览弧/卷结构（卷名→弧名→章节数），确认后继续生成章节大纲。
-
-确认时可携带修改数据（编辑卷名/弧名/弧概要），后端更新 DB 后继续。
-
-### 4.7 持久化
 
 新增节点必须注册到 `NODE_PERSIST_MAP`（workflow_persistence.py），确保节点输出写入 DB。
 
@@ -324,16 +334,16 @@ def persist_volumes_arcs(output: dict, project_id: int, db: Session):
 
 **persist_chapter_summary**
 
-`chapter_summary_node` 的持久化函数：
+`chapter_summary_node` 的持久化函数，从 `chapter_summaries` 字段读取：
 
 ```python
 def persist_chapter_summary(output: dict, project_id: int, db: Session):
-    written_chapters = output.get("written_chapters", [])
-    for chapter_data in written_chapters:
-        summary = chapter_data.get("summary")
+    chapter_summaries = output.get("chapter_summaries", [])
+    for summary_data in chapter_summaries:
+        summary = summary_data.get("summary")
         if not summary:
             continue
-        chapter_num = chapter_data.get("chapter_number")
+        chapter_num = summary_data.get("chapter_number")
         if not chapter_num:
             continue
         chapter_outline = db.query(ChapterOutline).filter(
@@ -346,31 +356,34 @@ def persist_chapter_summary(output: dict, project_id: int, db: Session):
 
 **persist_chapter_outlines 变更**
 
-现有 `persist_chapter_outlines` 需在创建 ChapterOutline 时写入 `arc_id`：
+现有 `persist_chapter_outlines` 需在创建 ChapterOutline 时写入 `arc_id`。长篇时 arc_id 通过 volume_number + arc_number 从 DB 查询获得：
 
 ```python
-chapter_outline = ChapterOutline(
-    project_id=project_id,
-    chapter_number=co_data.get("chapter_number", 1),
-    arc_id=co_data.get("arc_id"),  # 新增
-    # ... 其余字段不变
-)
+for co_data in chapter_outlines:
+    arc_id = None
+    vol_num = co_data.get("volume_number")
+    arc_num = co_data.get("arc_number")
+    if vol_num and arc_num:
+        # 从 DB 查询已持久化的 Arc 记录获取 arc_id
+        arc_record = db.query(Arc).join(Volume).filter(
+            Volume.project_id == project_id,
+            Volume.volume_number == vol_num,
+            Arc.arc_number == arc_num,
+        ).first()
+        if arc_record:
+            arc_id = arc_record.id
+
+    chapter_outline = ChapterOutline(
+        project_id=project_id,
+        chapter_number=co_data.get("chapter_number", 1),
+        arc_id=arc_id,  # 从 DB 查询获得，短/中篇为 None
+        # ... 其余字段不变
+    )
 ```
 
-**persist_chapter_content 变更**
+**persist_chapter_content 无变更**
 
-现有 `persist_chapter_content` 需处理 summary 字段。当 written_chapters 中的 chapter_data 包含 summary 时，写入 chapters.summary：
-
-```python
-if chapter:
-    chapter.content = chapter_data.get("content", chapter.content)
-    chapter.word_count = chapter_data.get("word_count", chapter.word_count)
-    # 新增：处理 summary（chapter_summary_node 通过 reducer 合并时可能有此字段）
-    if chapter_data.get("summary") is not None:
-        chapter.summary = chapter_data["summary"]
-```
-
-注意：`persist_chapter_content` 同时服务于 `generate_chapter_content_node` 和 `chapter_summary_node`。content_node 的 written_chapters 无 summary 字段（`chapter_data.get("summary") is not None` 为 False），不会误写。summary_node 的 written_chapters 含 summary 字段，能正确写入。
+摘要写入走独立的 `chapter_summaries` 字段和 `persist_chapter_summary` 函数，`persist_chapter_content` 无需处理 summary，保持原有逻辑。
 
 **NODE_PERSIST_MAP 注册**
 
@@ -415,6 +428,29 @@ if confirmation_type == "volume_arc":
     outline = db.query(Outline).filter(Outline.project_id == project_id).first()
     if outline:
         outline.chapter_count_suggested = total_chapters
+
+    # 关键：从 DB 重新查询带 id 的 volumes/arcs 写回 checkpoint_state
+    # persist_volumes_arcs 执行后 DB 已有真实 id，但 checkpoint_state 中仍是 LLM 输出的原始数据（无 id）
+    # 后续节点（chapter_outlines_node）需要用 DB id 分配 arc_id
+    db_volumes = db.query(Volume).filter_by(project_id=project_id).order_by(Volume.volume_number).all()
+    volume_id_to_num = {v.id: v.volume_number for v in db_volumes}
+    db_arcs = db.query(Arc).filter_by(volume_id__in=[v.id for v in db_volumes]).order_by(Arc.volume_id, Arc.arc_number).all()
+    checkpoint_state["volumes"] = [
+        {"id": v.id, "volume_number": v.volume_number, "title": v.title, "summary": v.summary}
+        for v in db_volumes
+    ]
+    checkpoint_state["arcs"] = [
+        {
+            "id": a.id,
+            "volume_id": a.volume_id,
+            "volume_number": volume_id_to_num.get(a.volume_id, 1),
+            "arc_number": a.arc_number,
+            "title": a.title,
+            "summary": a.summary,
+            "chapter_count": a.chapter_count,
+        }
+        for a in db_arcs
+    ]
 ```
 
 ### 4.9 replan 清理
@@ -424,14 +460,6 @@ if confirmation_type == "volume_arc":
 1. 删除 DB 中项目的 volumes（CASCADE 自动删 arcs，SET NULL 自动清 chapter_outlines.arc_id）
 2. 清除 state 中的 volumes、arcs 字段为空列表
 3. 重置 chapter_count（弧规划重新计算）
-
-### 4.6 弧/卷规划确认
-
-新增确认步骤，confirmation_type = "volume_arc"。
-
-用户在章节大纲面板预览弧/卷结构（卷名→弧名→章节数），确认后继续生成章节大纲。
-
-确认时可携带修改数据（编辑卷名/弧名/弧概要），后端更新 DB 后继续。
 
 ## 五、上下文策略
 
@@ -458,6 +486,7 @@ class SummaryContentStrategy(ContextStrategy):
         current_chapter: int,
         chapter_outlines: list[dict] | None = None,
         arcs: list[dict] | None = None,
+        chapter_summaries: list[dict] | None = None,
     ) -> str:
         if not written_chapters:
             return "（这是第一章，没有前文）"
@@ -481,22 +510,29 @@ class SummaryContentStrategy(ContextStrategy):
                         arc_parts.append(summary)
                     parts.append("【前弧概要】\n" + "\n\n".join(arc_parts))
 
-        # 2. 当前弧内已写章节：取 summary（非 content）
+        # 2. 当前弧内已写章节：从 chapter_summaries 取摘要
         if arcs:
             current_arc = self._find_arc_for_chapter(arcs, current_chapter)
             if current_arc:
                 current_arc_chapters = [
                     ch for ch in written_chapters
                     if ch.get("chapter_number", 0) < current_chapter
-                    and self._is_in_arc(ch, current_arc, chapter_outlines)
+                    and self._is_in_arc(ch, current_arc, arcs, chapter_outlines)
                     and current_chapter - ch.get("chapter_number", 0) > self.recent_count
                 ]
                 if current_arc_chapters:
+                    # 构建 chapter_number → summary 映射
+                    summary_map = {}
+                    if chapter_summaries:
+                        summary_map = {s.get("chapter_number"): s.get("summary") for s in chapter_summaries if s.get("summary")}
+
                     summary_parts = []
                     for ch in sorted(current_arc_chapters, key=lambda x: x.get("chapter_number", 0)):
-                        text = f"第{ch.get('chapter_number', 0)}章"
-                        if ch.get("summary"):
-                            text += f"\n{ch['summary']}"
+                        ch_num = ch.get("chapter_number", 0)
+                        text = f"第{ch_num}章"
+                        ch_summary = summary_map.get(ch_num)
+                        if ch_summary:
+                            text += f"\n{ch_summary}"
                         else:
                             # 回退：summary 未生成时从 chapter_outlines 取 plot
                             outline = self._find_outline(ch, chapter_outlines)
@@ -535,21 +571,20 @@ class SummaryContentStrategy(ContextStrategy):
                 return arc
         return sorted_arcs[-1] if sorted_arcs else None
 
-    def _is_in_arc(self, chapter: dict, arc: dict, chapter_outlines: list[dict] | None) -> bool:
+    def _is_in_arc(self, chapter: dict, arc: dict, arcs: list[dict], chapter_outlines: list[dict] | None = None) -> bool:
         """判断章节是否属于指定弧
 
         优先通过 chapter_outlines.arc_id 精确匹配。
-        回退时用与 _find_arc_for_chapter 相同的累积 chapter_count 推算。
+        回退时用 _find_arc_for_chapter 找到章节实际所属的弧，比较是否等于目标弧。
         """
         # 精确匹配
         if chapter_outlines:
             for co in chapter_outlines:
                 if co.get("chapter_number") == chapter.get("chapter_number") and co.get("arc_id") == arc.get("id"):
                     return True
-        # 回退：累积推算
-        ch_num = chapter.get("chapter_number", 0)
-        found_arc = self._find_arc_for_chapter([arc], ch_num)
-        return found_arc is not None
+        # 回退：找到章节实际所属的弧，比较是否为目标弧
+        actual_arc = self._find_arc_for_chapter(arcs, chapter.get("chapter_number", 0))
+        return actual_arc is not None and actual_arc.get("id") == arc.get("id")
 
     def _find_outline(self, chapter: dict, chapter_outlines: list[dict] | None) -> dict | None:
         if not chapter_outlines:
@@ -583,7 +618,7 @@ class SummaryContentStrategy(ContextStrategy):
 
 SummaryContentStrategy 已在 `_STRATEGY_MAP` 中注册。用户选择 `summary` 策略或 `novel_length == "long"` 时使用。
 
-`build_previous_context` 调用处需传入 arcs 参数。基类签名显式加 `arcs` 参数，所有子类统一签名：
+`build_previous_context` 调用处需传入 arcs 和 chapter_summaries 参数。基类签名显式加这两个参数，所有子类统一签名：
 
 ```python
 # 基类
@@ -595,6 +630,7 @@ class ContextStrategy(ABC):
         current_chapter: int,
         chapter_outlines: list[dict] | None = None,
         arcs: list[dict] | None = None,
+        chapter_summaries: list[dict] | None = None,
     ) -> str:
         pass
 
@@ -603,10 +639,11 @@ previous_context = strategy.build_previous_context(
     written_chapters, chapter_number,
     chapter_outlines=state.get("chapter_outlines", []),
     arcs=state.get("arcs", []),
+    chapter_summaries=state.get("chapter_summaries", []),
 )
 ```
 
-FulltextContentStrategy 和 HybridContentStrategy 的 `build_previous_context` 签名同步加 `arcs` 参数但忽略（`_arcs` 命名表示不使用），保持接口一致。类型检查器可正常工作，调用方传错参数会报错而非静默失败。
+FulltextContentStrategy 和 HybridContentStrategy 的 `build_previous_context` 签名同步加 `arcs` 和 `chapter_summaries` 参数但忽略（`_arcs`、`_chapter_summaries` 命名表示不使用），保持接口一致。
 
 ## 六、前端变更
 
