@@ -1,0 +1,506 @@
+# 长篇小说支持设计文档
+
+## 概述
+
+为 NovelAgent 新增长篇小说（20万字+，50-300章）支持能力。核心改动：弧/卷结构规划、写后摘要生成、SummaryContentStrategy 上下文策略、章节大纲面板三级折叠树。
+
+篇幅类型由用户在灵感表单内主动选择（短篇/中篇/长篇），不根据字数自动推断。短篇/中篇功能不受影响。
+
+## 一、篇幅类型
+
+三档，灵感表单内选择：
+
+| 类型 | 上下文策略 | 弧/卷 | 写后摘要 |
+|------|-----------|-------|---------|
+| 短篇 | fulltext | 无 | 无 |
+| 中篇 | hybrid | 无 | 无 |
+| 长篇 | summary | 有 | 有 |
+
+选择后联动推荐上下文策略和目标字数建议值，用户仍可手动调整。
+
+传到后端 collected_info 新增字段：`novelLength: "short" | "medium" | "long"`
+
+现有 NovelState 的 `novel_length` 字段（当前闲置）将被启用，值来源于 collected_info.novelLength。
+
+## 二、数据模型
+
+### 2.1 新增 volumes 表
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | Integer | PK | |
+| project_id | Integer | FK→projects, CASCADE, NOT NULL | |
+| volume_number | Integer | NOT NULL | 卷序号 |
+| title | String(200) | | 卷名 |
+| summary | Text | nullable | 卷概要（LLM 生成，用户可编辑） |
+| created_at | DateTime | default=utcnow | |
+| updated_at | DateTime | default=utcnow, onupdate=utcnow | |
+
+约束：`UniqueConstraint(project_id, volume_number)`
+
+删除策略：project CASCADE → volumes → arcs。volume CASCADE → arcs。
+
+### 2.2 新增 arcs 表
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | Integer | PK | |
+| volume_id | Integer | FK→volumes, CASCADE, NOT NULL | 所属卷 |
+| arc_number | Integer | NOT NULL | 弧序号（卷内递增） |
+| title | String(200) | | 弧名 |
+| summary | Text | nullable | 弧概要（LLM 生成，用户可编辑） |
+| chapter_count | Integer | NOT NULL | 该弧的章节数（规划时确定） |
+| created_at | DateTime | default=utcnow | |
+| updated_at | DateTime | default=utcnow, onupdate=utcnow | |
+
+约束：`UniqueConstraint(volume_id, arc_number)`
+
+删除策略：arc 删除 → chapter_outlines.arc_id SET NULL（章节保留，弧归属清空）。
+
+弧的章节范围不在 arcs 表中存储 start_chapter/end_chapter，通过 chapter_outlines.arc_id 反查聚合。避免双源数据不一致。
+
+### 2.3 修改 chapter_outlines 表
+
+新增字段：
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| arc_id | Integer | FK→arcs, nullable, SET NULL | 所属弧。短/中篇为 NULL |
+
+### 2.4 修改 chapters 表
+
+新增字段：
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| summary | Text | nullable | 写后摘要（仅长篇填充） |
+
+## 三、NovelState 变更
+
+### 3.1 新增字段
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| volumes | list[dict] | [{id, volume_number, title, summary}]。短/中篇为空列表 |
+| arcs | list[dict] | [{id, volume_id, arc_number, title, summary, chapter_count}]。短/中篇为空列表 |
+
+### 3.2 修改字段
+
+**written_chapters** dict 内新增 summary 字段：`{chapter_number, content, word_count, summary}`
+
+**novel_length** 从闲置变为驱动逻辑：`short`/`medium` → 不生成弧/卷，`long` → 触发弧/卷规划节点
+
+**confirmation_type** 新增 `"volume_arc"` 值
+
+### 3.3 修改 reducer
+
+`replace_or_append_chapters` 从整条替换改为合并逻辑：
+
+```python
+# 旧：整条替换，summary_node 输出 {chapter_number, summary} 会覆盖 content/word_count
+result[existing_idx] = new_chapter
+
+# 新：合并更新，保留已有字段，仅覆盖同名字段
+existing = result[existing_idx]
+merged = {**existing, **new_chapter}
+result[existing_idx] = merged
+```
+
+这保证 chapter_summary_node 只输出 `{chapter_number, summary}` 时不会丢失 content 和 word_count。
+
+## 四、LangGraph 工作流变更
+
+### 4.1 新增节点
+
+#### volume_arc_planning_node
+
+- **触发条件**：`novel_length == "long"`
+- **输入**：大纲数据（title、summary、plot_points、world_setting、outline_emotional_curve）
+- **输出**：volumes 和 arcs 列表（含每弧 chapter_count），自动计算总 chapter_count
+- **行为**：
+  1. LLM 根据大纲生成卷/弧划分，每弧指定章节数
+  2. 总章节数 = 各弧章节数之和，覆盖 `state.chapter_count`
+  3. 将 volumes、arcs 写入 state
+- **之后**：暂停等待用户确认（`confirmation_type = "volume_arc"`）
+- **LLM 调用方式**：同步 `llm.chat()`，生成量小不需要流式
+
+#### chapter_summary_node
+
+- **触发条件**：`novel_length == "long"` 且审核通过后
+- **输入**：当前章节的 content（从 written_chapters 获取）
+- **输出**：`{chapter_number, summary}`（~200字）
+- **行为**：
+  1. LLM 同步调用 `llm.chat()` 生成摘要，不走流式
+  2. 将 summary 写入 written_chapters（通过 reducer 合并）
+  3. SSE 只发 node_start/node_done 事件，不发 chunk
+- **之后**：进入下一章节生成或结束
+
+### 4.2 工作流图路由
+
+**短/中篇流程不变**：
+```
+大纲 → 角色 → 关系 → 章节大纲 → 正文 → 审核 → ...
+```
+
+**长篇流程**：
+```
+大纲 → 角色 → 关系 → [弧/卷规划] → 确认 → 章节大纲 → 正文 → 审核 → [摘要] → 下一章
+```
+
+路由变更：
+
+| 路由函数 | 变更 |
+|----------|------|
+| `route_after_relations` | 新增判断：`novel_length == "long"` 且 relations 确认后 → `volume_arc_planning_node`；否则 → `chapter_outlines_node` |
+| `route_after_volume_arc` | 新增路由：确认后 → `chapter_outlines_node` |
+| `route_after_review` | 新增判断：审核通过且 `novel_length == "long"` → `chapter_summary_node`；否则 → next_chapter/end |
+| `chapter_summary_node` 后 | 同现有 review 后逻辑：有下一章 → generate_chapter_content_node；无 → end |
+
+### 4.3 chapter_outlines_node 变更
+
+生成章节大纲时，若 `novel_length == "long"` 且 arcs 非空，根据 arcs 的 chapter_count 顺序分配 arc_id：
+
+```python
+# 弧规划示例：弧1(15章), 弧2(20章), 弧3(18章)
+# 生成第1-15章大纲 → arc_id = 弧1.id
+# 生成第16-35章大纲 → arc_id = 弧2.id
+# 生成第36-53章大纲 → arc_id = 弧3.id
+```
+
+短/中篇 arc_id 为 NULL，行为不变。
+
+章节大纲生成的 prompt 中需包含弧/卷信息：`generate_single_chapter_outline` 函数新增 `arc_info` 参数，格式为"当前弧：第N弧《弧名》，本章是本弧第M章"。prompt 模板新增 `{arc_info}` 占位符，长篇填充具体信息，短/中篇填充空字符串。
+
+### 4.4 build_initial_state 变更
+
+新增加载 volumes 和 arcs：
+
+```python
+volumes = db.query(Volume).filter_by(project_id=project_id).order_by(Volume.volume_number).all()
+volume_ids = [v.id for v in volumes]
+arcs = db.query(Arc).filter_by(volume_id__in=volume_ids).order_by(Arc.arc_number).all()
+
+state["volumes"] = [{"id": v.id, "volume_number": v.volume_number, "title": v.title, "summary": v.summary} for v in volumes]
+state["arcs"] = [{"id": a.id, "volume_id": a.volume_id, "arc_number": a.arc_number, "title": a.title, "summary": a.summary, "chapter_count": a.chapter_count} for a in arcs]
+```
+
+同时加载 written_chapters 时需包含 summary 字段（从 chapters 表读取）。
+
+### 4.5 replan 清理
+
+大纲重新规划时清除弧/卷数据：
+
+1. 删除 DB 中项目的 volumes（CASCADE 自动删 arcs，SET NULL 自动清 chapter_outlines.arc_id）
+2. 清除 state 中的 volumes、arcs 字段为空列表
+3. 重置 chapter_count（弧规划重新计算）
+
+### 4.6 弧/卷规划确认
+
+新增确认步骤，confirmation_type = "volume_arc"。
+
+用户在章节大纲面板预览弧/卷结构（卷名→弧名→章节数），确认后继续生成章节大纲。
+
+确认时可携带修改数据（编辑卷名/弧名/弧概要），后端更新 DB 后继续。
+
+## 五、上下文策略
+
+### 5.1 SummaryContentStrategy 实现
+
+长篇专用。上下文构建逻辑：
+
+```
+前面弧的弧概要 + 当前弧内已写章节的摘要 + 近3章全文
+```
+
+具体实现：
+
+```python
+class SummaryContentStrategy(ContextStrategy):
+    """摘要策略：前面弧概要 + 当前弧章节摘要 + 近N章全文"""
+
+    def __init__(self, recent_count: int = 3):
+        self.recent_count = max(1, min(recent_count, 10))
+
+    def build_previous_context(
+        self,
+        written_chapters: list[dict],
+        current_chapter: int,
+        chapter_outlines: list[dict] | None = None,
+        arcs: list[dict] | None = None,
+    ) -> str:
+        if not written_chapters:
+            return "（这是第一章，没有前文）"
+
+        parts = []
+
+        # 1. 前面弧：只取弧概要（非章节摘要）
+        if arcs:
+            current_arc = self._find_arc_for_chapter(arcs, current_chapter)
+            if current_arc:
+                previous_arcs = [a for a in arcs if a.get("arc_number", 0) < current_arc.get("arc_number", 0)]
+                # 也包含同卷前面弧的卷概要
+                if previous_arcs:
+                    arc_parts = []
+                    for a in previous_arcs:
+                        summary = f"《{a.get('title', '')}》"
+                        if a.get("summary"):
+                            summary += f"\n{a['summary']}"
+                        arc_parts.append(summary)
+                    parts.append("【前弧概要】\n" + "\n\n".join(arc_parts))
+
+        # 2. 当前弧内已写章节：取 summary（非 content）
+        if arcs:
+            current_arc = self._find_arc_for_chapter(arcs, current_chapter)
+            if current_arc:
+                current_arc_chapters = [
+                    ch for ch in written_chapters
+                    if ch.get("chapter_number", 0) < current_chapter
+                    and self._is_in_arc(ch, current_arc, chapter_outlines)
+                    and current_chapter - ch.get("chapter_number", 0) > self.recent_count
+                ]
+                if current_arc_chapters:
+                    summary_parts = []
+                    for ch in sorted(current_arc_chapters, key=lambda x: x.get("chapter_number", 0)):
+                        text = f"第{ch.get('chapter_number', 0)}章"
+                        if ch.get("summary"):
+                            text += f"\n{ch['summary']}"
+                        else:
+                            # 回退：summary 未生成时从 chapter_outlines 取 plot
+                            outline = self._find_outline(ch, chapter_outlines)
+                            if outline and outline.get("plot"):
+                                text += f"\n（大纲）{outline['plot'][:200]}"
+                        summary_parts.append(text)
+                    parts.append("【当前弧摘要】\n" + "\n\n".join(summary_parts))
+
+        # 3. 近N章：取 content 全文
+        recent = [
+            ch for ch in written_chapters
+            if ch.get("chapter_number", 0) < current_chapter
+            and current_chapter - ch.get("chapter_number", 0) <= self.recent_count
+        ]
+        if recent:
+            recent_parts = []
+            for ch in sorted(recent, key=lambda x: x.get("chapter_number", 0)):
+                title = ch.get("title", "")
+                content = ch.get("content", "")
+                recent_parts.append(f"第{ch.get('chapter_number', 0)}章《{title}》\n{content}")
+            parts.append("【近期全文】\n" + "\n\n---\n\n".join(recent_parts))
+
+        return "\n\n---\n\n".join(parts) if parts else "（这是第一章，没有前文）"
+
+    def _find_arc_for_chapter(self, arcs: list[dict], chapter_number: int) -> dict | None:
+        """根据章节号找到所属弧（通过累积 chapter_count 推算）"""
+        cumulative = 0
+        for arc in sorted(arcs, key=lambda a: a.get("arc_number", 0)):
+            cumulative += arc.get("chapter_count", 0)
+            if chapter_number <= cumulative:
+                return arc
+        return arcs[-1] if arcs else None
+
+    def _is_in_arc(self, chapter: dict, arc: dict, chapter_outlines: list[dict] | None) -> bool:
+        """判断章节是否属于指定弧"""
+        if chapter_outlines:
+            for co in chapter_outlines:
+                if co.get("chapter_number") == chapter.get("chapter_number") and co.get("arc_id") == arc.get("id"):
+                    return True
+        # 回退：用累积 chapter_count 推算
+        return False
+
+    def _find_outline(self, chapter: dict, chapter_outlines: list[dict] | None) -> dict | None:
+        if not chapter_outlines:
+            return None
+        for co in chapter_outlines:
+            if co.get("chapter_number") == chapter.get("chapter_number"):
+                return co
+        return None
+```
+
+### 5.2 上下文 token 估算
+
+长篇写第50章（弧3第5章，每弧15-20章）时：
+
+| 部分 | 内容 | 估算 token |
+|------|------|------------|
+| 弧1概要 | ~500字 | ~700 |
+| 弧2概要 | ~500字 | ~700 |
+| 弧3已写摘要 | 4章×200字 | ~1.1k |
+| 近3章全文 | 3章×3000字 | ~12k |
+| **合计** | | **~14.5k** |
+
+300章小说最后一章也在 ~15k token 内可控，不随章节增长膨胀。
+
+### 5.3 回退机制
+
+- summary 为空时（摘要未生成），从 chapter_outlines 取 plot[:200] 作为降级概要
+- arcs 为空时（数据异常），回退到 hybrid 策略行为
+
+### 5.4 get_context_strategy 变更
+
+SummaryContentStrategy 已在 `_STRATEGY_MAP` 中注册。用户选择 `summary` 策略或 `novel_length == "long"` 时使用。
+
+`build_previous_context` 调用处需传入 arcs 参数。所有策略基类 `build_previous_context` 签名加 `**kwargs`，子类按需取用：
+
+```python
+# 基类
+class ContextStrategy(ABC):
+    @abstractmethod
+    def build_previous_context(
+        self,
+        written_chapters: list[dict],
+        current_chapter: int,
+        chapter_outlines: list[dict] | None = None,
+        **kwargs,
+    ) -> str:
+        pass
+
+# 调用处（chapter_generation.py）
+previous_context = strategy.build_previous_context(
+    written_chapters, chapter_number,
+    chapter_outlines=state.get("chapter_outlines", []),
+    arcs=state.get("arcs", []),
+)
+```
+
+FulltextContentStrategy 和 HybridContentStrategy 的 `build_previous_context` 签名同步加 `**kwargs`，忽略 arcs 参数。
+
+## 六、前端变更
+
+### 6.1 灵感表单（InspirationPanel）
+
+在目标字数附近新增"篇幅类型"下拉框：
+
+| 选项 | 联动行为 |
+|------|---------|
+| 短篇 | 上下文策略→fulltext，目标字数建议<5万 |
+| 中篇 | 上下文策略→hybrid，目标字数建议5-20万 |
+| 长篇 | 上下文策略→summary，目标字数建议>20万 |
+
+选择后联动更新上下文策略推荐和目标字数建议值，用户仍可手动调整。
+
+传到后端 collected_info 新增 `novelLength: "short" | "medium" | "long"`。
+
+### 6.2 章节大纲面板（ChapterOutlinePanel）
+
+**短/中篇**：不变，平铺列表。
+
+**长篇**：三级折叠树：
+
+```
+▼ 卷一：风云初起
+  ▼ 弧1：初入江湖（15章）
+    第1章 山村少年  📝
+    第2章 拜师学艺  ✅
+    ...
+  ▶ 弧2：门派试炼（20章）
+▶ 卷二：江湖恩怨
+```
+
+- 卷/弧行：显示名称+概要（点击可编辑，复用 inline edit 模式）
+- 章节行：复用现有卡片，新增"摘要"字段
+- 弧/卷确认步骤：工作流等待确认时，面板展示弧/卷结构供用户审阅和编辑
+
+### 6.3 写后摘要交互
+
+- 章节写完后，面板中该章的"摘要"字段自动填充
+- 用户可点击编辑
+- 编辑后自动保存到 DB（防抖，复用现有自动保存模式）
+
+### 6.4 类型定义新增
+
+```typescript
+// types/index.ts
+interface Volume {
+  id: number
+  volumeNumber: number
+  title: string
+  summary: string | null
+}
+
+interface Arc {
+  id: number
+  volumeId: number
+  arcNumber: number
+  title: string
+  summary: string | null
+  chapterCount: number
+}
+```
+
+## 七、API 变更
+
+### 7.1 新增端点
+
+| 方法 | 端点 | 说明 |
+|------|------|------|
+| GET | `/api/projects/{id}/volumes` | 获取卷列表（含弧） |
+| PUT | `/api/projects/{id}/volumes/{vid}` | 编辑卷名/概要 |
+| PUT | `/api/projects/{id}/arcs/{aid}` | 编辑弧名/概要 |
+| PUT | `/api/projects/{id}/chapters/{cid}/summary` | 编辑章节摘要 |
+
+### 7.2 修改端点
+
+| 端点 | 变更 |
+|------|------|
+| `POST /api/projects/{id}/workflow/run` | collected_info 新增 novelLength 字段，写入 state.novel_length |
+| `POST /api/projects/{id}/workflow/confirm` | confirmation_type 新增 "volume_arc"，确认时更新弧/卷编辑数据 |
+| `GET /api/projects/{id}/chapters` | 返回数据新增 summary、arc_id 字段 |
+| `GET /api/projects/{id}/chapters/outlines` | 返回数据新增 arc_id 字段 |
+
+## 八、SSE 事件
+
+弧/卷规划节点和摘要节点复用现有 node_start/node_done 事件，无需新事件类型。
+
+弧/卷确认步骤复用现有 `waiting` 事件，confirmation_type = "volume_arc"。
+
+## 九、Prompt 模板
+
+### 9.1 弧/卷规划 Prompt
+
+新增 `volume_arc_generation` prompt 模板，输入大纲数据，输出结构化的卷/弧划分：
+
+```
+输入：大纲标题、概述、情节节点、世界观、目标字数、总章节数
+输出：
+  卷一《xxx》
+    弧1《xxx》：N章，概要...
+    弧2《xxx》：N章，概要...
+  卷二《xxx》
+    弧3《xxx》：N章，概要...
+```
+
+### 9.2 写后摘要 Prompt
+
+新增 `chapter_summary_generation` prompt 模板，输入章节内容，输出200字摘要：
+
+```
+输入：章节正文（全文）
+输出：200字以内的章节内容摘要，包含关键情节、角色变化、伏笔线索
+```
+
+## 十、影响范围
+
+| 模块 | 文件 | 改动类型 |
+|------|------|---------|
+| DB 迁移 | 新增 `20260516_add_volumes_arcs.py` | 新增 |
+| 模型 | 新增 `volume.py`、`arc.py`，改 `outline.py`、`chapter.py` | 新增+修改 |
+| Schema | 新增 `volume.py`、`arc.py`，改 `chapter.py` | 新增+修改 |
+| State | `state.py` | 修改（字段+reducer） |
+| 工作流图 | `graph.py` | 修改（2新节点+路由） |
+| 节点 | 新增 `volume_arc_planning.py`、`chapter_summary.py` | 新增 |
+| 上下文策略 | `context_strategy.py` | 修改（SummaryContentStrategy） |
+| API | 新增 `volumes.py`、`arcs.py`，改 `chapters.py`、`workflow.py` | 新增+修改 |
+| 工具 | `workflow_persistence.py`、`workflow.py`（build_initial_state） | 修改 |
+| Prompt | `prompts.py` | 修改（2新模板） |
+| 前端 | `InspirationPanel.tsx` | 修改（篇幅类型选项） |
+| 前端 | `ChapterOutlinePanel.tsx` | 修改（三级折叠树+摘要字段） |
+| 前端 | `api.ts` | 修改（新增 volumes/arcs API） |
+| 前端 | `types/index.ts` | 修改（Volume/Arc 类型） |
+| 测试 | 新增 `test_volume_arc.py`、`test_chapter_summary.py`，改 `test_context_strategy.py` | 新增+修改 |
+
+## 十一、兼容性保证
+
+1. **短/中篇零影响**：所有新逻辑通过 `novel_length == "long"` 门控，短/中篇不触发新节点、不加载弧/卷、不生成摘要
+2. **数据向后兼容**：volumes/arcs 表为新增，chapter_outlines.arc_id 和 chapters.summary 为 nullable，旧数据不受影响
+3. **工作流图兼容**：路由函数增加条件判断，短/中篇走原路径
+4. **前端兼容**：ChapterOutlinePanel 根据是否有弧数据决定展示方式（有弧→树形，无弧→平铺）
+5. **reducer 向后兼容**：合并逻辑对现有数据格式完全兼容，新字段 summary 不存在时 old 行为不变
