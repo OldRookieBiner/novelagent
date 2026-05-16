@@ -1,6 +1,6 @@
 // frontend/src/components/workbench/planning/InspirationPanel.tsx
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Lightbulb, RotateCcw, RefreshCw, ArrowRight, Check, ChevronDown, ChevronUp, Copy, ChevronLeft, ChevronRight, Cpu } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -14,12 +14,12 @@ import {
   FEMALE_OPTIONS,
   CONTEXT_STRATEGY_OPTIONS,
   getContextStrategyFromTargetWords,
-generateInspirationTemplate,
+  generateInspirationTemplate,
   saveInspirationDraft,
   loadInspirationDraft,
   type InspirationData,
 } from '@/lib/inspiration'
-import { collectedInfoApi, modelConfigsApi } from '@/lib/api'
+import { collectedInfoApi, modelConfigsApi, outlineApi } from '@/lib/api'
 import {
   Select,
   SelectContent,
@@ -48,6 +48,18 @@ interface ModelOption
   modelName: string      // 具体模型名
   configName: string     // 模型配置的显示名称（用于分组标签）
   isDefault: boolean     // 是否为默认配置
+}
+
+// 从 Record<string, unknown> 安全提取字符串值
+function asString(val: unknown): string
+{
+  return typeof val === 'string' ? val : ''
+}
+
+// 从 Record<string, unknown> 安全提取数值
+function asNumber(val: unknown): number | undefined
+{
+  return typeof val === 'number' ? val : undefined
 }
 
 // 小说类型图标
@@ -128,6 +140,9 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([])
   const [loadingModels, setLoadingModels] = useState(false)
 
+  // 初始化标记：防止 targetReader effect 在回填时清除字段
+  const initializedRef = useRef(false)
+
   const { setActiveMenuItem, selectedModelKey, setSelectedModelKey } = useWorkbenchStore()
 
   const handleTargetWordsChange = (value: string) =>
@@ -190,34 +205,70 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
     }
   }, [formData, template, templateManuallyEdited])
 
-  // 加载草稿
+  // 初始化表单数据：从后端 collected_info 加载，其次 localStorage 草稿
   useEffect(() =>
   {
-    const draft = loadInspirationDraft()
-    if (draft)
+    if (initializedRef.current) return
+
+    const loadInitialData = async () =>
     {
-      if (draft.targetReader) setTargetReader(draft.targetReader)
-      if (draft.novelType) setNovelType(draft.novelType)
-      if (draft.targetWords) setTargetWords(draft.targetWords)
-      if (draft.contextStrategy) setContextStrategy(draft.contextStrategy)
-      if (draft.wordsPerChapter) setWordsPerChapter(draft.wordsPerChapter)
-      if (draft.customWordsPerChapter) setCustomWordsPerChapter(draft.customWordsPerChapter)
-      if (draft.era) setEra(draft.era)
-      if (draft.narrative) setNarrative(draft.narrative)
-      if (draft.coreTheme) setCoreTheme(draft.coreTheme)
-      if (draft.worldSetting) setWorldSetting(draft.worldSetting)
-      if (draft.customWorldSetting) setCustomWorldSetting(draft.customWorldSetting)
-      if (draft.genre) setGenre(draft.genre)
-      if (draft.customGenre) setCustomGenre(draft.customGenre)
-      if (draft.maleLead) setMaleLead(draft.maleLead)
-      if (draft.customMaleLead) setCustomMaleLead(draft.customMaleLead)
-      if (draft.femaleLead) setFemaleLead(draft.femaleLead)
-      if (draft.customFemaleLead) setCustomFemaleLead(draft.customFemaleLead)
-      if (draft.goldFinger) setGoldFinger(draft.goldFinger)
-      if (draft.customGoldFinger) setCustomGoldFinger(draft.customGoldFinger)
-      if (draft.stylePreference) setStylePreference(draft.stylePreference)
+      let source: Record<string, unknown> | null = null
+
+      // 优先从后端获取已保存的灵感数据
+      try
+      {
+        const outline = await outlineApi.get(projectId)
+        if (outline.collected_info && Object.keys(outline.collected_info).length > 0)
+        {
+          source = outline.collected_info as Record<string, unknown>
+        }
+      }
+      catch
+      {
+        // outline 不存在（新项目），继续 fallback
+      }
+
+      // 后端无数据时，回退到 localStorage 草稿
+      if (!source)
+      {
+        const draft = loadInspirationDraft()
+        if (draft) source = draft as Record<string, unknown>
+      }
+
+      if (source)
+      {
+        // 批量回填表单（按 targetReader 依赖顺序设置）
+        const reader = asString(source.targetReader)
+        if (reader) setTargetReader(reader)
+        if (asString(source.novelType)) setNovelType(asString(source.novelType))
+        const tw = asNumber(source.targetWords)
+        if (tw) setTargetWords(tw)
+        if (asString(source.contextStrategy)) setContextStrategy(asString(source.contextStrategy))
+        if (asString(source.wordsPerChapter)) setWordsPerChapter(asString(source.wordsPerChapter))
+        const cwp = asNumber(source.customWordsPerChapter)
+        if (cwp) setCustomWordsPerChapter(cwp)
+        if (asString(source.era)) setEra(asString(source.era))
+        if (asString(source.narrative)) setNarrative(asString(source.narrative))
+        if (asString(source.coreTheme)) setCoreTheme(asString(source.coreTheme))
+        if (asString(source.worldSetting)) setWorldSetting(asString(source.worldSetting))
+        if (asString(source.customWorldSetting)) setCustomWorldSetting(asString(source.customWorldSetting))
+        if (asString(source.genre)) setGenre(asString(source.genre))
+        if (asString(source.customGenre)) setCustomGenre(asString(source.customGenre))
+        if (asString(source.maleLead)) setMaleLead(asString(source.maleLead))
+        if (asString(source.customMaleLead)) setCustomMaleLead(asString(source.customMaleLead))
+        if (asString(source.femaleLead)) setFemaleLead(asString(source.femaleLead))
+        if (asString(source.customFemaleLead)) setCustomFemaleLead(asString(source.customFemaleLead))
+        if (asString(source.goldFinger)) setGoldFinger(asString(source.goldFinger))
+        if (asString(source.customGoldFinger)) setCustomGoldFinger(asString(source.customGoldFinger))
+        if (asString(source.stylePreference)) setStylePreference(asString(source.stylePreference))
+      }
+
+      // 标记初始化完成，后续 targetReader 变化才触发清除逻辑
+      initializedRef.current = true
     }
-  }, [])
+
+    loadInitialData()
+  }, [projectId])
 
   // 加载可用模型列表
   useEffect(() =>
@@ -281,9 +332,11 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
     loadModels()
   }, [])
 
-  // 当目标读者切换时，清除不相关的字段
+  // 当用户手动切换目标读者时，清除不相关的字段（初始化回填时跳过）
   useEffect(() =>
   {
+    if (!initializedRef.current) return
+
     if (targetReader === 'female')
     {
       setGenre('')
@@ -303,6 +356,9 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
   // 自动保存草稿
   useEffect(() =>
   {
+    // 初始化完成前不保存，避免用空状态覆盖 localStorage
+    if (!initializedRef.current) return
+
     const data: InspirationData = {
       novelType,
       targetWords,

@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-05-16T10:50:03.727Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-05-16T19:39:01.411Z
 > Files: 616 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ./
@@ -1002,7 +1002,7 @@
 
 ## frontend/src/components/workbench/planning/
 
-- `InspirationPanel.tsx` — 扁平化后的模型选项 (~13488 tok)
+- `InspirationPanel.tsx` — 扁平化后的模型选项 (~14009 tok)
 - `OutlineProgressDialog.tsx` — 可选的模型配置 ID (~2659 tok)
 
 ## frontend/src/lib/
