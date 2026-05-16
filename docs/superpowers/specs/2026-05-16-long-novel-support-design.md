@@ -40,6 +40,12 @@
 
 删除策略：project CASCADE → volumes → arcs。volume CASCADE → arcs。
 
+Relationship：
+- `project = relationship("Project", back_populates="volumes")`
+- `arcs = relationship("Arc", back_populates="volume", cascade="all, delete-orphan")`
+
+projects 模型需新增 `volumes = relationship("Volume", back_populates="project", cascade="all, delete-orphan")`。
+
 ### 2.2 新增 arcs 表
 
 | 字段 | 类型 | 约束 | 说明 |
@@ -57,6 +63,10 @@
 
 删除策略：arc 删除 → chapter_outlines.arc_id SET NULL（章节保留，弧归属清空）。
 
+Relationship：
+- `volume = relationship("Volume", back_populates="arcs")`
+- `chapter_outlines = relationship("ChapterOutline", back_populates="arc")`
+
 弧的章节范围不在 arcs 表中存储 start_chapter/end_chapter，通过 chapter_outlines.arc_id 反查聚合。避免双源数据不一致。
 
 ### 2.3 修改 chapter_outlines 表
@@ -66,6 +76,9 @@
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
 | arc_id | Integer | FK→arcs, nullable, SET NULL | 所属弧。短/中篇为 NULL |
+
+Relationship：
+- `arc = relationship("Arc", back_populates="chapter_outlines")`
 
 ### 2.4 修改 chapters 表
 
@@ -82,7 +95,7 @@
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | volumes | list[dict] | [{id, volume_number, title, summary}]。短/中篇为空列表 |
-| arcs | list[dict] | [{id, volume_id, arc_number, title, summary, chapter_count}]。短/中篇为空列表 |
+| arcs | list[dict] | [{id, volume_id, volume_number, arc_number, title, summary, chapter_count}]。短/中篇为空列表。volume_number 用于全局排序（arc_number 是卷内递增，不能单独排序） |
 
 ### 3.2 修改字段
 
@@ -152,9 +165,44 @@ result[existing_idx] = merged
 | 路由函数 | 变更 |
 |----------|------|
 | `route_after_relations` | 新增判断：`novel_length == "long"` 且 relations 确认后 → `volume_arc_planning_node`；否则 → `chapter_outlines_node` |
-| `route_after_volume_arc` | 新增路由：确认后 → `chapter_outlines_node` |
+| `route_after_volume_arc` | **新增路由**：确认后 → `chapter_outlines_node` |
 | `route_after_review` | 新增判断：审核通过且 `novel_length == "long"` → `chapter_summary_node`；否则 → next_chapter/end |
-| `chapter_summary_node` 后 | 同现有 review 后逻辑：有下一章 → generate_chapter_content_node；无 → end |
+| `route_after_summary` | **新增路由**：summary 完成后判断，有下一章 → `generate_chapter_content_node`；无 → end |
+
+`route_after_summary` 逻辑与 `route_after_review` 中审核通过的分支一致：
+
+```python
+def route_after_summary(state: NovelState) -> Literal["next_chapter", "end"]:
+    if state.get("current_chapter", 0) < state.get("chapter_count", 0):
+        return "next_chapter"
+    return "end"
+```
+
+图的边变更：
+
+```python
+# 审核 → 摘要或下一章/结束
+graph.add_conditional_edges(
+    "review_node",
+    route_after_review,
+    {
+        "rewrite": "rewrite_node",
+        "next_chapter": "generate_chapter_content_node",
+        "chapter_summary": "chapter_summary_node",  # 新增
+        "wait_confirm": END,
+        "end": END,
+    },
+)
+
+# 摘要 → 下一章或结束
+graph.add_conditional_edges(
+    "chapter_summary_node",
+    route_after_summary,
+    {"next_chapter": "generate_chapter_content_node", "end": END},
+)
+```
+
+`route_after_review` 的返回值新增 `"chapter_summary"`，当审核通过且 `novel_length == "long"` 时返回此值路由到 `chapter_summary_node`。
 
 ### 4.3 chapter_outlines_node 变更
 
@@ -173,20 +221,203 @@ result[existing_idx] = merged
 
 ### 4.4 build_initial_state 变更
 
-新增加载 volumes 和 arcs：
+新增加载 volumes 和 arcs、novel_length、arc_id、summary：
 
 ```python
+# 加载弧/卷
 volumes = db.query(Volume).filter_by(project_id=project_id).order_by(Volume.volume_number).all()
 volume_ids = [v.id for v in volumes]
-arcs = db.query(Arc).filter_by(volume_id__in=volume_ids).order_by(Arc.arc_number).all()
+volume_id_to_num = {v.id: v.volume_number for v in volumes}  # volume_id → volume_number 映射
+arcs = db.query(Arc).filter_by(volume_id__in=volume_ids).order_by(Arc.volume_id, Arc.arc_number).all()
 
 state["volumes"] = [{"id": v.id, "volume_number": v.volume_number, "title": v.title, "summary": v.summary} for v in volumes]
-state["arcs"] = [{"id": a.id, "volume_id": a.volume_id, "arc_number": a.arc_number, "title": a.title, "summary": a.summary, "chapter_count": a.chapter_count} for a in arcs]
+state["arcs"] = [
+    {
+        "id": a.id,
+        "volume_id": a.volume_id,
+        "volume_number": volume_id_to_num.get(a.volume_id, 1),  # P2-12: 包含 volume_number，供全局排序
+        "arc_number": a.arc_number,
+        "title": a.title,
+        "summary": a.summary,
+        "chapter_count": a.chapter_count,
+    }
+    for a in arcs
+]
+
+# P0-4: novel_length 从 collected_info 中读取
+collected_info = outline.collected_info or {}
+state["novel_length"] = collected_info.get("novelLength", "short")
 ```
 
-同时加载 written_chapters 时需包含 summary 字段（从 chapters 表读取）。
+chapter_outlines 加载时新增 arc_id（P2-10）：
 
-### 4.5 replan 清理
+```python
+chapter_outlines = [
+    {
+        "chapter_number": co.chapter_number,
+        "arc_id": co.arc_id,  # 新增
+        # ... 其余字段不变
+    }
+    for co in sorted(project.chapter_outlines, key=lambda x: x.chapter_number)
+]
+```
+
+written_chapters 加载时新增 summary（P2-11）：
+
+```python
+written_chapters.append({
+    "chapter_number": co.chapter_number,
+    "title": co.title,
+    "content": co.chapter.content,
+    "word_count": co.chapter.word_count,
+    "summary": co.chapter.summary,  # 新增
+})
+```
+
+### 4.6 弧/卷规划确认
+
+新增确认步骤，confirmation_type = "volume_arc"。
+
+用户在章节大纲面板预览弧/卷结构（卷名→弧名→章节数），确认后继续生成章节大纲。
+
+确认时可携带修改数据（编辑卷名/弧名/弧概要），后端更新 DB 后继续。
+
+### 4.7 持久化
+
+新增节点必须注册到 `NODE_PERSIST_MAP`（workflow_persistence.py），确保节点输出写入 DB。
+
+**persist_volumes_arcs**
+
+`volume_arc_planning_node` 的持久化函数：
+
+```python
+def persist_volumes_arcs(output: dict, project_id: int, db: Session):
+    volumes_data = output.get("volumes", [])
+    arcs_data = output.get("arcs", [])
+
+    # 清除旧数据（CASCADE 自动删 arcs，SET NULL 自动清 chapter_outlines.arc_id）
+    db.query(Volume).filter(Volume.project_id == project_id).delete()
+
+    volume_id_map = {}  # 临时 volume_number → DB id 映射
+    for v_data in volumes_data:
+        volume = Volume(
+            project_id=project_id,
+            volume_number=v_data.get("volume_number", 1),
+            title=v_data.get("title", ""),
+            summary=v_data.get("summary"),
+        )
+        db.add(volume)
+        db.flush()
+        volume_id_map[v_data.get("volume_number", 1)] = volume.id
+
+    for a_data in arcs_data:
+        vol_num = a_data.get("volume_number", 1)  # arcs state 中包含 volume_number
+        arc = Arc(
+            volume_id=volume_id_map.get(vol_num),
+            arc_number=a_data.get("arc_number", 1),
+            title=a_data.get("title", ""),
+            summary=a_data.get("summary"),
+            chapter_count=a_data.get("chapter_count", 10),
+        )
+        db.add(arc)
+```
+
+**persist_chapter_summary**
+
+`chapter_summary_node` 的持久化函数：
+
+```python
+def persist_chapter_summary(output: dict, project_id: int, db: Session):
+    written_chapters = output.get("written_chapters", [])
+    for chapter_data in written_chapters:
+        summary = chapter_data.get("summary")
+        if not summary:
+            continue
+        chapter_num = chapter_data.get("chapter_number")
+        if not chapter_num:
+            continue
+        chapter_outline = db.query(ChapterOutline).filter(
+            ChapterOutline.project_id == project_id,
+            ChapterOutline.chapter_number == chapter_num,
+        ).first()
+        if chapter_outline and chapter_outline.chapter:
+            chapter_outline.chapter.summary = summary
+```
+
+**persist_chapter_outlines 变更**
+
+现有 `persist_chapter_outlines` 需在创建 ChapterOutline 时写入 `arc_id`：
+
+```python
+chapter_outline = ChapterOutline(
+    project_id=project_id,
+    chapter_number=co_data.get("chapter_number", 1),
+    arc_id=co_data.get("arc_id"),  # 新增
+    # ... 其余字段不变
+)
+```
+
+**persist_chapter_content 变更**
+
+现有 `persist_chapter_content` 需处理 summary 字段。当 written_chapters 中的 chapter_data 包含 summary 时，写入 chapters.summary：
+
+```python
+if chapter:
+    chapter.content = chapter_data.get("content", chapter.content)
+    chapter.word_count = chapter_data.get("word_count", chapter.word_count)
+    # 新增：处理 summary（chapter_summary_node 通过 reducer 合并时可能有此字段）
+    if chapter_data.get("summary") is not None:
+        chapter.summary = chapter_data["summary"]
+```
+
+注意：`persist_chapter_content` 同时服务于 `generate_chapter_content_node` 和 `chapter_summary_node`。content_node 的 written_chapters 无 summary 字段（`chapter_data.get("summary") is not None` 为 False），不会误写。summary_node 的 written_chapters 含 summary 字段，能正确写入。
+
+**NODE_PERSIST_MAP 注册**
+
+```python
+NODE_PERSIST_MAP = {
+    # ... 现有映射
+    "volume_arc_planning_node": persist_volumes_arcs,
+    "chapter_summary_node": persist_chapter_summary,
+}
+```
+
+### 4.8 弧/卷确认的 confirm 端点处理
+
+`confirm_workflow` 端点新增 `volume_arc` confirmation_type 处理：
+
+**WorkflowConfirmRequest 新增字段：**
+
+```python
+class WorkflowConfirmRequest(BaseModel):
+    # ... 现有字段
+    volumes: Optional[list] = None   # 用户修改后的卷数据
+    arcs: Optional[list] = None      # 用户修改后的弧数据
+```
+
+**confirm 逻辑：**
+
+```python
+if confirmation_type == "volume_arc":
+    volumes_data = request.volumes if request and request.volumes else checkpoint_state.get("volumes", [])
+    arcs_data = request.arcs if request and request.arcs else checkpoint_state.get("arcs", [])
+
+    # 更新 checkpoint_state 中的弧/卷数据（用户可能编辑了名称/概要）
+    checkpoint_state["volumes"] = volumes_data
+    checkpoint_state["arcs"] = arcs_data
+
+    # 持久化到 DB
+    persist_volumes_arcs({"volumes": volumes_data, "arcs": arcs_data}, project_id, db)
+
+    # 确认通过，同步更新 chapter_count
+    total_chapters = sum(a.get("chapter_count", 0) for a in arcs_data)
+    checkpoint_state["chapter_count"] = total_chapters
+    outline = db.query(Outline).filter(Outline.project_id == project_id).first()
+    if outline:
+        outline.chapter_count_suggested = total_chapters
+```
+
+### 4.9 replan 清理
 
 大纲重新规划时清除弧/卷数据：
 
@@ -237,8 +468,10 @@ class SummaryContentStrategy(ContextStrategy):
         if arcs:
             current_arc = self._find_arc_for_chapter(arcs, current_chapter)
             if current_arc:
-                previous_arcs = [a for a in arcs if a.get("arc_number", 0) < current_arc.get("arc_number", 0)]
-                # 也包含同卷前面弧的卷概要
+                # 全局排序键：(volume_number, arc_number)
+                current_key = (current_arc.get("volume_number", 1), current_arc.get("arc_number", 0))
+                sorted_arcs = sorted(arcs, key=lambda a: (a.get("volume_number", 1), a.get("arc_number", 0)))
+                previous_arcs = [a for a in sorted_arcs if (a.get("volume_number", 1), a.get("arc_number", 0)) < current_key]
                 if previous_arcs:
                     arc_parts = []
                     for a in previous_arcs:
@@ -289,22 +522,34 @@ class SummaryContentStrategy(ContextStrategy):
         return "\n\n---\n\n".join(parts) if parts else "（这是第一章，没有前文）"
 
     def _find_arc_for_chapter(self, arcs: list[dict], chapter_number: int) -> dict | None:
-        """根据章节号找到所属弧（通过累积 chapter_count 推算）"""
+        """根据章节号找到所属弧（通过累积 chapter_count 推算）
+
+        arcs 按 (volume_number, arc_number) 全局排序，确保跨卷顺序正确。
+        arc_number 是卷内递增，不能单独用于全局排序。
+        """
+        sorted_arcs = sorted(arcs, key=lambda a: (a.get("volume_number", 1), a.get("arc_number", 0)))
         cumulative = 0
-        for arc in sorted(arcs, key=lambda a: a.get("arc_number", 0)):
+        for arc in sorted_arcs:
             cumulative += arc.get("chapter_count", 0)
             if chapter_number <= cumulative:
                 return arc
-        return arcs[-1] if arcs else None
+        return sorted_arcs[-1] if sorted_arcs else None
 
     def _is_in_arc(self, chapter: dict, arc: dict, chapter_outlines: list[dict] | None) -> bool:
-        """判断章节是否属于指定弧"""
+        """判断章节是否属于指定弧
+
+        优先通过 chapter_outlines.arc_id 精确匹配。
+        回退时用与 _find_arc_for_chapter 相同的累积 chapter_count 推算。
+        """
+        # 精确匹配
         if chapter_outlines:
             for co in chapter_outlines:
                 if co.get("chapter_number") == chapter.get("chapter_number") and co.get("arc_id") == arc.get("id"):
                     return True
-        # 回退：用累积 chapter_count 推算
-        return False
+        # 回退：累积推算
+        ch_num = chapter.get("chapter_number", 0)
+        found_arc = self._find_arc_for_chapter([arc], ch_num)
+        return found_arc is not None
 
     def _find_outline(self, chapter: dict, chapter_outlines: list[dict] | None) -> dict | None:
         if not chapter_outlines:
@@ -338,7 +583,7 @@ class SummaryContentStrategy(ContextStrategy):
 
 SummaryContentStrategy 已在 `_STRATEGY_MAP` 中注册。用户选择 `summary` 策略或 `novel_length == "long"` 时使用。
 
-`build_previous_context` 调用处需传入 arcs 参数。所有策略基类 `build_previous_context` 签名加 `**kwargs`，子类按需取用：
+`build_previous_context` 调用处需传入 arcs 参数。基类签名显式加 `arcs` 参数，所有子类统一签名：
 
 ```python
 # 基类
@@ -349,7 +594,7 @@ class ContextStrategy(ABC):
         written_chapters: list[dict],
         current_chapter: int,
         chapter_outlines: list[dict] | None = None,
-        **kwargs,
+        arcs: list[dict] | None = None,
     ) -> str:
         pass
 
@@ -361,7 +606,7 @@ previous_context = strategy.build_previous_context(
 )
 ```
 
-FulltextContentStrategy 和 HybridContentStrategy 的 `build_previous_context` 签名同步加 `**kwargs`，忽略 arcs 参数。
+FulltextContentStrategy 和 HybridContentStrategy 的 `build_previous_context` 签名同步加 `arcs` 参数但忽略（`_arcs` 命名表示不使用），保持接口一致。类型检查器可正常工作，调用方传错参数会报错而非静默失败。
 
 ## 六、前端变更
 
@@ -419,6 +664,7 @@ interface Volume {
 interface Arc {
   id: number
   volumeId: number
+  volumeNumber: number  // 用于前端全局排序
   arcNumber: number
   title: string
   summary: string | null
