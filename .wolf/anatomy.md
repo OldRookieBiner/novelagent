@@ -1,14 +1,14 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-05-14T02:21:09.393Z
-> Files: 561 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-05-16T10:50:03.727Z
+> Files: 616 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ./
 
 - `.gitignore` — Git ignore rules (~92 tok)
 - `.tag_message` (~50 tok)
 - `AGENT.md` — CLAUDE.md (~2799 tok)
-- `CHANGELOG.md` — Changelog (~2561 tok)
+- `CHANGELOG.md` — Changelog (~3021 tok)
 - `CLAUDE.md` — OpenWolf (~3812 tok)
 - `docker-compose.yml` — Docker Compose services (~286 tok)
 - `mockup-step-nav.html` — v0.4.0 步骤导航栏 Mockup (~3350 tok)
@@ -196,6 +196,20 @@
 - `server.log` (~579 tok)
 - `server.pid` (~3 tok)
 
+## .superpowers/brainstorm/2037384-1778763524/content/
+
+- `model-config-ui-options.html` (~3201 tok)
+
+## .superpowers/brainstorm/2084710-1778764505/content/
+
+- `model-config-final.html` (~2334 tok)
+- `model-config-model-level.html` (~4662 tok)
+- `model-config-toggle.html` (~3510 tok)
+- `model-config-two-column.html` (~4289 tok)
+- `model-config-two-step.html` (~3830 tok)
+- `model-config-ui-options.html` (~3239 tok)
+- `model-config-unified.html` (~3809 tok)
+
 ## .superpowers/brainstorm/2102302-1777553686/content/
 
 - `progress-dialog.html` (~1965 tok)
@@ -207,6 +221,14 @@
 - `server-stopped` (~14 tok)
 - `server.log` (~192 tok)
 - `server.pid` (~3 tok)
+
+## .superpowers/brainstorm/2172547-1778907466/content/
+
+- `dropdown-menu.html` (~957 tok)
+
+## .superpowers/brainstorm/2226545-1778908553/content/
+
+- `dropdown-menu.html` (~957 tok)
 
 ## .superpowers/brainstorm/2541137-1775702174/content/
 
@@ -250,6 +272,15 @@
 ## .superpowers/brainstorm/2746062-1775740270/state/
 
 - `server-info` (~76 tok)
+
+## .superpowers/brainstorm/3644811-1778811970/content/
+
+- `save-button-options.html` (~2185 tok)
+
+## .superpowers/brainstorm/3662162-1778812329/content/
+
+- `auto-save-preview.html` (~1152 tok)
+- `save-button-options.html` (~2083 tok)
 
 ## .superpowers/brainstorm/445342-1777216771/content/
 
@@ -842,43 +873,70 @@
 ## backend/alembic/versions/
 
 - `50019c738b72_add_llm_config_to_workflow_state.py` — add_llm_config_to_workflow_state (~237 tok)
+- `e0b17884e4b3_add_chapter_outline_fields.py` — add_chapter_outline_fields (~277 tok)
 
 ## backend/app/agents/
 
 - `constants.py` — Agent 共享常量 (~233 tok)
-- `context_strategy.py` — 上下文策略 — 管理章节生成时的前文上下文构建方式 (~566 tok)
+- `context_strategy.py` — 上下文策略 — 管理章节生成时的前文上下文构建方式 (~1236 tok)
 - `prompts.py` — Prompt templates for the agent - v0.6.5 优化版 (~4612 tok)
-- `state.py` — LangGraph agent state definitions (~1232 tok)
+- `sse_events.py` — 统一的 SSE 事件格式化工具 (~512 tok)
+- `state.py` — LangGraph agent state definitions (~1247 tok)
 
 ## backend/app/agents/nodes/
 
-- `chapter_generation.py` — Chapter generation nodes (~4223 tok)
+- `chapter_generation.py` — Chapter generation nodes (~4293 tok)
 - `character_generation.py` — 角色生成节点 - 从大纲提取角色并写入数据库 (~2345 tok)
 - `outline_generation.py` — 大纲生成节点 (~6747 tok)
 - `relation_generation.py` — 关系生成节点 - AI 基于角色生成关系网络 (~2490 tok)
-- `review.py` — 章节审核节点 (~2026 tok)
-- `rewrite.py` — 章节重写节点 (~1828 tok)
-- `utils.py` — 节点共享工具函数 (~2223 tok)
+- `review.py` — 章节审核节点 (~2538 tok)
+- `rewrite.py` — 章节重写节点 (~1911 tok)
+- `utils.py` — 节点共享工具函数 (~2372 tok)
 
 ## backend/app/api/
 
-- `chapters.py` — Chapters API routes (~8400 tok)
+- `chapters.py` — Chapters API routes (~10753 tok)
+- `model_configs.py` — 模型配置 API 路由 (~4453 tok)
 - `outline.py` — Outline API routes (~3875 tok)
 - `system_prompts.py` — System prompts API routes (~1256 tok)
-- `workflow.py` — Workflow API routes for LangGraph integration (~8818 tok)
+- `workflow.py` — Workflow API routes for LangGraph integration (~9550 tok)
 
 ## backend/app/models/
 
+- `outline.py` — Outline models (~830 tok)
 - `workflow_state.py` — WorkflowState model for storing workflow state (~597 tok)
+
+## backend/app/schemas/
+
+- `chapter.py` — Chapter schemas (~600 tok)
+- `model_config.py` — 模型配置 Schemas (~809 tok)
+
+## backend/app/services/
+
+- `llm.py` — LLM service for interacting with AI models (~2467 tok)
+- `model_providers.py` — 预设模型提供商配置 (~582 tok)
+- `prompt_loader.py` — Prompt loader service with in-memory cache (~494 tok)
+
+## backend/app/utils/
+
+- `workflow_persistence.py` — 工作流节点输出持久化工具 (~2477 tok)
 
 ## backend/tests/
 
 - `test_agents.py` — Tests for Agent node functions (~2057 tok)
 - `test_chapter_outlines_fix.py` — backend/tests/test_chapter_outlines_fix.py (~2441 tok)
 - `test_constants.py` — Agent 常量测试 (~167 tok)
-- `test_context_strategy.py` — 上下文策略测试 (~706 tok)
-- `test_prompt_loader.py` — 测试 prompt loader 的有效性检查逻辑 (~534 tok)
-- `test_review.py` — Tests for chapter review node (~2435 tok)
+- `test_context_strategy.py` — 上下文策略测试 — Fulltext + Hybrid + get_context_strategy (~1548 tok)
+- `test_fetch_models_api_key.py` — 测试 fetch-models 端点的 config_id 和 api_key 校验逻辑 (~1379 tok)
+- `test_llm_choices_guard.py` — 回归测试：LLM chat_stream/chat 的 choices 空列表 IndexError 防护 (~1291 tok)
+- `test_llm_from_config_params.py` — 测试 get_llm_service_from_config 从 ModelItem 读取 temperature/reasoning_effort (~1190 tok)
+- `test_llm_service_params.py` — 测试 LLMService temperature 和 reasoning_effort 参数透传 (~1585 tok)
+- `test_model_config_health_all.py` — 测试健康检查并发测试所有模型 (~385 tok)
+- `test_nodes_utils.py` — 节点共享工具函数的单元测试 (~6378 tok)
+- `test_prompt_loader.py` — 测试 prompt loader 的有效性检查逻辑 (~957 tok)
+- `test_review_endpoint.py` — 审核端点 SSE 事件格式测试 (~553 tok)
+- `test_review.py` — Tests for chapter review node (~2812 tok)
+- `test_rewrite_endpoint.py` — 重写端点 SSE 事件格式与业务逻辑测试 (~5827 tok)
 - `test_system_prompts.py` — Tests for system prompts API (~1006 tok)
 
 ## docs/superpowers/plans/
@@ -889,6 +947,11 @@
 - `2026-05-12-workbench-state-persistence.md` — 工作台状态持久化优化 实现计划 (~3451 tok)
 - `2026-05-13-context-passing-optimization.md` — 上下文传递机制优化 Implementation Plan (~5585 tok)
 - `2026-05-13-writing-panel-fixes.md` — 章节正文生成状态持久化与校验优化 实现计划 (~5008 tok)
+- `2026-05-14-model-config-optimization.md` — 模型配置页面优化 Implementation Plan (~7272 tok)
+- `2026-05-14-review-rewrite-fix.md` — 审核流程三项修复 Implementation Plan (~9256 tok)
+- `2026-05-15-context-data-integrity-optimization.md` — 上下文传递数据完整性与策略优化 Implementation Plan (~9116 tok)
+- `2026-05-15-model-config-fixes.md` — 模型配置三项修复 Implementation Plan (~7936 tok)
+- `2026-05-16-nav-writer-platforms.md` — 导航栏创作平台快捷链接 Implementation Plan (~1335 tok)
 
 ## docs/superpowers/specs/
 
@@ -898,26 +961,60 @@
 - `2026-05-12-workbench-state-persistence-design.md` — 工作台状态持久化优化设计 (~1057 tok)
 - `2026-05-13-context-passing-optimization-design.md` — 上下文传递机制优化设计 (~932 tok)
 - `2026-05-13-writing-panel-fixes-design.md` — 章节正文生成状态持久化与校验优化设计 (~2158 tok)
+- `2026-05-14-model-config-optimization-design.md` — 模型配置页面优化设计文档 (~2393 tok)
+- `2026-05-14-review-rewrite-fix-design.md` — 审核流程三项修复 设计文档 (~2029 tok)
+- `2026-05-15-context-data-integrity-design.md` — 上下文传递数据完整性与策略优化设计 (~3479 tok)
+- `2026-05-15-model-config-fixes-design.md` — 模型配置三项修复设计文档 (~1597 tok)
+- `2026-05-16-long-novel-support-design.md` — 长篇小说支持设计文档 (~6822 tok)
+- `2026-05-16-nav-writer-platforms-design.md` — 导航栏创作平台快捷链接设计 (~184 tok)
+
+## frontend/
+
+- `tailwind.config.js` (~387 tok)
+
+## frontend/src/components/layout/
+
+- `Header.tsx` — frontend/src/components/layout/Header.tsx (~749 tok)
+
+## frontend/src/components/settings/
+
+- `FetchModelsDialog.tsx` — FetchModelsDialog — renders modal (~1812 tok)
+- `ModelCard.tsx` — 思考强度选项 (~975 tok)
+- `ModelConfigDetail.tsx` — 模型配置详情 Props (~4078 tok)
+- `ModelConfigPanel.tsx` — ModelConfigPanel (~700 tok)
+- `ModelConfigSidebar.tsx` — 模型配置侧边栏 Props (~1084 tok)
+
+## frontend/src/components/settings/hooks/
+
+- `useSettings.ts` — Exports useSettings (~2690 tok)
+
+## frontend/src/components/ui/
+
+- `dropdown-menu.tsx` — DropdownMenu (~2085 tok)
+- `slider.tsx` — 滑块组件，基于 Radix UI Slider 封装 (~350 tok)
+- `switch.tsx` — 开关组件，基于 Radix UI Switch 封装 (~364 tok)
 
 ## frontend/src/components/workbench/creation/
 
-- `AIAssistantPanel.tsx` — frontend/src/components/workbench/creation/AIAssistantPanel.tsx (~2866 tok)
+- `AIAssistantPanel.tsx` — frontend/src/components/workbench/creation/AIAssistantPanel.tsx (~3639 tok)
 - `ChapterOutlinePanel.tsx` — frontend/src/components/workbench/creation/ChapterOutlinePanel.tsx (~6427 tok)
-- `WritingPanel.tsx` — frontend/src/components/workbench/creation/WritingPanel.tsx (~6003 tok)
+- `WritingPanel.tsx` — frontend/src/components/workbench/creation/WritingPanel.tsx (~6696 tok)
 
 ## frontend/src/components/workbench/planning/
 
-- `InspirationPanel.tsx` — 扁平化后的模型选项 (~13650 tok)
+- `InspirationPanel.tsx` — 扁平化后的模型选项 (~13488 tok)
 - `OutlineProgressDialog.tsx` — 可选的模型配置 ID (~2659 tok)
 
 ## frontend/src/lib/
 
+- `api.ts` — API client for NovelAgent frontend (~4332 tok)
 - `inspiration.ts` — 已废弃：保留向后兼容 (~4952 tok)
 - `workflowApi.ts` — Workflow API Client - 工作流 API 客户端 (~3297 tok)
 
 ## frontend/src/pages/
 
 - `ProjectWorkbench.tsx` — frontend/src/pages/ProjectWorkbench.tsx (~639 tok)
+- `Settings.tsx` — SETTINGS_NAV (~1675 tok)
 
 ## frontend/src/stores/
 
@@ -925,4 +1022,4 @@
 
 ## frontend/src/types/
 
-- `index.ts` — TypeScript type definitions for NovelAgent frontend (~2548 tok)
+- `index.ts` — TypeScript type definitions for NovelAgent frontend (~2841 tok)
