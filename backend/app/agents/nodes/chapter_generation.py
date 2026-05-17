@@ -176,7 +176,8 @@ async def generate_single_chapter_outline(
     state: NovelState,
     chapter_number: int,
     llm: LLMService,
-    previous_chapters: list[dict] = None
+    previous_chapters: list[dict] = None,
+    arc_info: str = "",
 ) -> dict:
     """Generate a single chapter outline"""
 
@@ -241,6 +242,10 @@ async def generate_single_chapter_outline(
         min_words=min_words,
     )
 
+    # 长篇模式：追加弧归属信息
+    if arc_info:
+        prompt += f"\n\n{arc_info}"
+
     response = ""
     async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
         response += chunk
@@ -257,13 +262,51 @@ async def generate_chapter_outlines_stream(
     chapter_count = state.get("chapter_count", 10)
     generated_chapters = []
 
+    # 长篇模式：构建弧归属分配表
+    arc_assignments = []  # [(start_chapter, end_chapter, volume_number, arc_number, arc_title, arc_summary)]
+    arcs = state.get("arcs", [])
+    if state.get("novel_length") == "long" and arcs:
+        sorted_arcs = sorted(arcs, key=lambda a: (a.get("volume_number", 1), a.get("arc_number", 0)))
+        cumulative = 0
+        for arc in sorted_arcs:
+            start = cumulative + 1
+            end = cumulative + arc.get("chapter_count", 0)
+            arc_assignments.append((
+                start, end,
+                arc.get("volume_number", 1),
+                arc.get("arc_number", 0),
+                arc.get("title", ""),
+                arc.get("summary", ""),
+            ))
+            cumulative = end
+
     for chapter_num in range(1, chapter_count + 1):
+        # 构建弧归属信息和提示
+        arc_info = ""
+        for start, end, vol_num, arc_num, arc_title, arc_summary in arc_assignments:
+            if start <= chapter_num <= end:
+                pos_in_arc = chapter_num - start + 1
+                parts = [f"当前弧：第{arc_num}弧《{arc_title}》，本章是本弧第{pos_in_arc}章"]
+                if arc_summary:
+                    parts.append(f"弧概要：{arc_summary}")
+                arc_info = "\n".join(parts)
+                break
+
         chapter_outline = await generate_single_chapter_outline(
             state,
             chapter_num,
             llm,
-            generated_chapters
+            generated_chapters,
+            arc_info=arc_info,
         )
+
+        # 长篇模式：在章节大纲中记录弧归属
+        for start, end, vol_num, arc_num, _, _ in arc_assignments:
+            if start <= chapter_num <= end:
+                chapter_outline["volume_number"] = vol_num
+                chapter_outline["arc_number"] = arc_num
+                break
+
         generated_chapters.append(chapter_outline)
 
         # Yield progress event
@@ -290,13 +333,51 @@ async def generate_chapter_outlines_node(state: NovelState, llm: LLMService) -> 
 
     generated_chapters = []
 
+    # 长篇模式：构建弧归属分配表
+    arc_assignments = []
+    arcs = state.get("arcs", [])
+    if state.get("novel_length") == "long" and arcs:
+        sorted_arcs = sorted(arcs, key=lambda a: (a.get("volume_number", 1), a.get("arc_number", 0)))
+        cumulative = 0
+        for arc in sorted_arcs:
+            start = cumulative + 1
+            end = cumulative + arc.get("chapter_count", 0)
+            arc_assignments.append((
+                start, end,
+                arc.get("volume_number", 1),
+                arc.get("arc_number", 0),
+                arc.get("title", ""),
+                arc.get("summary", ""),
+            ))
+            cumulative = end
+
     for chapter_num in range(1, chapter_count + 1):
+        # 构建弧归属信息
+        arc_info = ""
+        for start, end, vol_num, arc_num, arc_title, arc_summary in arc_assignments:
+            if start <= chapter_num <= end:
+                pos_in_arc = chapter_num - start + 1
+                parts = [f"当前弧：第{arc_num}弧《{arc_title}》，本章是本弧第{pos_in_arc}章"]
+                if arc_summary:
+                    parts.append(f"弧概要：{arc_summary}")
+                arc_info = "\n".join(parts)
+                break
+
         chapter_outline = await generate_single_chapter_outline(
             state,
             chapter_num,
             llm,
-            generated_chapters
+            generated_chapters,
+            arc_info=arc_info,
         )
+
+        # 长篇模式：在章节大纲中记录弧归属
+        for start, end, vol_num, arc_num, _, _ in arc_assignments:
+            if start <= chapter_num <= end:
+                chapter_outline["volume_number"] = vol_num
+                chapter_outline["arc_number"] = arc_num
+                break
+
         generated_chapters.append(chapter_outline)
 
     new_state: NovelState = {
