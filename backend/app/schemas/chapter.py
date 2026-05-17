@@ -35,6 +35,7 @@ class ChapterOutlineResponse(ChapterOutlineBase):
     id: int
     project_id: int
     chapter_number: int
+    arc_id: Optional[int] = None
     confirmed: bool
     created_at: datetime
     has_content: bool = False
@@ -54,6 +55,7 @@ class ChapterResponse(BaseModel):
     word_count: int
     review_passed: bool
     review_feedback: Optional[str] = None
+    summary: Optional[str] = None
     # v0.6.1 审核增强字段
     review_result: Optional[dict] = None
     rewrite_count: int = 0

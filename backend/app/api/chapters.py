@@ -91,6 +91,7 @@ async def list_chapter_outlines(
             "id": co.id,
             "project_id": co.project_id,
             "chapter_number": co.chapter_number,
+            "arc_id": co.arc_id,
             "title": co.title,
             "scene": co.scene,
             "characters": co.characters,
@@ -157,6 +158,21 @@ async def _stream_chapter_outlines_sse(
                     created_count = 0
 
                     for co_data in chapter_outlines:
+                        # 查询 arc_id（长篇时通过 volume_number + arc_number 查找）
+                        arc_id = None
+                        vol_num = co_data.get("volume_number")
+                        arc_num = co_data.get("arc_number")
+                        if vol_num and arc_num:
+                            from app.models.volume import Volume as VolumeModel
+                            from app.models.arc import Arc as ArcModel
+                            arc_record = save_db.query(ArcModel).join(VolumeModel).filter(
+                                VolumeModel.project_id == project_id,
+                                VolumeModel.volume_number == vol_num,
+                                ArcModel.arc_number == arc_num,
+                            ).first()
+                            if arc_record:
+                                arc_id = arc_record.id
+
                         chapter_outline = ChapterOutline(
                             project_id=project_id,
                             chapter_number=co_data.get("chapter_number", 1),
@@ -170,6 +186,7 @@ async def _stream_chapter_outlines_sse(
                             transition=co_data.get("transition"),
                             ending=co_data.get("ending"),
                             target_words=co_data.get("target_words", 3000),
+                            arc_id=arc_id,
                             confirmed=False
                         )
                         save_db.add(chapter_outline)
@@ -891,6 +908,34 @@ async def review_chapter(
                 ch.review_feedback = review_result.get("raw_response")
                 ch.review_result = review_result
                 save_db.commit()
+
+            # 长篇：审核通过后自动生成摘要
+            if ch and ch.review_passed:
+                novel_length = initial_state.get("novel_length", "short")
+                if novel_length == "long":
+                    try:
+                        from app.agents.nodes.chapter_summary import build_summary_prompt
+                        from app.agents.prompts import DEFAULT_PROMPTS
+
+                        yield f"event: node_start\ndata: {json.dumps({'node': 'chapter_summary_node'})}\n\n"
+
+                        summary_prompt = build_summary_prompt(
+                            chapter.content,
+                            initial_state.get("_prompts", DEFAULT_PROMPTS)
+                        )
+                        summary_messages = [{"role": "user", "content": summary_prompt}]
+                        summary_text = ""
+                        async for chunk in llm.chat_stream(summary_messages):
+                            summary_text += chunk
+                            yield f"event: chunk\ndata: {json.dumps({'content': chunk})}\n\n"
+
+                        # 写入 DB（使用审核端点已有的独立 Session）
+                        ch.summary = summary_text.strip()
+                        save_db.commit()
+
+                        yield f"event: node_done\ndata: {json.dumps({'node': 'chapter_summary_node'})}\n\n"
+                    except Exception as e:
+                        logger.warning(f"Failed to generate summary: {e}")
 
             # 发送完成事件
             result_data = {
