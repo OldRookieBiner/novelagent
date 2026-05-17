@@ -28,6 +28,25 @@ def replace_or_append_chapters(
     return result
 
 
+def merge_chapter_summaries(
+    existing: list[dict], new_items: list[dict]
+) -> list[dict]:
+    """摘要 reducer：替换同章节号的摘要或追加新摘要"""
+    result = list(existing)
+    for new_item in new_items:
+        chapter_num = new_item.get("chapter_number")
+        existing_idx = None
+        for i, s in enumerate(result):
+            if s.get("chapter_number") == chapter_num:
+                existing_idx = i
+                break
+        if existing_idx is not None:
+            result[existing_idx] = new_item
+        else:
+            result.append(new_item)
+    return result
+
+
 class CollectedInfo(TypedDict, total=False):
     """用户收集的信息（v0.5.0 灵感数据，v0.7.x 扩展）"""
 
@@ -91,6 +110,13 @@ class NovelState(TypedDict):
     # ========== 小说规格 ==========
     novel_length: str  # short | medium | long
 
+    # ========== 弧/卷结构（长篇）==========
+    volumes: list[dict]  # [{id, volume_number, title, summary}]
+    arcs: list[dict]  # [{id, volume_id, volume_number, arc_number, title, summary, chapter_count}]
+    chapter_summaries: Annotated[
+        list[dict], merge_chapter_summaries
+    ]  # [{chapter_number, summary}]
+
     # ========== 章节大纲 ==========
     chapter_count: int
     chapter_outlines: list[dict]  # [{chapter_number, title, scene, ...}]
@@ -113,7 +139,7 @@ class NovelState(TypedDict):
     waiting_for_confirmation: bool
     confirmation_type: Optional[
         str
-    ]  # outline | characters | relations | chapter_outlines | review_failed
+    ]  # outline | characters | relations | chapter_outlines | review_failed | volume_arc
 
     # ========== LLM 服务 ==========
     llm_config_id: Optional[int]  # 使用的模型配置 ID
@@ -128,6 +154,7 @@ STAGE_INSPIRATION = "inspiration"
 STAGE_OUTLINE = "outline"
 STAGE_CHARACTERS = "characters"  # v0.8.0: 人物设定
 STAGE_RELATIONS = "relations"  # v0.8.0: 人物关系
+STAGE_VOLUME_ARC = "volume_arc"  # 长篇：弧/卷规划阶段
 STAGE_CHAPTER_OUTLINES = "chapter_outlines"
 STAGE_WRITING = "writing"
 STAGE_REVIEW = "review"
