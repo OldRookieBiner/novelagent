@@ -1,19 +1,19 @@
 // frontend/src/components/workbench/creation/ChapterOutlinePanel.tsx
 
 import { useState, useEffect, useCallback } from 'react'
-import { Save, Sparkles, Check, X, ChevronLeft, ChevronRight, FileText, RotateCcw } from 'lucide-react'
+import { Save, Sparkles, Check, X, ChevronLeft, ChevronRight, ChevronDown, FileText, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
-import { chapterOutlinesApi } from '@/lib/api'
+import { chapterOutlinesApi, volumesApi, outlineApi, chaptersApi } from '@/lib/api'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { workflowApi } from '@/lib/workflowApi'
 import { toast } from 'sonner'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
 import { useWorkflowStore } from '@/stores/workflowStore'
 import { useShallow } from 'zustand/react/shallow'
-import type { ChapterOutline } from '@/types'
+import type { ChapterOutline, Volume, Arc } from '@/types'
 
 interface ChapterOutlinePanelProps
 {
@@ -25,6 +25,53 @@ function getChapterStatusIcon(chapter: ChapterOutline): string
   if (chapter.has_content) return '📝'
   if (chapter.confirmed) return '✅'
   return ''
+}
+
+// 卷折叠行
+function VolumeRow(
+  { volume, expanded, onToggle }:
+  {
+    volume: Volume
+    expanded: boolean
+    onToggle: () => void
+  }
+)
+{
+  return (
+    <div
+      className="flex items-center gap-1.5 px-2 py-2 bg-indigo-50 hover:bg-indigo-100 cursor-pointer select-none border-b border-indigo-100"
+      onClick={onToggle}
+    >
+      {expanded ? <ChevronDown className="h-3.5 w-3.5 text-indigo-600" /> : <ChevronRight className="h-3.5 w-3.5 text-indigo-600" />}
+      <span className="text-xs font-medium text-indigo-800 truncate">
+        卷{volume.volume_number}：{volume.title || '未命名'}
+      </span>
+    </div>
+  )
+}
+
+// 弧折叠行
+function ArcRow(
+  { arc, expanded, onToggle }:
+  {
+    arc: Arc
+    expanded: boolean
+    onToggle: () => void
+  }
+)
+{
+  return (
+    <div
+      className="flex items-center gap-1.5 pl-5 pr-2 py-1.5 bg-blue-50 hover:bg-blue-100 cursor-pointer select-none border-b border-blue-100"
+      onClick={onToggle}
+    >
+      {expanded ? <ChevronDown className="h-3 w-3 text-blue-600" /> : <ChevronRight className="h-3 w-3 text-blue-600" />}
+      <span className="text-[11px] font-medium text-blue-800 truncate">
+        弧{arc.arc_number}：{arc.title || '未命名'}
+      </span>
+      <span className="text-[10px] text-blue-400 flex-shrink-0">({arc.chapter_count}章)</span>
+    </div>
+  )
 }
 
 export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
@@ -39,6 +86,13 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
   const [saving, setSaving] = useState(false)
   const [showReplanDialog, setShowReplanDialog] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
+  const [chapterSummary, setChapterSummary] = useState<string | null>(null)
+
+  // 长篇模式：卷/弧三级折叠树
+  const [volumes, setVolumes] = useState<Volume[]>([])
+  const [expandedVolumes, setExpandedVolumes] = useState<Set<number>>(new Set())
+  const [expandedArcs, setExpandedArcs] = useState<Set<number>>(new Set())
+  const [novelLength, setNovelLength] = useState<'short' | 'medium' | 'long'>('short')
 
   // 从 workflowStore 读取生成相关状态（使用 useShallow 避免不必要的重渲染）
   const {
@@ -63,6 +117,70 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
     clearChapterOutlineGenerationState: s.clearChapterOutlineGenerationState,
   })))
   const { selectedModelKey } = useWorkbenchStore()
+
+  // 加载篇幅类型和卷/弧数据
+  useEffect(() =>
+  {
+    const loadMeta = async () =>
+    {
+      try
+      {
+        const outline = await outlineApi.get(projectId)
+        const nl = (outline.collected_info as Record<string, unknown>)?.novelLength
+        if (nl === 'short' || nl === 'medium' || nl === 'long')
+        {
+          setNovelLength(nl)
+        }
+      }
+      catch
+      {
+        // outline 不存在（新项目），使用默认 short
+      }
+    }
+    loadMeta()
+  }, [projectId])
+
+  useEffect(() =>
+  {
+    if (novelLength === 'long')
+    {
+      volumesApi.list(projectId).then(setVolumes).catch(console.error)
+    }
+  }, [projectId, novelLength])
+
+  const toggleVolume = (volumeId: number) =>
+  {
+    setExpandedVolumes(prev =>
+    {
+      const next = new Set(prev)
+      if (next.has(volumeId)) next.delete(volumeId)
+      else next.add(volumeId)
+      return next
+    })
+  }
+
+  const toggleArc = (arcId: number) =>
+  {
+    setExpandedArcs(prev =>
+    {
+      const next = new Set(prev)
+      if (next.has(arcId)) next.delete(arcId)
+      else next.add(arcId)
+      return next
+    })
+  }
+
+  // 获取属于指定弧的章节
+  const getChaptersForArc = (arc: Arc): ChapterOutline[] =>
+  {
+    return chapters.filter(c => c.arc_id === arc.id)
+  }
+
+  // 获取不属于任何弧的章节（非长篇或未分配弧的情况）
+  const getUnassignedChapters = (): ChapterOutline[] =>
+  {
+    return chapters.filter(c => c.arc_id === null)
+  }
 
   useEffect(() =>
   {
@@ -104,8 +222,20 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
       setEditingScene(selectedChapter.scene || '')
       setEditingPlot(selectedChapter.plot || '')
       setEditingTargetWords(selectedChapter.target_words || 3000)
+
+      // 长篇模式：加载章节摘要
+      if (novelLength === 'long' && selectedChapter.has_content)
+      {
+        chaptersApi.get(projectId, selectedChapter.chapter_number)
+          .then(ch => setChapterSummary(ch.summary ?? null))
+          .catch(() => setChapterSummary(null))
+      }
+      else
+      {
+        setChapterSummary(null)
+      }
     }
-  }, [selectedChapter])
+  }, [selectedChapter, projectId, novelLength])
 
   const handleSave = useCallback(async () =>
   {
@@ -216,6 +346,7 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
               id: tempId,
               project_id: projectId,
               chapter_number: chapter.chapter_number,
+              arc_id: null,
               title: chapter.title || '',
               scene: chapter.scene || '',
               characters: chapter.characters || '',
@@ -251,6 +382,11 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
             {
               const data = await chapterOutlinesApi.list(projectId)
               setChapters(data)
+              // 长篇模式：同时刷新卷/弧数据
+              if (novelLength === 'long')
+              {
+                volumesApi.list(projectId).then(setVolumes).catch(console.error)
+              }
               toast.success(`已生成 ${total} 个章节大纲`)
             }
             catch (err)
@@ -313,6 +449,7 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
               id: Date.now() + chapter.chapter_number,
               project_id: projectId,
               chapter_number: chapter.chapter_number,
+              arc_id: null,
               title: chapter.title || '',
               scene: chapter.scene || '',
               characters: chapter.characters || '',
@@ -345,6 +482,11 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
             {
               const refreshedData = await chapterOutlinesApi.list(projectId)
               setChapters(refreshedData)
+              // 长篇模式：同时刷新卷/弧数据
+              if (novelLength === 'long')
+              {
+                volumesApi.list(projectId).then(setVolumes).catch(console.error)
+              }
               toast.success(`已重新生成 ${data.total} 个章节大纲`)
             }
             catch (err)
@@ -446,27 +588,95 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
           </div>
         )}
         <div className="flex-1 overflow-auto">
-          {chapters.map((chapter) =>
-          {
-            const icon = getChapterStatusIcon(chapter)
-            const isActive = selectedChapter?.id === chapter.id
-
-            return (
-              <button
-                key={chapter.id}
-                onClick={() => setSelectedChapter(chapter)}
-                className={`w-full px-2.5 py-2 text-left text-xs border-b hover:bg-muted/50 transition-colors ${
-                  isActive ? 'bg-primary/10 border-l-2 border-l-primary' : ''
-                }`}
-              >
-                <div className="flex items-center gap-1.5">
-                  <span className="text-muted-foreground text-[10px] min-w-[16px]">{chapter.chapter_number}.</span>
-                  <span className="truncate flex-1">{chapter.title || '未命名'}</span>
-                  {icon && <span className="text-[10px] flex-shrink-0">{icon}</span>}
+          {volumes.length > 0 ? (
+            // 长篇模式：三级折叠树（卷 > 弧 > 章节）
+            <div>
+              {volumes.map(volume => (
+                <div key={volume.id}>
+                  <VolumeRow
+                    volume={volume}
+                    expanded={expandedVolumes.has(volume.id)}
+                    onToggle={() => toggleVolume(volume.id)}
+                  />
+                  {expandedVolumes.has(volume.id) && volume.arcs?.map(arc => (
+                    <div key={arc.id}>
+                      <ArcRow
+                        arc={arc}
+                        expanded={expandedArcs.has(arc.id)}
+                        onToggle={() => toggleArc(arc.id)}
+                      />
+                      {expandedArcs.has(arc.id) && getChaptersForArc(arc).map(chapter =>
+                      {
+                        const icon = getChapterStatusIcon(chapter)
+                        const isActive = selectedChapter?.id === chapter.id
+                        return (
+                          <button
+                            key={chapter.id}
+                            onClick={() => setSelectedChapter(chapter)}
+                            className={`w-full pl-8 pr-2.5 py-1.5 text-left text-xs border-b hover:bg-muted/50 transition-colors ${
+                              isActive ? 'bg-primary/10 border-l-2 border-l-primary' : ''
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-muted-foreground text-[10px] min-w-[16px]">{chapter.chapter_number}.</span>
+                              <span className="truncate flex-1">{chapter.title || '未命名'}</span>
+                              {icon && <span className="text-[10px] flex-shrink-0">{icon}</span>}
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  ))}
                 </div>
-              </button>
-            )
-          })}
+              ))}
+              {/* 不属于任何弧的章节 */}
+              {getUnassignedChapters().map(chapter =>
+              {
+                const icon = getChapterStatusIcon(chapter)
+                const isActive = selectedChapter?.id === chapter.id
+                return (
+                  <button
+                    key={chapter.id}
+                    onClick={() => setSelectedChapter(chapter)}
+                    className={`w-full px-2.5 py-2 text-left text-xs border-b hover:bg-muted/50 transition-colors ${
+                      isActive ? 'bg-primary/10 border-l-2 border-l-primary' : ''
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-muted-foreground text-[10px] min-w-[16px]">{chapter.chapter_number}.</span>
+                      <span className="truncate flex-1">{chapter.title || '未命名'}</span>
+                      {icon && <span className="text-[10px] flex-shrink-0">{icon}</span>}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          ) : (
+            // 短/中篇模式：原有平铺列表
+            <div>
+              {chapters.map((chapter) =>
+              {
+                const icon = getChapterStatusIcon(chapter)
+                const isActive = selectedChapter?.id === chapter.id
+
+                return (
+                  <button
+                    key={chapter.id}
+                    onClick={() => setSelectedChapter(chapter)}
+                    className={`w-full px-2.5 py-2 text-left text-xs border-b hover:bg-muted/50 transition-colors ${
+                      isActive ? 'bg-primary/10 border-l-2 border-l-primary' : ''
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-muted-foreground text-[10px] min-w-[16px]">{chapter.chapter_number}.</span>
+                      <span className="truncate flex-1">{chapter.title || '未命名'}</span>
+                      {icon && <span className="text-[10px] flex-shrink-0">{icon}</span>}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
         {/* 一键确认 */}
         {unconfirmedCount > 0 && (
@@ -603,6 +813,14 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
                   <div className="p-2.5 bg-green-50 rounded-md border border-green-200 text-xs">
                     <p className="font-medium text-green-700">章节已确认</p>
                     <p className="text-green-600 mt-1">可以进行章节写作</p>
+                  </div>
+                )}
+
+                {/* 长篇模式：章节摘要 */}
+                {novelLength === 'long' && chapterSummary && (
+                  <div className="p-2.5 bg-purple-50 rounded-md border border-purple-200">
+                    <div className="text-xs font-medium text-purple-800 mb-1">章节摘要</div>
+                    <div className="text-xs text-purple-700 whitespace-pre-wrap leading-relaxed">{chapterSummary}</div>
                   </div>
                 )}
               </div>
