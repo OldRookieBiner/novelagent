@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 from app.models.outline import Outline, ChapterOutline
 from app.models.chapter import Chapter
 from app.models.character import Character, Relation
+from app.models.volume import Volume
+from app.models.arc import Arc
 from app.agents.nodes.review import check_review_passed
 from app.agents.nodes.character_generation import _map_role
 from app.agents.nodes.relation_generation import write_relations_to_db
@@ -65,6 +67,19 @@ def persist_chapter_outlines(output: dict, project_id: int, db: Session):
         return
 
     for co_data in chapter_outlines:
+        # 查询 arc_id（长篇时通过 volume_number + arc_number 查找）
+        arc_id = None
+        vol_num = co_data.get("volume_number")
+        arc_num = co_data.get("arc_number")
+        if vol_num and arc_num:
+            arc_record = db.query(Arc).join(Volume).filter(
+                Volume.project_id == project_id,
+                Volume.volume_number == vol_num,
+                Arc.arc_number == arc_num,
+            ).first()
+            if arc_record:
+                arc_id = arc_record.id
+
         chapter_outline = ChapterOutline(
             project_id=project_id,
             chapter_number=co_data.get("chapter_number", 1),
@@ -78,6 +93,7 @@ def persist_chapter_outlines(output: dict, project_id: int, db: Session):
             transition=co_data.get("transition"),
             ending=co_data.get("ending"),
             target_words=co_data.get("target_words", 3000),
+            arc_id=arc_id,
             confirmed=False,
         )
         db.add(chapter_outline)
@@ -250,13 +266,84 @@ def persist_rewrite_result(output: dict, project_id: int, db: Session):
     )
 
 
+def persist_volumes_arcs(output: dict, project_id: int, db: Session):
+    """持久化弧/卷规划节点的输出
+
+    清除旧数据后批量写入新数据。
+    CASCADE 自动删除关联 arcs，SET NULL 自动清除 chapter_outlines.arc_id。
+    """
+    volumes_data = output.get("volumes", [])
+    arcs_data = output.get("arcs", [])
+
+    # 清除旧数据
+    db.query(Volume).filter(Volume.project_id == project_id).delete()
+
+    # 写入卷
+    volume_id_map = {}  # volume_number → DB id 映射
+    for v_data in volumes_data:
+        volume = Volume(
+            project_id=project_id,
+            volume_number=v_data.get("volume_number", 1),
+            title=v_data.get("title", ""),
+            summary=v_data.get("summary"),
+        )
+        db.add(volume)
+        db.flush()
+        volume_id_map[v_data.get("volume_number", 1)] = volume.id
+
+    # 写入弧
+    for a_data in arcs_data:
+        vol_num = a_data.get("volume_number", 1)
+        arc = Arc(
+            volume_id=volume_id_map.get(vol_num),
+            arc_number=a_data.get("arc_number", 1),
+            title=a_data.get("title", ""),
+            summary=a_data.get("summary"),
+            chapter_count=a_data.get("chapter_count", 10),
+        )
+        db.add(arc)
+
+    logger.info(
+        f"persist_volumes_arcs: project {project_id}: "
+        f"created {len(volumes_data)} volumes, {len(arcs_data)} arcs"
+    )
+
+
+def persist_chapter_summary(output: dict, project_id: int, db: Session):
+    """持久化摘要节点的输出
+
+    从 chapter_summaries 字段读取摘要，写入 chapters.summary。
+    """
+    chapter_summaries = output.get("chapter_summaries", [])
+    for summary_data in chapter_summaries:
+        summary = summary_data.get("summary")
+        if not summary:
+            continue
+        chapter_num = summary_data.get("chapter_number")
+        if not chapter_num:
+            continue
+        chapter_outline = db.query(ChapterOutline).filter(
+            ChapterOutline.project_id == project_id,
+            ChapterOutline.chapter_number == chapter_num,
+        ).first()
+        if chapter_outline and chapter_outline.chapter:
+            chapter_outline.chapter.summary = summary
+
+    logger.info(
+        f"persist_chapter_summary: project {project_id}: "
+        f"updated {len(chapter_summaries)} summaries"
+    )
+
+
 # 节点名到持久化函数的映射
 NODE_PERSIST_MAP = {
     "outline_generation_node": persist_outline,
     "create_characters_from_outline_node": persist_character_generation,
     "generate_relations_node": persist_relation_generation,
+    "volume_arc_planning_node": persist_volumes_arcs,
     "chapter_outlines_node": persist_chapter_outlines,
     "generate_chapter_content_node": persist_chapter_content,
     "review_node": persist_review_result,
+    "chapter_summary_node": persist_chapter_summary,
     "rewrite_node": persist_rewrite_result,
 }
