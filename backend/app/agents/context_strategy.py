@@ -209,13 +209,11 @@ class SummaryContentStrategy(ContextStrategy):
         return sorted_arcs[-1] if sorted_arcs else None
 
     def _is_in_arc(self, chapter: dict, arc: dict, arcs: list[dict], chapter_outlines: list[dict] | None = None) -> bool:
-        """判断章节是否属于指定弧"""
-        # 精确匹配
-        if chapter_outlines:
-            for co in chapter_outlines:
-                if co.get("chapter_number") == chapter.get("chapter_number") and co.get("arc_id") == arc.get("id"):
-                    return True
-        # 回退：用 (volume_number, arc_number) 比较
+        """判断章节是否属于指定弧
+
+        通过 (volume_number, arc_number) 元组比较匹配，
+        因为 state 中的 arcs 是纯 dict（无 DB id），arc_id 匹配不可靠。
+        """
         actual_arc = self._find_arc_for_chapter(arcs, chapter.get("chapter_number", 0))
         if actual_arc is None:
             return False

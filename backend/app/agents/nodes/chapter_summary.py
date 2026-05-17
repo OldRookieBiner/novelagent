@@ -53,6 +53,9 @@ async def chapter_summary_node(state: NovelState) -> dict:
     节点内部直接持久化到 DB（与 outline_generation_node 模式一致），
     因为主工作流的 stream_workflow_events 不调用 NODE_PERSIST_MAP。
 
+    双路径说明：SSE 审核端点（chapters.py）也会为长篇小说生成摘要（用于 step_by_step 模式），
+    本节点处理主工作流 auto/hybrid 模式。两路径通过 DB 已有摘要检查避免重复 LLM 调用。
+
     Returns:
         更新 chapter_summaries（通过 reducer 合并）
     """
@@ -77,32 +80,32 @@ async def chapter_summary_node(state: NovelState) -> dict:
         logger.warning(f"chapter_summary_node: no content for chapter {target_chapter_num}")
         return {**state, "chapter_summaries": []}
 
-    # 检查是否已有摘要（避免与 SSE 审核端点的摘要生成重复调用 LLM）
+    # 单次 DB 操作：检查已有摘要 + 持久化新摘要
     project_id = state.get("project_id")
     if project_id:
         from app.database import SessionLocal
         from app.models.outline import ChapterOutline
 
-        check_db = SessionLocal()
+        db = SessionLocal()
         try:
-            existing_co = check_db.query(ChapterOutline).filter(
+            co = db.query(ChapterOutline).filter(
                 ChapterOutline.project_id == project_id,
                 ChapterOutline.chapter_number == target_chapter_num,
             ).first()
-            if existing_co and existing_co.chapter and existing_co.chapter.summary:
+
+            # 已有摘要则直接返回，避免重复 LLM 调用
+            if co and co.chapter and co.chapter.summary:
                 logger.info(f"chapter_summary_node: summary already exists for chapter {target_chapter_num}, skipping")
-                check_db.close()
                 return {
                     **state,
                     "chapter_summaries": [
-                        {"chapter_number": target_chapter_num, "summary": existing_co.chapter.summary}
+                        {"chapter_number": target_chapter_num, "summary": co.chapter.summary}
                     ],
                 }
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"chapter_summary_node: DB check failed: {e}")
         finally:
-            if check_db:
-                check_db.close()
+            db.close()
 
     # 获取 LLM
     llm = await get_llm_from_state_async(state)
@@ -123,8 +126,7 @@ async def chapter_summary_node(state: NovelState) -> dict:
         logger.warning(f"chapter_summary_node: empty summary for chapter {target_chapter_num}")
         return {**state, "chapter_summaries": []}
 
-    # 直接持久化到 DB（与 outline_generation_node 模式一致）
-    project_id = state.get("project_id")
+    # 持久化摘要到 DB（复用同一逻辑）
     if project_id:
         from app.database import SessionLocal
         from app.models.outline import ChapterOutline

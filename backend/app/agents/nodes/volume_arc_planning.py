@@ -140,12 +140,12 @@ async def volume_arc_planning_node(state: NovelState) -> dict:
     # 解析弧/卷结构
     volumes, arcs = parse_volume_arc_plan(response, chapter_count)
 
-    # 解析失败防护：空 arcs 时不设等待确认，让路由走 end
+    # 解析失败防护：空 arcs 时清理 volumes 避免残留脏数据，不设等待确认让路由走 end
     if not arcs:
         logger.error("volume_arc_planning_node: failed to parse arcs from LLM output")
         return {
             **state,
-            "volumes": volumes,
+            "volumes": [],
             "arcs": [],
             "stage": STAGE_VOLUME_ARC,
             "waiting_for_confirmation": False,

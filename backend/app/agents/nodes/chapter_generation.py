@@ -1,5 +1,6 @@
 """Chapter generation nodes"""
 
+import logging
 import re
 from typing import AsyncIterator
 
@@ -16,6 +17,8 @@ from app.agents.nodes.utils import (
     get_prompts_from_state,
     parse_words_per_chapter,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _clean_chapter_title(title: str) -> str:

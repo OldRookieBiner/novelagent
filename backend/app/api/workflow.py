@@ -763,10 +763,11 @@ async def confirm_workflow(
             for a in db_arcs_list
         ]
 
-        # 同步更新 WorkflowState.stage（避免 checkpoint 丢失时回退到旧阶段）
+        # 同步更新 WorkflowState.stage + checkpoint_state（保持一致性）
         from app.utils.workflow import get_or_create_workflow_state
         wf = get_or_create_workflow_state(db, project_id)
         wf.stage = "chapter_outlines"
+        checkpoint_state["stage"] = "chapter_outlines"
 
     # 提交所有数据库更改
     db.commit()
