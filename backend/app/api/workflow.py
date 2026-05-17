@@ -109,6 +109,8 @@ class WorkflowConfirmRequest(BaseModel):
     outline_title: Optional[str] = None
     outline_summary: Optional[str] = None
     chapter_outlines: Optional[list] = None
+    volumes: Optional[list] = None  # 用户修改后的卷数据
+    arcs: Optional[list] = None  # 用户修改后的弧数据
 
 
 class WorkflowReplanRequest(BaseModel):
@@ -167,6 +169,7 @@ def build_initial_state(
     chapter_outlines = [
         {
             "chapter_number": co.chapter_number,
+            "arc_id": co.arc_id,
             "title": co.title,
             "scene": co.scene,
             "characters": co.characters,
@@ -242,10 +245,64 @@ def build_initial_state(
         "relations": [],
         "evolution_plans": [],
         "evolution_records": [],
+
+        # 弧/卷结构（长篇）
+        "volumes": [],
+        "arcs": [],
+        "chapter_summaries": [],
+
+        # 小说篇幅（从 collected_info 读取，不依赖 DB 连接）
+        "novel_length": (outline.collected_info or {}).get("novelLength", "short"),
     }
 
     # 从数据库预加载已持久化的角色（带 id）
     if db is not None:
+        # 预加载弧/卷（从 DB 获取最新数据）
+        from app.models.volume import Volume as VolumeModel
+        from app.models.arc import Arc as ArcModel
+
+        db_volumes = db.query(VolumeModel).filter(
+            VolumeModel.project_id == project.id
+        ).order_by(VolumeModel.volume_number).all()
+
+        if db_volumes:
+            volume_id_to_num = {v.id: v.volume_number for v in db_volumes}
+            volume_ids = [v.id for v in db_volumes]
+
+            state["volumes"] = [
+                {"id": v.id, "volume_number": v.volume_number, "title": v.title, "summary": v.summary}
+                for v in db_volumes
+            ]
+
+            db_arcs = db.query(ArcModel).filter(
+                ArcModel.volume_id.in_(volume_ids)
+            ).order_by(ArcModel.volume_id, ArcModel.arc_number).all()
+
+            if db_arcs:
+                state["arcs"] = [
+                    {
+                        "id": a.id,
+                        "volume_id": a.volume_id,
+                        "volume_number": volume_id_to_num.get(a.volume_id, 1),
+                        "arc_number": a.arc_number,
+                        "title": a.title,
+                        "summary": a.summary,
+                        "chapter_count": a.chapter_count,
+                    }
+                    for a in db_arcs
+                ]
+
+        # 预加载章节摘要（从 chapters.summary 聚合）
+        chapter_summaries = []
+        for co in project.chapter_outlines:
+            if co.chapter and co.chapter.summary:
+                chapter_summaries.append({
+                    "chapter_number": co.chapter_number,
+                    "summary": co.chapter.summary,
+                })
+        if chapter_summaries:
+            state["chapter_summaries"] = chapter_summaries
+
         from app.models.character import Character, Relation
 
         db_characters = db.query(Character).filter(
@@ -366,6 +423,8 @@ def _build_prompts_dict(db: Session) -> dict[str, str | dict]:
         "outline_generation": get_system_prompt(db, "outline_generation"),
         "character_generation": get_system_prompt(db, "character_generation"),
         "relation_generation": get_system_prompt(db, "relation_generation"),
+        "volume_arc_generation": get_system_prompt(db, "volume_arc_generation"),
+        "chapter_summary_generation": get_system_prompt(db, "chapter_summary_generation"),
         "chapter_outline_generation": get_system_prompt(db, "chapter_outline_generation"),
         "chapter_content_generation": {
             "system": default_cc["system"] if isinstance(default_cc, dict) else default_cc,
@@ -658,6 +717,57 @@ async def confirm_workflow(
                 db.add(rel)
             logger.info(f"Persisted {len(relations_data)} relations to DB for project {project_id}")
 
+    # 同步更新弧/卷（volume_arc 确认）
+    if confirmation_type == "volume_arc":
+        from app.utils.workflow_persistence import persist_volumes_arcs
+        from app.models.volume import Volume as VolumeModel
+        from app.models.arc import Arc as ArcModel
+
+        volumes_data = request.volumes if request and request.volumes else checkpoint_state.get("volumes", [])
+        arcs_data = request.arcs if request and request.arcs else checkpoint_state.get("arcs", [])
+
+        # 更新 checkpoint_state
+        checkpoint_state["volumes"] = volumes_data
+        checkpoint_state["arcs"] = arcs_data
+
+        # 持久化到 DB
+        persist_volumes_arcs({"volumes": volumes_data, "arcs": arcs_data}, project_id, db)
+
+        # 同步更新 chapter_count
+        total_chapters = sum(a.get("chapter_count", 0) for a in arcs_data)
+        checkpoint_state["chapter_count"] = total_chapters
+        outline = db.query(Outline).filter(Outline.project_id == project_id).first()
+        if outline:
+            outline.chapter_count_suggested = total_chapters
+
+        # 从 DB 重新查询带 id 的 volumes/arcs 写回 checkpoint_state
+        db_volumes = db.query(VolumeModel).filter_by(project_id=project_id).order_by(VolumeModel.volume_number).all()
+        volume_id_to_num = {v.id: v.volume_number for v in db_volumes}
+        db_arcs_list = db.query(ArcModel).filter(
+            ArcModel.volume_id.in_([v.id for v in db_volumes])
+        ).order_by(ArcModel.volume_id, ArcModel.arc_number).all()
+        checkpoint_state["volumes"] = [
+            {"id": v.id, "volume_number": v.volume_number, "title": v.title, "summary": v.summary}
+            for v in db_volumes
+        ]
+        checkpoint_state["arcs"] = [
+            {
+                "id": a.id,
+                "volume_id": a.volume_id,
+                "volume_number": volume_id_to_num.get(a.volume_id, 1),
+                "arc_number": a.arc_number,
+                "title": a.title,
+                "summary": a.summary,
+                "chapter_count": a.chapter_count,
+            }
+            for a in db_arcs_list
+        ]
+
+        # 同步更新 WorkflowState.stage（避免 checkpoint 丢失时回退到旧阶段）
+        from app.utils.workflow import get_or_create_workflow_state
+        wf = get_or_create_workflow_state(db, project_id)
+        wf.stage = "chapter_outlines"
+
     # 提交所有数据库更改
     db.commit()
 
@@ -858,6 +968,10 @@ async def replan_workflow(
     # 先删关系（外键依赖人物），再删人物
     db.query(Relation).filter(Relation.project_id == project_id).delete()
     db.query(Character).filter(Character.project_id == project_id).delete()
+
+    # 5.5 删除旧的弧/卷
+    from app.models.volume import Volume as VolumeModel
+    db.query(VolumeModel).filter(VolumeModel.project_id == project_id).delete()
 
     # 6. 删除章节大纲（cascade 会自动删除关联的 Chapter）
     db.query(ChapterOutline).filter(ChapterOutline.project_id == project_id).delete()
