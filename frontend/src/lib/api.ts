@@ -566,3 +566,33 @@ export const workflowCleanupApi = {
     )
   },
 }
+
+export const volumesApi = {
+  list: async (projectId: number) => {
+    return request<Record<string, unknown>[]>(`/api/projects/${projectId}/volumes`)
+  },
+
+  updateVolume: async (projectId: number, volumeId: number, data: { title?: string; summary?: string }) => {
+    return request<Record<string, unknown>>(`/api/projects/${projectId}/volumes/${volumeId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+  },
+
+  updateArc: async (projectId: number, arcId: number, data: { title?: string; summary?: string }) => {
+    return request<Record<string, unknown>>(`/api/projects/${projectId}/arcs/${arcId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+  },
+
+  updateChapterSummary: async (projectId: number, chapterId: number, summary: string) => {
+    return request<void>(`/api/projects/${projectId}/chapters/${chapterId}/summary`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ summary }),
+    })
+  },
+}
