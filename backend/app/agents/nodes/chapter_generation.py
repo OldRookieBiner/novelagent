@@ -365,10 +365,22 @@ def _build_chapter_content_messages(
     target_words = info.get("targetWords", 100000)
     if isinstance(target_words, str):
         target_words = int(target_words)
-    # 优先使用用户选择的策略，否则根据目标字数自动选择
+    # 优先使用用户选择的策略
+    # 回退1：长篇自动选 summary 策略
     strategy_name = info.get("contextStrategy")
+    if not strategy_name and state.get("novel_length") == "long":
+        strategy_name = "summary"
+    # 回退2：长篇但无 arcs 数据时降级为 hybrid（避免 summary 策略在无 arcs 时丢失大量远章上下文）
+    if strategy_name == "summary" and not state.get("arcs"):
+        logger.warning("Summary strategy selected but no arcs data, falling back to hybrid")
+        strategy_name = "hybrid"
     strategy = get_context_strategy(target_words, strategy_name)
-    previous_context = strategy.build_previous_context(written_chapters, chapter_number, state.get("chapter_outlines", []))
+    previous_context = strategy.build_previous_context(
+        written_chapters, chapter_number,
+        chapter_outlines=state.get("chapter_outlines", []),
+        arcs=state.get("arcs", []),
+        chapter_summaries=state.get("chapter_summaries", []),
+    )
 
     # 获取 system/user 模板
     system_template, user_template = _get_chapter_content_prompts(state)

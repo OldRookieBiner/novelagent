@@ -3,6 +3,7 @@ import pytest
 from app.agents.context_strategy import (
     FulltextContentStrategy,
     HybridContentStrategy,
+    SummaryContentStrategy,
     get_context_strategy,
 )
 
@@ -143,3 +144,74 @@ class TestHybridContentStrategy:
         result = strategy.build_previous_context(chapters, 2, outlines)
         assert "风起" in result
         assert "不应该出现" not in result
+
+
+class TestSummaryContentStrategy:
+    """摘要策略测试"""
+
+    def setup_method(self):
+        self.strategy = SummaryContentStrategy(recent_count=3)
+
+    def test_first_chapter_returns_placeholder(self):
+        """第一章没有前文"""
+        result = self.strategy.build_previous_context(
+            written_chapters=[],
+            current_chapter=1,
+        )
+        assert "第一章" in result or "没有前文" in result
+
+    def test_previous_arcs_summaries(self):
+        """前面弧的概要应出现在上下文中"""
+        arcs = [
+            {"volume_number": 1, "arc_number": 1, "title": "初入江湖", "summary": "少年学艺", "chapter_count": 15},
+            {"volume_number": 1, "arc_number": 2, "title": "门派试炼", "summary": "参加比武", "chapter_count": 20},
+        ]
+        written = [{"chapter_number": i, "content": f"第{i}章内容", "title": f"第{i}章"} for i in range(1, 25)]
+        result = self.strategy.build_previous_context(
+            written_chapters=written,
+            current_chapter=25,
+            arcs=arcs,
+            chapter_summaries=[{"chapter_number": i, "summary": f"第{i}章摘要"} for i in range(1, 25)],
+        )
+        assert "前弧概要" in result
+        assert "初入江湖" in result
+
+    def test_current_arc_summaries(self):
+        """当前弧已写章节摘要应出现"""
+        arcs = [
+            {"volume_number": 1, "arc_number": 1, "title": "初入江湖", "summary": "少年学艺", "chapter_count": 10},
+        ]
+        written = [{"chapter_number": i, "content": f"第{i}章内容", "title": f"第{i}章"} for i in range(1, 7)]
+        chapter_summaries = [{"chapter_number": i, "summary": f"第{i}章摘要"} for i in range(1, 7)]
+        result = self.strategy.build_previous_context(
+            written_chapters=written,
+            current_chapter=7,
+            arcs=arcs,
+            chapter_summaries=chapter_summaries,
+        )
+        assert "当前弧摘要" in result
+
+    def test_recent_chapters_fulltext(self):
+        """近3章应取全文"""
+        arcs = [
+            {"volume_number": 1, "arc_number": 1, "title": "弧1", "summary": "概要", "chapter_count": 20},
+        ]
+        written = [{"chapter_number": i, "content": f"第{i}章内容", "title": f"第{i}章"} for i in range(1, 10)]
+        result = self.strategy.build_previous_context(
+            written_chapters=written,
+            current_chapter=10,
+            arcs=arcs,
+            chapter_summaries=[{"chapter_number": i, "summary": f"第{i}章摘要"} for i in range(1, 10)],
+        )
+        assert "近期全文" in result
+        assert "第9章内容" in result
+
+    def test_no_arcs_fallback_to_placeholder(self):
+        """无弧数据时不应崩溃"""
+        written = [{"chapter_number": 1, "content": "内容", "title": "第1章"}]
+        result = self.strategy.build_previous_context(
+            written_chapters=written,
+            current_chapter=2,
+            arcs=[],
+        )
+        assert isinstance(result, str)
