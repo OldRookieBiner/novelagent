@@ -124,6 +124,7 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
   const [customGoldFinger, setCustomGoldFinger] = useState('')
   const [stylePreference, setStylePreference] = useState('')
   const [advancedExpanded, setAdvancedExpanded] = useState(false)
+  const [novelLength, setNovelLength] = useState<'short' | 'medium' | 'long'>('short')
 
   // 模板相关状态
   const [template, setTemplate] = useState('')
@@ -166,6 +167,7 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
     novelType,
     targetWords,
     contextStrategy,
+    novelLength,
     coreTheme,
     worldSetting,
     customWorldSetting,
@@ -183,7 +185,7 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
     narrative,
     goldFinger,
     customGoldFinger,
-  }), [novelType, targetWords, contextStrategy, coreTheme, worldSetting, customWorldSetting, era, genre, customGenre, maleLead, customMaleLead, femaleLead, customFemaleLead, stylePreference, targetReader, wordsPerChapter, customWordsPerChapter, narrative, goldFinger, customGoldFinger])
+  }), [novelType, targetWords, contextStrategy, novelLength, coreTheme, worldSetting, customWorldSetting, era, genre, customGenre, maleLead, customMaleLead, femaleLead, customFemaleLead, stylePreference, targetReader, wordsPerChapter, customWordsPerChapter, narrative, goldFinger, customGoldFinger])
 
   // 实时更新模板（用户未手动编辑时）
   useEffect(() =>
@@ -244,6 +246,8 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
         const tw = asNumber(source.targetWords)
         if (tw) setTargetWords(tw)
         if (asString(source.contextStrategy)) setContextStrategy(asString(source.contextStrategy))
+        const nl = asString(source.novelLength)
+        if (nl === 'short' || nl === 'medium' || nl === 'long') setNovelLength(nl)
         if (asString(source.wordsPerChapter)) setWordsPerChapter(asString(source.wordsPerChapter))
         const cwp = asNumber(source.customWordsPerChapter)
         if (cwp) setCustomWordsPerChapter(cwp)
@@ -427,6 +431,7 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
       if (novelType) collectedInfoData.novelType = novelType
       collectedInfoData.targetWords = targetWords
       collectedInfoData.contextStrategy = contextStrategy
+      if (novelLength) collectedInfoData.novelLength = novelLength
       if (coreTheme) collectedInfoData.coreTheme = coreTheme
       if (worldSetting)
       {
@@ -506,6 +511,7 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
       if (novelType) collectedInfoData.novelType = novelType
       collectedInfoData.targetWords = targetWords
       collectedInfoData.contextStrategy = contextStrategy
+      if (novelLength) collectedInfoData.novelLength = novelLength
       if (coreTheme) collectedInfoData.coreTheme = coreTheme
       if (worldSetting)
       {
@@ -670,6 +676,41 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
                     ))}
                   </div>
                   {errors.novelType && <p className="text-red-500 text-xs mt-2">{errors.novelType}</p>}
+                </div>
+
+                {/* 篇幅类型 */}
+                <div>
+                  <label className="text-sm text-muted-foreground mb-2 block">
+                    篇幅类型
+                  </label>
+                  <div className="grid grid-cols-3 gap-2 max-w-lg">
+                    {[
+                      { value: 'short' as const, label: '短篇', desc: '<5万字' },
+                      { value: 'medium' as const, label: '中篇', desc: '5-20万字' },
+                      { value: 'long' as const, label: '长篇', desc: '20万字+' },
+                    ].map((opt) => (
+                      <div
+                        key={opt.value}
+                        onClick={() =>
+                        {
+                          setNovelLength(opt.value)
+                          setTargetWords(opt.value === 'short' ? 30000 : opt.value === 'medium' ? 100000 : 250000)
+                          setContextStrategy(opt.value === 'short' ? 'fulltext' : opt.value === 'medium' ? 'hybrid' : 'summary')
+                        }}
+                        className={`border-2 rounded-lg p-2 text-center cursor-pointer transition-all ${
+                          novelLength === opt.value
+                            ? 'border-primary bg-primary/5 shadow-sm'
+                            : 'border-gray-200 hover:border-primary/50'
+                        }`}
+                      >
+                        <div className="text-xs font-medium">{opt.label}</div>
+                        <div className="text-xs text-muted-foreground">{opt.desc}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    选择后将联动推荐上下文策略和目标字数，仍可手动调整
+                  </p>
                 </div>
 
                 {/* 年代 */}

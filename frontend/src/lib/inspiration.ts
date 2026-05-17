@@ -31,6 +31,7 @@ export interface InspirationData {
   customMaleLead?: string
   femaleLead?: string            // 女主人设
   customFemaleLead?: string
+  novelLength?: 'short' | 'medium' | 'long'  // 篇幅类型
 }
 
 // 上下文策略选项（替代篇幅类型）
