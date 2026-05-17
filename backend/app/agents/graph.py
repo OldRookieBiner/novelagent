@@ -16,6 +16,8 @@ from app.agents.nodes.rewrite import rewrite_node
 from app.agents.nodes.wait_confirm import wait_for_confirmation
 from app.agents.nodes.character_generation import create_characters_from_outline_node
 from app.agents.nodes.relation_generation import generate_relations_node
+from app.agents.nodes.volume_arc_planning import volume_arc_planning_node
+from app.agents.nodes.chapter_summary import chapter_summary_node
 
 
 def route_after_outline(
@@ -67,24 +69,18 @@ def route_after_chapter_outlines(
 
 def route_after_review(
     state: NovelState,
-) -> Literal["rewrite", "next_chapter", "wait_confirm", "end"]:
+) -> Literal["rewrite", "next_chapter", "chapter_summary", "wait_confirm", "end"]:
     """审核后的路由
 
-    根据审核结果和当前进度决定下一步：
-    - 审核通过且有下一章 → 生成下一章
-    - 审核通过且全部完成 → 结束
-    - 审核不通过且未达最大重写次数 → 重写
-    - 审核不通过且已达最大重写次数 → 等待用户决定或继续
-
-    Args:
-        state: 当前状态
-
-    Returns:
-        下一步动作
+    审核通过且长篇 → 先生成摘要
+    审核通过且短/中篇 → 下一章或结束
     """
     # 审核通过
     if state.get("review_result", {}).get("passed", False):
-        # 检查是否还有下一章
+        # 长篇：审核通过后先生成摘要
+        if state.get("novel_length") == "long":
+            return "chapter_summary"
+        # 短/中篇：直接下一章
         if state.get("current_chapter", 0) < state.get("chapter_count", 0):
             return "next_chapter"
         return "end"  # 全部完成
@@ -113,12 +109,11 @@ def route_after_characters(
 
 def route_after_relations(
     state: NovelState,
-) -> Literal["wait_confirm", "chapter_outlines", "end"]:
+) -> Literal["wait_confirm", "volume_arc", "chapter_outlines", "end"]:
     """关系生成后的路由
 
-    规划阶段的关系生成完成后不应继续执行章节大纲生成。
-    当 chapter_count 为 0（大纲未确认章节数）或 characters 为空时，
-    直接结束工作流，避免进入无意义的章节大纲生成并导致前端报错。
+    长篇小说（novel_length == "long"）进入弧/卷规划，
+    短/中篇直接进入章节大纲。
     """
     if state.get("chapter_count", 0) <= 0:
         return "end"
@@ -127,7 +122,35 @@ def route_after_relations(
     decision = wait_for_confirmation(state)
     if decision == "wait":
         return "wait_confirm"
+    # 长篇走弧/卷规划
+    if state.get("novel_length") == "long":
+        return "volume_arc"
     return "chapter_outlines"
+
+
+def route_after_volume_arc(
+    state: NovelState,
+) -> Literal["wait_confirm", "chapter_outlines", "end"]:
+    """弧/卷规划后的路由
+
+    首次执行 → 暂停等确认
+    confirm 恢复后 → 继续章节大纲
+    arcs 为空（LLM 解析失败）→ 结束，避免无弧数据时章节大纲节点行为异常
+    """
+    if state.get("waiting_for_confirmation"):
+        return "wait_confirm"
+    if not state.get("arcs"):
+        return "end"
+    return "chapter_outlines"
+
+
+def route_after_summary(
+    state: NovelState,
+) -> Literal["next_chapter", "end"]:
+    """摘要生成后的路由"""
+    if state.get("current_chapter", 0) < state.get("chapter_count", 0):
+        return "next_chapter"
+    return "end"
 
 
 def create_novel_graph(checkpointer=None):
@@ -139,10 +162,11 @@ def create_novel_graph(checkpointer=None):
     2. 生成大纲 → 提取角色
     3. 提取角色 → 等待确认（条件）
     4. 生成关系 → 等待确认（条件）
-    5. 生成章节大纲 → 等待确认（条件）
-    6. 生成章节正文 → 审核
-    7. 审核通过 → 下一章或完成
-    8. 审核不通过 → 重写或等待用户决定
+    5. 长篇：弧/卷规划 → 等待确认（条件）→ 章节大纲
+    6. 生成章节大纲 → 等待确认（条件）
+    7. 生成章节正文 → 审核
+    8. 审核通过 → 长篇：生成摘要 → 下一章或完成；短/中篇：下一章或完成
+    9. 审核不通过 → 重写或等待用户决定
 
     Args:
         checkpointer: 可选的检查点保存器
@@ -164,6 +188,8 @@ def create_novel_graph(checkpointer=None):
         "create_characters_from_outline_node", create_characters_from_outline_node
     )
     graph.add_node("generate_relations_node", generate_relations_node)
+    graph.add_node("volume_arc_planning_node", volume_arc_planning_node)
+    graph.add_node("chapter_summary_node", chapter_summary_node)
 
     # 设置入口点
     graph.set_entry_point("outline_generation_node")
@@ -186,9 +212,22 @@ def create_novel_graph(checkpointer=None):
         {"wait_confirm": END, "generate_relations": "generate_relations_node"},
     )
 
+    # 关系 → 弧/卷规划（长篇）或章节大纲（短/中篇）
     graph.add_conditional_edges(
         "generate_relations_node",
         route_after_relations,
+        {
+            "wait_confirm": END,
+            "volume_arc": "volume_arc_planning_node",
+            "chapter_outlines": "chapter_outlines_node",
+            "end": END,
+        },
+    )
+
+    # 弧/卷规划 → 等待确认或章节大纲
+    graph.add_conditional_edges(
+        "volume_arc_planning_node",
+        route_after_volume_arc,
         {"wait_confirm": END, "chapter_outlines": "chapter_outlines_node", "end": END},
     )
 
@@ -202,16 +241,24 @@ def create_novel_graph(checkpointer=None):
     # 章节正文 → 审核
     graph.add_edge("generate_chapter_content_node", "review_node")
 
-    # 审核 → 重写/下一章/完成（条件路由）
+    # 审核 → 重写/下一章/摘要/完成（条件路由）
     graph.add_conditional_edges(
         "review_node",
         route_after_review,
         {
             "rewrite": "rewrite_node",
             "next_chapter": "generate_chapter_content_node",
+            "chapter_summary": "chapter_summary_node",
             "wait_confirm": END,
             "end": END,
         },
+    )
+
+    # 摘要 → 下一章或完成
+    graph.add_conditional_edges(
+        "chapter_summary_node",
+        route_after_summary,
+        {"next_chapter": "generate_chapter_content_node", "end": END},
     )
 
     # 重写 → 审核
@@ -252,4 +299,6 @@ __all__ = [
     "route_after_chapter_outlines",
     "route_after_relations",
     "route_after_review",
+    "route_after_volume_arc",
+    "route_after_summary",
 ]

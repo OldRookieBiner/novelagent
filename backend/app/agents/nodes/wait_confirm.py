@@ -34,6 +34,7 @@ def wait_for_confirmation(state: NovelState) -> Literal["wait", "continue"]:
             "outline",
             "characters",
             "relations",
+            "volume_arc",       # 新增：长篇弧/卷规划需确认
             "chapter_outlines",
         ]:
             return "wait"
@@ -52,7 +53,7 @@ def set_waiting_state(state: NovelState, confirmation_type: str) -> NovelState:
 
     Args:
         state: 当前状态
-        confirmation_type: 确认类型（outline | characters | relations | chapter_outlines | review_failed）
+        confirmation_type: 确认类型（outline | characters | relations | chapter_outlines | review_failed | volume_arc）
 
     Returns:
         更新后的状态
