@@ -44,6 +44,10 @@ class Project(Base):
     checkpoints = relationship(
         "WorkflowCheckpoint", back_populates="project", cascade="all, delete-orphan"
     )
+    # 卷/弧结构（长篇支持）
+    volumes = relationship(
+        "Volume", back_populates="project", cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
         return f"<Project {self.name}>"

@@ -74,6 +74,11 @@ class ChapterOutline(Base):
     ending = Column(Text, nullable=True)
     target_words = Column(Integer, default=3000)
     confirmed = Column(Boolean, default=False)
+    arc_id = Column(
+        Integer,
+        ForeignKey("arcs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
@@ -84,6 +89,7 @@ class ChapterOutline(Base):
         uselist=False,
         cascade="all, delete-orphan",
     )
+    arc = relationship("Arc", back_populates="chapter_outlines")
 
     def __repr__(self):
         return f"<ChapterOutline project_id={self.project_id} chapter={self.chapter_number}>"

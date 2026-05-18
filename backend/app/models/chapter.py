@@ -23,6 +23,7 @@ class Chapter(Base):
     word_count = Column(Integer, default=0)
     review_passed = Column(Boolean, default=False)
     review_feedback = Column(Text, nullable=True)
+    summary = Column(Text, nullable=True)
 
     # 审核相关
     review_result = Column(
