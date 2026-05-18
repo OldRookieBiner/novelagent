@@ -572,12 +572,15 @@ async def outline_generation_node(state: NovelState) -> NovelState:
     # 导致标题/角色等字段解析失败
     outline_max_tokens = 8192
 
-    # 使用流式 API，框架自动捕获 on_chat_model_stream 事件
+    # 使用流式 API，通过 get_stream_writer() 转发 LLM chunk
+    from langgraph.config import get_stream_writer
+    writer = get_stream_writer()
     response = ""
     async for chunk in llm.chat_stream(
         [{"role": "user", "content": prompt}], max_tokens=outline_max_tokens
     ):
         response += chunk
+        writer({"type": "outline_chunk", "content": chunk})
 
     outline = parse_outline(response)
 

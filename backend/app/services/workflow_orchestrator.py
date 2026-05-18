@@ -1,16 +1,18 @@
 """Workflow Orchestrator - Central SSE streaming service for LangGraph endpoints.
 
 All SSE streaming endpoints use this module to:
-1. Execute a LangGraph graph via astream_events
+1. Execute a LangGraph graph via astream with stream_mode=['updates', 'custom']
 2. Parse LangGraph events into SSE format
 3. Call persist callbacks when target nodes complete
 4. Handle errors gracefully with transaction rollback
 """
 
+import asyncio
 import json
 import logging
 from typing import AsyncIterator, Callable, Awaitable, Optional
 
+from app.agents.sse_events import format_done, format_error_message, format_sse_error
 from app.agents.state import NovelState
 
 logger = logging.getLogger(__name__)
@@ -46,6 +48,10 @@ class WorkflowOrchestrator:
     ) -> AsyncIterator[str]:
         """Execute graph and yield SSE events.
 
+        使用 astream + stream_mode=['updates', 'custom'] 捕获：
+        - custom: 节点通过 get_stream_writer() 发送的结构化流式事件
+        - updates: 节点完成后的状态更新
+
         Args:
             graph: Compiled LangGraph StateGraph
             config: LangGraph config dict (must contain configurable.thread_id)
@@ -54,7 +60,7 @@ class WorkflowOrchestrator:
             persist_callback: Async function (state, db) -> dict, called on target_node done.
 
         Yields:
-            SSE formatted strings ending with \n\n
+            SSE formatted strings ending with \\n\\n
         """
         try:
             # 首次执行 vs 恢复执行
@@ -69,70 +75,72 @@ class WorkflowOrchestrator:
                     f"data: {json.dumps({'node': 'workflow_resume', 'message': 'Resuming workflow'})}\n\n"
                 )
 
-            async for event in graph.astream_events(initial_state, config, version="v2"):
-                event_type = event.get("event")
-                event_name = event.get("name", "")
-                event_data = event.get("data", {})
+            async for mode_data in graph.astream(
+                initial_state,
+                config,
+                stream_mode=['updates', 'custom'],
+            ):
+                mode, data = mode_data
 
-                if event_type == "on_chain_start":
-                    yield (
-                        f"event: node_start\n"
-                        f"data: {json.dumps({'node': event_name})}\n\n"
-                    )
+                if mode == 'custom':
+                    # 节点通过 get_stream_writer() 发送的结构化事件
+                    if isinstance(data, dict) and data.get('type'):
+                        custom_type = data.pop('type')
+                        yield (
+                            f"event: {custom_type}\n"
+                            f"data: {json.dumps(data)}\n\n"
+                        )
 
-                elif event_type == "on_chat_model_stream":
-                    chunk = event_data.get("chunk")
-                    if chunk:
-                        content = getattr(chunk, "content", str(chunk))
-                        if content:
-                            yield (
-                                f"event: chunk\n"
-                                f"data: {json.dumps({'content': content})}\n\n"
-                            )
+                elif mode == 'updates':
+                    # 节点完成后的状态更新
+                    if isinstance(data, dict):
+                        for node_name, node_output in data.items():
+                            if not isinstance(node_output, dict):
+                                continue
 
-                elif event_type == "on_chain_end":
-                    output = event_data.get("output", {})
-                    if isinstance(output, dict):
-                        # 持久化回调
-                        if target_node and event_name == target_node and persist_callback is not None:
-                            persist_result = await self._call_persist(output, persist_callback)
-                            if persist_result.get("_persist_error"):
-                                error_msg = persist_result["_persist_error"]
+                            # 持久化回调
+                            if target_node and node_name == target_node and persist_callback is not None:
+                                persist_result = await self._call_persist(node_output, persist_callback)
+                                if persist_result.get("_persist_error"):
+                                    error_msg = persist_result["_persist_error"]
+                                    yield format_error_message(f"持久化失败: {error_msg}")
+                                    yield format_done("Error occurred")
+                                    return
+
+                            # 等待确认
+                            if node_output.get("waiting_for_confirmation"):
+                                waiting_data = {
+                                    'node': node_name,
+                                    'confirmation_type': node_output.get('confirmation_type')
+                                }
                                 yield (
-                                    f"event: error\n"
-                                    f"data: {json.dumps({'error': f'持久化失败: {error_msg}'})}\n\n"
+                                    f"event: waiting\n"
+                                    f"data: {json.dumps(waiting_data)}\n\n"
+                                )
+                                yield (
+                                    f"event: done\n"
+                                    f"data: {json.dumps({'message': 'Workflow paused for confirmation'})}\n\n"
                                 )
                                 return
-
-                        if output.get("waiting_for_confirmation"):
-                            waiting_data = {
-                                'node': event_name,
-                                'confirmation_type': output.get('confirmation_type')
-                            }
-                            yield (
-                                f"event: waiting\n"
-                                f"data: {json.dumps(waiting_data)}\n\n"
-                            )
-                            yield (
-                                f"event: done\n"
-                                f"data: {json.dumps({'message': 'Workflow paused for confirmation'})}\n\n"
-                            )
-                            return
-                        else:
-                            yield (
-                                f"event: node_done\n"
-                                f"data: {json.dumps({'node': event_name, 'state': output})}\n\n"
-                            )
+                            else:
+                                yield (
+                                    f"event: node_done\n"
+                                    f"data: {json.dumps({'node': node_name, 'state': node_output})}\n\n"
+                                )
 
             yield (
                 f"event: done\n"
                 f"data: {json.dumps({'message': 'Workflow completed'})}\n\n"
             )
 
+        except asyncio.CancelledError:
+            # async generator 中 CancelledError 后不能 yield（连接已关闭），必须 re-raise
+            logger.warning("WorkflowOrchestrator SSE stream cancelled by server")
+            raise
         except Exception as e:
             logger.exception("WorkflowOrchestrator run error")
-            from app.utils.error import format_sse_error
             yield format_sse_error(e)
+            yield format_done("Error occurred")
 
     async def _call_persist(
         self,

@@ -1,5 +1,6 @@
 """Workflow API routes for LangGraph integration"""
 
+import asyncio
 import json
 import logging
 from typing import Optional, AsyncIterator
@@ -18,6 +19,7 @@ from app.models.checkpoint import WorkflowCheckpoint
 from app.models.workflow_state import WorkflowState
 from app.utils.auth import get_current_user
 from app.utils.project import get_project_for_user
+from app.agents.sse_events import format_done
 from app.utils.error import format_sse_error
 from app.utils.deps import get_user_settings_or_raise
 from app.agents.graph import create_novel_graph_with_checkpointer
@@ -33,15 +35,9 @@ async def stream_workflow_events(
 ) -> AsyncIterator[str]:
     """共享的 LangGraph 工作流 SSE 事件流生成器
 
-    将 LangGraph astream_events 事件转换为 SSE 字符串。
-
-    - 如果 initial_state 不为 None，视为首次执行，先发送 workflow start 事件
-    - 如果 initial_state 为 None，视为恢复执行，先发送 workflow_resume 事件
-
-    处理的事件类型：
-    - on_chain_start → node_start
-    - on_chat_model_stream → chunk（LLM 流式内容）
-    - on_chain_end → node_done（或 waiting 如果等待确认）
+    使用 astream + stream_mode=['updates', 'custom'] 捕获：
+    - custom: 节点通过 get_stream_writer() 发送的结构化流式事件
+    - updates: 节点完成后的状态更新
 
     Args:
         graph: 编译后的 LangGraph graph
@@ -52,47 +48,46 @@ async def stream_workflow_events(
         SSE 格式字符串，以 \\n\\n 结尾
     """
     try:
-        # 首次执行 vs 恢复执行
         if initial_state is not None:
             yield f"event: node_start\ndata: {json.dumps({'node': 'workflow', 'message': 'Starting workflow'})}\n\n"
         else:
             yield f"event: node_start\ndata: {json.dumps({'node': 'workflow_resume', 'message': 'Resuming workflow'})}\n\n"
 
-        async for event in graph.astream_events(initial_state, config, version="v2"):
-            event_type = event.get("event")
-            event_name = event.get("name", "")
-            event_data = event.get("data", {})
+        async for mode_data in graph.astream(
+            initial_state,
+            config,
+            stream_mode=['updates', 'custom'],
+        ):
+            mode, data = mode_data
 
-            if event_type == "on_chain_start":
-                yield f"event: node_start\ndata: {json.dumps({'node': event_name})}\n\n"
+            if mode == 'custom':
+                # 节点通过 get_stream_writer() 发送的结构化事件
+                if isinstance(data, dict) and data.get('type'):
+                    custom_type = data.pop('type')
+                    yield f"event: {custom_type}\ndata: {json.dumps(data)}\n\n"
 
-            elif event_type == "on_chain_end":
-                output = event_data.get("output", {})
-                # 处理 output 不是字典的情况（如 END 字符串）
-                if isinstance(output, dict):
-                    if output.get("waiting_for_confirmation"):
-                        yield f"event: waiting\ndata: {json.dumps({'node': event_name, 'confirmation_type': output.get('confirmation_type')})}\n\n"
-                        # 工作流暂停，同时发送 done 事件通知前端当前阶段完成
-                        yield f"event: done\ndata: {json.dumps({'message': 'Workflow paused for confirmation'})}\n\n"
-                        return
-                    else:
-                        yield f"event: node_done\ndata: {json.dumps({'node': event_name, 'state': output})}\n\n"
-                else:
-                    # output 不是字典（如 END 字符串），说明工作流已完成
-                    # 跳过 node_done，直接等待最终的 done 事件
-                    pass
+            elif mode == 'updates':
+                if isinstance(data, dict):
+                    for node_name, node_output in data.items():
+                        if not isinstance(node_output, dict):
+                            continue
 
-            elif event_type == "on_chat_model_stream":
-                chunk = event_data.get("chunk")
-                if chunk:
-                    content = getattr(chunk, "content", str(chunk))
-                    if content:
-                        yield f"event: chunk\ndata: {json.dumps({'content': content})}\n\n"
+                        if node_output.get("waiting_for_confirmation"):
+                            yield f"event: waiting\ndata: {json.dumps({'node': node_name, 'confirmation_type': node_output.get('confirmation_type')})}\n\n"
+                            yield f"event: done\ndata: {json.dumps({'message': 'Workflow paused for confirmation'})}\n\n"
+                            return
+                        else:
+                            yield f"event: node_done\ndata: {json.dumps({'node': node_name, 'state': node_output})}\n\n"
 
         yield f"event: done\ndata: {json.dumps({'message': 'Workflow completed'})}\n\n"
 
+    except asyncio.CancelledError:
+        logger.warning("SSE stream cancelled by server")
+        raise
     except Exception as e:
+        logger.error(f"SSE stream error: {e}", exc_info=True)
         yield format_sse_error(e)
+        yield format_done("Error occurred")
 
 
 # ========== Request/Response Schemas ==========
