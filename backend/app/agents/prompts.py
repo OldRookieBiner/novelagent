@@ -680,6 +680,41 @@ RELATION_GENERATION_PROMPT = """你是一个资深小说人物关系设计师，
 4. 合作关系是否都有具体的共同目标？
 """
 
+ARC_OUTLINE_GENERATION_PROMPT = """你是一个拥有 20 年经验的资深小说策划师，正在为长篇小说的弧段编写详细弧纲。
+
+## 小说信息
+标题：{outline_title}
+概述：{outline_summary}
+情节要点：
+{plot_points}
+
+## 角色设定
+{characters}
+
+## 当前弧结构
+第{arc_number}弧《{arc_title}》，共{arc_count}章
+所属：卷{volume_number}
+
+{other_arcs_info}
+
+## 输出要求
+
+请为当前弧编写详细弧纲，包含以下要素：
+
+核心冲突：本弧的核心矛盾和冲突是什么？
+关键事件：
+1. ...
+2. ...
+（列出本弧中最重要的 3-5 个关键事件，按顺序排列）
+角色弧线：主要角色在本弧中的成长/变化轨迹
+情感基调：本弧的整体情感色彩和氛围
+衔接要点：与前后弧的衔接方式和过渡元素
+
+注意：
+- 弧纲要与小说大纲的情节要点保持一致
+- 关键事件要有因果关系，推动情节发展
+- 角色弧线要自然过渡，避免突兀转变"""
+
 # ==============================================================================
 # 6. 弧/卷规划 Prompt — 长篇小说结构规划
 # ==============================================================================
@@ -771,4 +806,5 @@ DEFAULT_PROMPTS = {
     "relation_generation": RELATION_GENERATION_PROMPT,
     "volume_arc_generation": VOLUME_ARC_GENERATION_PROMPT,
     "chapter_summary_generation": CHAPTER_SUMMARY_GENERATION_PROMPT,
+    "arc_outline_generation": ARC_OUTLINE_GENERATION_PROMPT,
 }

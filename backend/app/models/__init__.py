@@ -10,6 +10,8 @@ from app.models.checkpoint import WorkflowCheckpoint
 from app.models.workflow_state import WorkflowState
 from app.models.system_config import SystemConfig
 from app.models.character import Character, Relation, EvolutionPlan, EvolutionRecord
+from app.models.volume import Volume
+from app.models.arc import Arc
 
 __all__ = [
     "User",
@@ -26,4 +28,6 @@ __all__ = [
     "Relation",
     "EvolutionPlan",
     "EvolutionRecord",
+    "Volume",
+    "Arc",
 ]

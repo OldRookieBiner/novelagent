@@ -116,6 +116,7 @@ class NovelState(TypedDict):
     chapter_summaries: Annotated[
         list[dict], merge_chapter_summaries
     ]  # [{chapter_number, summary}]
+    current_arc_index: int  # 当前正在生成章节大纲的弧索引（0-based），用于按弧循环
 
     # ========== 章节大纲 ==========
     chapter_count: int
@@ -139,7 +140,7 @@ class NovelState(TypedDict):
     waiting_for_confirmation: bool
     confirmation_type: Optional[
         str
-    ]  # outline | characters | relations | chapter_outlines | review_failed | volume_arc
+    ]  # outline | characters | relations | chapter_outlines | review_failed | volume_arc | arc_outlines | arc_chapter_outlines
 
     # ========== LLM 服务 ==========
     llm_config_id: Optional[int]  # 使用的模型配置 ID
@@ -156,6 +157,7 @@ STAGE_CHARACTERS = "characters"  # v0.8.0: 人物设定
 STAGE_RELATIONS = "relations"  # v0.8.0: 人物关系
 STAGE_VOLUME_ARC = "volume_arc"  # 长篇：弧/卷规划阶段
 STAGE_CHAPTER_OUTLINES = "chapter_outlines"
+STAGE_ARC_OUTLINES = "arc_outlines"  # 弧纲生成阶段
 STAGE_WRITING = "writing"
 STAGE_REVIEW = "review"
 STAGE_COMPLETE = "complete"

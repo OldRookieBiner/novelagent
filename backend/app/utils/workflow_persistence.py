@@ -59,14 +59,105 @@ def persist_outline(output: dict, project_id: int, outline: Outline, db: Session
     return True
 
 
+def persist_volumes_arcs(output: dict, project_id: int, db: Session):
+    """持久化弧/卷规划节点的输出
+
+    清除旧数据后批量写入新数据。
+    CASCADE 自动删除关联 arcs，SET NULL 自动清除 chapter_outlines.arc_id。
+    """
+    volumes_data = output.get("volumes", [])
+    arcs_data = output.get("arcs", [])
+
+    # 清除旧数据
+    db.query(Volume).filter(Volume.project_id == project_id).delete()
+
+    # 写入卷
+    volume_id_map = {}  # volume_number → DB id 映射
+    for v_data in volumes_data:
+        volume = Volume(
+            project_id=project_id,
+            volume_number=v_data.get("volume_number", 1),
+            title=v_data.get("title", ""),
+            summary=v_data.get("summary"),
+        )
+        db.add(volume)
+        db.flush()
+        volume_id_map[v_data.get("volume_number", 1)] = volume.id
+
+    # 写入弧
+    for a_data in arcs_data:
+        vol_number = a_data.get("volume_number", 1)
+        volume_id = volume_id_map.get(vol_number)
+        arc = Arc(
+            volume_id=volume_id,
+            arc_number=a_data.get("arc_number", 1),
+            title=a_data.get("title", ""),
+            summary=a_data.get("summary"),
+            chapter_count=a_data.get("chapter_count", 1),
+        )
+        db.add(arc)
+
+    db.flush()
+
+    logger.info(
+        f"persist_volumes_arcs: project {project_id}: "
+        f"created {len(volumes_data)} volumes, {len(arcs_data)} arcs"
+    )
+
+
+def persist_arc_outlines(output: dict, project_id: int, db: Session):
+    """持久化弧纲到 Arc.outline 和 Arc.outline_confirmed 字段
+
+    从 output["arcs"] 读取弧纲数据，更新对应 Arc 记录。
+    """
+    arcs_data = output.get("arcs", [])
+    if not arcs_data:
+        logger.info(f"persist_arc_outlines: no arcs data for project {project_id}")
+        return
+
+    for arc_data in arcs_data:
+        arc_id = arc_data.get("id")
+        if not arc_id:
+            continue
+        arc = db.query(Arc).filter(Arc.id == arc_id).first()
+        if arc:
+            if arc_data.get("outline"):
+                arc.outline = arc_data["outline"]
+            if arc_data.get("outline_confirmed") is not None:
+                arc.outline_confirmed = arc_data["outline_confirmed"]
+
+    logger.info(
+        f"persist_arc_outlines: project {project_id}: "
+        f"updated {len(arcs_data)} arcs"
+    )
+
+
 def persist_chapter_outlines(output: dict, project_id: int, db: Session):
-    """持久化章节大纲生成节点的输出到 chapter_outlines 表"""
+    """持久化章节大纲生成节点的输出到 chapter_outlines 表
+
+    长篇按弧模式：仅追加当前弧的章节大纲，不删除已有数据。
+    短篇/中篇：全量写入（原有行为）。
+    """
     chapter_outlines = output.get("chapter_outlines", [])
     if not chapter_outlines:
         logger.info(f"persist_chapter_outlines: no outlines for project {project_id}")
         return
 
+    # 检查是否已有章节大纲（长篇按弧追加场景）
+    existing_numbers = set(
+        co.chapter_number for co in db.query(ChapterOutline).filter(
+            ChapterOutline.project_id == project_id
+        ).all()
+    )
+
+    created_count = 0
     for co_data in chapter_outlines:
+        chapter_number = co_data.get("chapter_number", 1)
+
+        # 跳过已存在的章节大纲（长篇按弧追加时避免重复）
+        if chapter_number in existing_numbers:
+            continue
+
         # 查询 arc_id（长篇时通过 volume_number + arc_number 查找）
         arc_id = None
         vol_num = co_data.get("volume_number")
@@ -82,7 +173,7 @@ def persist_chapter_outlines(output: dict, project_id: int, db: Session):
 
         chapter_outline = ChapterOutline(
             project_id=project_id,
-            chapter_number=co_data.get("chapter_number", 1),
+            chapter_number=chapter_number,
             title=co_data.get("title"),
             scene=co_data.get("scene"),
             characters=co_data.get("characters"),
@@ -97,10 +188,11 @@ def persist_chapter_outlines(output: dict, project_id: int, db: Session):
             confirmed=False,
         )
         db.add(chapter_outline)
+        created_count += 1
 
     logger.info(
         f"persist_chapter_outlines: project {project_id}: "
-        f"created {len(chapter_outlines)} outlines"
+        f"created {created_count} outlines (skipped {len(chapter_outlines) - created_count} existing)"
     )
 
 
@@ -266,49 +358,6 @@ def persist_rewrite_result(output: dict, project_id: int, db: Session):
     )
 
 
-def persist_volumes_arcs(output: dict, project_id: int, db: Session):
-    """持久化弧/卷规划节点的输出
-
-    清除旧数据后批量写入新数据。
-    CASCADE 自动删除关联 arcs，SET NULL 自动清除 chapter_outlines.arc_id。
-    """
-    volumes_data = output.get("volumes", [])
-    arcs_data = output.get("arcs", [])
-
-    # 清除旧数据
-    db.query(Volume).filter(Volume.project_id == project_id).delete()
-
-    # 写入卷
-    volume_id_map = {}  # volume_number → DB id 映射
-    for v_data in volumes_data:
-        volume = Volume(
-            project_id=project_id,
-            volume_number=v_data.get("volume_number", 1),
-            title=v_data.get("title", ""),
-            summary=v_data.get("summary"),
-        )
-        db.add(volume)
-        db.flush()
-        volume_id_map[v_data.get("volume_number", 1)] = volume.id
-
-    # 写入弧
-    for a_data in arcs_data:
-        vol_num = a_data.get("volume_number", 1)
-        arc = Arc(
-            volume_id=volume_id_map.get(vol_num),
-            arc_number=a_data.get("arc_number", 1),
-            title=a_data.get("title", ""),
-            summary=a_data.get("summary"),
-            chapter_count=a_data.get("chapter_count", 10),
-        )
-        db.add(arc)
-
-    logger.info(
-        f"persist_volumes_arcs: project {project_id}: "
-        f"created {len(volumes_data)} volumes, {len(arcs_data)} arcs"
-    )
-
-
 def persist_chapter_summary(output: dict, project_id: int, db: Session):
     """持久化摘要节点的输出
 
@@ -341,6 +390,7 @@ NODE_PERSIST_MAP = {
     "create_characters_from_outline_node": persist_character_generation,
     "generate_relations_node": persist_relation_generation,
     "volume_arc_planning_node": persist_volumes_arcs,
+    "arc_outline_generation_node": persist_arc_outlines,
     "chapter_outlines_node": persist_chapter_outlines,
     "generate_chapter_content_node": persist_chapter_content,
     "review_node": persist_review_result,

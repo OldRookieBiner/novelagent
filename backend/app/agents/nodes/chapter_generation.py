@@ -513,20 +513,199 @@ async def generate_chapter_content_stream(
         yield chunk
 
 
+# ==================== 弧式章节大纲生成 ====================
+
+def _build_chapter_outline_prompt(
+    state: NovelState,
+    chapter_number: int,
+    previous_chapters: list[dict],
+    arc_info: str,
+    min_words: int,
+) -> str:
+    """构建章节大纲生成的 prompt 文本
+
+    从 generate_single_chapter_outline 中提取的 prompt 构建逻辑，
+    不包含 LLM 调用，只返回 prompt 字符串。
+    """
+    outline = f"标题：{state.get('outline_title', '')}\n概述：{state.get('outline_summary', '')}"
+    plot_points = state.get("outline_plot_points", [])
+    plot_points_str = "\n".join([f"{i+1}. {p}" for i, p in enumerate(plot_points)]) if plot_points else "无"
+
+    chapter_count = state.get("chapter_count", 10)
+
+    # 构建已生成章节大纲的上下文
+    previous_info = ""
+    if previous_chapters and len(previous_chapters) > 0:
+        parts = []
+        for c in previous_chapters:
+            part = f"第{c['chapter_number']}章《{c.get('title', '')}》\n"
+            part += f"场景：{c.get('scene', '')}\n"
+            part += f"人物：{c.get('characters', '')}\n"
+            part += f"情节：{c.get('plot', '')}\n"
+            part += f"冲突：{c.get('conflict', '')}\n"
+            part += f"转折：{c.get('turning_point', '无')}\n"
+            part += f"钩子：{c.get('hook', '')}\n"
+            part += f"衔接：{c.get('transition', '')}\n"
+            part += f"结局：{c.get('ending', '')}"
+            parts.append(part)
+        previous_info = "已生成章节大纲：\n" + "\n\n".join(parts)
+
+    # 格式化人物设定
+    chars_str = format_characters_info(state)
+    relations_str = format_relations_info(state, chapter_number)
+    evolution_str, _ = format_evolution_info(state, chapter_number)
+    combined_chars = chars_str + relations_str + evolution_str
+
+    # 格式化世界观
+    world_str = format_world_setting(state)
+
+    # 情感曲线
+    emotional_curve = state.get("outline_emotional_curve", "") or "未提供"
+
+    # 获取 prompt 模板
+    prompts = state.get("_prompts", {})
+    if prompts and "chapter_outline_generation" in prompts:
+        prompt_template = prompts["chapter_outline_generation"]
+    else:
+        from app.agents.prompts import DEFAULT_PROMPTS
+        prompt_template = DEFAULT_PROMPTS.get("chapter_outline_generation", "")
+
+    prompt = prompt_template.format(
+        outline=outline,
+        plot_points=plot_points_str,
+        characters=combined_chars,
+        world_setting=world_str,
+        emotional_curve=emotional_curve,
+        chapter_count=chapter_count,
+        chapter_number=chapter_number,
+        previous_chapters_info=previous_info,
+        min_words=min_words,
+    )
+
+    # 长篇模式：追加弧归属信息
+    if arc_info:
+        prompt += f"\n\n{arc_info}"
+
+    return prompt
+
+
+async def _generate_chapter_outlines_by_arc(state: NovelState, llm: LLMService) -> dict:
+    """长篇模式：为当前弧生成章节大纲
+
+    通过 get_stream_writer() 发送结构化流式事件：
+        chapter_outline_chunk: {content, chapter_number, arc_index} — 流式文本
+        chapter_outline_progress: {chapter_number, total_in_arc, arc_index, chapter} — 单章完成
+
+    每弧生成后暂停等待确认（waiting_for_confirmation=True）。
+    """
+
+    from langgraph.config import get_stream_writer
+
+    writer = get_stream_writer()
+    arcs = state.get("arcs", [])
+    current_arc_index = state.get("current_arc_index", 0)
+
+    if current_arc_index >= len(arcs):
+        # 所有弧已完成
+        return {
+            "stage": STAGE_CHAPTER_OUTLINES,
+            "waiting_for_confirmation": False,
+        }
+
+    arc = arcs[current_arc_index]
+    chapter_count_in_arc = arc.get("chapter_count", 10)
+
+    # 计算当前弧的起始章节号（前面弧的章节数之和 + 1）
+    start_chapter = sum(a.get("chapter_count", 0) for a in arcs[:current_arc_index]) + 1
+
+    # 获取已有章节大纲（前面弧的）作为上下文
+    existing_outlines = list(state.get("chapter_outlines", []))
+    previous_for_context = existing_outlines
+
+    # 获取每章最低字数
+    collected_info = state.get("collected_info", {})
+    min_words, _ = parse_words_per_chapter(collected_info)
+
+    generated_for_arc = []
+
+    for i in range(chapter_count_in_arc):
+        chapter_num = start_chapter + i
+        pos_in_arc = i + 1
+
+        # 构建弧归属信息
+        arc_info_parts = [
+            f"当前弧：第{arc.get('arc_number', 1)}弧《{arc.get('title', '')}》，",
+            f"本章是本弧第{pos_in_arc}章（共{chapter_count_in_arc}章）",
+        ]
+        # 弧纲作为额外上下文
+        arc_outline = arc.get("outline", "")
+        if arc_outline:
+            arc_info_parts.append(f"弧纲：{arc_outline}")
+        arc_info = "\n".join(arc_info_parts)
+
+        # 流式生成单章节大纲
+        prompt = _build_chapter_outline_prompt(state, chapter_num, previous_for_context, arc_info, min_words)
+        messages = [{"role": "user", "content": prompt}]
+
+        response = ""
+        async for chunk in llm.chat_stream(messages):
+            response += chunk
+            # 发送流式文本事件
+            writer({
+                "type": "chapter_outline_chunk",
+                "content": chunk,
+                "chapter_number": chapter_num,
+                "arc_index": current_arc_index,
+            })
+
+        # 解析完整响应
+        chapter_outline = parse_single_chapter_outline(response, chapter_num, min_words)
+        chapter_outline["volume_number"] = arc.get("volume_number")
+        chapter_outline["arc_number"] = arc.get("arc_number")
+        generated_for_arc.append(chapter_outline)
+        existing_outlines.append(chapter_outline)
+
+        # 发送单章完成事件（含结构化数据）
+        writer({
+            "type": "chapter_outline_progress",
+            "chapter_number": chapter_num,
+            "total_in_arc": chapter_count_in_arc,
+            "arc_index": current_arc_index,
+            "chapter": chapter_outline,
+        })
+
+        # 更新上下文（后续章节参考已生成的章节）
+        previous_for_context = existing_outlines
+
+    # 当前弧完成，暂停等待确认
+    return {
+        "chapter_outlines": existing_outlines,
+        "current_arc_index": current_arc_index + 1,
+        "stage": STAGE_CHAPTER_OUTLINES,
+        "waiting_for_confirmation": True,
+        "confirmation_type": "arc_chapter_outlines",
+    }
+
+
 # ==================== LangGraph 兼容节点 ====================
 
 async def chapter_outlines_node(state: NovelState) -> NovelState:
-    """
-    LangGraph 兼容的章节大纲生成节点
+    """章节大纲生成节点
 
-    此节点从状态获取 LLM 服务，生成所有章节大纲，并返回更新后的状态。
-    签名：(state: NovelState) -> NovelState
+    短篇/中篇：全量生成（行为不变）
+    长篇：按弧生成，每弧完成后暂停等待确认
     """
-    # 获取 LLM 服务（异步）
+
     llm = await get_llm_from_state_async(state)
+    novel_length = state.get("novel_length", "short")
+    arcs = state.get("arcs", [])
 
-    # 调用现有的章节大纲生成函数
-    return await generate_chapter_outlines_node(state, llm)
+    # 短篇/中篇：全量生成（行为不变）
+    if novel_length != "long" or not arcs:
+        return await generate_chapter_outlines_node(state, llm)
+
+    # 长篇：按弧生成
+    return await _generate_chapter_outlines_by_arc(state, llm)
 
 
 async def generate_chapter_content_node(state: NovelState) -> NovelState:

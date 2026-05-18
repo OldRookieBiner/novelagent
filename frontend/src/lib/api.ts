@@ -36,6 +36,7 @@ import type {
   FetchModelsResponse,
   Volume,
   Arc,
+  ArcUpdate,
 } from "@/types";
 
 // ==================== Configuration ====================
@@ -569,26 +570,55 @@ export const workflowCleanupApi = {
   },
 }
 
+// ==================== Volumes/Arcs API ====================
+
 export const volumesApi = {
-  list: async (projectId: number) => {
+  /**
+   * 获取项目的卷/弧结构
+   */
+  async list(projectId: number): Promise<Volume[]>
+  {
     return request<Volume[]>(`/api/projects/${projectId}/volumes`)
   },
 
-  updateVolume: async (projectId: number, volumeId: number, data: { title?: string; summary?: string }) => {
+  /**
+   * 更新卷信息
+   */
+  async updateVolume(projectId: number, volumeId: number, data: { title?: string; summary?: string }): Promise<Volume>
+  {
     return request<Volume>(`/api/projects/${projectId}/volumes/${volumeId}`, {
       method: 'PUT',
       body: data,
     })
   },
 
-  updateArc: async (projectId: number, arcId: number, data: { title?: string; summary?: string }) => {
+  /**
+   * 更新弧信息（含弧纲编辑）
+   */
+  async updateArc(projectId: number, arcId: number, data: ArcUpdate): Promise<Arc>
+  {
     return request<Arc>(`/api/projects/${projectId}/arcs/${arcId}`, {
       method: 'PUT',
       body: data,
     })
   },
 
-  updateChapterSummary: async (projectId: number, chapterId: number, summary: string) => {
+  /**
+   * 确认弧纲（可同时编辑弧纲内容）
+   */
+  async confirmArcOutline(projectId: number, arcId: number, data?: ArcUpdate): Promise<Arc>
+  {
+    return request<Arc>(
+      `/api/projects/${projectId}/arcs/${arcId}/confirm-outline`,
+      { method: 'PUT', body: data || {} }
+    )
+  },
+
+  /**
+   * 更新章节摘要
+   */
+  async updateChapterSummary(projectId: number, chapterId: number, summary: string): Promise<void>
+  {
     return request<void>(`/api/projects/${projectId}/chapters/${chapterId}/summary`, {
       method: 'PUT',
       body: { summary },

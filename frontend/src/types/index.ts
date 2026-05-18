@@ -77,6 +77,7 @@ export interface ProjectUpdate {
 
 export interface CollectedInfo {
   novelType?: string;
+  novelLength?: 'short' | 'medium' | 'long';  // 小说长度分类
   targetWords?: number;
   coreTheme?: string;
   worldSetting?: string;
@@ -97,7 +98,6 @@ export interface CollectedInfo {
   customMaleLead?: string;
   femaleLead?: string;
   customFemaleLead?: string;
-  novelLength?: 'short' | 'medium' | 'long'
   contextStrategy?: 'fulltext' | 'hybrid' | 'summary'
 }
 
@@ -158,11 +158,10 @@ export interface ChapterCountRequest {
   chapter_count: number;
 }
 
-// ==================== Chapter Types ====================
-
 // ==================== Volume/Arc Types ====================
 
-export interface Volume {
+export interface Volume
+{
   id: number
   project_id: number
   volume_number: number
@@ -171,16 +170,28 @@ export interface Volume {
   arcs?: Arc[]
 }
 
-export interface Arc {
+export interface Arc
+{
   id: number
   volume_id: number
   arc_number: number
   title: string | null
   summary: string | null
+  outline?: string
+  outline_confirmed?: boolean
   chapter_count: number
 }
 
-// ==================== Chapter Outline/Content Types ====================
+export interface ArcUpdate
+{
+  title?: string
+  summary?: string
+  outline?: string
+  outline_confirmed?: boolean
+  chapter_count?: number
+}
+
+// ==================== Chapter Types ====================
 
 export interface ChapterOutline {
   id: number;
@@ -449,6 +460,7 @@ export type WorkflowStage =
   | 'characters'
   | 'relations'
   | 'volume_arc'
+  | 'arc_outlines'
   | 'chapter_outlines'
   | 'writing'
   | 'review'
@@ -457,7 +469,7 @@ export type WorkflowStage =
 /**
  * 确认类型
  */
-export type ConfirmationType = 'outline' | 'chapter_outlines' | 'review_failed' | 'volume_arc'
+export type ConfirmationType = 'outline' | 'chapter_outlines' | 'review_failed' | 'volume_arc' | 'arc_outlines' | 'arc_chapter_outlines'
 
 /**
  * 工作流状态
