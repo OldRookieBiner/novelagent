@@ -156,6 +156,39 @@ export interface ChapterCountRequest {
   chapter_count: number;
 }
 
+// ==================== Volume/Arc Types ====================
+
+export interface Volume
+{
+  id: number
+  project_id: number
+  volume_number: number
+  title: string | null
+  summary: string | null
+  arcs: Arc[]
+}
+
+export interface Arc
+{
+  id: number
+  volume_id: number
+  arc_number: number
+  title: string | null
+  summary: string | null
+  outline?: string
+  outline_confirmed?: boolean
+  chapter_count: number
+}
+
+export interface ArcUpdate
+{
+  title?: string
+  summary?: string
+  outline?: string
+  outline_confirmed?: boolean
+  chapter_count?: number
+}
+
 // ==================== Chapter Types ====================
 
 export interface ChapterOutline {
@@ -430,7 +463,7 @@ export type WorkflowStage =
 /**
  * 确认类型
  */
-export type ConfirmationType = 'outline' | 'chapter_outlines' | 'review_failed'
+export type ConfirmationType = 'outline' | 'chapter_outlines' | 'review_failed' | 'volume_arc' | 'arc_outlines' | 'arc_chapter_outlines'
 
 /**
  * 工作流状态
