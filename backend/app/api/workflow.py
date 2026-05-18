@@ -367,6 +367,7 @@ def _build_prompts_dict(db: Session) -> dict[str, str | dict]:
         "character_generation": get_system_prompt(db, "character_generation"),
         "relation_generation": get_system_prompt(db, "relation_generation"),
         "chapter_outline_generation": get_system_prompt(db, "chapter_outline_generation"),
+        "arc_outline_generation": get_system_prompt(db, "arc_outline_generation"),
         "chapter_content_generation": {
             "system": default_cc["system"] if isinstance(default_cc, dict) else default_cc,
             "user": get_system_prompt(db, "chapter_content_generation"),
