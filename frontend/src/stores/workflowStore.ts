@@ -11,6 +11,7 @@ import type {
   ChapterOutline,
   WrittenChapter,
   ReviewResponse,
+  Arc,
 } from '@/types'
 
 interface WorkflowState {
@@ -37,6 +38,22 @@ interface WorkflowState {
     completed?: string[]
   } | null
   chapterOutlineAbortController: AbortController | null
+
+  // ========== 弧纲生成状态 ==========
+  arcs: Arc[]
+  arcOutlineGenerating: boolean
+  arcOutlineStreamingContent: string
+  arcOutlineStreamingArcIndex: number | null
+
+  // ========== 按弧章节大纲生成状态 ==========
+  arcChapterGenerating: boolean
+  arcChapterStreamingContent: string
+  arcChapterStreamingChapterNumber: number | null
+  arcChapterProgress: {
+    arcIndex: number
+    currentChapter: number
+    totalInArc: number
+  } | null
 
   // ========== 章节正文生成状态 ==========
   writingChapterGenerating: boolean
@@ -90,6 +107,27 @@ interface WorkflowState {
   cancelChapterOutlineGeneration: () => void
   clearChapterOutlineGenerationState: () => void
 
+  // 弧纲
+  setArcs: (arcs: Arc[]) => void
+  updateArc: (arcId: number, updates: Partial<Arc>) => void
+  setArcOutlineGenerating: (generating: boolean) => void
+  setArcOutlineStreamingContent: (content: string) => void
+  appendArcOutlineChunk: (chunk: string) => void
+  setArcOutlineStreamingArcIndex: (index: number | null) => void
+  clearArcOutlineState: () => void
+
+  // 按弧章节大纲
+  setArcChapterGenerating: (generating: boolean) => void
+  setArcChapterStreamingContent: (content: string) => void
+  appendArcChapterChunk: (chunk: string) => void
+  setArcChapterStreamingChapterNumber: (num: number | null) => void
+  setArcChapterProgress: (progress: {
+    arcIndex: number
+    currentChapter: number
+    totalInArc: number
+  } | null) => void
+  clearArcChapterState: () => void
+
   // 写作
   addWrittenChapter: (chapter: WrittenChapter) => void
   setCurrentChapter: (chapter: number) => void
@@ -130,6 +168,14 @@ const initialState = {
   chapterOutlineReplaning: false,
   chapterOutlineProgress: null,
   chapterOutlineAbortController: null,
+  arcs: [],
+  arcOutlineGenerating: false,
+  arcOutlineStreamingContent: '',
+  arcOutlineStreamingArcIndex: null,
+  arcChapterGenerating: false,
+  arcChapterStreamingContent: '',
+  arcChapterStreamingChapterNumber: null,
+  arcChapterProgress: null,
   writingChapterGenerating: false,
   writingGeneratingChapterId: null,
   writtenChapters: [],
@@ -211,6 +257,53 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
     chapterOutlineReplaning: false,
     chapterOutlineProgress: null,
     chapterOutlineAbortController: null,
+  }),
+
+  // ========== 弧纲 Actions ==========
+
+  setArcs: (arcs) => set({ arcs }),
+
+  updateArc: (arcId, updates) => set((state) => ({
+    arcs: state.arcs.map(a =>
+      a.id === arcId ? { ...a, ...updates } : a
+    )
+  })),
+
+  setArcOutlineGenerating: (generating) => set({ arcOutlineGenerating: generating }),
+
+  setArcOutlineStreamingContent: (content) => set({ arcOutlineStreamingContent: content }),
+
+  appendArcOutlineChunk: (chunk) => set((state) => ({
+    arcOutlineStreamingContent: state.arcOutlineStreamingContent + chunk
+  })),
+
+  setArcOutlineStreamingArcIndex: (index) => set({ arcOutlineStreamingArcIndex: index }),
+
+  clearArcOutlineState: () => set({
+    arcOutlineGenerating: false,
+    arcOutlineStreamingContent: '',
+    arcOutlineStreamingArcIndex: null,
+  }),
+
+  // ========== 按弧章节大纲 Actions ==========
+
+  setArcChapterGenerating: (generating) => set({ arcChapterGenerating: generating }),
+
+  setArcChapterStreamingContent: (content) => set({ arcChapterStreamingContent: content }),
+
+  appendArcChapterChunk: (chunk) => set((state) => ({
+    arcChapterStreamingContent: state.arcChapterStreamingContent + chunk
+  })),
+
+  setArcChapterStreamingChapterNumber: (num) => set({ arcChapterStreamingChapterNumber: num }),
+
+  setArcChapterProgress: (progress) => set({ arcChapterProgress: progress }),
+
+  clearArcChapterState: () => set({
+    arcChapterGenerating: false,
+    arcChapterStreamingContent: '',
+    arcChapterStreamingChapterNumber: null,
+    arcChapterProgress: null,
   }),
 
   // ========== 写作 Actions ==========
