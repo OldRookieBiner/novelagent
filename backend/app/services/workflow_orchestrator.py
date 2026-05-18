@@ -85,10 +85,11 @@ class WorkflowOrchestrator:
                 if mode == 'custom':
                     # 节点通过 get_stream_writer() 发送的结构化事件
                     if isinstance(data, dict) and data.get('type'):
-                        custom_type = data.pop('type')
+                        custom_type = data['type']
+                        event_data = {k: v for k, v in data.items() if k != 'type'}
                         yield (
                             f"event: {custom_type}\n"
-                            f"data: {json.dumps(data)}\n\n"
+                            f"data: {json.dumps(event_data)}\n\n"
                         )
 
                 elif mode == 'updates':

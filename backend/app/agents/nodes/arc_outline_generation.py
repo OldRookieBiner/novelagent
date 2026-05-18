@@ -112,7 +112,6 @@ async def arc_outline_generation_node(state: NovelState) -> dict:
         })
 
     return {
-        **state,
         "arcs": arcs,
         "stage": STAGE_ARC_OUTLINES,
         "waiting_for_confirmation": True,

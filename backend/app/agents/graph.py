@@ -17,6 +17,7 @@ from app.agents.nodes.wait_confirm import wait_for_confirmation
 from app.agents.nodes.character_generation import create_characters_from_outline_node
 from app.agents.nodes.relation_generation import generate_relations_node
 from app.agents.nodes.arc_outline_generation import arc_outline_generation_node
+from app.agents.nodes.volume_arc_planning import volume_arc_planning_node
 
 
 def route_after_outline(
@@ -119,11 +120,10 @@ def route_after_characters(
 
 def route_after_relations(
     state: NovelState,
-) -> Literal["wait_confirm", "arc_outlines", "chapter_outlines", "end"]:
+) -> Literal["wait_confirm", "volume_arc", "chapter_outlines", "end"]:
     """关系生成后的路由
 
-    长篇模式下有弧结构时进入弧纲生成，短/中篇直接进入章节大纲。
-    当 chapter_count 为 0 或 characters 为空时直接结束。
+    长篇小说进入弧/卷规划，短/中篇直接进入章节大纲。
     """
     if state.get("chapter_count", 0) <= 0:
         return "end"
@@ -132,9 +132,9 @@ def route_after_relations(
     decision = wait_for_confirmation(state)
     if decision == "wait":
         return "wait_confirm"
-    # 长篇模式且有弧结构 → 进入弧纲生成
-    if state.get("novel_length") == "long" and state.get("arcs"):
-        return "arc_outlines"
+    # 长篇走弧/卷规划
+    if state.get("novel_length") == "long":
+        return "volume_arc"
     return "chapter_outlines"
 
 
@@ -152,6 +152,22 @@ def route_after_arc_outlines(
     if not state.get("arcs"):
         return "end"
     return "chapter_outlines"
+
+
+def route_after_volume_arc(
+    state: NovelState,
+) -> Literal["wait_confirm", "arc_outlines", "end"]:
+    """弧/卷规划后的路由
+
+    首次执行 → 暂停等确认
+    确认后 → 进入弧纲生成
+    arcs 为空（LLM 解析失败）→ 结束
+    """
+    if state.get("waiting_for_confirmation"):
+        return "wait_confirm"
+    if not state.get("arcs"):
+        return "end"
+    return "arc_outlines"
 
 
 def create_novel_graph(checkpointer=None):
@@ -189,6 +205,7 @@ def create_novel_graph(checkpointer=None):
     )
     graph.add_node("generate_relations_node", generate_relations_node)
     graph.add_node("arc_outline_generation_node", arc_outline_generation_node)
+    graph.add_node("volume_arc_planning_node", volume_arc_planning_node)
 
     # 设置入口点
     graph.set_entry_point("outline_generation_node")
@@ -216,10 +233,17 @@ def create_novel_graph(checkpointer=None):
         route_after_relations,
         {
             "wait_confirm": END,
-            "arc_outlines": "arc_outline_generation_node",
+            "volume_arc": "volume_arc_planning_node",
             "chapter_outlines": "chapter_outlines_node",
             "end": END,
         },
+    )
+
+    # 弧/卷规划 → 确认或弧纲生成
+    graph.add_conditional_edges(
+        "volume_arc_planning_node",
+        route_after_volume_arc,
+        {"wait_confirm": END, "arc_outlines": "arc_outline_generation_node", "end": END},
     )
 
     # 弧纲生成 → 确认或章节大纲
@@ -293,6 +317,7 @@ __all__ = [
     "route_after_characters",
     "route_after_chapter_outlines",
     "route_after_arc_outlines",
+    "route_after_volume_arc",
     "route_after_relations",
     "route_after_review",
 ]

@@ -715,6 +715,44 @@ ARC_OUTLINE_GENERATION_PROMPT = """你是一个拥有 20 年经验的资深小�
 - 关键事件要有因果关系，推动情节发展
 - 角色弧线要自然过渡，避免突兀转变"""
 
+VOLUME_ARC_GENERATION_PROMPT = """你是一位经验性的长篇小说结构规划师。请根据以下大纲信息，将小说划分为卷和弧的结构。
+
+## 大纲信息
+
+标题：{outline_title}
+概述：{outline_summary}
+情节节点：{plot_points}
+世界观：{world_setting}
+情感曲线：{emotional_curve}
+
+## 目标
+
+总章节数：{total_chapters}（各弧章节数之和不得偏离此值 ±20%）
+目标字数：{target_words}
+
+## 输出格式
+
+严格按照以下格式输出，每个卷和弧都要有标题和概要。弧编号全局递增（弧1、弧2、弧3...），不按卷重置：
+
+卷1《卷名》
+  弧1《弧名》：N章
+  概要：弧的概要描述...
+  弧2《弧名》：M章
+  概要：弧的概要描述...
+卷2《卷名》
+  弧3《弧名》：K章
+  概要：弧的概要描述...
+
+## 规划原则
+
+1. 每个弧应是一个相对完整的故事单元，有明确的冲突和解决
+2. 卷的划分通常对应故事的大阶段或大转折
+3. 弧的章节数应根据剧情需要分配，不必均匀
+4. 各弧章节数之和必须接近 {total_chapters}（±20%以内）
+5. 弧概要需包含：核心冲突、主要角色、情节走向、与前后弧的衔接
+
+注意：弧编号全局递增（弧1、弧2、弧3...跨卷不重置），不按卷重新编号。例如卷1有弧1和弧2，卷2从弧3开始。"""
+
 # ==============================================================================
 # Default prompts dictionary for system defaults
 # ==============================================================================
@@ -747,5 +785,6 @@ DEFAULT_PROMPTS = {
     },
     "character_generation": CHARACTER_GENERATION_PROMPT,
     "relation_generation": RELATION_GENERATION_PROMPT,
+    "volume_arc_generation": VOLUME_ARC_GENERATION_PROMPT,
     "arc_outline_generation": ARC_OUTLINE_GENERATION_PROMPT,
 }

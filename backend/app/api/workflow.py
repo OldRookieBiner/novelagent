@@ -63,8 +63,9 @@ async def stream_workflow_events(
             if mode == 'custom':
                 # 节点通过 get_stream_writer() 发送的结构化事件
                 if isinstance(data, dict) and data.get('type'):
-                    custom_type = data.pop('type')
-                    yield f"event: {custom_type}\ndata: {json.dumps(data)}\n\n"
+                    custom_type = data['type']
+                    event_data = {k: v for k, v in data.items() if k != 'type'}
+                    yield f"event: {custom_type}\ndata: {json.dumps(event_data)}\n\n"
 
             elif mode == 'updates':
                 if isinstance(data, dict):
@@ -104,6 +105,7 @@ class WorkflowConfirmRequest(BaseModel):
     outline_title: Optional[str] = None
     outline_summary: Optional[str] = None
     chapter_outlines: Optional[list] = None
+    volumes: Optional[list] = None  # 用户修改后的卷数据
     arcs: Optional[list] = None  # 用户修改后的弧数据（含 outline 字段）
 
 
@@ -397,6 +399,7 @@ def _build_prompts_dict(db: Session) -> dict[str, str | dict]:
         "relation_generation": get_system_prompt(db, "relation_generation"),
         "chapter_outline_generation": get_system_prompt(db, "chapter_outline_generation"),
         "arc_outline_generation": get_system_prompt(db, "arc_outline_generation"),
+        "volume_arc_generation": get_system_prompt(db, "volume_arc_generation"),
         "chapter_content_generation": {
             "system": default_cc["system"] if isinstance(default_cc, dict) else default_cc,
             "user": get_system_prompt(db, "chapter_content_generation"),
@@ -618,6 +621,10 @@ async def confirm_workflow(
             checkpoint_state["outline_summary"] = request.outline_summary
         if request.chapter_outlines:
             checkpoint_state["chapter_outlines"] = request.chapter_outlines
+        if request.volumes:
+            checkpoint_state["volumes"] = request.volumes
+        if request.arcs:
+            checkpoint_state["arcs"] = request.arcs
 
     # 更新确认状态
     confirmation_type = checkpoint_state.get("confirmation_type")
@@ -687,6 +694,75 @@ async def confirm_workflow(
                 )
                 db.add(rel)
             logger.info(f"Persisted {len(relations_data)} relations to DB for project {project_id}")
+
+    # 同步更新弧/卷（volume_arc 确认）
+    if confirmation_type == "volume_arc":
+        from app.utils.workflow_persistence import persist_volumes_arcs
+
+        volumes_data = request.volumes if request and request.volumes else checkpoint_state.get("volumes", [])
+        arcs_data = request.arcs if request and request.arcs else checkpoint_state.get("arcs", [])
+
+        checkpoint_state["volumes"] = volumes_data
+        checkpoint_state["arcs"] = arcs_data
+
+        persist_volumes_arcs({"volumes": volumes_data, "arcs": arcs_data}, project_id, db)
+
+        # 同步更新 chapter_count
+        total_chapters = sum(a.get("chapter_count", 0) for a in arcs_data)
+        checkpoint_state["chapter_count"] = total_chapters
+
+    # 同步更新弧纲（arc_outlines 确认）
+    if confirmation_type == "arc_outlines":
+        from app.models.arc import Arc as ArcModel
+
+        arcs_data = request.arcs if request and request.arcs else checkpoint_state.get("arcs", [])
+        checkpoint_state["arcs"] = arcs_data
+
+        # 更新 DB 中弧纲确认状态
+        for arc_data in arcs_data:
+            arc_id = arc_data.get("id")
+            if not arc_id:
+                continue
+            arc_record = db.query(ArcModel).filter(ArcModel.id == arc_id).first()
+            if arc_record:
+                arc_record.outline_confirmed = True
+                if arc_data.get("outline"):
+                    arc_record.outline = arc_data["outline"]
+
+        logger.info(f"Persisted arc outlines confirmation for project {project_id}")
+
+    # 同步更新弧章节大纲（arc_chapter_outlines 确认）
+    if confirmation_type == "arc_chapter_outlines":
+        from app.models.outline import ChapterOutline as ChapterOutlineModel
+        from app.models.arc import Arc as ArcModel
+
+        # 确认当前弧的章节大纲
+        current_arc_index = checkpoint_state.get("current_arc_index", 0)
+        arcs_data = checkpoint_state.get("arcs", [])
+        if current_arc_index < len(arcs_data):
+            current_arc = arcs_data[current_arc_index]
+            arc_id = current_arc.get("id")
+            if arc_id:
+                arc_record = db.query(ArcModel).filter(ArcModel.id == arc_id).first()
+                if arc_record:
+                    arc_record.outline_confirmed = True
+
+        # 确认当前弧对应的章节大纲
+        chapter_outlines = checkpoint_state.get("chapter_outlines", [])
+        for co_data in chapter_outlines:
+            chapter_number = co_data.get("chapter_number")
+            if chapter_number:
+                co_record = db.query(ChapterOutlineModel).filter(
+                    ChapterOutlineModel.project_id == project_id,
+                    ChapterOutlineModel.chapter_number == chapter_number,
+                ).first()
+                if co_record:
+                    co_record.confirmed = True
+
+        # 递增弧索引，继续下一弧
+        checkpoint_state["current_arc_index"] = current_arc_index + 1
+
+        logger.info(f"Arc chapter outlines confirmed, advancing to arc {current_arc_index + 1} for project {project_id}")
 
     # 提交所有数据库更改
     db.commit()

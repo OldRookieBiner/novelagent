@@ -59,6 +59,52 @@ def persist_outline(output: dict, project_id: int, outline: Outline, db: Session
     return True
 
 
+def persist_volumes_arcs(output: dict, project_id: int, db: Session):
+    """持久化弧/卷规划节点的输出
+
+    清除旧数据后批量写入新数据。
+    CASCADE 自动删除关联 arcs，SET NULL 自动清除 chapter_outlines.arc_id。
+    """
+    volumes_data = output.get("volumes", [])
+    arcs_data = output.get("arcs", [])
+
+    # 清除旧数据
+    db.query(Volume).filter(Volume.project_id == project_id).delete()
+
+    # 写入卷
+    volume_id_map = {}  # volume_number → DB id 映射
+    for v_data in volumes_data:
+        volume = Volume(
+            project_id=project_id,
+            volume_number=v_data.get("volume_number", 1),
+            title=v_data.get("title", ""),
+            summary=v_data.get("summary"),
+        )
+        db.add(volume)
+        db.flush()
+        volume_id_map[v_data.get("volume_number", 1)] = volume.id
+
+    # 写入弧
+    for a_data in arcs_data:
+        vol_number = a_data.get("volume_number", 1)
+        volume_id = volume_id_map.get(vol_number)
+        arc = Arc(
+            volume_id=volume_id,
+            arc_number=a_data.get("arc_number", 1),
+            title=a_data.get("title", ""),
+            summary=a_data.get("summary"),
+            chapter_count=a_data.get("chapter_count", 1),
+        )
+        db.add(arc)
+
+    db.flush()
+
+    logger.info(
+        f"persist_volumes_arcs: project {project_id}: "
+        f"created {len(volumes_data)} volumes, {len(arcs_data)} arcs"
+    )
+
+
 def persist_arc_outlines(output: dict, project_id: int, db: Session):
     """持久化弧纲到 Arc.outline 和 Arc.outline_confirmed 字段
 
@@ -139,6 +185,7 @@ def persist_chapter_outlines(output: dict, project_id: int, db: Session):
             ending=co_data.get("ending"),
             target_words=co_data.get("target_words", 3000),
             confirmed=False,
+            arc_id=arc_id,
         )
         db.add(chapter_outline)
         created_count += 1
@@ -316,6 +363,7 @@ NODE_PERSIST_MAP = {
     "outline_generation_node": persist_outline,
     "create_characters_from_outline_node": persist_character_generation,
     "generate_relations_node": persist_relation_generation,
+    "volume_arc_planning_node": persist_volumes_arcs,
     "arc_outline_generation_node": persist_arc_outlines,
     "chapter_outlines_node": persist_chapter_outlines,
     "generate_chapter_content_node": persist_chapter_content,

@@ -456,6 +456,8 @@ export type WorkflowStage =
   | 'outline'
   | 'characters'
   | 'relations'
+  | 'volume_arc'
+  | 'arc_outlines'
   | 'chapter_outlines'
   | 'writing'
   | 'review'

@@ -512,7 +512,6 @@ async def _generate_chapter_outlines_by_arc(state: NovelState, llm: LLMService) 
     if current_arc_index >= len(arcs):
         # 所有弧已完成
         return {
-            **state,
             "stage": STAGE_CHAPTER_OUTLINES,
             "waiting_for_confirmation": False,
         }
@@ -584,7 +583,6 @@ async def _generate_chapter_outlines_by_arc(state: NovelState, llm: LLMService) 
 
     # 当前弧完成，暂停等待确认
     return {
-        **state,
         "chapter_outlines": existing_outlines,
         "current_arc_index": current_arc_index + 1,
         "stage": STAGE_CHAPTER_OUTLINES,

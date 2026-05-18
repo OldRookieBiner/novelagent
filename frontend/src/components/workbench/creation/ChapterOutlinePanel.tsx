@@ -788,7 +788,7 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
                   {
                     const isArcExpanded = expandedArcs.has(arc.id)
                     const isStreamingThisArc = arcOutlineGenerating && arcOutlineStreamingArcIndex !== null
-                      && volumes.flatMap(v => v.arcs).indexOf(arc) === arcOutlineStreamingArcIndex
+                      && arc.arc_number === arcOutlineStreamingArcIndex + 1
                     const isGeneratingThisArcChapters = generatingArcChapters === arc.id
 
                     return (

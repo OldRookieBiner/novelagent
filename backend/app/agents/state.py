@@ -92,6 +92,8 @@ class NovelState(TypedDict):
     novel_length: str  # short | medium | long
 
     # ========== 弧/卷结构 ==========
+    volumes: list[dict]  # [{volume_number, title, summary}]
+    arcs: list[dict]  # [{id, volume_id, volume_number, arc_number, title, summary, chapter_count}]
     current_arc_index: int  # 当前正在生成章节大纲的弧索引（0-based），用于按弧循环
 
     # ========== 章节大纲 ==========
@@ -132,6 +134,7 @@ STAGE_OUTLINE = "outline"
 STAGE_CHARACTERS = "characters"  # v0.8.0: 人物设定
 STAGE_RELATIONS = "relations"  # v0.8.0: 人物关系
 STAGE_CHAPTER_OUTLINES = "chapter_outlines"
+STAGE_VOLUME_ARC = "volume_arc"  # 弧/卷规划阶段
 STAGE_ARC_OUTLINES = "arc_outlines"  # 弧纲生成阶段
 STAGE_WRITING = "writing"
 STAGE_REVIEW = "review"
