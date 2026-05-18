@@ -1,7 +1,7 @@
 // frontend/src/components/workbench/creation/ChapterOutlinePanel.tsx
 
 import { useState, useEffect, useCallback } from 'react'
-import { Save, Sparkles, Check, X, ChevronLeft, ChevronRight, FileText, RotateCcw, ChevronDown, ChevronUp, Pencil, Play } from 'lucide-react'
+import { Save, Sparkles, Check, X, ChevronLeft, ChevronRight, FileText, RotateCcw, ChevronDown, Pencil, Play } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
@@ -80,7 +80,6 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
     arcOutlineStreamingArcIndex,
     arcChapterGenerating,
     arcChapterStreamingContent,
-    arcChapterStreamingChapterNumber,
     arcChapterProgress,
     setArcOutlineGenerating,
     appendArcOutlineChunk,
@@ -100,7 +99,6 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
     arcOutlineStreamingArcIndex: s.arcOutlineStreamingArcIndex,
     arcChapterGenerating: s.arcChapterGenerating,
     arcChapterStreamingContent: s.arcChapterStreamingContent,
-    arcChapterStreamingChapterNumber: s.arcChapterStreamingChapterNumber,
     arcChapterProgress: s.arcChapterProgress,
     setArcOutlineGenerating: s.setArcOutlineGenerating,
     appendArcOutlineChunk: s.appendArcOutlineChunk,
@@ -462,11 +460,11 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
       await workflowApi.runWorkflow(
         projectId,
         {
-          onNodeStart: (nodeName) =>
+          onNodeStart: (_nodeName) =>
           {
             // 节点开始
           },
-          onNodeDone: (nodeName) =>
+          onNodeDone: (_nodeName) =>
           {
             // 节点完成
           },
@@ -475,7 +473,7 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
             appendArcOutlineChunk(content)
             setArcOutlineStreamingArcIndex(arcIndex)
           },
-          onArcOutlineDone: (arcIndex, outline, arcNumber) =>
+          onArcOutlineDone: (_arcIndex, outline, arcNumber) =>
           {
             // 查找对应弧并更新
             const { arcs } = useWorkflowStore.getState()
@@ -592,7 +590,7 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
       await workflowApi.runWorkflow(
         projectId,
         {
-          onChapterOutlineChunk: (content, chapterNumber, arcIndex) =>
+          onChapterOutlineChunk: (content, chapterNumber, _arcIndex) =>
           {
             appendArcChapterChunk(content)
             setArcChapterStreamingChapterNumber(chapterNumber)
@@ -626,7 +624,7 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
               })
             }
           },
-          onWaiting: (confirmationType) =>
+          onWaiting: (_confirmationType) =>
           {
             clearArcChapterState()
           },
@@ -792,13 +790,6 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
                     const isStreamingThisArc = arcOutlineGenerating && arcOutlineStreamingArcIndex !== null
                       && volumes.flatMap(v => v.arcs).indexOf(arc) === arcOutlineStreamingArcIndex
                     const isGeneratingThisArcChapters = generatingArcChapters === arc.id
-                    // 检查本弧是否已有章节大纲
-                    const arcHasChapters = chapters.some(c =>
-                    {
-                      // 根据 arc_number 判断章节是否属于本弧
-                      // 由于章节大纲没有 arc_id 字段，使用弧的章节范围推断
-                      return false // 章节大纲和弧的关联需要后端支持，暂不判断
-                    })
 
                     return (
                       <div key={arc.id}>
