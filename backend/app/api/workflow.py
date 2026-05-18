@@ -438,10 +438,10 @@ async def run_workflow(
     """
     启动或恢复工作流（SSE 流式）。
 
-    使用 LangGraph 的 astream_events 进行流式传输，
+    使用 LangGraph 的 astream + stream_mode=['updates', 'custom'] 进行流式传输，
     发送以下 SSE 事件：
     - node_start: 节点开始执行
-    - chunk: 内容片段
+    - chunk/自定义事件: 内容片段（通过 get_stream_writer 发送）
     - node_done: 节点执行完成
     - waiting: 等待用户确认
     - done: 工作流完成
