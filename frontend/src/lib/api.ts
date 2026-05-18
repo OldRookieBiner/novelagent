@@ -566,3 +566,40 @@ export const workflowCleanupApi = {
     )
   },
 }
+
+// ==================== Volumes/Arcs API ====================
+
+export const volumesApi = {
+  /**
+   * 获取项目的卷/弧结构
+   */
+  async listVolumes(projectId: number): Promise<import('@/types').Volume[]>
+  {
+    return request<import('@/types').Volume[]>(
+      `/api/projects/${projectId}/volumes`,
+      { method: 'GET' }
+    )
+  },
+
+  /**
+   * 更新弧信息（含弧纲编辑）
+   */
+  async updateArc(projectId: number, arcId: number, data: import('@/types').ArcUpdate): Promise<import('@/types').Arc>
+  {
+    return request<import('@/types').Arc>(
+      `/api/projects/${projectId}/arcs/${arcId}`,
+      { method: 'PUT', body: JSON.stringify(data) }
+    )
+  },
+
+  /**
+   * 确认弧纲（可同时编辑弧纲内容）
+   */
+  async confirmArcOutline(projectId: number, arcId: number, data?: import('@/types').ArcUpdate): Promise<import('@/types').Arc>
+  {
+    return request<import('@/types').Arc>(
+      `/api/projects/${projectId}/arcs/${arcId}/confirm-outline`,
+      { method: 'PUT', body: JSON.stringify(data || {}) }
+    )
+  },
+}

@@ -91,6 +91,17 @@ export interface WorkflowStreamCallbacks {
   onDone?: (result: { stage: string; chapters: WrittenChapter[] }) => void
   // 错误
   onError?: (error: string) => void
+
+  // 弧纲流式事件
+  onArcOutlineChunk?: (content: string, arcIndex: number) => void
+  onArcOutlineDone?: (arcIndex: number, outline: string, arcNumber: number) => void
+
+  // 章节大纲流式事件（长篇按弧）
+  onChapterOutlineChunk?: (content: string, chapterNumber: number, arcIndex: number) => void
+  onChapterOutlineProgress?: (chapterNumber: number, totalInArc: number, arcIndex: number, chapter: unknown) => void
+
+  // 大纲流式事件
+  onOutlineChunk?: (content: string) => void
 }
 
 export const workflowApi = {
@@ -162,6 +173,44 @@ export const workflowApi = {
               ? (errorData.error || JSON.stringify(errorData))
               : String(errorData)
             callbacks.onError?.(errorMsg)
+          }
+          break
+
+        // 弧纲流式事件
+        case 'arc_outline_chunk':
+          {
+            const chunkData = data as unknown as { content: string; arc_index: number }
+            callbacks.onArcOutlineChunk?.(chunkData.content, chunkData.arc_index)
+          }
+          break
+
+        case 'arc_outline_done':
+          {
+            const doneData = data as unknown as { arc_index: number; outline: string; arc_number: number }
+            callbacks.onArcOutlineDone?.(doneData.arc_index, doneData.outline, doneData.arc_number)
+          }
+          break
+
+        // 章节大纲流式事件（长篇按弧）
+        case 'chapter_outline_chunk':
+          {
+            const chunkData = data as unknown as { content: string; chapter_number: number; arc_index: number }
+            callbacks.onChapterOutlineChunk?.(chunkData.content, chunkData.chapter_number, chunkData.arc_index)
+          }
+          break
+
+        case 'chapter_outline_progress':
+          {
+            const progressData = data as unknown as { chapter_number: number; total_in_arc: number; arc_index: number; chapter: unknown }
+            callbacks.onChapterOutlineProgress?.(progressData.chapter_number, progressData.total_in_arc, progressData.arc_index, progressData.chapter)
+          }
+          break
+
+        // 大纲流式事件
+        case 'outline_chunk':
+          {
+            const chunkData = data as unknown as { content: string }
+            callbacks.onOutlineChunk?.(chunkData.content)
           }
           break
 
