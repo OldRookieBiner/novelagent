@@ -77,6 +77,7 @@ export interface ProjectUpdate {
 
 export interface CollectedInfo {
   novelType?: string;
+  novelLength?: 'short' | 'medium' | 'long';  // 小说长度分类
   targetWords?: number;
   coreTheme?: string;
   worldSetting?: string;
