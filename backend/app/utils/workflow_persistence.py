@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 from app.models.outline import Outline, ChapterOutline
 from app.models.chapter import Chapter
 from app.models.character import Character, Relation
+from app.models.arc import Arc
+from app.models.volume import Volume
 from app.agents.nodes.review import check_review_passed
 from app.agents.nodes.character_generation import _map_role
 from app.agents.nodes.relation_generation import write_relations_to_db
@@ -57,17 +59,75 @@ def persist_outline(output: dict, project_id: int, outline: Outline, db: Session
     return True
 
 
+def persist_arc_outlines(output: dict, project_id: int, db: Session):
+    """持久化弧纲到 Arc.outline 和 Arc.outline_confirmed 字段
+
+    从 output["arcs"] 读取弧纲数据，更新对应 Arc 记录。
+    """
+    arcs_data = output.get("arcs", [])
+    if not arcs_data:
+        logger.info(f"persist_arc_outlines: no arcs data for project {project_id}")
+        return
+
+    for arc_data in arcs_data:
+        arc_id = arc_data.get("id")
+        if not arc_id:
+            continue
+        arc = db.query(Arc).filter(Arc.id == arc_id).first()
+        if arc:
+            if arc_data.get("outline"):
+                arc.outline = arc_data["outline"]
+            if arc_data.get("outline_confirmed") is not None:
+                arc.outline_confirmed = arc_data["outline_confirmed"]
+
+    logger.info(
+        f"persist_arc_outlines: project {project_id}: "
+        f"updated {len(arcs_data)} arcs"
+    )
+
+
 def persist_chapter_outlines(output: dict, project_id: int, db: Session):
-    """持久化章节大纲生成节点的输出到 chapter_outlines 表"""
+    """持久化章节大纲生成节点的输出到 chapter_outlines 表
+
+    长篇按弧模式：仅追加当前弧的章节大纲，不删除已有数据。
+    短篇/中篇：全量写入（原有行为）。
+    """
     chapter_outlines = output.get("chapter_outlines", [])
     if not chapter_outlines:
         logger.info(f"persist_chapter_outlines: no outlines for project {project_id}")
         return
 
+    # 检查是否已有章节大纲（长篇按弧追加场景）
+    existing_numbers = set(
+        co.chapter_number for co in db.query(ChapterOutline).filter(
+            ChapterOutline.project_id == project_id
+        ).all()
+    )
+
+    created_count = 0
     for co_data in chapter_outlines:
+        chapter_number = co_data.get("chapter_number", 1)
+
+        # 跳过已存在的章节大纲（按弧追加时避免重复）
+        if chapter_number in existing_numbers:
+            continue
+
+        # 查询 arc_id
+        arc_id = None
+        vol_num = co_data.get("volume_number")
+        arc_num = co_data.get("arc_number")
+        if vol_num and arc_num:
+            arc_record = db.query(Arc).join(Volume).filter(
+                Volume.project_id == project_id,
+                Volume.volume_number == vol_num,
+                Arc.arc_number == arc_num,
+            ).first()
+            if arc_record:
+                arc_id = arc_record.id
+
         chapter_outline = ChapterOutline(
             project_id=project_id,
-            chapter_number=co_data.get("chapter_number", 1),
+            chapter_number=chapter_number,
             title=co_data.get("title"),
             scene=co_data.get("scene"),
             characters=co_data.get("characters"),
@@ -81,10 +141,11 @@ def persist_chapter_outlines(output: dict, project_id: int, db: Session):
             confirmed=False,
         )
         db.add(chapter_outline)
+        created_count += 1
 
     logger.info(
         f"persist_chapter_outlines: project {project_id}: "
-        f"created {len(chapter_outlines)} outlines"
+        f"created {created_count} outlines (skipped {len(chapter_outlines) - created_count} existing)"
     )
 
 
@@ -255,6 +316,7 @@ NODE_PERSIST_MAP = {
     "outline_generation_node": persist_outline,
     "create_characters_from_outline_node": persist_character_generation,
     "generate_relations_node": persist_relation_generation,
+    "arc_outline_generation_node": persist_arc_outlines,
     "chapter_outlines_node": persist_chapter_outlines,
     "generate_chapter_content_node": persist_chapter_content,
     "review_node": persist_review_result,
