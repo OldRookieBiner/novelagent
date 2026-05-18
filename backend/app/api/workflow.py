@@ -104,6 +104,7 @@ class WorkflowConfirmRequest(BaseModel):
     outline_title: Optional[str] = None
     outline_summary: Optional[str] = None
     chapter_outlines: Optional[list] = None
+    arcs: Optional[list] = None  # 用户修改后的弧数据（含 outline 字段）
 
 
 class WorkflowReplanRequest(BaseModel):
@@ -208,11 +209,13 @@ def build_initial_state(
         "outline_world_setting": outline.world_setting,
         "outline_emotional_curve": outline.emotional_curve,
         "outline_confirmed": outline.confirmed,
+        "novel_length": (outline.collected_info or {}).get("novelLength", "short"),
 
         # 章节大纲
         "chapter_count": outline.chapter_count_suggested or 0,
         "chapter_outlines": chapter_outlines,
         "chapter_outlines_confirmed": all(co.confirmed for co in project.chapter_outlines) if chapter_outlines else False,
+        "current_arc_index": 0,
 
         # 章节正文
         "written_chapters": written_chapters,
@@ -327,6 +330,37 @@ def build_initial_state(
                     }
                     for r in db_records
                 ]
+
+        # 预加载弧/卷结构（长篇支持）
+        from app.models.volume import Volume as VolumeModel
+        from app.models.arc import Arc as ArcModel
+
+        db_volumes = db.query(VolumeModel).filter(
+            VolumeModel.project_id == project.id
+        ).order_by(VolumeModel.volume_number).all()
+
+        if db_volumes:
+            db_arcs = db.query(ArcModel).join(VolumeModel).filter(
+                VolumeModel.project_id == project.id
+            ).order_by(ArcModel.arc_number).all()
+
+            # volume_id → volume_number 映射
+            vol_id_to_num = {v.id: v.volume_number for v in db_volumes}
+
+            state["arcs"] = [
+                {
+                    "id": a.id,
+                    "volume_id": a.volume_id,
+                    "volume_number": vol_id_to_num.get(a.volume_id, 1),
+                    "arc_number": a.arc_number,
+                    "title": a.title,
+                    "summary": a.summary,
+                    "outline": a.outline,
+                    "outline_confirmed": a.outline_confirmed,
+                    "chapter_count": a.chapter_count,
+                }
+                for a in db_arcs
+            ]
 
     # 预加载 prompts（过渡方案：统一 SSE 端点和 LangGraph 节点的 prompt 获取）
     # TODO: _prompts 应通过 LangGraph config 传递而非 state 字段，
