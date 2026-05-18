@@ -16,6 +16,7 @@ from app.agents.nodes.rewrite import rewrite_node
 from app.agents.nodes.wait_confirm import wait_for_confirmation
 from app.agents.nodes.character_generation import create_characters_from_outline_node
 from app.agents.nodes.relation_generation import generate_relations_node
+from app.agents.nodes.arc_outline_generation import arc_outline_generation_node
 
 
 def route_after_outline(
@@ -43,22 +44,27 @@ def route_after_outline(
 
 def route_after_chapter_outlines(
     state: NovelState,
-) -> Literal["wait_confirm", "chapter_content", "end"]:
+) -> Literal["wait_confirm", "chapter_content", "chapter_outlines", "end"]:
     """章节大纲生成后的路由
 
-    根据 review_mode 决定是否等待用户确认。
-    如果章节大纲为空，直接结束以防止后续节点报错。
-
-    Args:
-        state: 当前状态
-
-    Returns:
-        "wait_confirm" - 等待用户确认
-        "chapter_content" - 继续生成章节正文
-        "end" - 无章节大纲，结束工作流
+    长篇按弧模式：当前弧确认后，检查是否还有弧需要生成
+    短/中篇：原有逻辑
     """
     if not state.get("chapter_outlines"):
         return "end"
+
+    # 按弧确认暂停
+    if state.get("waiting_for_confirmation"):
+        return "wait_confirm"
+
+    # 长篇：检查是否还有弧需要生成章节大纲
+    if state.get("novel_length") == "long":
+        arcs = state.get("arcs", [])
+        current_arc_index = state.get("current_arc_index", 0)
+        if current_arc_index < len(arcs):
+            return "chapter_outlines"  # 回到同一节点，生成下一弧
+
+    # 短/中篇 或 长篇所有弧已完成
     decision = wait_for_confirmation(state)
     if decision == "wait":
         return "wait_confirm"
@@ -113,12 +119,11 @@ def route_after_characters(
 
 def route_after_relations(
     state: NovelState,
-) -> Literal["wait_confirm", "chapter_outlines", "end"]:
+) -> Literal["wait_confirm", "arc_outlines", "chapter_outlines", "end"]:
     """关系生成后的路由
 
-    规划阶段的关系生成完成后不应继续执行章节大纲生成。
-    当 chapter_count 为 0（大纲未确认章节数）或 characters 为空时，
-    直接结束工作流，避免进入无意义的章节大纲生成并导致前端报错。
+    长篇模式下有弧结构时进入弧纲生成，短/中篇直接进入章节大纲。
+    当 chapter_count 为 0 或 characters 为空时直接结束。
     """
     if state.get("chapter_count", 0) <= 0:
         return "end"
@@ -127,6 +132,25 @@ def route_after_relations(
     decision = wait_for_confirmation(state)
     if decision == "wait":
         return "wait_confirm"
+    # 长篇模式且有弧结构 → 进入弧纲生成
+    if state.get("novel_length") == "long" and state.get("arcs"):
+        return "arc_outlines"
+    return "chapter_outlines"
+
+
+def route_after_arc_outlines(
+    state: NovelState,
+) -> Literal["wait_confirm", "chapter_outlines", "end"]:
+    """弧纲生成后的路由
+
+    弧纲生成完成 → 暂停等确认
+    确认后 → 进入章节大纲生成
+    arcs 为空 → 结束
+    """
+    if state.get("waiting_for_confirmation"):
+        return "wait_confirm"
+    if not state.get("arcs"):
+        return "end"
     return "chapter_outlines"
 
 
@@ -164,6 +188,7 @@ def create_novel_graph(checkpointer=None):
         "create_characters_from_outline_node", create_characters_from_outline_node
     )
     graph.add_node("generate_relations_node", generate_relations_node)
+    graph.add_node("arc_outline_generation_node", arc_outline_generation_node)
 
     # 设置入口点
     graph.set_entry_point("outline_generation_node")
@@ -189,14 +214,31 @@ def create_novel_graph(checkpointer=None):
     graph.add_conditional_edges(
         "generate_relations_node",
         route_after_relations,
+        {
+            "wait_confirm": END,
+            "arc_outlines": "arc_outline_generation_node",
+            "chapter_outlines": "chapter_outlines_node",
+            "end": END,
+        },
+    )
+
+    # 弧纲生成 → 确认或章节大纲
+    graph.add_conditional_edges(
+        "arc_outline_generation_node",
+        route_after_arc_outlines,
         {"wait_confirm": END, "chapter_outlines": "chapter_outlines_node", "end": END},
     )
 
-    # 章节大纲 → 章节正文（条件路由）
+    # 章节大纲 → 章节正文 或 回到自身（按弧循环）
     graph.add_conditional_edges(
         "chapter_outlines_node",
         route_after_chapter_outlines,
-        {"wait_confirm": END, "chapter_content": "generate_chapter_content_node", "end": END},
+        {
+            "wait_confirm": END,
+            "chapter_content": "generate_chapter_content_node",
+            "chapter_outlines": "chapter_outlines_node",  # 按弧循环
+            "end": END,
+        },
     )
 
     # 章节正文 → 审核
@@ -250,6 +292,7 @@ __all__ = [
     "route_after_outline",
     "route_after_characters",
     "route_after_chapter_outlines",
+    "route_after_arc_outlines",
     "route_after_relations",
     "route_after_review",
 ]
