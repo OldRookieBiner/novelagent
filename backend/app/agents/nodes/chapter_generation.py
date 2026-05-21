@@ -120,10 +120,10 @@ def parse_single_chapter_outline(
         raw_title = title_match.group(1).strip()
         chapter["title"] = _clean_chapter_title(raw_title)
 
-    # Extract scene
+    # Extract scene（截断至 500 字符，匹配 DB 列 String(500)）
     scene_match = re.search(r"场景[：:]\s*(.+)", response)
     if scene_match:
-        chapter["scene"] = scene_match.group(1).strip()
+        chapter["scene"] = scene_match.group(1).strip()[:500]
 
     # Extract characters
     characters_match = re.search(r"人物[：:]\s*(.+)", response)
