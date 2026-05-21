@@ -234,6 +234,7 @@ def build_initial_state(
         "review_result": None,
         "rewrite_count": 0,
         "max_rewrite_count": workflow_state.max_rewrite_count,
+        "refinement_enabled": True,
 
         # 工作流控制
         "waiting_for_confirmation": workflow_state.waiting_for_confirmation,

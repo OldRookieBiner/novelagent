@@ -108,6 +108,7 @@ class NovelState(TypedDict):
     review_result: Optional[dict]  # {passed, scores, issues, feedback}
     rewrite_count: int
     max_rewrite_count: int
+    refinement_enabled: bool  # 章节正文自检-精修是否启用（默认 True）
 
     # ========== 工作流控制 ==========
     waiting_for_confirmation: bool
