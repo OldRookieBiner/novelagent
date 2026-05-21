@@ -75,6 +75,7 @@ def _extract_review_fields(data: dict) -> Dict[str, Any]:
     兼容 LLM 可能使用的不同字段名：
     - suggestions / feedback / 改进建议 → suggestions
     - issues / problems / 问题列表 → issues
+    - 新格式 issues 含 paragraph_start，旧格式含 location/description
     """
     # 提取修改建议（兼容多种字段名）
     suggestions = (
@@ -84,13 +85,33 @@ def _extract_review_fields(data: dict) -> Dict[str, Any]:
         or ""
     )
 
-    # 提取问题列表
-    issues = data.get("issues") or data.get("problems") or []
+    # 提取问题列表，归一化 issues 字段（兼容新旧格式）
+    raw_issues = data.get("issues") or data.get("problems") or []
+    normalized_issues = []
+    for issue in raw_issues:
+        # 兼容旧格式（纯字符串）和对象格式
+        if isinstance(issue, str):
+            normalized_issues.append({"type": "", "suggestion": "", "description": issue})
+            continue
+
+        normalized = {
+            "type": issue.get("type", ""),
+            "suggestion": issue.get("suggestion", ""),
+        }
+        # 新格式优先：paragraph_start 用于段落定位
+        if "paragraph_start" in issue:
+            normalized["paragraph_start"] = issue["paragraph_start"]
+        # 旧格式兼容：保留 location 和 description
+        if "location" in issue:
+            normalized["location"] = issue["location"]
+        if "description" in issue:
+            normalized["description"] = issue["description"]
+        normalized_issues.append(normalized)
 
     return {
         "passed": bool(data.get("passed", False)),
         "scores": data.get("scores", {}),
-        "issues": issues,
+        "issues": normalized_issues,
         "suggestions": suggestions,
     }
 

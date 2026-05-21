@@ -528,9 +528,14 @@ REVIEW_USER_PROMPT = """请对以下章节进行专业审核。
     "outline_deviation": 1-10
   }}}},
   "issues": [
-    {{{{"type": "情节矛盾", "location": "第三段", "description": "主角突然知道了他不该知道的信息"}}}}
+    {{{{"type": "情节矛盾", "paragraph_start": "他突然得知了那个消息", "suggestion": "删除此句，主角不应知道此信息"}}}}
   ],
   "suggestions": "修改建议，针对每个问题给出可操作的修改方向"
+
+issues 中每条问题必须包含：
+- type: 问题类型（AI味/衔接/人设/逻辑/节奏/情感/情节矛盾）
+- paragraph_start: 问题段落的开头前 10-20 个字（用于定位段落）
+- suggestion: 修改建议
 }}}}
 ```
 
