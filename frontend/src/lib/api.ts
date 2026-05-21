@@ -400,6 +400,21 @@ export const chaptersApi = {
   },
 };
 
+// ==================== Quality Trend API ====================
+
+export const qualityTrendApi = {
+  /**
+   * 获取项目所有章节的质量分数趋势
+   */
+  async get(projectId: number): Promise<{
+    chapters: Array<{ chapter_number: number; scores: Record<string, number> }>;
+    averages: Record<string, number>;
+    alerts: string[];
+  }> {
+    return request(`/api/projects/${projectId}/chapters/quality-trend`);
+  },
+};
+
 // ==================== Settings API ====================
 
 export const settingsApi = {

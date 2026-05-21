@@ -434,6 +434,77 @@ async def confirm_chapter_outline(
 # Chapter Content Endpoints
 # =============================================================================
 
+
+@router.get("/{project_id}/chapters/quality-trend")
+def get_quality_trend(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """获取项目所有章节的质量分数趋势
+
+    返回每章的审核评分、全项目平均分、以及 AI 味趋势告警。
+    必须放在 /{project_id}/chapters/{chapter_num} 之前，
+    否则 "quality-trend" 会被当作 chapter_num 参数匹配。
+    """
+    project = get_project_for_user(project_id, current_user.id, db)
+
+    chapters = (
+        db.query(Chapter)
+        .join(ChapterOutline, Chapter.chapter_outline_id == ChapterOutline.id)
+        .filter(ChapterOutline.project_id == project_id)
+        .order_by(ChapterOutline.chapter_number)
+        .all()
+    )
+
+    trend_data = []
+    score_sums = {}
+    score_counts = {}
+
+    for ch in chapters:
+        review_result = ch.review_result or {}
+        scores = review_result.get("scores", {})
+        if scores:
+            # 通过 ChapterOutline 获取 chapter_number
+            co = db.query(ChapterOutline).filter(
+                ChapterOutline.id == ch.chapter_outline_id
+            ).first()
+            chapter_number = co.chapter_number if co else 0
+            trend_data.append({
+                "chapter_number": chapter_number,
+                "scores": scores,
+            })
+            for key, value in scores.items():
+                score_sums[key] = score_sums.get(key, 0) + value
+                score_counts[key] = score_counts.get(key, 0) + 1
+
+    averages = {}
+    for key in score_sums:
+        averages[key] = round(score_sums[key] / score_counts[key], 1)
+
+    # AI 味趋势告警：近期章节 ai_flavor 得分持续上升时发出警告
+    alerts = []
+    ai_flavor_scores = [
+        d["scores"].get("ai_flavor", 0)
+        for d in trend_data
+        if "ai_flavor" in d["scores"]
+    ]
+    if len(ai_flavor_scores) >= 3:
+        recent_avg = sum(ai_flavor_scores[-3:]) / 3
+        early_avg = sum(ai_flavor_scores[:3]) / 3
+        if recent_avg > early_avg + 1:
+            alerts.append(
+                f"AI味得分在近期章节持续上升"
+                f"（早期均分{early_avg:.1f} → 近期均分{recent_avg:.1f}）"
+            )
+
+    return {
+        "chapters": trend_data,
+        "averages": averages,
+        "alerts": alerts,
+    }
+
+
 @router.get("/{project_id}/chapters/{chapter_num}", response_model=ChapterResponse)
 async def get_chapter_content(
     project_id: int,
