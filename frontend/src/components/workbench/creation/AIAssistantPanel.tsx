@@ -2,10 +2,11 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { AlertCircle, RefreshCw, ShieldCheck, ChevronLeft, ChevronRight, PenLine } from 'lucide-react'
+import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer } from 'recharts'
 import { Button } from '@/components/ui/button'
 import { createSSEStream } from '@/lib/sseParser'
 import { toast } from 'sonner'
-import type { ReviewResponse } from '@/types'
+import type { ReviewResponse, ReviewIssue } from '@/types'
 
 // 审核评分维度中文标签
 const SCORE_LABELS: Record<string, string> = {
@@ -27,6 +28,7 @@ interface AIAssistantPanelProps
   onRewriteChunk?: (chunk: string) => void
   onRewriteDone?: (data: { chapter: { id?: number; content?: string; word_count?: number } }) => void
   onReviewCleared?: () => void
+  onIssueClick?: (issue: ReviewIssue) => void
   collapsed?: boolean
   onToggleCollapse?: () => void
 }
@@ -40,6 +42,7 @@ export function AIAssistantPanel({
   onRewriteChunk,
   onRewriteDone,
   onReviewCleared,
+  onIssueClick,
   collapsed,
   onToggleCollapse,
 }: AIAssistantPanelProps)
@@ -287,21 +290,58 @@ export function AIAssistantPanel({
               </div>
             )}
 
+            {/* 质量雷达图 */}
+            {reviewResult.scores && Object.keys(reviewResult.scores).length > 0 && (
+              <div className="p-3 bg-muted rounded-md">
+                <h4 className="text-xs font-medium text-muted-foreground mb-2">质量雷达图</h4>
+                <ResponsiveContainer width="100%" height={200}>
+                  <RadarChart data={[
+                    { dimension: '情节', score: reviewResult.scores.plot_consistency || 0 },
+                    { dimension: '人物', score: reviewResult.scores.character_consistency || 0 },
+                    { dimension: '文笔', score: reviewResult.scores.writing_quality || 0 },
+                    { dimension: '情感', score: reviewResult.scores.emotional_tension || 0 },
+                    { dimension: '去AI味', score: 10 - (reviewResult.scores.ai_flavor || 0) },
+                    { dimension: '贴合大纲', score: 10 - (reviewResult.scores.outline_deviation || 0) },
+                  ]}>
+                    <PolarGrid />
+                    <PolarAngleAxis dataKey="dimension" tick={{ fontSize: 11 }} />
+                    <PolarRadiusAxis angle={30} domain={[0, 10]} />
+                    <Radar dataKey="score" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.2} />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+
             {/* 问题列表 */}
             {reviewResult.issues.length > 0 && (
               <div className="space-y-1.5">
                 <span className="text-xs font-medium">发现问题 ({reviewResult.issues.length})</span>
                 {reviewResult.issues.map((issue, index) =>
                 {
-                  const description = typeof issue === 'string' ? issue : issue.description
-                  const type = typeof issue === 'string' ? '' : issue.type
-                  const location = typeof issue === 'string' ? '' : issue.location
+                  const isString = typeof issue === 'string'
+                  const description = isString ? issue : issue.description
+                  const type = isString ? '' : issue.type
+                  const location = isString ? '' : issue.location
+                  const paragraphStart = isString ? undefined : issue.paragraph_start
+                  const hasParagraph = !!paragraphStart
                   return (
-                    <div key={index} className="p-2 bg-yellow-50 border border-yellow-200 rounded text-xs flex items-start gap-1.5">
+                    <div
+                      key={index}
+                      onClick={() => !isString && onIssueClick?.(issue)}
+                      className={`p-2 bg-yellow-50 border border-yellow-200 rounded text-xs flex items-start gap-1.5 ${
+                        hasParagraph ? 'cursor-pointer hover:bg-yellow-100 transition-colors' : ''
+                      }`}
+                      title={hasParagraph ? '点击定位到问题段落' : undefined}
+                    >
                       <AlertCircle className="h-3 w-3 text-yellow-600 mt-0.5 flex-shrink-0" />
                       <span className="leading-relaxed">
                         {type ? <span className="font-medium text-yellow-800">[{type}]</span> : ''}{type ? ' ' : ''}{location ? `${location}：` : ''}{description}
                       </span>
+                      {paragraphStart && (
+                        <span className="text-[10px] text-muted-foreground truncate max-w-[120px] ml-auto flex-shrink-0 self-center" title={paragraphStart}>
+                          「{paragraphStart}...」
+                        </span>
+                      )}
                     </div>
                   )
                 })}

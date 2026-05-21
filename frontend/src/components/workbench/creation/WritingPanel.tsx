@@ -439,6 +439,29 @@ export function WritingPanel({ projectId }: WritingPanelProps)
     [chapterContent?.review_result]
   )
 
+  // 点击审核问题，定位到编辑器中对应段落
+  const handleIssueClick = useCallback((issue: { paragraph_start?: string }) =>
+  {
+    if (!issue.paragraph_start) return
+    // 在编辑器的 DOM 中搜索匹配段落并滚动高亮
+    const editorEl = document.querySelector('.tiptap.ProseMirror')
+      ?? document.querySelector('.ProseMirror')
+      ?? document.querySelector('[contenteditable="true"]')
+    if (!editorEl) return
+
+    const paragraphs = editorEl.querySelectorAll('p')
+    for (const p of paragraphs)
+    {
+      if (p.textContent?.startsWith(issue.paragraph_start!))
+      {
+        p.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        p.classList.add('review-highlight')
+        setTimeout(() => p.classList.remove('review-highlight'), 5000)
+        break
+      }
+    }
+  }, [])
+
   const navigateChapter = (direction: 'prev' | 'next') =>
   {
     if (!selectedChapter) return
@@ -705,6 +728,7 @@ export function WritingPanel({ projectId }: WritingPanelProps)
         onRewriteChunk={handleRewriteChunk}
         onRewriteDone={handleRewriteDone}
         onReviewCleared={handleReviewCleared}
+        onIssueClick={handleIssueClick}
         collapsed={rightCollapsed}
         onToggleCollapse={() => setRightCollapsed(!rightCollapsed)}
       />

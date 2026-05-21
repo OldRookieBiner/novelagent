@@ -163,6 +163,12 @@
   @apply bg-primary/20;
 }
 
+/* 审核段落高亮 */
+.review-highlight {
+  background-color: rgba(250, 204, 21, 0.25);
+  transition: background-color 0.3s ease;
+}
+
 /* Print styles */
 @media print {
   .no-print {

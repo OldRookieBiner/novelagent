@@ -222,6 +222,8 @@ export interface ReviewIssue {
   type?: string;
   location?: string;
   description: string;
+  paragraph_start?: string;
+  suggestion?: string;
 }
 
 export interface ReviewResponse {
