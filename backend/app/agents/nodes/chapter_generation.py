@@ -17,6 +17,7 @@ from app.agents.nodes.utils import (
     format_evolution_info,
     format_world_setting,
     get_prompts_from_state,
+    get_prompt_template,
     parse_words_per_chapter,
 )
 
@@ -226,13 +227,9 @@ async def generate_single_chapter_outline(
     # 获取情感曲线
     emotional_curve = state.get("outline_emotional_curve", "") or "未提供"
 
-    # 从 state 获取预加载的 prompts（LangGraph 合规）
-    prompts = state.get("_prompts", {})
-    if prompts and "chapter_outline_generation" in prompts:
-        prompt_template = prompts["chapter_outline_generation"]
-    else:
-        from app.agents.prompts import DEFAULT_PROMPTS
-        prompt_template = DEFAULT_PROMPTS.get("chapter_outline_generation", "")
+    # 从 state 获取预加载的 prompts（统一使用 get_prompts_from_state）
+    system_template, user_template = get_prompts_from_state(state, "chapter_outline_generation")
+    prompt_template = get_prompt_template(system_template, user_template)
 
     prompt = prompt_template.format(
         outline=outline,

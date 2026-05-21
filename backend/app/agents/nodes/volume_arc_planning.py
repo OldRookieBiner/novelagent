@@ -95,14 +95,14 @@ async def volume_arc_planning_node(state: NovelState) -> dict:
         更新 volumes、arcs、chapter_count、stage、waiting_for_confirmation、confirmation_type
     """
     from app.utils.llm import get_llm_from_state_async
-    from app.agents.prompts import DEFAULT_PROMPTS
+    from app.agents.nodes.utils import get_prompts_from_state, get_prompt_template
 
     # 获取 LLM 服务
     llm = await get_llm_from_state_async(state)
 
-    # 构建 prompt
-    prompts = state.get("_prompts", DEFAULT_PROMPTS)
-    prompt_template = prompts.get("volume_arc_generation", DEFAULT_PROMPTS["volume_arc_generation"])
+    # 从 state 获取预加载的 prompts（统一使用 get_prompts_from_state）
+    system_template, user_template = get_prompts_from_state(state, "volume_arc_generation")
+    prompt_template = get_prompt_template(system_template, user_template)
 
     outline_title = state.get("outline_title", "")
     outline_summary = state.get("outline_summary", "")

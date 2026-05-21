@@ -24,11 +24,11 @@ def _build_arc_outline_messages(
     Returns:
         LLM 消息列表
     """
-    from app.agents.prompts import DEFAULT_PROMPTS
-    from app.agents.nodes.utils import format_characters_info
+    from app.agents.nodes.utils import get_prompts_from_state, get_prompt_template, format_characters_info
 
-    prompts = state.get("_prompts", DEFAULT_PROMPTS)
-    prompt_template = prompts.get("arc_outline_generation", DEFAULT_PROMPTS["arc_outline_generation"])
+    # 从 state 获取预加载的 prompts（统一使用 get_prompts_from_state）
+    system_template, user_template = get_prompts_from_state(state, "arc_outline_generation")
+    prompt_template = get_prompt_template(system_template, user_template)
 
     # 大纲信息
     outline_title = state.get("outline_title", "")

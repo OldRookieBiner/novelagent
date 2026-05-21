@@ -200,33 +200,19 @@ async def generate_relations_node(state: NovelState, config: dict = None) -> Nov
 
     emotional_curve = state.get("outline_emotional_curve", "") or "未提供"
 
-    # 从 state 获取预加载的 prompts
-    prompts = state.get("_prompts", {})
-    if prompts and "relation_generation" in prompts:
-        prompt = prompts["relation_generation"].format(
-            characters_text=characters_text,
-            world_era=world_era,
-            outline_summary=outline_summary,
-            plot_points=plot_points_str,
-            emotional_curve=emotional_curve,
-        )
-        logger_rn.info(f"relation_gen_node: Using prompt from state, length={len(prompt)}")
-    else:
-        # 回退：使用默认 prompt
-        from app.agents.prompts import DEFAULT_PROMPTS
-        default_prompt = DEFAULT_PROMPTS.get("relation_generation", "")
-        if default_prompt:
-            prompt = default_prompt.format(
-                characters_text=characters_text,
-                world_era=world_era,
-                outline_summary=outline_summary,
-                plot_points=plot_points_str,
-                emotional_curve=emotional_curve,
-            )
-            logger_rn.info(f"relation_gen_node: Using DEFAULT_PROMPTS fallback, length={len(prompt)}")
-        else:
-            prompt = f"基于以下角色生成关系网络：\n{characters_text}\n世界观：{world_era}\n大纲：{outline_summary}"
-            logger_rn.warning("relation_gen_node: No relation_generation prompt found, using minimal fallback")
+    # 从 state 获取预加载的 prompts（统一使用 get_prompts_from_state）
+    from app.agents.nodes.utils import get_prompts_from_state, get_prompt_template
+    system_template, user_template = get_prompts_from_state(state, "relation_generation")
+    prompt_template = get_prompt_template(system_template, user_template)
+    logger_rn.info(f"relation_gen_node: Using prompt template, length={len(prompt_template)}")
+
+    prompt = prompt_template.format(
+        characters_text=characters_text,
+        world_era=world_era,
+        outline_summary=outline_summary,
+        plot_points=plot_points_str,
+        emotional_curve=emotional_curve,
+    )
 
     # 调用 LLM
     llm = await get_llm_from_state_async(state)
