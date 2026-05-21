@@ -1,6 +1,5 @@
 """Workflow API routes for LangGraph integration"""
 
-import json
 import logging
 from typing import Optional, AsyncIterator
 from fastapi import APIRouter, HTTPException, status, Depends
@@ -18,7 +17,14 @@ from app.models.checkpoint import WorkflowCheckpoint
 from app.models.workflow_state import WorkflowState
 from app.utils.auth import get_current_user
 from app.utils.project import get_project_for_user
-from app.utils.error import format_sse_error
+from app.agents.sse_events import (
+    format_node_start,
+    format_node_done,
+    format_chunk,
+    format_done,
+    format_waiting,
+    format_sse_error,
+)
 from app.utils.deps import get_user_settings_or_raise
 from app.agents.graph import create_novel_graph_with_checkpointer
 from app.agents.state import NovelState
@@ -54,9 +60,9 @@ async def stream_workflow_events(
     try:
         # 首次执行 vs 恢复执行
         if initial_state is not None:
-            yield f"event: node_start\ndata: {json.dumps({'node': 'workflow', 'message': 'Starting workflow'})}\n\n"
+            yield format_node_start("workflow", "Starting workflow")
         else:
-            yield f"event: node_start\ndata: {json.dumps({'node': 'workflow_resume', 'message': 'Resuming workflow'})}\n\n"
+            yield format_node_start("workflow_resume", "Resuming workflow")
 
         async for event in graph.astream_events(initial_state, config, version="v2"):
             event_type = event.get("event")
@@ -64,19 +70,19 @@ async def stream_workflow_events(
             event_data = event.get("data", {})
 
             if event_type == "on_chain_start":
-                yield f"event: node_start\ndata: {json.dumps({'node': event_name})}\n\n"
+                yield format_node_start(event_name)
 
             elif event_type == "on_chain_end":
                 output = event_data.get("output", {})
                 # 处理 output 不是字典的情况（如 END 字符串）
                 if isinstance(output, dict):
                     if output.get("waiting_for_confirmation"):
-                        yield f"event: waiting\ndata: {json.dumps({'node': event_name, 'confirmation_type': output.get('confirmation_type')})}\n\n"
+                        yield format_waiting(output.get("confirmation_type"), node=event_name)
                         # 工作流暂停，同时发送 done 事件通知前端当前阶段完成
-                        yield f"event: done\ndata: {json.dumps({'message': 'Workflow paused for confirmation'})}\n\n"
+                        yield format_done("Workflow paused for confirmation")
                         return
                     else:
-                        yield f"event: node_done\ndata: {json.dumps({'node': event_name, 'state': output})}\n\n"
+                        yield format_node_done(event_name, output)
                 else:
                     # output 不是字典（如 END 字符串），说明工作流已完成
                     # 跳过 node_done，直接等待最终的 done 事件
@@ -87,9 +93,9 @@ async def stream_workflow_events(
                 if chunk:
                     content = getattr(chunk, "content", str(chunk))
                     if content:
-                        yield f"event: chunk\ndata: {json.dumps({'content': content})}\n\n"
+                        yield format_chunk(content)
 
-        yield f"event: done\ndata: {json.dumps({'message': 'Workflow completed'})}\n\n"
+        yield format_done("Workflow completed")
 
     except Exception as e:
         yield format_sse_error(e)

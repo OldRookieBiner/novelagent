@@ -7,11 +7,19 @@ All SSE streaming endpoints use this module to:
 4. Handle errors gracefully with transaction rollback
 """
 
-import json
 import logging
 from typing import AsyncIterator, Callable, Awaitable, Optional
 
 from app.agents.state import NovelState
+from app.agents.sse_events import (
+    format_node_start,
+    format_node_done,
+    format_chunk,
+    format_done,
+    format_waiting,
+    format_error_message,
+    format_sse_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,15 +67,9 @@ class WorkflowOrchestrator:
         try:
             # 首次执行 vs 恢复执行
             if initial_state is not None:
-                yield (
-                    f"event: node_start\n"
-                    f"data: {json.dumps({'node': 'workflow', 'message': 'Starting workflow'})}\n\n"
-                )
+                yield format_node_start("workflow", "Starting workflow")
             else:
-                yield (
-                    f"event: node_start\n"
-                    f"data: {json.dumps({'node': 'workflow_resume', 'message': 'Resuming workflow'})}\n\n"
-                )
+                yield format_node_start("workflow_resume", "Resuming workflow")
 
             async for event in graph.astream_events(initial_state, config, version="v2"):
                 event_type = event.get("event")
@@ -75,20 +77,14 @@ class WorkflowOrchestrator:
                 event_data = event.get("data", {})
 
                 if event_type == "on_chain_start":
-                    yield (
-                        f"event: node_start\n"
-                        f"data: {json.dumps({'node': event_name})}\n\n"
-                    )
+                    yield format_node_start(event_name)
 
                 elif event_type == "on_chat_model_stream":
                     chunk = event_data.get("chunk")
                     if chunk:
                         content = getattr(chunk, "content", str(chunk))
                         if content:
-                            yield (
-                                f"event: chunk\n"
-                                f"data: {json.dumps({'content': content})}\n\n"
-                            )
+                            yield format_chunk(content)
 
                 elif event_type == "on_chain_end":
                     output = event_data.get("output", {})
@@ -98,40 +94,20 @@ class WorkflowOrchestrator:
                             persist_result = await self._call_persist(output, persist_callback)
                             if persist_result.get("_persist_error"):
                                 error_msg = persist_result["_persist_error"]
-                                yield (
-                                    f"event: error\n"
-                                    f"data: {json.dumps({'error': f'持久化失败: {error_msg}'})}\n\n"
-                                )
+                                yield format_error_message(f"持久化失败: {error_msg}")
                                 return
 
                         if output.get("waiting_for_confirmation"):
-                            waiting_data = {
-                                'node': event_name,
-                                'confirmation_type': output.get('confirmation_type')
-                            }
-                            yield (
-                                f"event: waiting\n"
-                                f"data: {json.dumps(waiting_data)}\n\n"
-                            )
-                            yield (
-                                f"event: done\n"
-                                f"data: {json.dumps({'message': 'Workflow paused for confirmation'})}\n\n"
-                            )
+                            yield format_waiting(output.get("confirmation_type"), node=event_name)
+                            yield format_done("Workflow paused for confirmation")
                             return
                         else:
-                            yield (
-                                f"event: node_done\n"
-                                f"data: {json.dumps({'node': event_name, 'state': output})}\n\n"
-                            )
+                            yield format_node_done(event_name, output)
 
-            yield (
-                f"event: done\n"
-                f"data: {json.dumps({'message': 'Workflow completed'})}\n\n"
-            )
+            yield format_done("Workflow completed")
 
         except Exception as e:
             logger.exception("WorkflowOrchestrator run error")
-            from app.utils.error import format_sse_error
             yield format_sse_error(e)
 
     async def _call_persist(
