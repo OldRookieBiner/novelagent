@@ -47,6 +47,60 @@ def _clean_chapter_title(title: str) -> str:
     return title.strip()
 
 
+def _build_arc_context(arcs: list[dict], chapter_number: int, chapter_count: int) -> str:
+    """根据当前章节号构建弧纲上下文字符串
+
+    遍历 arcs 列表，找到当前章节所属的弧，输出弧的标题、章节范围和概要。
+    如果项目没有弧纲（短/中篇小说），返回无弧纲提示。
+
+    Args:
+        arcs: 弧纲列表，每项含 arc_number, title, chapter_count, outline 等字段
+        chapter_number: 当前章节号（1-based）
+        chapter_count: 总章节数
+
+    Returns:
+        弧纲上下文字符串
+    """
+    if not arcs:
+        return "无弧纲信息（短/中篇小说模式）"
+
+    # 计算每条弧的章节区间（1-based，连续分配）
+    start = 1
+    for arc in arcs:
+        arc_chapters = arc.get("chapter_count", 0)
+        end = start + arc_chapters - 1
+        if start <= chapter_number <= end:
+            # 找到当前章节所属的弧
+            arc_title = arc.get("title", "未命名")
+            arc_number = arc.get("arc_number", 0)
+            arc_outline = arc.get("outline", "")
+            summary = arc.get("summary", "")
+
+            parts = [f"当前章节属于第{arc_number}弧「{arc_title}」（第{start}-{end}章）"]
+            if summary:
+                parts.append(f"弧纲摘要：{summary}")
+            if arc_outline:
+                # 截取概要前 300 字，避免过长
+                preview = arc_outline[:300] + ("..." if len(arc_outline) > 300 else "")
+                parts.append(f"弧纲概要：{preview}")
+
+            # 列出弧内其他章节的位置提示
+            if arc_chapters > 1:
+                position_in_arc = chapter_number - start + 1
+                if position_in_arc == 1:
+                    parts.append("本章为弧内首章，需建立弧线基调")
+                elif position_in_arc == arc_chapters:
+                    parts.append("本章为弧内末章，需完成弧线收束")
+                else:
+                    parts.append(f"本章为弧内第{position_in_arc}章（共{arc_chapters}章），需推进弧线发展")
+
+            return "\n".join(parts)
+        start = end + 1
+
+    # 章节超出所有弧的范围（理论上不应发生）
+    return "无弧纲信息（短/中篇小说模式）"
+
+
 def clean_chapter_content(content: str) -> str:
     """清理章节内容，移除 LLM 可能添加的结尾数字
 
@@ -227,6 +281,10 @@ async def generate_single_chapter_outline(
     # 获取情感曲线
     emotional_curve = state.get("outline_emotional_curve", "") or "未提供"
 
+    # 构建弧纲上下文（根据当前章节归属的弧）
+    arcs = state.get("arcs", [])
+    arc_context = _build_arc_context(arcs, chapter_number, chapter_count)
+
     # 从 state 获取预加载的 prompts（统一使用 get_prompts_from_state）
     system_template, user_template = get_prompts_from_state(state, "chapter_outline_generation")
     prompt_template = get_prompt_template(system_template, user_template)
@@ -241,6 +299,7 @@ async def generate_single_chapter_outline(
         chapter_number=chapter_number,
         previous_chapters_info=previous_info,
         min_words=min_words,
+        arc_context=arc_context,
     )
 
     response = ""
