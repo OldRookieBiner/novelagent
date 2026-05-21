@@ -1,7 +1,7 @@
 // frontend/src/components/workbench/planning/InspirationPanel.tsx
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import { Lightbulb, RotateCcw, RefreshCw, ArrowRight, Check, ChevronDown, ChevronUp, Copy, ChevronLeft, ChevronRight, Cpu, Settings2 } from 'lucide-react'
+import { Lightbulb, RotateCcw, RefreshCw, ArrowRight, Check, ChevronDown, ChevronUp, Copy, ChevronLeft, ChevronRight, Cpu, Settings2, MessageCircle, Settings } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -32,6 +32,7 @@ import {
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
 import { OutlineProgressDialog } from './OutlineProgressDialog'
+import { InspirationChatPanel } from './InspirationChatPanel'
 import { toast } from 'sonner'
 
 interface InspirationPanelProps
@@ -144,6 +145,28 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
   const [reviewLlmConfigId, setReviewLlmConfigId] = useState<number | null>(null)
   const [showReviewModelAdvanced, setShowReviewModelAdvanced] = useState(false)
 
+  // 模式切换：对话模式 vs 表单模式
+  const [mode, setMode] = useState<'chat' | 'form'>('chat')
+
+  // 后端 outline 数据缓存（供对话历史恢复使用）
+  const [outlineData, setOutlineData] = useState<Record<string, unknown> | null>(null)
+
+  // 从后端 outline 数据恢复对话历史
+  const outlineMessages = useMemo(() =>
+  {
+    if (!outlineData?.messages) return undefined
+    return (outlineData.messages as Array<{ role: string; content: string }>)
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
+  }, [outlineData?.messages])
+
+  // 从后端 outline 数据恢复已提取的字段
+  const outlineExtractedFields = useMemo(() =>
+  {
+    if (!outlineData?.collected_info) return undefined
+    return outlineData.collected_info as Record<string, unknown>
+  }, [outlineData?.collected_info])
+
   // 初始化标记：防止 targetReader effect 在回填时清除字段
   const initializedRef = useRef(false)
 
@@ -225,6 +248,8 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
         if (outline.collected_info && Object.keys(outline.collected_info).length > 0)
         {
           source = outline.collected_info as Record<string, unknown>
+          // 缓存 outline 数据供对话历史恢复
+          setOutlineData(outline as unknown as Record<string, unknown>)
         }
       }
       catch
@@ -581,8 +606,69 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
     }
   }
 
+  // 对话模式完成后：将提取的结构化数据填入表单状态，再触发保存
+  const handleChatComplete = (data: InspirationData) =>
+  {
+    if (data.novelType) setNovelType(data.novelType)
+    if (data.era) setEra(data.era)
+    if (data.targetReader) setTargetReader(data.targetReader)
+    if (data.targetWords) setTargetWords(data.targetWords)
+    if (data.contextStrategy) setContextStrategy(data.contextStrategy)
+    if (data.coreTheme) setCoreTheme(data.coreTheme)
+    if (data.worldSetting) setWorldSetting(data.worldSetting)
+    if (data.customWorldSetting) setCustomWorldSetting(data.customWorldSetting)
+    if (data.stylePreference) setStylePreference(data.stylePreference)
+    if (data.narrative) setNarrative(data.narrative)
+    if (data.wordsPerChapter) setWordsPerChapter(data.wordsPerChapter)
+    if (data.customWordsPerChapter) setCustomWordsPerChapter(data.customWordsPerChapter)
+    if (data.genre) setGenre(data.genre)
+    if (data.customGenre) setCustomGenre(data.customGenre)
+    if (data.maleLead) setMaleLead(data.maleLead)
+    if (data.customMaleLead) setCustomMaleLead(data.customMaleLead)
+    if (data.femaleLead) setFemaleLead(data.femaleLead)
+    if (data.customFemaleLead) setCustomFemaleLead(data.customFemaleLead)
+    if (data.goldFinger) setGoldFinger(data.goldFinger)
+    if (data.customGoldFinger) setCustomGoldFinger(data.customGoldFinger)
+    // 标记初始化完成，防止 targetReader effect 清除字段
+    initializedRef.current = true
+    // 填充后触发保存
+    handleConfirm()
+  }
+
   return (
-    <div className="flex h-full">
+    <div className="flex h-full relative">
+      {/* 模式切换按钮（悬浮在右上角） */}
+      <div className="absolute top-2 right-2 z-10">
+        <button
+          onClick={() => setMode(mode === 'chat' ? 'form' : 'chat')}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors bg-white/90 backdrop-blur-sm px-2.5 py-1.5 rounded-md border shadow-sm"
+        >
+          {mode === 'chat' ? (
+            <>
+              <Settings className="h-3.5 w-3.5" />
+              高级设置
+            </>
+          ) : (
+            <>
+              <MessageCircle className="h-3.5 w-3.5" />
+              对话模式
+            </>
+          )}
+        </button>
+      </div>
+
+      {mode === 'chat' ? (
+        /* 对话模式：显示 InspirationChatPanel */
+        <InspirationChatPanel
+          projectId={projectId}
+          onComplete={handleChatComplete}
+          onSwitchToForm={() => setMode('form')}
+          initialMessages={outlineMessages}
+          initialFields={outlineExtractedFields as Partial<InspirationData>}
+        />
+      ) : (
+        /* 表单模式：原有表单内容 */
+        <>
       {/* 左侧：表单选择区 (70%) */}
       <div className="flex-[7] flex flex-col">
         <div className="flex items-center justify-between px-6 py-3 border-b bg-white">
@@ -1283,6 +1369,8 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
           setActiveMenuItem('outline')
         }}
       />
+      </>
+      )}
     </div>
   )
 }
