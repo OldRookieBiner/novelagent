@@ -41,6 +41,10 @@ class ModelConfig(Base):
     last_health_check = Column(DateTime, nullable=True)  # 上次健康检查时间
     health_status = Column(String(20), nullable=True)  # healthy / unhealthy / unknown
     health_latency = Column(Integer, nullable=True)  # 延迟毫秒数
+    context_window = Column(
+        Integer, nullable=True, default=None,
+        comment="模型上下文窗口大小（token 数），NULL 表示使用默认映射"
+    )
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
