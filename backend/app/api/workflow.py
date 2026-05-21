@@ -13,6 +13,7 @@ from app.database import get_db
 from app.models.user import User
 from app.models.project import Project
 from app.models.outline import Outline
+from app.models.model_config import ModelConfig
 from app.models.checkpoint import WorkflowCheckpoint
 from app.models.workflow_state import WorkflowState
 from app.utils.auth import get_current_user

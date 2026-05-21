@@ -123,6 +123,7 @@ class NovelState(TypedDict):
 
     # ========== Prompt 加载（LangGraph 合规）==========
     _prompts: dict[str, str | dict]  # 预加载的 prompt 模板，chapter_content_generation 为 dict 格式
+    _context_window: int  # 预加载的模型上下文窗口大小（节点无 DB Session）
 
 
 # ========== 阶段常量 ==========

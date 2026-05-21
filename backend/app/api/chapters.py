@@ -27,6 +27,7 @@ from app.utils.project import get_project_for_user
 from app.utils.workflow import get_or_create_workflow_state
 from app.utils.error import format_sse_error
 from app.agents.sse_events import format_heartbeat
+from app.agents.constants import NODE_TEMPERATURES
 from app.agents.state import (
     NovelState,
     STAGE_CHAPTER_OUTLINES,
@@ -983,7 +984,7 @@ async def review_chapter(
             # 流式调用 LLM，使用 SSE 注释行保持连接
             # 审核结果只有结构化数据有意义，不发送原始 JSON 文本
             response = ""
-            async for chunk in llm.chat_stream(messages):
+            async for chunk in llm.chat_stream(messages, temperature=NODE_TEMPERATURES["review"]):
                 response += chunk
                 yield format_heartbeat()
 
@@ -1160,7 +1161,7 @@ async def rewrite_chapter(
             target_words = chapter_outline_dict.get("target_words", 3000)
             max_tokens = _calc_max_tokens(target_words)
             rewritten_content = ""
-            async for chunk in llm.chat_stream(messages, max_tokens=max_tokens):
+            async for chunk in llm.chat_stream(messages, max_tokens=max_tokens, temperature=NODE_TEMPERATURES["rewrite"]):
                 rewritten_content += chunk
                 yield f"event: chunk\ndata: {json.dumps({'content': chunk})}\n\n"
 

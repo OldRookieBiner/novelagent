@@ -696,8 +696,13 @@ async def generate_chapter_content_node(state: NovelState) -> NovelState:
     # 后处理：移除结尾的纯数字
     draft_content = clean_chapter_content(draft_content)
 
+    # 初稿为空 → 不创建空章节，直接返回原状态
+    if not draft_content:
+        logger.error(f"Chapter {current_chapter} draft is empty, skipping")
+        return {**state, "stage": STAGE_WRITING}
+
     # ===== Phase 2 & 3: SelfCheck + Refine =====
-    if refinement_enabled and draft_content:
+    if refinement_enabled:
         # 自检：对初稿做段落级质检
         check_result = await _self_check_chapter(llm, draft_content)
         paragraphs = check_result.get("paragraphs", [])
@@ -727,7 +732,7 @@ async def generate_chapter_content_node(state: NovelState) -> NovelState:
                 "chapter_number": current_chapter,
             })
     else:
-        # 未启用精修或初稿为空 → 流式输出初稿
+        # 未启用精修 → 流式输出初稿
         final_content = draft_content
         writer({
             "type": "chapter_content_chunk",

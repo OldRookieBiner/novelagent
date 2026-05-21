@@ -319,7 +319,7 @@ export function AIAssistantPanel({
                 {reviewResult.issues.map((issue, index) =>
                 {
                   const isString = typeof issue === 'string'
-                  const description = isString ? issue : issue.description
+                  const description = isString ? issue : (issue.description || issue.suggestion)
                   const type = isString ? '' : issue.type
                   const location = isString ? '' : issue.location
                   const paragraphStart = isString ? undefined : issue.paragraph_start
