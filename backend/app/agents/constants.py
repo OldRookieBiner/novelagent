@@ -39,3 +39,19 @@ OUTLINE_FORBIDDEN_WORDS_BRIEF = [
     "令人唏嘘",
     "发人深省",
 ]
+
+# 节点级温度配置
+# 创意任务（大纲、初稿）用较高温度增加多样性，分析/审核任务用较低温度提高确定性
+NODE_TEMPERATURES = {
+    "outline_generation": 0.8,
+    "character_generation": 0.7,
+    "relation_generation": 0.5,
+    "chapter_outline_generation": 0.6,
+    "chapter_content_draft": 0.8,
+    "chapter_content_self_check": 0.3,
+    "chapter_content_refine": 0.5,
+    "review": 0.2,
+    "rewrite": 0.5,
+    "volume_arc_generation": 0.6,
+    "arc_outline_generation": 0.6,
+}

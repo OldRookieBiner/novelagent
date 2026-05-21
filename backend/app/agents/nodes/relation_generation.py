@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models.character import Relation
 from app.agents.state import NovelState, STAGE_RELATIONS
+from app.agents.constants import NODE_TEMPERATURES
 from app.utils.llm import get_llm_from_state_async
 from app.database import SessionLocal
 
@@ -229,7 +230,7 @@ async def generate_relations_node(state: NovelState, config: dict = None) -> Nov
 
     # 调用 LLM
     llm = await get_llm_from_state_async(state)
-    response = await llm.chat([{"role": "user", "content": prompt}])
+    response = await llm.chat([{"role": "user", "content": prompt}], temperature=NODE_TEMPERATURES["relation_generation"])
 
     logger_rn.info(f"relation_gen_node: LLM response length={len(response)}, preview={response[:300] if response else 'EMPTY'}")
 

@@ -4,6 +4,7 @@ import re
 from sqlalchemy.orm import Session
 
 from app.agents.state import NovelState, STAGE_CHARACTERS
+from app.agents.constants import NODE_TEMPERATURES
 from app.utils.llm import get_llm_from_state_async
 
 
@@ -176,7 +177,7 @@ async def create_characters_from_outline_node(state: NovelState, config: dict = 
         logger.info(f"character_gen_node: Calling LLM with prompt length={len(prompt)}")
 
         # 调用 LLM 生成人物
-        response = await llm.chat([{"role": "user", "content": prompt}])
+        response = await llm.chat([{"role": "user", "content": prompt}], temperature=NODE_TEMPERATURES["character_generation"])
 
         logger.info(f"character_gen_node: LLM response length={len(response)}, preview={response[:200] if response else 'EMPTY'}")
 

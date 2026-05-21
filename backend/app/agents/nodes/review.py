@@ -7,6 +7,7 @@ from typing import Dict, Any
 from sqlalchemy.orm import Session
 
 from app.agents.state import NovelState, STAGE_REVIEW
+from app.agents.constants import NODE_TEMPERATURES
 from app.database import SessionLocal
 from app.services.llm import LLMService
 from app.utils.llm import get_llm_from_state_async
@@ -220,7 +221,7 @@ async def review_chapter_node(
 
         # 流式调用 LLM
         response = ""
-        async for chunk in llm.chat_stream(messages):
+        async for chunk in llm.chat_stream(messages, temperature=NODE_TEMPERATURES["review"]):
             response += chunk
 
         result = parse_review_result(response)

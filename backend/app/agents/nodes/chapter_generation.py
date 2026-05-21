@@ -4,6 +4,7 @@ import re
 from typing import AsyncIterator
 
 from app.agents.state import NovelState, STAGE_CHAPTER_OUTLINES, STAGE_WRITING
+from app.agents.constants import NODE_TEMPERATURES
 from app.services.llm import LLMService
 from app.utils.llm import get_llm_from_state_async
 from app.agents.context_strategy import get_context_strategy
@@ -242,7 +243,7 @@ async def generate_single_chapter_outline(
     )
 
     response = ""
-    async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
+    async for chunk in llm.chat_stream([{"role": "user", "content": prompt}], temperature=NODE_TEMPERATURES["chapter_outline_generation"]):
         response += chunk
 
     return parse_single_chapter_outline(response, chapter_number, min_words)
@@ -413,7 +414,7 @@ async def generate_chapter_content_stream(
     # 根据最低字数的 2 倍计算 max_tokens，确保不截断
     max_tokens = _calc_max_tokens(min_words * 2)
 
-    async for chunk in llm.chat_stream(messages, max_tokens=max_tokens):
+    async for chunk in llm.chat_stream(messages, max_tokens=max_tokens, temperature=NODE_TEMPERATURES["chapter_content_draft"]):
         yield chunk
 
 
@@ -479,7 +480,7 @@ async def generate_chapter_content_node(state: NovelState) -> NovelState:
 
     # 调用 LLM 流式生成内容（框架自动捕获 on_chat_model_stream）
     content = ""
-    async for chunk in llm.chat_stream(messages, max_tokens=max_tokens):
+    async for chunk in llm.chat_stream(messages, max_tokens=max_tokens, temperature=NODE_TEMPERATURES["chapter_content_draft"]):
         content += chunk
 
     # 后处理：移除结尾的纯数字（可能是 LLM 自动添加的字数）
