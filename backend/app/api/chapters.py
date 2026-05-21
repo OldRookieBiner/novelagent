@@ -36,7 +36,10 @@ from app.agents.nodes.chapter_generation import (
     generate_chapter_outlines_stream,
     generate_chapter_content_stream,
     clean_chapter_content,
+    _self_check_chapter,
+    _refine_chapter_stream,
 )
+from app.agents.nodes.utils import parse_words_per_chapter
 from app.api.workflow import build_initial_state
 from app.utils.llm import get_llm_from_state_async
 
@@ -693,14 +696,50 @@ async def generate_chapter(
             # 通过与 LangGraph 节点相同的机制获取 LLM 服务
             llm = await get_llm_from_state_async(initial_state, db)
 
-            # 流式生成章节正文
-            content = ""
+            # 是否启用自检-精修
+            refinement_enabled = initial_state.get("refinement_enabled", True)
+
+            # ===== Phase 1: Draft（静默生成初稿，不向客户端流式输出）=====
+            draft_content = ""
             async for chunk in generate_chapter_content_stream(initial_state, current_outline, llm):
-                content += chunk
-                yield f"event: chunk\ndata: {json.dumps({'content': chunk})}\n\n"
+                draft_content += chunk
+                # 用心跳保持 SSE 连接活跃，避免客户端/代理超时
+                yield format_heartbeat()
 
             # 后处理：清理 LLM 可能添加的结尾数字
-            content = clean_chapter_content(content)
+            draft_content = clean_chapter_content(draft_content)
+            if not draft_content:
+                yield format_sse_error(ValueError("生成内容为空"))
+                return
+
+            # ===== Phase 2 & 3: SelfCheck + Refine =====
+            if refinement_enabled:
+                # 自检：对初稿做段落级质检（静默）
+                check_result = await _self_check_chapter(llm, draft_content)
+                paragraphs = check_result.get("paragraphs", [])
+
+                if paragraphs:
+                    # 有问题 → 流式精修，向客户端逐步输出
+                    content = ""
+                    min_words, _ = parse_words_per_chapter(
+                        initial_state.get("collected_info", {})
+                    )
+                    async for chunk in _refine_chapter_stream(
+                        llm, draft_content, check_result, min_words
+                    ):
+                        content += chunk
+                        yield f"event: chunk\ndata: {json.dumps({'content': chunk})}\n\n"
+                    # 精修结果后处理；如果精修失败则回退到初稿
+                    content = clean_chapter_content(content) if content else draft_content
+                else:
+                    # 无问题 → 流式输出初稿（一次性发送）
+                    content = draft_content
+                    yield f"event: chunk\ndata: {json.dumps({'content': content})}\n\n"
+            else:
+                # 未启用精修 → 直接流式输出初稿（一次性发送）
+                content = draft_content
+                yield f"event: chunk\ndata: {json.dumps({'content': content})}\n\n"
+
             if not content:
                 yield format_sse_error(ValueError("生成内容为空"))
                 return
