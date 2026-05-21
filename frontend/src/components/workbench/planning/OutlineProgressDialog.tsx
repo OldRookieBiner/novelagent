@@ -32,6 +32,8 @@ interface OutlineProgressDialogProps
   modelConfigId?: number
   /** 可选的模型名称 */
   modelName?: string
+  /** 可选的审核模型配置 ID（null = 使用创作模型） */
+  reviewLlmConfigId?: number | null
   /** 是否为重新规划模式 */
   isReplan?: boolean
   /** 重新规划时同步保存的灵感采集数据 */
@@ -54,6 +56,7 @@ export function OutlineProgressDialog({
   projectId,
   modelConfigId,
   modelName,
+  reviewLlmConfigId,
   isReplan = false,
   collectedInfo,
   inspirationTemplate,
@@ -173,6 +176,7 @@ export function OutlineProgressDialog({
             modelName: modelName,
             collectedInfo,
             inspirationTemplate,
+            reviewLlmConfigId,
           }
         )
       }
@@ -181,7 +185,7 @@ export function OutlineProgressDialog({
         await workflowApi.runWorkflow(
           projectId,
           callbacks,
-          { signal: controller.signal, llmConfigId: modelConfigId, modelName: modelName }
+          { signal: controller.signal, llmConfigId: modelConfigId, modelName: modelName, reviewLlmConfigId }
         )
       }
     }

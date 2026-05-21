@@ -314,6 +314,7 @@ export interface ModelItem {
   health_latency?: number
   temperature: number
   reasoning_effort?: string | null
+  context_window?: number | null
 }
 
 /**

@@ -103,7 +103,7 @@ export const workflowApi = {
   async runWorkflow(
     projectId: number,
     callbacks: WorkflowStreamCallbacks,
-    options?: StreamOptions & { llmConfigId?: number; modelName?: string }
+    options?: StreamOptions & { llmConfigId?: number; modelName?: string; reviewLlmConfigId?: number | null }
   ): Promise<void>
   {
     // 事件处理函数
@@ -181,6 +181,10 @@ export const workflowApi = {
     {
       requestBody.llm_model_name = options.modelName
     }
+    if (options?.reviewLlmConfigId != null)
+    {
+      requestBody.review_llm_config_id = options.reviewLlmConfigId
+    }
     await createSSEStream(
       {
         url: `/api/projects/${projectId}/workflow/run`,
@@ -203,7 +207,7 @@ export const workflowApi = {
   async replanWorkflow(
     projectId: number,
     callbacks: WorkflowStreamCallbacks,
-    options?: StreamOptions & { llmConfigId?: number; modelName?: string; collectedInfo?: Record<string, unknown> | null; inspirationTemplate?: string }
+    options?: StreamOptions & { llmConfigId?: number; modelName?: string; collectedInfo?: Record<string, unknown> | null; inspirationTemplate?: string; reviewLlmConfigId?: number | null }
   ): Promise<void>
   {
     // 事件处理函数
@@ -275,6 +279,10 @@ export const workflowApi = {
     {
       requestBody.llm_model_name = options.modelName
     }
+    if (options?.reviewLlmConfigId != null)
+    {
+      requestBody.review_llm_config_id = options.reviewLlmConfigId
+    }
     if (options?.collectedInfo)
     {
       requestBody.collected_info = options.collectedInfo
@@ -310,7 +318,7 @@ export const workflowApi = {
       onDone?: (data: { total: number; stage: string }) => void
       onError?: (error: string) => void
     },
-    options?: StreamOptions & { llmConfigId?: number; modelName?: string }
+    options?: StreamOptions & { llmConfigId?: number; modelName?: string; reviewLlmConfigId?: number | null }
   ): Promise<void>
   {
     const handleEvent = (eventType: string, data: SSEData) =>
@@ -364,6 +372,10 @@ export const workflowApi = {
     if (options?.modelName)
     {
       requestBody.llm_model_name = options.modelName
+    }
+    if (options?.reviewLlmConfigId != null)
+    {
+      requestBody.review_llm_config_id = options.reviewLlmConfigId
     }
 
     await createSSEStream(

@@ -237,6 +237,20 @@ export function ModelConfigDetail({
   }
 
   /**
+   * 更新模型上下文窗口大小
+   */
+  const handleContextWindowChange = (modelId: string, val: number | null) =>
+  {
+    const updated = models.map(m =>
+      m.id === modelId ? { ...m, context_window: val } : m
+    )
+    setModels(updated)
+    formStateRef.current = { ...formStateRef.current, models: updated }
+    dirtyFieldsRef.current.add('models')
+    if (config?.id) triggerAutoSave()
+  }
+
+  /**
    * 移除模型（来自 ModelCard）
    */
   const handleModelCardRemove = (modelId: string) =>
@@ -419,6 +433,7 @@ export function ModelConfigDetail({
                   model={model}
                   onTemperatureChange={(val) => handleTemperatureChange(model.id, val)}
                   onReasoningEffortChange={(val) => handleReasoningEffortChange(model.id, val)}
+                  onContextWindowChange={(val) => handleContextWindowChange(model.id, val)}
                   onRemove={() => handleModelCardRemove(model.id)}
                 />
               ))}
