@@ -55,7 +55,21 @@ def _build_rewrite_messages(
     strategy_name = info.get("contextStrategy")
     strategy = get_context_strategy(target_words, strategy_name)
     chapter_outlines_list = state.get("chapter_outlines", [])
-    previous_context = strategy.build_previous_context(written_chapters, chapter_number, chapter_outlines_list)
+
+    # 计算上下文 token 预算（动态截断，防止超出模型窗口）
+    from app.agents.token_budget import calculate_context_budget, estimate_tokens
+    context_window = state.get("_context_window", 32000)
+    output_tokens = 8192  # 重写输出约一章
+    system_template, _ = get_prompts_from_state(state, "rewrite")
+    system_tokens = estimate_tokens(system_template) if system_template else 0
+    budget = calculate_context_budget(context_window, output_tokens, system_tokens)
+
+    previous_context = strategy.build_previous_context(
+        written_chapters=written_chapters,
+        current_chapter=chapter_number,
+        chapter_outlines=chapter_outlines_list,
+        token_budget=budget,
+    )
 
     # 获取 system/user 模板
     system_template, user_template = get_prompts_from_state(state, "rewrite")
