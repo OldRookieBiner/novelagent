@@ -398,7 +398,6 @@
 - `graph.py` — LangGraph 工作流定义 - 小说创作流程 (~1758 tok)
 - `prompts.py` — Prompt templates for the agent - v0.6.5 优化版 (~3014 tok)
 - `state.py` — LangGraph agent state definitions (~1188 tok)
-- `streaming.py` — LangGraph 流式执行工具 (~580 tok)
 
 ## .worktrees/langgraph-unify/backend/app/agents/nodes/
 
