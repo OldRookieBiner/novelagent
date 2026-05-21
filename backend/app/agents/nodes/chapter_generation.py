@@ -324,6 +324,34 @@ def _get_chapter_content_prompts(state: NovelState) -> tuple[str, str]:
     return get_prompts_from_state(state, "chapter_content_generation")
 
 
+def _select_style_exemplars(chapter_outline: dict) -> str:
+    """根据章节大纲内容动态选择 2-3 条最相关的风格示例"""
+    from app.agents.constants import STYLE_EXEMPLARS, STYLE_EXEMPLAR_RULES, STYLE_EXEMPLAR_DEFAULT
+
+    selected_categories = []
+    chapter_number = chapter_outline.get("chapter_number", 1)
+
+    if chapter_number == 1:
+        selected_categories = ["opening", "dialogue"]
+    else:
+        for field, keywords, categories in STYLE_EXEMPLAR_RULES:
+            field_text = chapter_outline.get(field, "")
+            if any(kw in field_text for kw in keywords):
+                selected_categories = categories
+                break
+        if not selected_categories:
+            selected_categories = STYLE_EXEMPLAR_DEFAULT
+
+    parts = []
+    for cat in selected_categories:
+        exemplars = STYLE_EXEMPLARS.get(cat, [])
+        if exemplars:
+            label = {"action": "动作", "dialogue": "对话", "emotion": "情感", "environment": "环境", "opening": "开篇"}.get(cat, cat)
+            parts.append(f"【{label}】{exemplars[0]}")
+
+    return "\n\n".join(parts)
+
+
 def _build_chapter_content_messages(
     state: NovelState,
     chapter_outline: dict,
@@ -374,6 +402,9 @@ def _build_chapter_content_messages(
     # 获取 system/user 模板
     system_template, user_template = _get_chapter_content_prompts(state)
 
+    # 动态选择正面风格示例
+    style_exemplars = _select_style_exemplars(chapter_outline)
+
     # 格式化 system message（角色定位 + 规则 + 上下文 + 人物 + 世界观）
     messages = []
     if system_template:
@@ -381,6 +412,7 @@ def _build_chapter_content_messages(
             previous_context=previous_context,
             main_characters=combined_characters_str,
             world_setting=world_str,
+            style_exemplars=style_exemplars,
         )
         messages.append({"role": "system", "content": system_content})
 

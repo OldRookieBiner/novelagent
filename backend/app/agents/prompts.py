@@ -19,6 +19,13 @@ def _format_forbidden_words() -> str:
 {rules}"""
 
 
+def _format_style_exemplars(exemplars_text: str) -> str:
+    """格式化正面风格示例为 Prompt 可用格式"""
+    return f"""**你应该模仿的写法**（以下示例展示了具体、克制、有画面感的风格）：
+
+{exemplars_text}"""
+
+
 def _format_forbidden_words_list() -> str:
     """格式化禁用词列表为逗号分隔的字符串（用于打分维度说明）"""
     return "、".join(FORBIDDEN_WORDS)
@@ -320,7 +327,9 @@ CHAPTER_CONTENT_SYSTEM_PROMPT = """你是一位获得茅盾文学奖的当代小
 
 ### 6. 反 AI 味（最重要）
 
-以下词汇和表达在 20 年一线作家的作品中**几乎不会出现**，如果你使用了，说明你在模仿 AI：
+{style_exemplars}
+
+**以下词汇和表达绝对禁止**（使用了说明你在模仿 AI）：
 
 {forbidden_words}
 
