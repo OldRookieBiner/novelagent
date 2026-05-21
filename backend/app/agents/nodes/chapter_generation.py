@@ -1,5 +1,7 @@
 """Chapter generation nodes"""
 
+import json
+import logging
 import re
 from typing import AsyncIterator
 
@@ -17,6 +19,8 @@ from app.agents.nodes.utils import (
     get_prompts_from_state,
     parse_words_per_chapter,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _clean_chapter_title(title: str) -> str:
@@ -450,6 +454,100 @@ async def generate_chapter_content_stream(
         yield chunk
 
 
+async def _self_check_chapter(llm: LLMService, draft_content: str) -> dict:
+    """对章节初稿做段落级自检
+
+    调用自检 Prompt，要求 LLM 以 JSON 格式返回有问题的段落列表。
+    解析 JSON 时兼容代码块包裹和裸 JSON 两种格式。
+
+    Args:
+        llm: LLM 服务实例
+        draft_content: 章节初稿内容
+
+    Returns:
+        解析后的字典，格式为 {"paragraphs": [{"index": int, "issue": str, "suggestion": str}]}
+    """
+    from app.agents.prompts import DEFAULT_PROMPTS
+
+    prompt_template = DEFAULT_PROMPTS.get("chapter_self_check", "")
+    prompt = prompt_template.format(chapter_content=draft_content)
+
+    response = ""
+    async for chunk in llm.chat_stream(
+        [{"role": "user", "content": prompt}],
+        temperature=NODE_TEMPERATURES["chapter_content_self_check"],
+        max_tokens=2048,
+    ):
+        response += chunk
+
+    # 解析 JSON 响应（兼容代码块包裹和裸 JSON）
+    try:
+        code_match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', response)
+        if code_match:
+            data = json.loads(code_match.group(1))
+        else:
+            brace_start = response.find('{')
+            if brace_start != -1:
+                depth = 0
+                for i in range(brace_start, len(response)):
+                    if response[i] == '{':
+                        depth += 1
+                    elif response[i] == '}':
+                        depth -= 1
+                        if depth == 0:
+                            data = json.loads(response[brace_start:i + 1])
+                            break
+                else:
+                    data = {"paragraphs": []}
+            else:
+                data = {"paragraphs": []}
+        return data
+    except (json.JSONDecodeError, UnboundLocalError):
+        return {"paragraphs": []}
+
+
+async def _refine_chapter_stream(
+    llm: LLMService,
+    draft_content: str,
+    check_result: dict,
+    min_words: int,
+) -> AsyncIterator[str]:
+    """基于自检结果精修章节（流式版本）
+
+    仅当自检发现问题段落时调用。将初稿和质检结果一起输入精修 Prompt，
+    流式输出修改后的完整章节正文。
+
+    Args:
+        llm: LLM 服务实例
+        draft_content: 章节初稿内容
+        check_result: 自检结果，格式为 {"paragraphs": [...]}
+        min_words: 每章最低字数，用于计算 max_tokens
+
+    Yields:
+        精修后的文本片段
+    """
+    from app.agents.prompts import DEFAULT_PROMPTS
+
+    paragraphs = check_result.get("paragraphs", [])
+    if not paragraphs:
+        yield draft_content
+        return
+
+    prompt_template = DEFAULT_PROMPTS.get("chapter_refine", "")
+    check_result_str = json.dumps(check_result, ensure_ascii=False, indent=2)
+    prompt = prompt_template.format(
+        check_result=check_result_str,
+        draft_content=draft_content,
+    )
+
+    async for chunk in llm.chat_stream(
+        [{"role": "user", "content": prompt}],
+        temperature=NODE_TEMPERATURES["chapter_content_refine"],
+        max_tokens=_calc_max_tokens(min_words * 2),
+    ):
+        yield chunk
+
+
 # ==================== LangGraph 兼容节点 ====================
 
 async def chapter_outlines_node(state: NovelState) -> NovelState:
@@ -468,17 +566,21 @@ async def chapter_outlines_node(state: NovelState) -> NovelState:
 
 async def generate_chapter_content_node(state: NovelState) -> NovelState:
     """
-    LangGraph 兼容的章节内容生成节点
+    LangGraph 兼容的章节内容生成节点（Draft→SelfCheck→Refine）
 
-    此节点：
-    1. 获取当前章节号 (current_chapter)
-    2. 获取章节大纲列表 (chapter_outlines)
-    3. 构建 system/user 双层消息（含上下文策略）
-    4. 调用 LLM 生成章节内容
-    5. 返回更新后的状态，包含新章节
+    此节点执行三阶段流程：
+    1. Draft：静默生成章节初稿（不流式输出）
+    2. SelfCheck：对初稿做段落级质检（静默）
+    3. Refine：如果自检发现问题，精修并流式输出；否则直接流式输出初稿
+
+    通过 refinement_enabled 字段控制是否启用自检-精修流程。
 
     签名：(state: NovelState) -> NovelState
     """
+    from langgraph.config import get_stream_writer
+
+    writer = get_stream_writer()
+
     # 获取 LLM 服务（异步）
     llm = await get_llm_from_state_async(state)
 
@@ -510,22 +612,67 @@ async def generate_chapter_content_node(state: NovelState) -> NovelState:
     # 根据最低字数的 2 倍计算 max_tokens，确保不截断
     max_tokens = _calc_max_tokens(min_words * 2)
 
-    # 调用 LLM 流式生成内容（框架自动捕获 on_chat_model_stream）
-    content = ""
-    async for chunk in llm.chat_stream(messages, max_tokens=max_tokens, temperature=NODE_TEMPERATURES["chapter_content_draft"]):
-        content += chunk
+    # 是否启用自检-精修
+    refinement_enabled = state.get("refinement_enabled", True)
 
-    # 后处理：移除结尾的纯数字（可能是 LLM 自动添加的字数）
-    content = clean_chapter_content(content)
+    # ===== Phase 1: Draft（静默生成初稿）=====
+    draft_content = ""
+    async for chunk in llm.chat_stream(
+        messages, max_tokens=max_tokens,
+        temperature=NODE_TEMPERATURES["chapter_content_draft"],
+    ):
+        draft_content += chunk
+
+    # 后处理：移除结尾的纯数字
+    draft_content = clean_chapter_content(draft_content)
+
+    # ===== Phase 2 & 3: SelfCheck + Refine =====
+    if refinement_enabled and draft_content:
+        # 自检：对初稿做段落级质检
+        check_result = await _self_check_chapter(llm, draft_content)
+        paragraphs = check_result.get("paragraphs", [])
+
+        logger.info(f"SelfCheck found {len(paragraphs)} issues for chapter {current_chapter}")
+
+        if paragraphs:
+            # 有问题 → 精修并流式输出
+            final_content = ""
+            async for chunk in _refine_chapter_stream(
+                llm, draft_content, check_result, min_words
+            ):
+                final_content += chunk
+                writer({
+                    "type": "chapter_content_chunk",
+                    "content": chunk,
+                    "chapter_number": current_chapter,
+                })
+            # 精修结果后处理；如果精修失败则回退到初稿
+            final_content = clean_chapter_content(final_content) if final_content else draft_content
+        else:
+            # 无问题 → 流式输出初稿
+            final_content = draft_content
+            writer({
+                "type": "chapter_content_chunk",
+                "content": final_content,
+                "chapter_number": current_chapter,
+            })
+    else:
+        # 未启用精修或初稿为空 → 流式输出初稿
+        final_content = draft_content
+        writer({
+            "type": "chapter_content_chunk",
+            "content": final_content,
+            "chapter_number": current_chapter,
+        })
 
     # 计算字数
-    word_count = len(content)
+    word_count = len(final_content)
 
     # 创建新章节
     new_chapter = {
         "chapter_number": current_chapter,
         "title": chapter_outline.get("title", ""),
-        "content": content,
+        "content": final_content,
         "word_count": word_count
     }
 
