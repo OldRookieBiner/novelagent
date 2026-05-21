@@ -119,6 +119,7 @@ class NovelState(TypedDict):
     # ========== LLM 服务 ==========
     llm_config_id: Optional[int]  # 使用的模型配置 ID
     llm_model_name: Optional[str]  # 用户选择的模型名称
+    review_llm_config_id: Optional[int]  # 审核使用的模型配置 ID（NULL 则使用主模型）
 
     # ========== Prompt 加载（LangGraph 合规）==========
     _prompts: dict[str, str | dict]  # 预加载的 prompt 模板，chapter_content_generation 为 dict 格式

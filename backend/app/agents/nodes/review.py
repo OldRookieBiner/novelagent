@@ -289,8 +289,8 @@ async def review_node(state: NovelState) -> NovelState:
 
     签名：(state: NovelState) -> NovelState
     """
-    # 获取 LLM 服务（异步）
-    llm = await get_llm_from_state_async(state)
+    # 获取 LLM 服务（审核专用，优先使用 review_llm_config_id）
+    llm = await get_llm_from_state_async(state, for_review=True)
 
     # 获取当前章节信息
     current_chapter = state.get("current_chapter", 1)

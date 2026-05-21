@@ -107,6 +107,7 @@ class WorkflowRunRequest(BaseModel):
     """工作流运行请求"""
     llm_config_id: Optional[int] = None  # 指定模型配置 ID
     llm_model_name: Optional[str] = None  # 指定模型名称（覆盖配置中的默认模型）
+    review_llm_config_id: Optional[int] = None  # 审核使用的模型配置 ID（NULL 则使用主模型）
 
 
 class WorkflowConfirmRequest(BaseModel):
@@ -243,6 +244,7 @@ def build_initial_state(
         # LLM 服务（优先级：参数 > workflow_state DB > None）
         "llm_config_id": llm_config_id or workflow_state.llm_config_id,
         "llm_model_name": llm_model_name or workflow_state.llm_model_name,
+        "review_llm_config_id": None,  # 审核专用模型配置 ID，由 run_workflow 端点注入
 
         # 预加载：角色和关系（从 DB 获取最新数据）
         "characters": [],
@@ -350,6 +352,23 @@ def build_initial_state(
             logger.warning(f"Failed to load custom prompts, using defaults: {e}")
             from app.agents.prompts import DEFAULT_PROMPTS
             state["_prompts"] = DEFAULT_PROMPTS
+
+    # 预加载上下文窗口大小（节点无 DB Session，需要从 state 获取）
+    if db is not None:
+        try:
+            from app.agents.token_budget import get_context_window
+
+            model_name = state.get("llm_model_name", "")
+            model_config_id = state.get("llm_config_id")
+            if model_config_id:
+                config = db.query(ModelConfig).filter(ModelConfig.id == model_config_id).first()
+                state["_context_window"] = get_context_window(model_name, model_config=config)
+            else:
+                state["_context_window"] = get_context_window(model_name)
+        except Exception as e:
+            logger.warning(f"Failed to load context window, using default: {e}")
+            from app.agents.constants import DEFAULT_CONTEXT_WINDOW
+            state["_context_window"] = DEFAULT_CONTEXT_WINDOW
 
     return state
 
@@ -501,6 +520,10 @@ async def run_workflow(
 
     # 构建初始状态（预加载 DB 数据，含 _prompts）
     initial_state = build_initial_state(project, outline, workflow_state, llm_config_id, llm_model_name, db=db)
+
+    # 注入审核专用模型配置 ID
+    if request and request.review_llm_config_id:
+        initial_state["review_llm_config_id"] = request.review_llm_config_id
 
     # 创建带检查点的图（复用 db 会话）
     graph = create_novel_graph_with_checkpointer(project_id, "default")
