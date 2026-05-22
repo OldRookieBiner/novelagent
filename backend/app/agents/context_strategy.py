@@ -2,6 +2,8 @@
 
 from abc import ABC, abstractmethod
 
+from app.agents.token_budget import estimate_tokens
+
 
 class ContextStrategy(ABC):
     """上下文策略基类"""
@@ -45,8 +47,6 @@ class FulltextContentStrategy(ContextStrategy):
         chapter_summaries: list[dict] | None = None,
         token_budget: int | None = None,
     ) -> str:
-        from app.agents.token_budget import estimate_tokens
-
         context_parts = []
         used_tokens = 0
 
@@ -64,7 +64,7 @@ class FulltextContentStrategy(ContextStrategy):
 
             if token_budget is not None:
                 if used_tokens + part_tokens > token_budget:
-                    break
+                    continue  # 跳过超预算章节，继续尝试更早的短章节
                 used_tokens += part_tokens
 
             context_parts.append(part)
@@ -100,8 +100,6 @@ class HybridContentStrategy(ContextStrategy):
         chapter_summaries: list[dict] | None = None,
         token_budget: int | None = None,
     ) -> str:
-        from app.agents.token_budget import estimate_tokens
-
         if not written_chapters:
             return "（这是第一章，没有前文）"
 
@@ -202,8 +200,6 @@ class SummaryContentStrategy(ContextStrategy):
         chapter_summaries: list[dict] | None = None,
         token_budget: int | None = None,
     ) -> str:
-        from app.agents.token_budget import estimate_tokens
-
         effective_budget = token_budget if token_budget is not None else float('inf')
         used_tokens = 0
         result_parts = []

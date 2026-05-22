@@ -1,13 +1,10 @@
 """关系生成节点 - AI 基于角色生成关系网络"""
 
 import re
-from sqlalchemy.orm import Session
 
-from app.models.character import Relation
 from app.agents.state import NovelState, STAGE_RELATIONS
 from app.agents.constants import NODE_TEMPERATURES
 from app.utils.llm import get_llm_from_state_async
-from app.database import SessionLocal
 
 
 # 预编译正则：解析 - 角色A | 角色B | 关系类型 | 信任度 | 描述 | 发展方向
@@ -74,53 +71,6 @@ def parse_relations_response(response: str, characters: list[dict]) -> list[dict
     return relations
 
 
-def write_relations_to_db(
-    project_id: int, relations_data: list[dict], db: Session
-) -> list[dict]:
-    """将解析好的关系列表写入数据库
-
-    Args:
-        project_id: 项目 ID
-        relations_data: parse_relations_response 的输出
-        db: 数据库会话（必须由调用方提供）
-
-    Returns:
-        已创建的关系列表
-    """
-    if not relations_data:
-        return []
-
-    # 删除已有关系
-    db.query(Relation).filter(Relation.project_id == project_id).delete()
-
-    created = []
-    for r in relations_data:
-        rel = Relation(
-            project_id=project_id,
-            character_a_id=r["character_a_id"],
-            character_b_id=r["character_b_id"],
-            relation_type=r["relation_type"],
-            trust_level=r["trust_level"],
-            current_status=r["current_status"],
-            direction=r["direction"],
-        )
-        db.add(rel)
-        db.flush()
-        created.append(
-            {
-                "id": rel.id,
-                "character_a_id": rel.character_a_id,
-                "character_b_id": rel.character_b_id,
-                "relation_type": rel.relation_type,
-                "trust_level": rel.trust_level,
-                "current_status": rel.current_status,
-                "direction": rel.direction,
-            }
-        )
-
-    return created
-
-
 async def generate_relations_node(state: NovelState, config: dict = None) -> NovelState:
     """LangGraph 节点：从角色生成关系网络
 
@@ -140,7 +90,10 @@ async def generate_relations_node(state: NovelState, config: dict = None) -> Nov
     from app.models.character import Character, Relation
 
     logger_rn = logging.getLogger(__name__)
-    project_id = state["project_id"]
+    project_id = state.get("project_id")
+    if not project_id:
+        logger_rn.warning("relation_gen_node: project_id missing from state, cannot generate relations")
+        return {**state, "stage": STAGE_RELATIONS, "relations": [], "waiting_for_confirmation": True, "confirmation_type": "relations"}
 
     # 从数据库读取已持久化的角色（带 id）
     db = SessionLocal()

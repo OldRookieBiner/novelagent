@@ -75,7 +75,11 @@ def extract_characters_from_outline(state: NovelState, db: Session) -> list[dict
     Returns:
         已创建的角色列表 [{id, name, role, ...}]
     """
-    project_id = state["project_id"]
+    from app.models.character import Character
+
+    project_id = state.get("project_id")
+    if not project_id:
+        return []
     outline_characters = state.get("outline_characters", [])
 
     if not outline_characters:
@@ -126,7 +130,10 @@ async def create_characters_from_outline_node(state: NovelState, config: dict = 
 
     logger = logging.getLogger(__name__)
 
-    project_id = state["project_id"]
+    project_id = state.get("project_id")
+    if not project_id:
+        logger.warning("character_gen_node: project_id missing from state, cannot generate characters")
+        return {**state, "characters": [], "stage": STAGE_CHARACTERS, "waiting_for_confirmation": False, "confirmation_type": None}
     outline_summary = state.get("outline_summary", "")
     world_era = (state.get("outline_world_setting") or {}).get("era", "未指定")
 

@@ -18,6 +18,7 @@ from app.agents.nodes.utils import (
     find_chapter_outline_by_number,
     safe_format,
 )
+from app.agents.nodes.chapter_generation import clean_chapter_content
 
 def _build_rewrite_messages(
     state: NovelState,
@@ -58,9 +59,10 @@ def _build_rewrite_messages(
     from app.agents.token_budget import calculate_context_budget, estimate_tokens
     context_window = state.get("_context_window", 32000)
     output_tokens = 8192  # 重写输出约一章
-    system_template, _ = get_prompts_from_state(state, "rewrite")
+    system_template, user_template_partial = get_prompts_from_state(state, "rewrite")
     system_tokens = estimate_tokens(system_template) if system_template else 0
-    budget = calculate_context_budget(context_window, output_tokens, system_tokens)
+    user_tokens = estimate_tokens(user_template_partial) if user_template_partial else 0
+    budget = calculate_context_budget(context_window, output_tokens, system_tokens, user_tokens)
 
     previous_context = strategy.build_previous_context(
         written_chapters=written_chapters,
@@ -109,7 +111,8 @@ async def rewrite_chapter_node(
     async for chunk in llm.chat_stream(messages, temperature=NODE_TEMPERATURES["rewrite"]):
         response += chunk
 
-    return response
+    # 清理 LLM 可能添加的结尾数字
+    return clean_chapter_content(response)
 
 
 async def rewrite_with_retry(

@@ -44,6 +44,7 @@ def calculate_context_budget(
     model_max_tokens: int,
     target_output_tokens: int,
     system_prompt_tokens: int,
+    user_prompt_tokens: int = 0,
     safety_margin: float = 0.1,
 ) -> int:
     """计算可用于前文上下文的 token 预算
@@ -52,10 +53,11 @@ def calculate_context_budget(
         model_max_tokens: 模型最大上下文窗口
         target_output_tokens: 预期输出 token 数
         system_prompt_tokens: system prompt 注入后的估算 token 数
+        user_prompt_tokens: user prompt 模板估算 token 数（默认 0，向后兼容）
         safety_margin: 安全余量比例（默认 10%）
 
     Returns:
         可用于前文上下文的 token 数（非负）
     """
-    available = model_max_tokens - target_output_tokens - system_prompt_tokens
+    available = model_max_tokens - target_output_tokens - system_prompt_tokens - user_prompt_tokens
     return max(int(available * (1 - safety_margin)), 0)

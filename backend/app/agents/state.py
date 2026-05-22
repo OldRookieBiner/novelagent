@@ -95,6 +95,7 @@ class NovelState(TypedDict):
     chapter_count: int
     chapter_outlines: list[dict]  # [{chapter_number, title, scene, ...}]
     chapter_outlines_confirmed: bool
+    arcs: list[dict]  # [{id, title, summary, chapter_start, chapter_end}] 弧纲数据
 
     # ========== 章节正文（累积）==========
     # Annotated[List, add] 表示新内容会追加到列表
@@ -102,6 +103,7 @@ class NovelState(TypedDict):
         list[dict], replace_or_append_chapters
     ]  # [{chapter_number, content, word_count}]
     current_chapter: int
+    current_arc_index: int  # 当前弧索引（长篇模式用）
 
     # ========== 审核/重写 ==========
     review_mode: str  # step_by_step | hybrid | auto

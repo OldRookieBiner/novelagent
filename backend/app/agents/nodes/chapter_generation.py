@@ -468,7 +468,9 @@ def _build_chapter_content_messages(
     output_tokens = _calc_max_tokens(min_words * 2)
     # system_content 尚未格式化，先用模板估算 system prompt 占用
     system_tokens = estimate_tokens(system_template) if system_template else 0
-    budget = calculate_context_budget(context_window, output_tokens, system_tokens)
+    # user prompt 模板也需要估算占用
+    user_tokens = estimate_tokens(user_template) if user_template else 0
+    budget = calculate_context_budget(context_window, output_tokens, system_tokens, user_tokens)
 
     previous_context = strategy.build_previous_context(
         written_chapters=written_chapters,
@@ -525,7 +527,7 @@ async def generate_chapter_content_stream(
         yield chunk
 
 
-async def _self_check_chapter(llm: LLMService, draft_content: str) -> dict:
+async def _self_check_chapter(llm: LLMService, draft_content: str, state: NovelState = None) -> dict:
     """对章节初稿做段落级自检
 
     调用自检 Prompt，要求 LLM 以 JSON 格式返回有问题的段落列表。
@@ -534,13 +536,19 @@ async def _self_check_chapter(llm: LLMService, draft_content: str) -> dict:
     Args:
         llm: LLM 服务实例
         draft_content: 章节初稿内容
+        state: 工作流状态（用于从 state 获取 prompt 模板）
 
     Returns:
         解析后的字典，格式为 {"paragraphs": [{"index": int, "issue": str, "suggestion": str}]}
     """
-    from app.agents.prompts import DEFAULT_PROMPTS
+    # 优先从 state 获取 prompt，回退到 DEFAULT_PROMPTS
+    if state:
+        system_template, user_template = get_prompts_from_state(state, "chapter_self_check")
+        prompt_template = get_prompt_template(system_template, user_template)
+    else:
+        from app.agents.prompts import DEFAULT_PROMPTS
+        prompt_template = DEFAULT_PROMPTS.get("chapter_self_check", "")
 
-    prompt_template = DEFAULT_PROMPTS.get("chapter_self_check", "")
     prompt = safe_format(prompt_template, chapter_content=draft_content)
 
     response = ""
@@ -582,6 +590,7 @@ async def _refine_chapter_stream(
     draft_content: str,
     check_result: dict,
     min_words: int,
+    state: NovelState = None,
 ) -> AsyncIterator[str]:
     """基于自检结果精修章节（流式版本）
 
@@ -593,18 +602,23 @@ async def _refine_chapter_stream(
         draft_content: 章节初稿内容
         check_result: 自检结果，格式为 {"paragraphs": [...]}
         min_words: 每章最低字数，用于计算 max_tokens
+        state: 工作流状态（用于从 state 获取 prompt 模板）
 
     Yields:
         精修后的文本片段
     """
-    from app.agents.prompts import DEFAULT_PROMPTS
-
     paragraphs = check_result.get("paragraphs", [])
     if not paragraphs:
         yield draft_content
         return
 
-    prompt_template = DEFAULT_PROMPTS.get("chapter_refine", "")
+    # 优先从 state 获取 prompt，回退到 DEFAULT_PROMPTS
+    if state:
+        system_template, user_template = get_prompts_from_state(state, "chapter_refine")
+        prompt_template = get_prompt_template(system_template, user_template)
+    else:
+        from app.agents.prompts import DEFAULT_PROMPTS
+        prompt_template = DEFAULT_PROMPTS.get("chapter_refine", "")
     check_result_str = json.dumps(check_result, ensure_ascii=False, indent=2)
     prompt = safe_format(prompt_template,
         check_result=check_result_str,
@@ -705,7 +719,7 @@ async def generate_chapter_content_node(state: NovelState) -> NovelState:
     # ===== Phase 2 & 3: SelfCheck + Refine =====
     if refinement_enabled:
         # 自检：对初稿做段落级质检
-        check_result = await _self_check_chapter(llm, draft_content)
+        check_result = await _self_check_chapter(llm, draft_content, state=state)
         paragraphs = check_result.get("paragraphs", [])
 
         logger.info(f"SelfCheck found {len(paragraphs)} issues for chapter {current_chapter}")
@@ -714,7 +728,7 @@ async def generate_chapter_content_node(state: NovelState) -> NovelState:
             # 有问题 → 精修并流式输出
             final_content = ""
             async for chunk in _refine_chapter_stream(
-                llm, draft_content, check_result, min_words
+                llm, draft_content, check_result, min_words, state=state
             ):
                 final_content += chunk
                 writer({
