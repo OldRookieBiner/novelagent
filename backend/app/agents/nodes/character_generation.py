@@ -61,6 +61,55 @@ def parse_character_generation_response(response: str) -> list[dict]:
     return characters
 
 
+def extract_characters_from_outline(state: dict) -> list[dict]:
+    """从大纲角色列表提取人物设定（用于 API 端点）
+
+    将 outline_characters 中的简略格式转为带 ID 的完整格式。
+    """
+    from app.database import SessionLocal
+    from app.models.character import Character
+
+    project_id = state.get("project_id")
+    if not project_id:
+        return []
+
+    db = SessionLocal()
+    try:
+        # 删除已有角色
+        db.query(Character).filter(Character.project_id == project_id).delete()
+        db.flush()
+
+        outline_characters = state.get("outline_characters", [])
+        characters = []
+        for i, c in enumerate(outline_characters):
+            name = c.get("name", f"角色{i+1}")
+            char = Character(
+                project_id=project_id,
+                name=name,
+                role=c.get("role", "配角"),
+                personality=c.get("personality", ""),
+                motivation=c.get("motivation", ""),
+                arc=c.get("arc", ""),
+            )
+            db.add(char)
+            db.flush()
+            characters.append({
+                "id": char.id,
+                "name": name,
+                "role": c.get("role", "配角"),
+                "personality": c.get("personality", ""),
+                "motivation": c.get("motivation", ""),
+                "growth_arc": c.get("arc", ""),
+            })
+        db.commit()
+        return characters
+    except Exception:
+        db.rollback()
+        return []
+    finally:
+        db.close()
+
+
 async def create_characters_from_outline_node(state: NovelState, config: dict = None) -> NovelState:
     """LangGraph 节点：根据大纲通过独立 LLM 调用生成角色
 
