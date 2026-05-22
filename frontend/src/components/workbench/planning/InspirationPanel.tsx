@@ -171,7 +171,7 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
   // 初始化标记：防止 targetReader effect 在回填时清除字段
   const initializedRef = useRef(false)
 
-  const { setActiveMenuItem, selectedModelKey, setSelectedModelKey } = useWorkbenchStore()
+  const { setActiveMenuItem, setActiveTab, selectedModelKey, setSelectedModelKey } = useWorkbenchStore()
 
   const handleTargetWordsChange = (value: string) =>
   {
@@ -696,7 +696,7 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
           </div>
         </div>
         <div className="flex-1 p-6 overflow-auto">
-          <div className="max-w-2xl space-y-5">
+          <div className="max-w-3xl space-y-5">
             {/* 目标读者 */}
             <Card className="border-2 border-indigo-200">
               <CardHeader className="pb-2">
@@ -920,6 +920,90 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
                     />
                   </div>
                 )}
+
+                {/* 男主人设（男频专属） */}
+                {targetReader === 'male' && (
+                  <div>
+                    <label className="text-sm text-muted-foreground mb-2 block">
+                      男主人设 <span className="text-red-500">*</span>
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {MALE_OPTIONS.maleLead.map((opt) => (
+                        <span
+                          key={opt.value}
+                          onClick={() =>
+                          {
+                            setMaleLead(opt.value)
+                            if (errors.maleLead) setErrors(prev => ({ ...prev, maleLead: '' }))
+                          }}
+                          className={`px-3 py-1.5 rounded-full border-2 text-sm cursor-pointer transition-all ${
+                            maleLead === opt.value
+                              ? 'bg-primary text-white border-primary'
+                              : 'border-gray-200 hover:border-primary/50'
+                          }`}
+                        >
+                          {opt.label}
+                        </span>
+                      ))}
+                    </div>
+                    {maleLead === 'custom' && (
+                      <Input
+                        type="text"
+                        value={customMaleLead || ''}
+                        onChange={(e) => setCustomMaleLead(e.target.value)}
+                        placeholder="输入自定义男主人设"
+                        className="mt-2 max-w-md"
+                      />
+                    )}
+                    {errors.maleLead && <p className="text-red-500 text-xs mt-2">{errors.maleLead}</p>}
+                  </div>
+                )}
+
+                {/* 女主人设（女频专属） */}
+                {targetReader === 'female' && (
+                  <div>
+                    <label className="text-sm text-muted-foreground mb-2 block">
+                      女主人设 <span className="text-red-500">*</span>
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {FEMALE_OPTIONS.femaleLead.map((opt) => (
+                        <span
+                          key={opt.value}
+                          onClick={() =>
+                          {
+                            setFemaleLead(opt.value)
+                            if (errors.femaleLead) setErrors(prev => ({ ...prev, femaleLead: '' }))
+                          }}
+                          className={`px-3 py-1.5 rounded-full border-2 text-sm cursor-pointer transition-all ${
+                            femaleLead === opt.value
+                              ? 'bg-primary text-white border-primary'
+                              : 'border-gray-200 hover:border-primary/50'
+                          }`}
+                        >
+                          {opt.label}
+                        </span>
+                      ))}
+                    </div>
+                    {femaleLead === 'custom' && (
+                      <Input
+                        type="text"
+                        value={customFemaleLead || ''}
+                        onChange={(e) => setCustomFemaleLead(e.target.value)}
+                        placeholder="输入自定义女主人设"
+                        className="mt-2 max-w-md"
+                      />
+                    )}
+                    {errors.femaleLead && <p className="text-red-500 text-xs mt-2">{errors.femaleLead}</p>}
+                  </div>
+                )}
+
+                {/* 未选择目标读者时提示 */}
+                {!targetReader && (
+                  <div>
+                    <label className="text-sm text-muted-foreground mb-2 block">主角设定</label>
+                    <p className="text-sm text-muted-foreground">请先选择目标读者</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -1055,91 +1139,6 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
                       )}
                     </div>
                   )}
-
-                  {/* 男主人设（男频专属） */}
-                  {targetReader === 'male' && (
-                    <div>
-                      <label className="text-sm text-muted-foreground mb-2 block">
-                        男主人设 <span className="text-red-500">*</span>
-                      </label>
-                      <div className="flex flex-wrap gap-2">
-                        {MALE_OPTIONS.maleLead.map((opt) => (
-                          <span
-                            key={opt.value}
-                            onClick={() =>
-                            {
-                              setMaleLead(opt.value)
-                              if (errors.maleLead) setErrors(prev => ({ ...prev, maleLead: '' }))
-                            }}
-                            className={`px-3 py-1.5 rounded-full border-2 text-sm cursor-pointer transition-all ${
-                              maleLead === opt.value
-                                ? 'bg-primary text-white border-primary'
-                                : 'border-gray-200 hover:border-primary/50'
-                            }`}
-                          >
-                            {opt.label}
-                          </span>
-                        ))}
-                      </div>
-                      {maleLead === 'custom' && (
-                        <Input
-                          type="text"
-                          value={customMaleLead || ''}
-                          onChange={(e) => setCustomMaleLead(e.target.value)}
-                          placeholder="输入自定义男主人设"
-                          className="mt-2 max-w-md"
-                        />
-                      )}
-                      {errors.maleLead && <p className="text-red-500 text-xs mt-2">{errors.maleLead}</p>}
-                    </div>
-                  )}
-
-                  {/* 女主人设（女频专属） */}
-                  {targetReader === 'female' && (
-                    <div>
-                      <label className="text-sm text-muted-foreground mb-2 block">
-                        女主人设 <span className="text-red-500">*</span>
-                      </label>
-                      <div className="flex flex-wrap gap-2">
-                        {FEMALE_OPTIONS.femaleLead.map((opt) => (
-                          <span
-                            key={opt.value}
-                            onClick={() =>
-                            {
-                              setFemaleLead(opt.value)
-                              if (errors.femaleLead) setErrors(prev => ({ ...prev, femaleLead: '' }))
-                            }}
-                            className={`px-3 py-1.5 rounded-full border-2 text-sm cursor-pointer transition-all ${
-                              femaleLead === opt.value
-                                ? 'bg-primary text-white border-primary'
-                                : 'border-gray-200 hover:border-primary/50'
-                            }`}
-                          >
-                            {opt.label}
-                          </span>
-                        ))}
-                      </div>
-                      {femaleLead === 'custom' && (
-                        <Input
-                          type="text"
-                          value={customFemaleLead || ''}
-                          onChange={(e) => setCustomFemaleLead(e.target.value)}
-                          placeholder="输入自定义女主人设"
-                          className="mt-2 max-w-md"
-                        />
-                      )}
-                      {errors.femaleLead && <p className="text-red-500 text-xs mt-2">{errors.femaleLead}</p>}
-                    </div>
-                  )}
-
-                  {/* 未选择目标读者时提示 */}
-                  {!targetReader && (
-                    <div>
-                      <label className="text-sm text-muted-foreground mb-2 block">主角设定</label>
-                      <p className="text-sm text-muted-foreground">请先选择目标读者</p>
-                    </div>
-                  )}
-
                   {/* 金手指设定（男频专属） */}
                   {targetReader === 'male' && (
                     <div>
@@ -1198,7 +1197,7 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
 
         {/* 底部：模型选择 + 确认按钮 */}
         <div className="border-t bg-white px-6 py-4">
-          <div className="flex items-center gap-3 max-w-2xl mx-auto">
+          <div className="flex items-center gap-3 max-w-3xl mx-auto">
             {/* AI 模型选择器 */}
             <div className="flex-1 min-w-0">
               <label className="text-xs text-muted-foreground mb-1.5 flex items-center gap-1" htmlFor="model-select-trigger">
@@ -1326,7 +1325,7 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
       </div>
 
       {/* 右侧：Prompt 模板区 */}
-      <div className={`border-l bg-white flex flex-col shrink-0 transition-all duration-300 ${rightCollapsed ? 'w-12' : 'w-[360px]'} relative`}>
+      <div className={`border-l bg-white flex flex-col shrink-0 transition-all duration-300 ${rightCollapsed ? 'w-12' : 'w-[400px]'} relative`}>
         {/* 收缩展开按钮 */}
         <button
           onClick={() => setRightCollapsed(!rightCollapsed)}
@@ -1407,6 +1406,7 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
         {
           onPlanningComplete?.()
           setShowProgressDialog(false)
+          setActiveTab('settings')
           setActiveMenuItem('outline')
         }}
       />
