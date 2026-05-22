@@ -1,7 +1,10 @@
 // frontend/src/components/workbench/creation/OutlinePanel.tsx
 
 import { useState, useEffect, useCallback } from 'react'
-import { FileText, Sparkles, Save, Plus, X, Check, ChevronDown, ChevronUp, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { FileText, Save, Plus, X, Check } from 'lucide-react'
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
@@ -15,6 +18,41 @@ interface OutlinePanelProps
   projectId: number
 }
 
+// 可拖拽排序的情节节点组件
+function SortablePlotPoint({ id, index, value, onChange, onRemove }: {
+  id: string
+  index: number
+  value: string
+  onChange: (v: string) => void
+  onRemove: () => void
+})
+{
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} className="flex gap-2 items-center">
+      {/* 拖拽手柄 */}
+      <button {...attributes} {...listeners} className="cursor-grab text-muted-foreground hover:text-foreground">
+        <span className="text-sm select-none">⠿</span>
+      </button>
+      {/* 序号 */}
+      <span className="w-7 h-7 flex items-center justify-center bg-muted rounded text-xs text-muted-foreground shrink-0">
+        {index + 1}
+      </span>
+      {/* 输入框 */}
+      <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder="描述情节节点" className="flex-1" />
+      {/* 删除按钮 */}
+      <Button variant="ghost" size="sm" onClick={onRemove} className="shrink-0">
+        <X className="h-3.5 w-3.5" />
+      </Button>
+    </div>
+  )
+}
+
 export function OutlinePanel({ projectId }: OutlinePanelProps)
 {
   const [outline, setOutline] = useState<Outline | null>(null)
@@ -26,11 +64,9 @@ export function OutlinePanel({ projectId }: OutlinePanelProps)
   const [chapterCount, setChapterCount] = useState(10)
   // 操作状态
   const [saving, setSaving] = useState(false)
-  // AI 分析面板状态
-  const [aiPanelCollapsed, setAiPanelCollapsed] = useState(false)
-  const [analyzing, setAnalyzing] = useState(false)
-  const [analysisResult, setAnalysisResult] = useState<{ type: string; content: string }[] | null>(null)
-  const [rightCollapsed, setRightCollapsed] = useState(false)
+
+  // 拖拽传感器，设置 5px 激活距离避免误触
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
   useEffect(() =>
   {
@@ -72,6 +108,20 @@ export function OutlinePanel({ projectId }: OutlinePanelProps)
   {
     const updated = [...plotPoints]
     updated[index] = value
+    setPlotPoints(updated)
+  }
+
+  // 拖拽排序结束回调
+  const handleDragEnd = (event: { active: { id: string | number }; over: { id: string | number } | null }) =>
+  {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+
+    const oldIndex = parseInt(String(active.id).replace('plot-', ''))
+    const newIndex = parseInt(String(over.id).replace('plot-', ''))
+    const updated = [...plotPoints]
+    const [moved] = updated.splice(oldIndex, 1)
+    updated.splice(newIndex, 0, moved)
     setPlotPoints(updated)
   }
 
@@ -127,32 +177,6 @@ export function OutlinePanel({ projectId }: OutlinePanelProps)
     }
   }
 
-  // AI 分析大纲
-  const handleAnalyze = async () =>
-  {
-    if (!outline) return
-    setAnalyzing(true)
-    setAnalysisResult(null)
-    // TODO: 后端 AI 分析 API 就绪后替换为实际 SSE 调用
-    setTimeout(() =>
-    {
-      setAnalysisResult([
-        { type: '情节建议', content: '可以在中间加入反派视角的故事线，增加张力和层次感。建议在第5章左右引入反派背景。' },
-        { type: '角色发展', content: '主角的成长弧线需要更明显，当前情节转变过快，建议第3-4章增加内心挣扎描写。' },
-        { type: '世界观', content: '修仙大陆的世界观设定较完整，可以加入不同势力的政治博弈增加深度。' },
-      ])
-      setAnalyzing(false)
-    }, 2000)
-  }
-
-  // 采纳 AI 分析建议
-  const acceptAnalysis = (suggestion: { type: string; content: string }) =>
-  {
-    setSummary(prev => prev + '\n\n[AI建议 — ' + suggestion.type + '] ' + suggestion.content)
-    setAnalysisResult(prev => prev?.filter(s => s !== suggestion) || null)
-    toast.success('建议已采纳，已追加到概述中')
-  }
-
   // Ctrl+S 快捷键
   useEffect(() =>
   {
@@ -174,10 +198,10 @@ export function OutlinePanel({ projectId }: OutlinePanelProps)
   }
 
   return (
-    <div className="flex h-full">
-      {/* 中间编辑区 */}
-      <div className="flex-1 p-6 overflow-auto">
-        <div className="max-w-3xl mx-auto space-y-5">
+    <div className="flex h-full flex-col md:flex-row">
+      {/* 左栏：基本信息 */}
+      <div className="flex-1 min-w-0 p-6 overflow-auto md:border-r">
+        <div className="max-w-2xl mx-auto space-y-5">
           {/* 标题栏 */}
           <div className="flex items-center justify-between pb-3 border-b">
             <div className="flex items-center gap-3">
@@ -263,39 +287,6 @@ export function OutlinePanel({ projectId }: OutlinePanelProps)
             </CardContent>
           </Card>
 
-          {/* 情节节点卡片 */}
-          <Card>
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <span className="text-emerald-500">📍</span> 情节节点 ({plotPoints.length})
-                </CardTitle>
-                <Button variant="outline" size="sm" onClick={addPlotPoint}>
-                  <Plus className="h-3.5 w-3.5 mr-1" />
-                  添加
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {plotPoints.map((point, index) => (
-                <div key={index} className="flex gap-2 items-center">
-                  <span className="w-7 h-7 flex items-center justify-center bg-muted rounded text-xs text-muted-foreground flex-shrink-0">
-                    {index + 1}
-                  </span>
-                  <Input
-                    value={point}
-                    onChange={(e) => updatePlotPoint(index, e.target.value)}
-                    placeholder="描述情节节点"
-                    className="flex-1"
-                  />
-                  <Button variant="ghost" size="sm" onClick={() => removePlotPoint(index)} className="flex-shrink-0">
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
           {/* 确认按钮 */}
           {!outline?.confirmed && (
             <div className="text-center pt-2">
@@ -309,102 +300,40 @@ export function OutlinePanel({ projectId }: OutlinePanelProps)
         </div>
       </div>
 
-      {/* 右侧 AI 分析区 */}
-      <div className={`border-l bg-white flex flex-col shrink-0 transition-all duration-300 ${rightCollapsed ? 'w-12' : 'w-[360px]'} relative`}>
-        {/* 收缩展开按钮 */}
-        <button
-          onClick={() => setRightCollapsed(!rightCollapsed)}
-          className="absolute left-[-14px] top-1/2 -translate-y-1/2 z-10 w-7 h-7 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center shadow-md transition-colors"
-        >
-          {rightCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
-        </button>
+      {/* 右栏：情节节点（拖拽排序） */}
+      <div className="flex-1 min-w-0 p-6 overflow-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold flex items-center gap-2">
+            <span className="text-emerald-500">📍</span> 情节节点 ({plotPoints.length})
+          </h3>
+          <Button variant="outline" size="sm" onClick={addPlotPoint}>
+            <Plus className="h-3.5 w-3.5 mr-1" /> 添加
+          </Button>
+        </div>
 
-        {!rightCollapsed && (
-          <>
-        <button
-          onClick={() => setAiPanelCollapsed(!aiPanelCollapsed)}
-          className="flex items-center justify-between px-3 py-2.5 border-b hover:bg-muted/50 transition-colors"
-        >
-          <span className="text-xs font-medium flex items-center gap-1.5">
-            <Sparkles className="h-3.5 w-3.5" />
-            AI 分析
-          </span>
-          {aiPanelCollapsed ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
-        </button>
-
-        {!aiPanelCollapsed && (
-          <div className="flex-1 overflow-auto p-3 space-y-3">
-            {analysisResult ? (
-              <>
-                <div className="p-2 bg-green-50 rounded border border-green-200 text-center">
-                  <div className="text-xs text-green-700 font-medium">✅ 分析完成</div>
-                  <button
-                    onClick={() => { setAnalysisResult(null); handleAnalyze() }}
-                    className="text-[10px] text-muted-foreground hover:text-foreground mt-1"
-                  >
-                    🔄 重新分析
-                  </button>
-                </div>
-                {analysisResult.map((s, i) => (
-                  <div key={i} className="p-2.5 bg-white border rounded-md">
-                    <div className="text-[11px] font-medium mb-1">{s.type}</div>
-                    <p className="text-[10px] text-muted-foreground leading-relaxed">{s.content}</p>
-                    <div className="flex gap-1.5 mt-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-6 text-[10px] px-2"
-                        onClick={() => acceptAnalysis(s)}
-                      >
-                        采纳
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 text-[10px] px-2"
-                        onClick={() => setAnalysisResult(prev => prev?.filter(x => x !== s) || null)}
-                      >
-                        忽略
-                      </Button>
-                    </div>
-                  </div>
+        {plotPoints.length === 0 ? (
+          /* 空状态提示 */
+          <div className="text-center py-12 text-muted-foreground">
+            <p className="text-sm">暂无情节节点</p>
+            <p className="text-xs mt-1">点击「添加」或在 AI 搭档中描述你的故事</p>
+          </div>
+        ) : (
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={plotPoints.map((_, i) => `plot-${i}`)} strategy={verticalListSortingStrategy}>
+              <div className="space-y-2">
+                {plotPoints.map((point, index) => (
+                  <SortablePlotPoint
+                    key={`plot-${index}`}
+                    id={`plot-${index}`}
+                    index={index}
+                    value={point}
+                    onChange={(v) => updatePlotPoint(index, v)}
+                    onRemove={() => removePlotPoint(index)}
+                  />
                 ))}
-              </>
-            ) : analyzing ? (
-              <div className="p-3 bg-blue-50 rounded border border-blue-200 text-center space-y-2">
-                <Loader2 className="h-5 w-5 animate-spin text-blue-500 mx-auto" />
-                <div className="text-[11px] text-blue-700 font-medium">AI 正在分析...</div>
-                <div className="h-1.5 bg-blue-200 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full animate-pulse w-2/3" />
-                </div>
-                <button
-                  onClick={() => setAnalyzing(false)}
-                  className="text-[10px] text-muted-foreground hover:text-foreground"
-                >
-                  取消
-                </button>
               </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-48 gap-3 text-center">
-                <div className="text-2xl">🔍</div>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  大纲编辑完成后，<br />点击下方按钮让 AI<br />分析大纲并提供建议
-                </p>
-                <Button size="sm" onClick={handleAnalyze} className="text-xs">
-                  <Sparkles className="h-3 w-3 mr-1" />
-                  AI 分析大纲
-                </Button>
-                <p className="text-[10px] text-muted-foreground">分析情节/角色/世界观等</p>
-              </div>
-            )}
-          </div>
-        )}
-          </>
-        )}
-        {rightCollapsed && (
-          <div className="flex flex-col items-center pt-4 gap-3">
-            <Sparkles className="h-4 w-4 text-muted-foreground" />
-          </div>
+            </SortableContext>
+          </DndContext>
         )}
       </div>
     </div>
