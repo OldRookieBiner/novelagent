@@ -313,7 +313,7 @@ export function AIAssistantPanel({
             )}
 
             {/* 问题列表 */}
-            {reviewResult.issues.length > 0 && (
+            {reviewResult.issues && reviewResult.issues.length > 0 && (
               <div className="space-y-1.5">
                 <span className="text-xs font-medium">发现问题 ({reviewResult.issues.length})</span>
                 {reviewResult.issues.map((issue, index) =>

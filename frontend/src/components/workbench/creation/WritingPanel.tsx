@@ -283,7 +283,7 @@ export function WritingPanel({ projectId }: WritingPanelProps)
             // 从 done 事件提取章节数据（结构为 {chapter: {id, content, word_count}}）
             const doneData = data as { chapter?: { id?: number; word_count?: number; content?: string }; word_count?: number }
             const chapterData = doneData?.chapter
-            const wordCount = chapterData?.word_count || doneData?.word_count
+            const wordCount = chapterData?.word_count ?? doneData?.word_count
             if (wordCount)
             {
               toast.success(`AI 生成完成，共 ${wordCount} 字`)
@@ -386,7 +386,7 @@ export function WritingPanel({ projectId }: WritingPanelProps)
       setChapterContent({
         ...chapterContent,
         content: data.chapter.content || '',
-        word_count: data.chapter.word_count || 0,
+        word_count: data.chapter.word_count ?? 0,
         rewrite_count: newRewriteCount,
         review_passed: false,
         review_result: null,

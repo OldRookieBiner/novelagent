@@ -418,7 +418,7 @@ export function parseTemplateToData(template: string): Partial<InspirationData> 
     if (line.includes('**目标字数**')) {
       const value = line.split('：')[1]?.trim()
       // Parse number, remove "字" and commas
-      const numStr = value?.replace(/[字,，]/g, '').replace(/万/g, '0000')
+      const numStr = value?.replace(/[字,，]/g, '').replace(/([\d.]+)万/g, (_, num) => String(Math.round(parseFloat(num) * 10000)))
       if (numStr && !isNaN(parseInt(numStr))) {
         data.targetWords = parseInt(numStr)
       }
@@ -562,16 +562,16 @@ export const QUICK_TEMPLATES: QuickTemplate[] = [
       novelType: 'xuanhuan',
       targetWords: 500000,
       contextStrategy: 'summary',
-      coreTheme: 'nixi',
-      worldSetting: 'xiuzhen',
+      coreTheme: 'counterattack',
+      worldSetting: 'xianxia',
       era: 'ancient',
       targetReader: 'male',
       wordsPerChapter: '3000',
-      narrative: 'third_person',
-      genre: 'feichai',
-      maleLead: 'lengmian',
-      goldFinger: 'jueshi_gongfa',
-      stylePreference: 'shuangwen',
+      narrative: 'third',
+      genre: 'waste',
+      maleLead: 'underdog',
+      goldFinger: 'system',
+      stylePreference: 'passionate',
     },
   },
   {
@@ -582,13 +582,13 @@ export const QUICK_TEMPLATES: QuickTemplate[] = [
       novelType: 'yanqing',
       targetWords: 300000,
       contextStrategy: 'hybrid',
-      coreTheme: 'nixi',
+      coreTheme: 'love',
       era: 'modern',
       targetReader: 'female',
       wordsPerChapter: '3000',
-      narrative: 'first_person',
-      femaleLead: 'zongcai',
-      stylePreference: 'wenxin',
+      narrative: 'first',
+      femaleLead: 'cinderella',
+      stylePreference: 'aesthetic',
     },
   },
   {
@@ -599,16 +599,16 @@ export const QUICK_TEMPLATES: QuickTemplate[] = [
       novelType: 'kehuan',
       targetWords: 400000,
       contextStrategy: 'hybrid',
-      coreTheme: 'chengzhang',
-      worldSetting: 'kehuan',
+      coreTheme: 'adventure',
+      worldSetting: 'interstellar',
       era: 'future',
       targetReader: 'male',
       wordsPerChapter: '3000',
-      narrative: 'third_person',
-      genre: 'yinghan',
-      maleLead: 'lenghan',
-      goldFinger: 'zhinao',
-      stylePreference: 'jinsong',
+      narrative: 'third',
+      genre: 'infinite',
+      maleLead: 'ordinary',
+      goldFinger: 'system',
+      stylePreference: 'tense',
     },
   },
 ]

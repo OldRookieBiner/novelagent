@@ -1,6 +1,7 @@
 // frontend/src/components/workbench/planning/InspirationPreview.tsx
 // 灵感字段预览与编辑组件 — 展示从聊天中提取的创作参数
 
+import { useState } from 'react'
 import { Pencil } from 'lucide-react'
 import { type InspirationData } from '@/lib/inspiration'
 
@@ -38,6 +39,35 @@ export function InspirationPreview({
 }: InspirationPreviewProps)
 {
   const allRequiredFilled = missingFields.length === 0
+  // 当前正在编辑的字段 key，null 表示未在编辑
+  const [editingKey, setEditingKey] = useState<string | null>(null)
+  // 编辑中的临时值
+  const [editingValue, setEditingValue] = useState('')
+
+  // 开始编辑某个字段
+  const startEditing = (key: string, currentValue: string) =>
+  {
+    setEditingKey(key)
+    setEditingValue(currentValue)
+  }
+
+  // 确认编辑
+  const confirmEdit = () =>
+  {
+    if (editingKey && editingValue.trim())
+    {
+      onFieldEdit(editingKey as keyof InspirationData, editingValue.trim())
+    }
+    setEditingKey(null)
+    setEditingValue('')
+  }
+
+  // 取消编辑
+  const cancelEdit = () =>
+  {
+    setEditingKey(null)
+    setEditingValue('')
+  }
 
   return (
     <div className="space-y-3">
@@ -48,6 +78,7 @@ export function InspirationPreview({
         {
           const value = fields[key as keyof InspirationData]
           const isMissing = missingFields.includes(key)
+          const isEditing = editingKey === key
 
           return (
             <div
@@ -58,17 +89,30 @@ export function InspirationPreview({
             >
               <span className="text-muted-foreground">{label}</span>
               <span className="flex items-center gap-1">
-                {value ? String(value) : '待补充'}
-                <button
-                  onClick={() =>
-                  {
-                    const newValue = prompt(`${label}:`, String(value || ''))
-                    if (newValue !== null) onFieldEdit(key as keyof InspirationData, newValue)
-                  }}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  <Pencil className="h-3 w-3" />
-                </button>
+                {isEditing ? (
+                  <input
+                    autoFocus
+                    value={editingValue}
+                    onChange={(e) => setEditingValue(e.target.value)}
+                    onKeyDown={(e) =>
+                    {
+                      if (e.key === 'Enter') confirmEdit()
+                      if (e.key === 'Escape') cancelEdit()
+                    }}
+                    onBlur={confirmEdit}
+                    className="w-24 rounded border px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                ) : (
+                  <>
+                    {value ? String(value) : '待补充'}
+                    <button
+                      onClick={() => startEditing(key, String(value || ''))}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                  </>
+                )}
               </span>
             </div>
           )

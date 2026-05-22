@@ -42,6 +42,23 @@ export function InspirationChatPanel({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const assistantContentRef = useRef<string>('')
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
+
+  // 组件卸载时中止 SSE 流并清理防抖计时器
+  useEffect(() =>
+  {
+    return () =>
+    {
+      if (abortControllerRef.current)
+      {
+        abortControllerRef.current.abort()
+      }
+      if (debounceTimerRef.current)
+      {
+        clearTimeout(debounceTimerRef.current)
+      }
+    }
+  }, [])
 
   // 自动滚动到底部
   useEffect(() =>
@@ -93,6 +110,14 @@ export function InspirationChatPanel({
     // 重置助手回复缓冲区
     assistantContentRef.current = ''
 
+    // 中止上一次未完成的 SSE 流
+    if (abortControllerRef.current)
+    {
+      abortControllerRef.current.abort()
+    }
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
     // 构建 SSE 回调
     const callbacks: InspirationChatCallbacks = {
       onChunk: (content: string) =>
@@ -132,10 +157,12 @@ export function InspirationChatPanel({
 
     try
     {
-      await inspirationChatApi.chat(projectId, userMessage, callbacks)
+      await inspirationChatApi.chat(projectId, userMessage, callbacks, { signal: controller.signal })
     }
     catch (err)
     {
+      // 忽略因取消导致的错误
+      if (controller.signal.aborted) return
       setMessages((prev) => [...prev, { role: 'assistant', content: '网络错误，请重试' }])
       setLoading(false)
     }
