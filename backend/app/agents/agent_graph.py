@@ -11,7 +11,9 @@ from app.models.model_config import ModelConfig
 from app.models.outline import Outline, ChapterOutline
 from app.models.character import Character
 from app.database import SessionLocal
-from app.utils.logger import logger
+from app.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def build_project_context(project_id: int) -> dict:
