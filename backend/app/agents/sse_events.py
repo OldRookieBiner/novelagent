@@ -94,3 +94,30 @@ def format_heartbeat() -> str:
     用于审核等不需要发送中间内容的 SSE 流中，保持连接不被中间代理断开。
     """
     return ": heartbeat\n\n"
+
+
+# --- Agent SSE 事件 ---
+
+def format_agent_text(content: str) -> str:
+    """格式化 Agent 文本回复流式 chunk"""
+    return f"event: agent_text\ndata: {json.dumps({'content': content})}\n\n"
+
+
+def format_agent_tool_start(tool_name: str, args: dict) -> str:
+    """格式化 Agent tool 调用开始事件"""
+    return f"event: agent_tool_start\ndata: {json.dumps({'tool': tool_name, 'args': args})}\n\n"
+
+
+def format_agent_tool_result(tool_name: str, result: dict) -> str:
+    """格式化 Agent tool 调用结果事件"""
+    return f"event: agent_tool_result\ndata: {json.dumps({'tool': tool_name, 'result': result})}\n\n"
+
+
+def format_agent_done() -> str:
+    """格式化 Agent 本轮完成事件"""
+    return f"event: agent_done\ndata: {json.dumps({'message': 'Agent 思考完成'})}\n\n"
+
+
+def format_ai_update(module: str, summary: str) -> str:
+    """格式化 AI 更新通知（前端用于标记「🤖 AI 已更新」）"""
+    return f"event: ai_update\ndata: {json.dumps({'module': module, 'summary': summary})}\n\n"
