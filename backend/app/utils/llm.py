@@ -150,5 +150,5 @@ async def get_llm_from_state_async(state: dict, db: Optional["Session"] = None, 
         # 直接在同一线程执行（调用方负责线程安全）
         return get_llm_from_state(state, db)
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(_db_executor, get_llm_from_state, state)

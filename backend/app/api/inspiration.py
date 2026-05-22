@@ -116,9 +116,9 @@ async def chat_inspiration(
     )
 
     # SSE 流式生成（使用独立 DB Session 避免请求级 Session 在流式操作期间失效）
-    sse_db = SessionLocal()
 
     async def generate():
+        sse_db = SessionLocal()
         response_text = ""
         try:
             async for chunk in llm.chat_stream(

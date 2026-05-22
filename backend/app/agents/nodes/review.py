@@ -4,11 +4,8 @@ import json
 import re
 from typing import Dict, Any
 
-from sqlalchemy.orm import Session
-
 from app.agents.state import NovelState, STAGE_REVIEW
 from app.agents.constants import NODE_TEMPERATURES
-from app.database import SessionLocal
 from app.services.llm import LLMService
 from app.utils.llm import get_llm_from_state_async
 from app.agents.context_strategy import get_context_strategy
@@ -21,6 +18,7 @@ from app.agents.nodes.utils import (
     get_prompts_from_state,
     find_chapter_by_number,
     find_chapter_outline_by_number,
+    safe_format,
 )
 
 
@@ -218,14 +216,14 @@ def _build_review_messages(
     # 构建 messages
     messages = []
     if system_template:
-        system_content = system_template.format(
+        system_content = safe_format(system_template,
             previous_context=previous_context,
             main_characters=combined_characters_str,
             world_setting=world_str,
         )
         messages.append({"role": "system", "content": system_content})
 
-    user_content = user_template.format(
+    user_content = safe_format(user_template,
         strictness=strictness,
         chapter_outline=outline_str,
         chapter_content=chapter_content,
@@ -243,29 +241,20 @@ async def review_chapter_node(
     chapter_outline: dict,
     llm: LLMService,
     strictness: str = "standard",
-    db: Session | None = None,
 ) -> Dict[str, Any]:
     """审核章节内容（使用 system/user 双层消息 + 前文上下文）"""
-    should_close = False
-    if db is None:
-        db = SessionLocal()
-        should_close = True
-    try:
-        # 构建 system/user 消息
-        messages = _build_review_messages(state, chapter_content, chapter_outline, strictness)
+    # 构建 system/user 消息
+    messages = _build_review_messages(state, chapter_content, chapter_outline, strictness)
 
-        # 流式调用 LLM
-        response = ""
-        async for chunk in llm.chat_stream(messages, temperature=NODE_TEMPERATURES["review"]):
-            response += chunk
+    # 流式调用 LLM
+    response = ""
+    async for chunk in llm.chat_stream(messages, temperature=NODE_TEMPERATURES["review"]):
+        response += chunk
 
-        result = parse_review_result(response)
-        result["raw_response"] = response
+    result = parse_review_result(response)
+    result["raw_response"] = response
 
-        return result
-    finally:
-        if should_close:
-            db.close()
+    return result
 
 
 def check_review_passed(review_result: Dict[str, Any]) -> bool:

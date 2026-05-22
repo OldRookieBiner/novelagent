@@ -5,16 +5,22 @@ from typing import Optional
 
 from app.agents.constants import MODEL_CONTEXT_WINDOWS, DEFAULT_CONTEXT_WINDOW
 
+# 预编译 CJK 字符正则，避免每次调用 re.findall 重新编译
+_CJK_RE = re.compile(r'[一-龥]')
+
 
 def estimate_tokens(text: str) -> int:
     """估算中文文本的 token 数（保守估计）
 
     中文约 1.5-2 token/字，取 2 保守估算。
     英文约 0.25-0.5 token/char，取 0.5 估算。
+    非空文本最少返回 1，避免 0 值导致上下文策略误判为无内容。
     """
-    chinese_chars = len(re.findall(r'[一-龥]', text))
+    if not text:
+        return 0
+    chinese_chars = len(_CJK_RE.findall(text))
     other_chars = len(text) - chinese_chars
-    return int(chinese_chars * 2 + other_chars * 0.5)
+    return max(int(chinese_chars * 2 + other_chars * 0.5), 1)
 
 
 def get_context_window(model_name: str, model_config=None) -> int:

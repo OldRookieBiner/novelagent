@@ -2,11 +2,8 @@
 
 from typing import Dict, Any
 
-from sqlalchemy.orm import Session
-
 from app.agents.state import NovelState, STAGE_WRITING
 from app.agents.constants import NODE_TEMPERATURES
-from app.database import SessionLocal
 from app.services.llm import LLMService
 from app.utils.llm import get_llm_from_state_async
 from app.agents.context_strategy import get_context_strategy
@@ -19,6 +16,7 @@ from app.agents.nodes.utils import (
     get_prompts_from_state,
     find_chapter_by_number,
     find_chapter_outline_by_number,
+    safe_format,
 )
 
 def _build_rewrite_messages(
@@ -77,14 +75,14 @@ def _build_rewrite_messages(
     # 构建 messages
     messages = []
     if system_template:
-        system_content = system_template.format(
+        system_content = safe_format(system_template,
             previous_context=previous_context,
             main_characters=combined_characters_str,
             world_setting=world_str,
         )
         messages.append({"role": "system", "content": system_content})
 
-    user_content = user_template.format(
+    user_content = safe_format(user_template,
         chapter_outline=outline_str,
         review_feedback=review_feedback,
         original_content=original_content,
@@ -101,26 +99,17 @@ async def rewrite_chapter_node(
     original_content: str,
     review_feedback: str,
     llm: LLMService,
-    db: Session | None = None,
 ) -> str:
     """根据审核反馈重写章节（使用 system/user 双层消息 + 前文上下文）"""
-    should_close = False
-    if db is None:
-        db = SessionLocal()
-        should_close = True
-    try:
-        # 构建 system/user 消息
-        messages = _build_rewrite_messages(state, chapter_outline, original_content, review_feedback)
+    # 构建 system/user 消息
+    messages = _build_rewrite_messages(state, chapter_outline, original_content, review_feedback)
 
-        # 流式调用 LLM
-        response = ""
-        async for chunk in llm.chat_stream(messages, temperature=NODE_TEMPERATURES["rewrite"]):
-            response += chunk
+    # 流式调用 LLM
+    response = ""
+    async for chunk in llm.chat_stream(messages, temperature=NODE_TEMPERATURES["rewrite"]):
+        response += chunk
 
-        return response
-    finally:
-        if should_close:
-            db.close()
+    return response
 
 
 async def rewrite_with_retry(

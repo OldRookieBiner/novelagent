@@ -105,8 +105,8 @@ class HybridContentStrategy(ContextStrategy):
         if not written_chapters:
             return "（这是第一章，没有前文）"
 
-        effective_budget = token_budget or float('inf')
-        fulltext_budget = int(effective_budget * 0.6) if token_budget else None
+        effective_budget = token_budget if token_budget is not None else float('inf')
+        fulltext_budget = int(effective_budget * 0.6) if token_budget is not None else None
 
         # 近章全文（逆序填充，优先最近）
         recent_parts = []
@@ -204,12 +204,12 @@ class SummaryContentStrategy(ContextStrategy):
     ) -> str:
         from app.agents.token_budget import estimate_tokens
 
-        effective_budget = token_budget or float('inf')
+        effective_budget = token_budget if token_budget is not None else float('inf')
         used_tokens = 0
         result_parts = []
 
         # ===== Phase 1: 近章全文（40% 预算）=====
-        fulltext_budget = int(effective_budget * 0.4) if token_budget else None
+        fulltext_budget = int(effective_budget * 0.4) if token_budget is not None else None
         fulltext_parts = []
         covered_numbers = set()
 
@@ -242,7 +242,7 @@ class SummaryContentStrategy(ContextStrategy):
         result_parts.extend(fulltext_parts)
 
         # ===== Phase 2: 当前弧摘要（70% 预算）=====
-        arc_budget = int(effective_budget * 0.7) if token_budget else None
+        arc_budget = int(effective_budget * 0.7) if token_budget is not None else None
         if arcs and chapter_summaries:
             # 查找当前弧
             current_arc = None

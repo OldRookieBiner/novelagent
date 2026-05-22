@@ -696,7 +696,7 @@ async def confirm_workflow(
     graph = create_novel_graph_with_checkpointer(project_id, "default")
     config = {"configurable": {"thread_id": "default"}}
 
-    async def stream_generator():
+    def stream_generator():
         return stream_workflow_events(graph, config, None)
 
     return StreamingResponse(
