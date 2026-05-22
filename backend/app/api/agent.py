@@ -123,10 +123,13 @@ async def agent_chat(
     messages.append({"role": "user", "content": req.message})
 
     # 创建 Agent 图
-    graph = create_agent_graph(
-        model_config_id=req.model_config_id,
-        user_id=current_user.id,
-    )
+    try:
+        graph = create_agent_graph(
+            model_config_id=req.model_config_id,
+            user_id=current_user.id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     return StreamingResponse(
         stream_agent_events(graph, messages, project_id),
