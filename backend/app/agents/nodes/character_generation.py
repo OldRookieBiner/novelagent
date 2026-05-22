@@ -1,7 +1,6 @@
 """角色生成节点 - 从大纲提取角色并写入数据库"""
 
 import re
-from sqlalchemy.orm import Session
 
 from app.agents.state import NovelState, STAGE_CHARACTERS
 from app.agents.constants import NODE_TEMPERATURES
@@ -60,58 +59,6 @@ def parse_character_generation_response(response: str) -> list[dict]:
             }
         )
     return characters
-
-
-def extract_characters_from_outline(state: NovelState, db: Session) -> list[dict]:
-    """从大纲的 outline_characters 提取角色并写入数据库
-
-    删除项目已有角色（避免重复），然后从 state["outline_characters"]
-    创建新角色记录。
-
-    Args:
-        state: NovelState（需包含 project_id 和 outline_characters）
-        db: 数据库会话（由调用方管理生命周期）
-
-    Returns:
-        已创建的角色列表 [{id, name, role, ...}]
-    """
-    from app.models.character import Character
-
-    project_id = state.get("project_id")
-    if not project_id:
-        return []
-    outline_characters = state.get("outline_characters", [])
-
-    if not outline_characters:
-        return []
-
-    # 删除已有角色（重新生成场景，避免重复）
-    db.query(Character).filter(Character.project_id == project_id).delete()
-
-    created = []
-    for oc in outline_characters:
-        char = Character(
-            project_id=project_id,
-            name=oc.get("name", "未命名") or "未命名",
-            role=_map_role(oc.get("role", "")),
-            personality=oc.get("personality", ""),
-            core_motivation=oc.get("motivation", ""),
-            growth_arc=oc.get("arc", ""),
-        )
-        db.add(char)
-        db.flush()  # 获取 id
-        created.append(
-            {
-                "id": char.id,
-                "name": char.name,
-                "role": char.role,
-                "personality": char.personality,
-                "core_motivation": char.core_motivation,
-                "growth_arc": char.growth_arc,
-            }
-        )
-
-    return created
 
 
 async def create_characters_from_outline_node(state: NovelState, config: dict = None) -> NovelState:

@@ -1,6 +1,6 @@
 """Workflow checkpoint model for LangGraph state persistence"""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
 from sqlalchemy import JSON
 from sqlalchemy.orm import relationship
@@ -22,8 +22,8 @@ class WorkflowCheckpoint(Base):
         String(36), nullable=True, index=True
     )  # UUID 格式的检查点 ID
     checkpoint = Column(JSON, nullable=False)  # Complete State JSON
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
     project = relationship("Project", back_populates="checkpoints")

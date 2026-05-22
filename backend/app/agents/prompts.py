@@ -19,13 +19,6 @@ def _format_forbidden_words() -> str:
 {rules}"""
 
 
-def _format_style_exemplars(exemplars_text: str) -> str:
-    """格式化正面风格示例为 Prompt 可用格式"""
-    return f"""**你应该模仿的写法**（以下示例展示了具体、克制、有画面感的风格）：
-
-{exemplars_text}"""
-
-
 def _format_forbidden_words_list() -> str:
     """格式化禁用词列表为逗号分隔的字符串（用于打分维度说明）"""
     return "、".join(FORBIDDEN_WORDS)

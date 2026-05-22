@@ -85,7 +85,7 @@ def sanitize_error_message(error: Union[str, Exception]) -> str:
 
 def format_sse_error(error: Union[str, Exception]) -> str:
     """
-    格式化 SSE 错误事件。
+    格式化 SSE 错误事件（委托给 sse_events 模块）
 
     Args:
         error: 原始错误消息或异常对象
@@ -93,7 +93,5 @@ def format_sse_error(error: Union[str, Exception]) -> str:
     Returns:
         格式化的 SSE 错误事件字符串
     """
-    import json
-
-    safe_message = sanitize_error_message(error)
-    return f"event: error\ndata: {json.dumps({'error': safe_message})}\n\n"
+    from app.agents.sse_events import format_sse_error as _format
+    return _format(error)

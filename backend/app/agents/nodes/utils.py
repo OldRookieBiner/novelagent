@@ -1,5 +1,9 @@
 """节点共享工具函数"""
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def safe_format(template: str, **kwargs) -> str:
     """安全格式化模板：转义参数中的花括号，防止 format() 注入。
@@ -23,8 +27,9 @@ def safe_format(template: str, **kwargs) -> str:
 
     try:
         result = template.format(**escaped)
-    except (KeyError, ValueError, IndexError):
+    except (KeyError, ValueError, IndexError) as e:
         # 如果模板本身有问题，返回未格式化的模板
+        logger.warning(f"safe_format failed for template (first 80 chars): {template[:80]!r}, error: {e}")
         return template
 
     # 恢复花括号
