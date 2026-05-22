@@ -1,6 +1,36 @@
 """节点共享工具函数"""
 
 
+def safe_format(template: str, **kwargs) -> str:
+    """安全格式化模板：转义参数中的花括号，防止 format() 注入。
+
+    LLM 输出和用户输入可能包含 { 或 }，直接传给 str.format() 会引发 KeyError。
+    此函数先将参数中的花括号替换为临时占位符，格式化后再恢复。
+    """
+    # 未提供参数时直接返回模板
+    if not kwargs:
+        return template
+
+    # 将参数值中的花括号转义为临时占位符
+    SAFE_LBRACE = "\x00LBRACE\x00"
+    SAFE_RBRACE = "\x00RBRACE\x00"
+    escaped = {}
+    for key, value in kwargs.items():
+        if isinstance(value, str):
+            escaped[key] = value.replace("{", SAFE_LBRACE).replace("}", SAFE_RBRACE)
+        else:
+            escaped[key] = value
+
+    try:
+        result = template.format(**escaped)
+    except (KeyError, ValueError, IndexError):
+        # 如果模板本身有问题，返回未格式化的模板
+        return template
+
+    # 恢复花括号
+    return result.replace(SAFE_LBRACE, "{").replace(SAFE_RBRACE, "}")
+
+
 def _format_chapter_outline_str(chapter_outline: dict) -> str:
     """格式化章节大纲为提示词用字符串"""
     return f"""

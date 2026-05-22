@@ -81,6 +81,7 @@ export function useChapterOutlineGeneration({
     confirmed: false,
     has_content: false,
     created_at: new Date().toISOString(),
+    arc_id: null,
   }), [projectId])
 
   /** 刷新章节列表 */

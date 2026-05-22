@@ -201,12 +201,12 @@ async def generate_relations_node(state: NovelState, config: dict = None) -> Nov
     emotional_curve = state.get("outline_emotional_curve", "") or "未提供"
 
     # 从 state 获取预加载的 prompts（统一使用 get_prompts_from_state）
-    from app.agents.nodes.utils import get_prompts_from_state, get_prompt_template
+    from app.agents.nodes.utils import get_prompts_from_state, get_prompt_template, safe_format
     system_template, user_template = get_prompts_from_state(state, "relation_generation")
     prompt_template = get_prompt_template(system_template, user_template)
     logger_rn.info(f"relation_gen_node: Using prompt template, length={len(prompt_template)}")
 
-    prompt = prompt_template.format(
+    prompt = safe_format(prompt_template,
         characters_text=characters_text,
         world_era=world_era,
         outline_summary=outline_summary,

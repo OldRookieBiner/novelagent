@@ -19,6 +19,7 @@ from app.agents.nodes.utils import (
     get_prompts_from_state,
     get_prompt_template,
     parse_words_per_chapter,
+    safe_format,
 )
 
 logger = logging.getLogger(__name__)
@@ -289,7 +290,7 @@ async def generate_single_chapter_outline(
     system_template, user_template = get_prompts_from_state(state, "chapter_outline_generation")
     prompt_template = get_prompt_template(system_template, user_template)
 
-    prompt = prompt_template.format(
+    prompt = safe_format(prompt_template,
         outline=outline,
         plot_points=plot_points_str,
         characters=combined_chars,
@@ -482,7 +483,7 @@ def _build_chapter_content_messages(
     # 格式化 system message（角色定位 + 规则 + 上下文 + 人物 + 世界观）
     messages = []
     if system_template:
-        system_content = system_template.format(
+        system_content = safe_format(system_template,
             previous_context=previous_context,
             main_characters=combined_characters_str,
             world_setting=world_str,
@@ -491,7 +492,7 @@ def _build_chapter_content_messages(
         messages.append({"role": "system", "content": system_content})
 
     # 格式化 user message（具体任务输入）
-    user_content = user_template.format(
+    user_content = safe_format(user_template,
         chapter_outline=outline_str,
         previous_ending=previous_ending,
         genre=info.get("novelType", "未指定"),
@@ -540,7 +541,7 @@ async def _self_check_chapter(llm: LLMService, draft_content: str) -> dict:
     from app.agents.prompts import DEFAULT_PROMPTS
 
     prompt_template = DEFAULT_PROMPTS.get("chapter_self_check", "")
-    prompt = prompt_template.format(chapter_content=draft_content)
+    prompt = safe_format(prompt_template, chapter_content=draft_content)
 
     response = ""
     async for chunk in llm.chat_stream(
@@ -605,7 +606,7 @@ async def _refine_chapter_stream(
 
     prompt_template = DEFAULT_PROMPTS.get("chapter_refine", "")
     check_result_str = json.dumps(check_result, ensure_ascii=False, indent=2)
-    prompt = prompt_template.format(
+    prompt = safe_format(prompt_template,
         check_result=check_result_str,
         draft_content=draft_content,
     )

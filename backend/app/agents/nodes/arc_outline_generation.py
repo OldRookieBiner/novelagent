@@ -24,7 +24,7 @@ def _build_arc_outline_messages(
     Returns:
         LLM 消息列表
     """
-    from app.agents.nodes.utils import get_prompts_from_state, get_prompt_template, format_characters_info
+    from app.agents.nodes.utils import get_prompts_from_state, get_prompt_template, format_characters_info, safe_format
 
     # 从 state 获取预加载的 prompts（统一使用 get_prompts_from_state）
     system_template, user_template = get_prompts_from_state(state, "arc_outline_generation")
@@ -47,7 +47,7 @@ def _build_arc_outline_messages(
             parts.append(f"第{go['arc_number']}弧概要：{go['outline'][:200]}...")
         other_arcs_info = "已生成弧纲（供参考，保持连贯）：\n" + "\n".join(parts)
 
-    prompt = prompt_template.format(
+    prompt = safe_format(prompt_template,
         outline_title=outline_title,
         outline_summary=outline_summary or "",
         plot_points=plot_text,

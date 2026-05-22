@@ -95,7 +95,7 @@ async def volume_arc_planning_node(state: NovelState) -> dict:
         更新 volumes、arcs、chapter_count、stage、waiting_for_confirmation、confirmation_type
     """
     from app.utils.llm import get_llm_from_state_async
-    from app.agents.nodes.utils import get_prompts_from_state, get_prompt_template
+    from app.agents.nodes.utils import get_prompts_from_state, get_prompt_template, safe_format
 
     # 获取 LLM 服务
     llm = await get_llm_from_state_async(state)
@@ -122,7 +122,7 @@ async def volume_arc_planning_node(state: NovelState) -> dict:
     else:
         plot_text = str(plot_points)
 
-    prompt = prompt_template.format(
+    prompt = safe_format(prompt_template,
         outline_title=outline_title,
         outline_summary=outline_summary or "",
         plot_points=plot_text,

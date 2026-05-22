@@ -137,7 +137,7 @@ async def create_characters_from_outline_node(state: NovelState, config: dict = 
         llm = await get_llm_from_state_async(state)
 
         # 从 state 获取预加载的 prompts（统一使用 get_prompts_from_state）
-        from app.agents.nodes.utils import get_prompts_from_state, get_prompt_template
+        from app.agents.nodes.utils import get_prompts_from_state, get_prompt_template, safe_format
         system_template, user_template = get_prompts_from_state(state, "character_generation")
         prompt_template = get_prompt_template(system_template, user_template)
         logger.info(f"character_gen_node: Using prompt from state, template_length={len(prompt_template)}")
@@ -151,7 +151,7 @@ async def create_characters_from_outline_node(state: NovelState, config: dict = 
 
         emotional_curve = state.get("outline_emotional_curve", "") or "未提供"
 
-        prompt = prompt_template.format(
+        prompt = safe_format(prompt_template,
             outline_summary=outline_summary,
             world_era=world_era,
             plot_points=plot_points_str,
