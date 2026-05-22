@@ -24,6 +24,7 @@ class TestBuildInitialState:
         project = MagicMock()
         project.id = 1
         project.chapter_outlines = []
+        project.novel_length = 100000
 
         outline = MagicMock()
         outline.collected_info = {}
@@ -73,6 +74,7 @@ class TestBuildInitialState:
         project = MagicMock()
         project.id = 1
         project.chapter_outlines = []
+        project.novel_length = 100000
 
         outline = MagicMock()
         outline.collected_info = {}

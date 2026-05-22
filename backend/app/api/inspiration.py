@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import re
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -22,6 +22,7 @@ from app.utils.error import format_sse_error
 from app.utils.project import get_project_for_user
 from app.agents.constants import FIELD_INFERENCE_RULES, INSPIRATION_REQUIRED_FIELDS
 from app.agents.prompts import DEFAULT_PROMPTS
+from app.agents.sse_events import format_chunk, format_done
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/projects/{project_id}/inspiration", tags=["inspiration"])
@@ -33,7 +34,7 @@ class ChatRequest(BaseModel):
 
 
 class ConfirmRequest(BaseModel):
-    inspiration_data: dict
+    inspiration_data: dict[str, Any]
 
 
 def _infer_fields_from_text(text: str) -> dict:
@@ -127,7 +128,7 @@ async def chat_inspiration(
                 max_tokens=2048,
             ):
                 response_text += chunk
-                yield f"event: chunk\ndata: {json.dumps({'content': chunk})}\n\n"
+                yield format_chunk(chunk)
 
             # 解析 LLM 响应中的 extracted 字段
             try:
@@ -158,10 +159,7 @@ async def chat_inspiration(
                 f"event: extracted\ndata: "
                 f"{json.dumps({'fields': extracted, 'missing': _get_missing_fields(extracted)})}\n\n"
             )
-            yield (
-                f"event: done\ndata: "
-                f"{json.dumps({'message': '对话轮次完成'})}\n\n"
-            )
+            yield format_done("对话轮次完成")
 
         except asyncio.CancelledError:
             raise

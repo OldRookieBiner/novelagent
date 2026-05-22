@@ -1,11 +1,11 @@
 """Workflow API routes for LangGraph integration"""
 
 import logging
-from typing import Optional, AsyncIterator
+from typing import Optional, Any, AsyncIterator
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +29,20 @@ from app.agents.sse_events import (
 from app.utils.deps import get_user_settings_or_raise
 from app.agents.graph import create_novel_graph_with_checkpointer
 from app.agents.state import NovelState
+from app.agents.state import (
+    STAGE_INSPIRATION, STAGE_OUTLINE, STAGE_CHARACTERS, STAGE_RELATIONS,
+    STAGE_VOLUME_ARC, STAGE_ARC_OUTLINES, STAGE_CHAPTER_OUTLINES,
+    STAGE_WRITING, STAGE_REVIEW, STAGE_COMPLETE,
+)
 
 router = APIRouter()
+
+# 工作流阶段白名单（UpdateStageRequest 校验用）
+VALID_STAGES = [
+    STAGE_INSPIRATION, STAGE_OUTLINE, STAGE_CHARACTERS, STAGE_RELATIONS,
+    STAGE_VOLUME_ARC, STAGE_ARC_OUTLINES, STAGE_CHAPTER_OUTLINES,
+    STAGE_WRITING, STAGE_REVIEW, STAGE_COMPLETE,
+]
 
 
 async def stream_workflow_events(
@@ -116,7 +128,7 @@ class WorkflowConfirmRequest(BaseModel):
     # 可选：用户修改后的数据
     outline_title: Optional[str] = None
     outline_summary: Optional[str] = None
-    chapter_outlines: Optional[list] = None
+    chapter_outlines: Optional[list[dict[str, Any]]] = None
 
 
 class WorkflowReplanRequest(BaseModel):
@@ -124,7 +136,7 @@ class WorkflowReplanRequest(BaseModel):
     llm_config_id: Optional[int] = None
     llm_model_name: Optional[str] = None
     # 重新规划时同步保存的灵感采集数据
-    collected_info: Optional[dict] = None
+    collected_info: Optional[dict[str, Any]] = None
     inspiration_template: Optional[str] = None
 
 
@@ -145,6 +157,24 @@ class WorkflowStateResponse(BaseModel):
 
 
 # ========== Helper Functions ==========
+
+def _derive_novel_length(target_word_count: Optional[int]) -> str:
+    """根据 Project 的目标字数推断 novel_length 枚举值
+
+    Args:
+        target_word_count: 项目目标字数（整数），None 时默认 100000
+
+    Returns:
+        "short" | "medium" | "long"
+    """
+    target = target_word_count or 100000
+    if target >= 500000:
+        return "long"
+    elif target >= 100000:
+        return "medium"
+    else:
+        return "short"
+
 
 def build_initial_state(
     project: Project,
@@ -230,6 +260,13 @@ def build_initial_state(
         # 章节正文
         "written_chapters": written_chapters,
         "current_chapter": workflow_state.current_chapter,
+        "current_arc_index": 0,  # 长篇模式弧索引，默认从 0 开始
+
+        # 根据 Project 的目标字数推断 novel_length
+        "novel_length": _derive_novel_length(project.novel_length),
+
+        # 大纲有效性标志（有标题或摘要即视为有效）
+        "outline_valid": bool(outline and (outline.title or outline.summary)),
 
         # 审核/重写
         "review_mode": workflow_state.workflow_mode,
@@ -406,6 +443,15 @@ def _build_prompts_dict(db: Session) -> dict[str, str | dict]:
             "system": default_rewrite["system"],
             "user": get_system_prompt(db, "rewrite"),
         },
+        # 长篇模式卷弧/弧纲 prompt
+        "arc_outline_generation": get_system_prompt(db, "arc_outline_generation"),
+        "volume_arc_generation": get_system_prompt(db, "volume_arc_generation"),
+        # 章节自检与精修 prompt
+        "chapter_self_check": get_system_prompt(db, "chapter_self_check"),
+        "chapter_refine": get_system_prompt(db, "chapter_refine"),
+        # 灵感对话 prompt
+        "inspiration_extraction": get_system_prompt(db, "inspiration_extraction"),
+        "inspiration_question": get_system_prompt(db, "inspiration_question"),
     }
 
 
@@ -639,6 +685,9 @@ async def confirm_workflow(
         checkpoint_data = record.checkpoint.copy()
         checkpoint_data["channel_values"] = checkpoint_state
         record.checkpoint = checkpoint_data
+        # SQLAlchemy 不会自动检测 JSON 列的内部变更，需手动标记
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(record, "checkpoint")
 
     # 同步更新大纲和项目
     if confirmation_type == "outline":
@@ -1037,6 +1086,13 @@ async def replan_chapter_outlines(
 class UpdateStageRequest(BaseModel):
     """更新工作流阶段请求"""
     stage: str
+
+    @field_validator('stage')
+    @classmethod
+    def validate_stage(cls, v):
+        if v not in VALID_STAGES:
+            raise ValueError(f'Invalid stage: {v}. Must be one of {VALID_STAGES}')
+        return v
 
 
 @router.put("/{project_id}/workflow/stage")
