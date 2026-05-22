@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useWorkbenchStore } from '@/stores/workbenchStore'
 import {
   Dialog,
   DialogContent,
@@ -42,6 +43,9 @@ export function CharacterPanel({ projectId }: CharacterPanelProps)
 {
   const [characters, setCharacters] = useState<Character[]>([])
   const [loading, setLoading] = useState(true)
+  // AI 更新标记
+  const aiUpdateMarkers = useWorkbenchStore((s) => s.aiUpdateMarkers)
+  const charactersUpdated = !!aiUpdateMarkers.characters
 
   // Dialog 状态
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -215,6 +219,11 @@ export function CharacterPanel({ projectId }: CharacterPanelProps)
         <h2 className="text-xl font-semibold flex items-center gap-2">
           <Users className="h-5 w-5" />
           人物管理
+          {charactersUpdated && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-200 animate-pulse">
+              🤖 AI 已更新
+            </span>
+          )}
         </h2>
         <Button size="sm" onClick={openCreateDialog}>
           <Plus className="h-4 w-4 mr-2" />

@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { outlineApi } from '@/lib/api'
+import { useWorkbenchStore } from '@/stores/workbenchStore'
 import { toast } from 'sonner'
 import type { Outline } from '@/types'
 
@@ -64,6 +65,9 @@ export function OutlinePanel({ projectId }: OutlinePanelProps)
   const [chapterCount, setChapterCount] = useState(10)
   // 操作状态
   const [saving, setSaving] = useState(false)
+  // AI 更新标记
+  const aiUpdateMarkers = useWorkbenchStore((s) => s.aiUpdateMarkers)
+  const outlineUpdated = !!aiUpdateMarkers.outline
 
   // 拖拽传感器，设置 5px 激活距离避免误触
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
@@ -212,6 +216,11 @@ export function OutlinePanel({ projectId }: OutlinePanelProps)
               {outline?.confirmed && (
                 <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-200">
                   已确认
+                </span>
+              )}
+              {outlineUpdated && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-200 animate-pulse">
+                  🤖 AI 已更新
                 </span>
               )}
             </div>
