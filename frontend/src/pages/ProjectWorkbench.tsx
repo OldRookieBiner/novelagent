@@ -28,18 +28,20 @@ export default function ProjectWorkbench()
   {
     switch (activeTab)
     {
-      // 章节大纲和章节正文是独立 Tab，直接渲染面板
+      // 灵感 Tab：全宽展示灵感面板
+      case 'inspiration':
+        return <InspirationPanel projectId={projectId!} hasOutline={!!outline?.title} onPlanningComplete={refreshOutline} />
+
+      // 章节大纲和章节正文是独立 Tab
       case 'chapter_outlines':
         return <ChapterOutlinePanel projectId={projectId!} />
       case 'writing':
         return <WritingPanel projectId={projectId!} />
 
-      // 规划 Tab 按侧边栏菜单项渲染
-      case 'planning':
+      // 设定 Tab 按侧边栏菜单项渲染
+      case 'settings':
         switch (activeMenuItem)
         {
-          case 'inspiration':
-            return <InspirationPanel projectId={projectId!} hasOutline={!!outline?.title} onPlanningComplete={refreshOutline} />
           case 'outline':
             return <OutlinePanel projectId={projectId!} />
           case 'characters':
