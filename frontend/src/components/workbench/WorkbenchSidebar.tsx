@@ -1,12 +1,11 @@
 // frontend/src/components/workbench/WorkbenchSidebar.tsx
 
-import { Lightbulb, Users, Link, FileText, BookOpen, PenTool, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Users, Link, FileText, BookOpen, PenTool, ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
-import { PLANNING_MENUS } from '@/types/workbench'
+import { SETTINGS_MENUS } from '@/types/workbench'
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
-  Lightbulb,
   Users,
   Link,
   FileText,
@@ -18,13 +17,13 @@ export function WorkbenchSidebar()
 {
   const { activeTab, activeMenuItem, setActiveMenuItem, sidebarCollapsed, toggleSidebar } = useWorkbenchStore()
 
-  // 仅在规划 Tab 显示侧边栏菜单
-  if (activeTab !== 'planning')
+  // 仅在设定 Tab 显示侧边栏菜单
+  if (activeTab !== 'settings')
   {
     return null
   }
 
-  const menus = PLANNING_MENUS
+  const menus = SETTINGS_MENUS
 
   return (
     <div className={cn(
