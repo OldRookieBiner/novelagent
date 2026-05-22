@@ -19,6 +19,7 @@ from app.api import (
     model_configs,
     workflow,
     characters,
+    agent,
 )
 from app.api.system_prompts import router as system_prompts_router
 from app.api.inspiration import router as inspiration_router
@@ -137,6 +138,7 @@ app.include_router(
 )
 app.include_router(workflow.router, prefix="/api/projects", tags=["workflow"])
 app.include_router(characters.router, prefix="/api/projects", tags=["characters"])
+app.include_router(agent.router, prefix="/api/projects", tags=["agent"])
 app.include_router(
     system_prompts_router, prefix="/api/system/prompts", tags=["system-prompts"]
 )
