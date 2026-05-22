@@ -39,3 +39,85 @@ OUTLINE_FORBIDDEN_WORDS_BRIEF = [
     "令人唏嘘",
     "发人深省",
 ]
+
+# 节点级温度配置
+# 创意任务（大纲、初稿）用较高温度增加多样性，分析/审核任务用较低温度提高确定性
+NODE_TEMPERATURES = {
+    "outline_generation": 0.8,
+    "character_generation": 0.7,
+    "relation_generation": 0.5,
+    "chapter_outline_generation": 0.6,
+    "chapter_content_draft": 0.8,
+    "chapter_content_self_check": 0.3,
+    "chapter_content_refine": 0.5,
+    "review": 0.2,
+    "rewrite": 0.5,
+    "volume_arc_generation": 0.6,
+    "arc_outline_generation": 0.6,
+}
+
+# 正面风格示例库（按场景类型分类）
+STYLE_EXEMPLARS = {
+    "action": [
+        "他侧身躲过那一拳，右肩撞上墙角，石膏碎了一块。疼是真疼，但他没出声，反而笑了一下——对手出拳的角度露了破绽。",
+        "三步。她数着距离。两步。手指摸到桌沿的碎片。一步。她把碎片攥进掌心，血从指缝渗出来的时候她反而平静了。",
+    ],
+    "dialogue": [
+        "「你来的不是时候。」他没抬头。\n「什么时候算时候？」\n「我死了以后。」",
+        "「这件事你知道多少？」\n「知道不该知道那么多。」她说完就站起来走了，杯子里的茶一口没动。",
+    ],
+    "emotion": [
+        "她把信折好放回信封，在桌上摆正，又歪了，再摆正。最后她把信封翻过来扣着，好像这样就不会看到那行字。",
+        "他蹲在路边看蚂蚁搬东西，看了很久。旁边的人以为他在休息，其实他只是不想站起来面对那扇门。",
+    ],
+    "environment": [
+        "雨下到第三天，巷口的青苔爬上了台阶。隔壁面馆的蒸气从早上六点就开始冒，混着酱油和碱水的味道。",
+        "楼道的声控灯坏了三个月，没人报修。他摸黑上到五楼，钥匙插进锁孔的时候，隔壁的门开了一条缝，又关上了。",
+    ],
+    "opening": [
+        "老陈死那天，他养的猫比他老婆先知道。",
+        "电话响的时候，她正在切一颗不太新鲜的橙子。刀刃卡在果核里，她拔了两下才拔出来。第三声响的时候，她接了。",
+    ],
+}
+
+# 示例动态选择规则
+STYLE_EXEMPLAR_RULES = [
+    ("conflict", ["打斗", "追杀", "对决", "战斗", "搏斗"], ["action", "emotion"]),
+    ("hook", ["悬念", "秘密", "真相", "谜团"], ["dialogue", "emotion"]),
+]
+
+# 默认选择
+STYLE_EXEMPLAR_DEFAULT = ["opening", "emotion"]
+
+# 模型上下文窗口映射（三级策略的第二级）
+MODEL_CONTEXT_WINDOWS = {
+    "deepseek-chat": 64000,
+    "deepseek-v3-241227": 64000,
+    "gpt-4o": 128000,
+    "gpt-4o-mini": 128000,
+    "claude-3-5-sonnet": 200000,
+    "claude-sonnet-4-6": 200000,
+    "qwen-max": 32000,
+    "qwen-plus": 131072,
+}
+
+# 三级策略的第三级：未知模型的默认上下文窗口
+DEFAULT_CONTEXT_WINDOW = 32000
+
+# 灵感对话字段推断规则
+FIELD_INFERENCE_RULES = [
+    (["都市", "现代", "城市", "当代"], {"era": "modern", "novelType": "都市"}),
+    (["修仙", "灵气", "飞升", "仙界", "渡劫"], {"era": "fantasy", "novelType": "仙侠"}),
+    (["古代", "朝代", "皇帝", "宫廷", "江湖"], {"era": "ancient", "novelType": "古言"}),
+    (["未来", "星际", "机甲", "赛博", "AI统治"], {"era": "future", "novelType": "科幻"}),
+    (["甜", "宠", "逆袭", "重生", "穿书"], {"targetReader": "female"}),
+    (["升级", "爽", "热血", "争霸", "称霸"], {"targetReader": "male"}),
+    (["10万字", "10万"], {"targetWords": 100000, "novelLength": "short"}),
+    (["20万字", "20万", "30万字", "30万"], {"targetWords": 200000, "novelLength": "medium"}),
+    (["50万字", "50万", "100万字", "100万", "长篇"], {"targetWords": 500000, "novelLength": "long"}),
+]
+
+# 灵感采集必填字段
+INSPIRATION_REQUIRED_FIELDS = [
+    "novelType", "targetReader", "targetWords", "era",
+]

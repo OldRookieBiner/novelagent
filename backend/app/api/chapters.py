@@ -27,6 +27,7 @@ from app.utils.project import get_project_for_user
 from app.utils.workflow import get_or_create_workflow_state
 from app.utils.error import format_sse_error
 from app.agents.sse_events import format_heartbeat
+from app.agents.constants import NODE_TEMPERATURES
 from app.agents.state import (
     NovelState,
     STAGE_CHAPTER_OUTLINES,
@@ -36,7 +37,10 @@ from app.agents.nodes.chapter_generation import (
     generate_chapter_outlines_stream,
     generate_chapter_content_stream,
     clean_chapter_content,
+    _self_check_chapter,
+    _refine_chapter_stream,
 )
+from app.agents.nodes.utils import parse_words_per_chapter
 from app.api.workflow import build_initial_state
 from app.utils.llm import get_llm_from_state_async
 
@@ -448,6 +452,77 @@ async def confirm_chapter_outline(
 # Chapter Content Endpoints
 # =============================================================================
 
+
+@router.get("/{project_id}/chapters/quality-trend")
+def get_quality_trend(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """获取项目所有章节的质量分数趋势
+
+    返回每章的审核评分、全项目平均分、以及 AI 味趋势告警。
+    必须放在 /{project_id}/chapters/{chapter_num} 之前，
+    否则 "quality-trend" 会被当作 chapter_num 参数匹配。
+    """
+    project = get_project_for_user(project_id, current_user.id, db)
+
+    chapters = (
+        db.query(Chapter)
+        .join(ChapterOutline, Chapter.chapter_outline_id == ChapterOutline.id)
+        .filter(ChapterOutline.project_id == project_id)
+        .order_by(ChapterOutline.chapter_number)
+        .all()
+    )
+
+    trend_data = []
+    score_sums = {}
+    score_counts = {}
+
+    for ch in chapters:
+        review_result = ch.review_result or {}
+        scores = review_result.get("scores", {})
+        if scores:
+            # 通过 ChapterOutline 获取 chapter_number
+            co = db.query(ChapterOutline).filter(
+                ChapterOutline.id == ch.chapter_outline_id
+            ).first()
+            chapter_number = co.chapter_number if co else 0
+            trend_data.append({
+                "chapter_number": chapter_number,
+                "scores": scores,
+            })
+            for key, value in scores.items():
+                score_sums[key] = score_sums.get(key, 0) + value
+                score_counts[key] = score_counts.get(key, 0) + 1
+
+    averages = {}
+    for key in score_sums:
+        averages[key] = round(score_sums[key] / score_counts[key], 1)
+
+    # AI 味趋势告警：近期章节 ai_flavor 得分持续上升时发出警告
+    alerts = []
+    ai_flavor_scores = [
+        d["scores"].get("ai_flavor", 0)
+        for d in trend_data
+        if "ai_flavor" in d["scores"]
+    ]
+    if len(ai_flavor_scores) >= 3:
+        recent_avg = sum(ai_flavor_scores[-3:]) / 3
+        early_avg = sum(ai_flavor_scores[:3]) / 3
+        if recent_avg > early_avg + 1:
+            alerts.append(
+                f"AI味得分在近期章节持续上升"
+                f"（早期均分{early_avg:.1f} → 近期均分{recent_avg:.1f}）"
+            )
+
+    return {
+        "chapters": trend_data,
+        "averages": averages,
+        "alerts": alerts,
+    }
+
+
 @router.get("/{project_id}/chapters/{chapter_num}", response_model=ChapterResponse)
 async def get_chapter_content(
     project_id: int,
@@ -710,14 +785,50 @@ async def generate_chapter(
             # 通过与 LangGraph 节点相同的机制获取 LLM 服务
             llm = await get_llm_from_state_async(initial_state, db)
 
-            # 流式生成章节正文
-            content = ""
+            # 是否启用自检-精修
+            refinement_enabled = initial_state.get("refinement_enabled", True)
+
+            # ===== Phase 1: Draft（静默生成初稿，不向客户端流式输出）=====
+            draft_content = ""
             async for chunk in generate_chapter_content_stream(initial_state, current_outline, llm):
-                content += chunk
-                yield f"event: chunk\ndata: {json.dumps({'content': chunk})}\n\n"
+                draft_content += chunk
+                # 用心跳保持 SSE 连接活跃，避免客户端/代理超时
+                yield format_heartbeat()
 
             # 后处理：清理 LLM 可能添加的结尾数字
-            content = clean_chapter_content(content)
+            draft_content = clean_chapter_content(draft_content)
+            if not draft_content:
+                yield format_sse_error(ValueError("生成内容为空"))
+                return
+
+            # ===== Phase 2 & 3: SelfCheck + Refine =====
+            if refinement_enabled:
+                # 自检：对初稿做段落级质检（静默）
+                check_result = await _self_check_chapter(llm, draft_content)
+                paragraphs = check_result.get("paragraphs", [])
+
+                if paragraphs:
+                    # 有问题 → 流式精修，向客户端逐步输出
+                    content = ""
+                    min_words, _ = parse_words_per_chapter(
+                        initial_state.get("collected_info", {})
+                    )
+                    async for chunk in _refine_chapter_stream(
+                        llm, draft_content, check_result, min_words
+                    ):
+                        content += chunk
+                        yield f"event: chunk\ndata: {json.dumps({'content': chunk})}\n\n"
+                    # 精修结果后处理；如果精修失败则回退到初稿
+                    content = clean_chapter_content(content) if content else draft_content
+                else:
+                    # 无问题 → 流式输出初稿（一次性发送）
+                    content = draft_content
+                    yield f"event: chunk\ndata: {json.dumps({'content': content})}\n\n"
+            else:
+                # 未启用精修 → 直接流式输出初稿（一次性发送）
+                content = draft_content
+                yield f"event: chunk\ndata: {json.dumps({'content': content})}\n\n"
+
             if not content:
                 yield format_sse_error(ValueError("生成内容为空"))
                 return
@@ -890,7 +1001,7 @@ async def review_chapter(
             # 流式调用 LLM，使用 SSE 注释行保持连接
             # 审核结果只有结构化数据有意义，不发送原始 JSON 文本
             response = ""
-            async for chunk in llm.chat_stream(messages):
+            async for chunk in llm.chat_stream(messages, temperature=NODE_TEMPERATURES["review"]):
                 response += chunk
                 yield format_heartbeat()
 
@@ -1095,7 +1206,7 @@ async def rewrite_chapter(
             target_words = chapter_outline_dict.get("target_words", 3000)
             max_tokens = _calc_max_tokens(target_words)
             rewritten_content = ""
-            async for chunk in llm.chat_stream(messages, max_tokens=max_tokens):
+            async for chunk in llm.chat_stream(messages, max_tokens=max_tokens, temperature=NODE_TEMPERATURES["rewrite"]):
                 rewritten_content += chunk
                 yield f"event: chunk\ndata: {json.dumps({'content': chunk})}\n\n"
 

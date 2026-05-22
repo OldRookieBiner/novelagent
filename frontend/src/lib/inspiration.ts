@@ -270,6 +270,47 @@ export const INSPIRATION_OPTIONS = {
   goldFinger: MALE_OPTIONS.goldFinger,
 }
 
+// 从 Record<string, unknown> 安全提取字符串值
+// 用于从后端 collected_info 等结构中提取字段
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function asString(val: unknown): string
+{
+  return typeof val === 'string' ? val : ''
+}
+
+/** 从自由文本推断灵感字段（客户端预推断，与后端同步） */
+export function inferFieldsFromText(text: string): Partial<InspirationData>
+{
+  const inferred: Partial<InspirationData> = {}
+
+  const rules: Array<[string[], Partial<InspirationData>]> = [
+    [['都市', '现代', '城市'], { era: 'modern', novelType: 'dushi' }],
+    [['修仙', '灵气', '飞升'], { era: 'fantasy', novelType: 'xianxia' }],
+    [['古代', '朝代', '皇帝'], { era: 'ancient', novelType: 'lishi' }],
+    [['未来', '星际', '机甲'], { era: 'future', novelType: 'kehuan' }],
+    [['甜', '宠', '逆袭'], { targetReader: 'female' }],
+    [['升级', '爽', '热血'], { targetReader: 'male' }],
+  ]
+
+  for (const [keywords, fields] of rules)
+  {
+    if (keywords.some((kw) => text.includes(kw)))
+    {
+      Object.assign(inferred, fields)
+    }
+  }
+
+  return inferred
+}
+
+/** 获取仍缺失的必填字段 */
+export function getMissingFields(data: Partial<InspirationData>): string[]
+{
+  // 与 InspirationPanel 验证逻辑保持一致
+  const required: (keyof InspirationData)[] = ['novelType', 'targetReader', 'targetWords', 'era']
+  return required.filter((f) => !data[f])
+}
+
 // 获取选项标签
 export function getOptionLabel(options: SelectOption[], value: string | undefined): string {
   if (!value) return ''

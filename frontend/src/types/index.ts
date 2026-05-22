@@ -259,6 +259,8 @@ export interface ReviewIssue {
   type?: string;
   location?: string;
   description: string;
+  paragraph_start?: string;
+  suggestion?: string;
 }
 
 export interface ReviewResponse {
@@ -351,6 +353,7 @@ export interface ModelItem {
   health_latency?: number
   temperature: number
   reasoning_effort?: string | null
+  context_window?: number | null
 }
 
 /**

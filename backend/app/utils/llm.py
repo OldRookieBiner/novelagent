@@ -1,6 +1,7 @@
 """LLM utility functions"""
 
 import asyncio
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 from fastapi import HTTPException, status
@@ -8,6 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.models.model_config import ModelConfig
 from app.services.llm import LLMService, get_llm_service, get_llm_service_from_config
+
+logger = logging.getLogger(__name__)
 
 # 线程池用于在 async 上下文中执行同步 DB 操作
 _db_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="db-")
@@ -114,7 +117,7 @@ def get_llm_from_state(state: dict, db: Optional["Session"] = None) -> "LLMServi
             db.close()
 
 
-async def get_llm_from_state_async(state: dict, db: Optional["Session"] = None) -> "LLMService":
+async def get_llm_from_state_async(state: dict, db: Optional["Session"] = None, for_review: bool = False) -> "LLMService":
     """从工作流状态获取 LLM 服务（异步版本，推荐在 async 节点使用）
 
     将同步数据库操作放到线程池中执行，避免阻塞 event loop。
@@ -123,6 +126,8 @@ async def get_llm_from_state_async(state: dict, db: Optional["Session"] = None) 
     Args:
         state: NovelState 字典
         db: 可选的数据库会话。如果提供，直接使用而不创建新 session。
+        for_review: 是否获取审核专用 LLM。为 True 时优先使用 review_llm_config_id，
+                    加载失败则回退到主模型。
 
     Returns:
         LLMService 实例
@@ -130,6 +135,17 @@ async def get_llm_from_state_async(state: dict, db: Optional["Session"] = None) 
     Raises:
         ValueError: 项目未找到或用户设置未找到
     """
+    # 审核专用 LLM 路径：优先使用 review_llm_config_id，失败则回退主模型
+    if for_review:
+        review_config_id = state.get("review_llm_config_id")
+        if review_config_id:
+            try:
+                review_state = {**state, "llm_config_id": review_config_id}
+                return await get_llm_from_state_async(review_state, db)
+            except Exception as e:
+                logger.warning(f"审核 LLM 配置 {review_config_id} 加载失败，回退到主模型: {e}")
+                # 回退到主模型，继续执行下方逻辑
+
     if db is not None:
         # 直接在同一线程执行（调用方负责线程安全）
         return get_llm_from_state(state, db)

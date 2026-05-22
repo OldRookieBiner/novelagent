@@ -28,25 +28,6 @@ def replace_or_append_chapters(
     return result
 
 
-def merge_chapter_summaries(
-    existing: list[dict], new_items: list[dict]
-) -> list[dict]:
-    """摘要 reducer：替换同章节号的摘要或追加新摘要"""
-    result = list(existing)
-    for new_item in new_items:
-        chapter_num = new_item.get("chapter_number")
-        existing_idx = None
-        for i, s in enumerate(result):
-            if s.get("chapter_number") == chapter_num:
-                existing_idx = i
-                break
-        if existing_idx is not None:
-            result[existing_idx] = new_item
-        else:
-            result.append(new_item)
-    return result
-
-
 class CollectedInfo(TypedDict, total=False):
     """用户收集的信息（v0.5.0 灵感数据，v0.7.x 扩展）"""
 
@@ -110,14 +91,6 @@ class NovelState(TypedDict):
     # ========== 小说规格 ==========
     novel_length: str  # short | medium | long
 
-    # ========== 弧/卷结构（长篇）==========
-    volumes: list[dict]  # [{id, volume_number, title, summary}]
-    arcs: list[dict]  # [{id, volume_id, volume_number, arc_number, title, summary, chapter_count}]
-    chapter_summaries: Annotated[
-        list[dict], merge_chapter_summaries
-    ]  # [{chapter_number, summary}]
-    current_arc_index: int  # 当前正在生成章节大纲的弧索引（0-based），用于按弧循环
-
     # ========== 章节大纲 ==========
     chapter_count: int
     chapter_outlines: list[dict]  # [{chapter_number, title, scene, ...}]
@@ -135,19 +108,22 @@ class NovelState(TypedDict):
     review_result: Optional[dict]  # {passed, scores, issues, feedback}
     rewrite_count: int
     max_rewrite_count: int
+    refinement_enabled: bool  # 章节正文自检-精修是否启用（默认 True）
 
     # ========== 工作流控制 ==========
     waiting_for_confirmation: bool
     confirmation_type: Optional[
         str
-    ]  # outline | characters | relations | chapter_outlines | review_failed | volume_arc | arc_outlines | arc_chapter_outlines
+    ]  # outline | characters | relations | chapter_outlines | review_failed
 
     # ========== LLM 服务 ==========
     llm_config_id: Optional[int]  # 使用的模型配置 ID
     llm_model_name: Optional[str]  # 用户选择的模型名称
+    review_llm_config_id: Optional[int]  # 审核使用的模型配置 ID（NULL 则使用主模型）
 
     # ========== Prompt 加载（LangGraph 合规）==========
     _prompts: dict[str, str | dict]  # 预加载的 prompt 模板，chapter_content_generation 为 dict 格式
+    _context_window: int  # 预加载的模型上下文窗口大小（节点无 DB Session）
 
 
 # ========== 阶段常量 ==========
@@ -155,9 +131,9 @@ STAGE_INSPIRATION = "inspiration"
 STAGE_OUTLINE = "outline"
 STAGE_CHARACTERS = "characters"  # v0.8.0: 人物设定
 STAGE_RELATIONS = "relations"  # v0.8.0: 人物关系
-STAGE_VOLUME_ARC = "volume_arc"  # 长篇：弧/卷规划阶段
+STAGE_VOLUME_ARC = "volume_arc"  # 卷弧规划
+STAGE_ARC_OUTLINES = "arc_outlines"  # 弧纲生成
 STAGE_CHAPTER_OUTLINES = "chapter_outlines"
-STAGE_ARC_OUTLINES = "arc_outlines"  # 弧纲生成阶段
 STAGE_WRITING = "writing"
 STAGE_REVIEW = "review"
 STAGE_COMPLETE = "complete"

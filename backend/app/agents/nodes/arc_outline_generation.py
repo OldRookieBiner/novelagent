@@ -4,6 +4,7 @@ import logging
 from typing import Optional
 
 from app.agents.state import NovelState, STAGE_ARC_OUTLINES
+from app.agents.constants import NODE_TEMPERATURES
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +24,11 @@ def _build_arc_outline_messages(
     Returns:
         LLM 消息列表
     """
-    from app.agents.prompts import DEFAULT_PROMPTS
-    from app.agents.nodes.utils import format_characters_info
+    from app.agents.nodes.utils import get_prompts_from_state, get_prompt_template, format_characters_info
 
-    prompts = state.get("_prompts", DEFAULT_PROMPTS)
-    prompt_template = prompts.get("arc_outline_generation", DEFAULT_PROMPTS["arc_outline_generation"])
+    # 从 state 获取预加载的 prompts（统一使用 get_prompts_from_state）
+    system_template, user_template = get_prompts_from_state(state, "arc_outline_generation")
+    prompt_template = get_prompt_template(system_template, user_template)
 
     # 大纲信息
     outline_title = state.get("outline_title", "")
@@ -82,12 +83,15 @@ async def arc_outline_generation_node(state: NovelState) -> dict:
     arcs = state.get("arcs", [])
     generated_outlines = []
 
+    # 构建新的 arcs 列表（不修改原始 state 中的对象）
+    updated_arcs = list(arcs)
+
     for i, arc in enumerate(arcs):
         messages = _build_arc_outline_messages(state, arc, generated_outlines)
 
         # 流式生成弧纲
         full_text = ""
-        async for chunk in llm.chat_stream(messages):
+        async for chunk in llm.chat_stream(messages, temperature=NODE_TEMPERATURES["arc_outline_generation"]):
             full_text += chunk
             # 发送流式文本事件
             writer({
@@ -104,15 +108,15 @@ async def arc_outline_generation_node(state: NovelState) -> dict:
             "arc_number": arc.get("arc_number", i + 1),
         })
 
-        # 更新弧数据中的 outline
-        arc["outline"] = full_text
+        # 创建新的弧字典，设置 outline（不修改原始 arc 对象）
+        updated_arcs[i] = {**arc, "outline": full_text}
         generated_outlines.append({
             "arc_number": arc.get("arc_number", i + 1),
             "outline": full_text,
         })
 
     return {
-        "arcs": arcs,
+        "arcs": updated_arcs,
         "stage": STAGE_ARC_OUTLINES,
         "waiting_for_confirmation": True,
         "confirmation_type": "arc_outlines",

@@ -7,6 +7,7 @@ from typing import Dict, Any
 from sqlalchemy.orm import Session
 
 from app.agents.state import NovelState, STAGE_REVIEW
+from app.agents.constants import NODE_TEMPERATURES
 from app.database import SessionLocal
 from app.services.llm import LLMService
 from app.utils.llm import get_llm_from_state_async
@@ -74,6 +75,7 @@ def _extract_review_fields(data: dict) -> Dict[str, Any]:
     兼容 LLM 可能使用的不同字段名：
     - suggestions / feedback / 改进建议 → suggestions
     - issues / problems / 问题列表 → issues
+    - 新格式 issues 含 paragraph_start，旧格式含 location/description
     """
     # 提取修改建议（兼容多种字段名）
     suggestions = (
@@ -83,13 +85,33 @@ def _extract_review_fields(data: dict) -> Dict[str, Any]:
         or ""
     )
 
-    # 提取问题列表
-    issues = data.get("issues") or data.get("problems") or []
+    # 提取问题列表，归一化 issues 字段（兼容新旧格式）
+    raw_issues = data.get("issues") or data.get("problems") or []
+    normalized_issues = []
+    for issue in raw_issues:
+        # 兼容旧格式（纯字符串）和对象格式
+        if isinstance(issue, str):
+            normalized_issues.append({"type": "", "suggestion": "", "description": issue})
+            continue
+
+        normalized = {
+            "type": issue.get("type", ""),
+            "suggestion": issue.get("suggestion", ""),
+        }
+        # 新格式优先：paragraph_start 用于段落定位
+        if "paragraph_start" in issue:
+            normalized["paragraph_start"] = issue["paragraph_start"]
+        # 旧格式兼容：保留 location 和 description
+        if "location" in issue:
+            normalized["location"] = issue["location"]
+        if "description" in issue:
+            normalized["description"] = issue["description"]
+        normalized_issues.append(normalized)
 
     return {
         "passed": bool(data.get("passed", False)),
         "scores": data.get("scores", {}),
-        "issues": issues,
+        "issues": normalized_issues,
         "suggestions": suggestions,
     }
 
@@ -174,7 +196,21 @@ def _build_review_messages(
     strategy_name = info.get("contextStrategy")
     strategy = get_context_strategy(target_words, strategy_name)
     chapter_outlines_list = state.get("chapter_outlines", [])
-    previous_context = strategy.build_previous_context(written_chapters, chapter_number, chapter_outlines_list)
+
+    # 计算上下文 token 预算（动态截断，防止超出模型窗口）
+    from app.agents.token_budget import calculate_context_budget, estimate_tokens
+    context_window = state.get("_context_window", 32000)
+    output_tokens = 2048  # 审核输出较短
+    system_template, _ = get_prompts_from_state(state, "review")
+    system_tokens = estimate_tokens(system_template) if system_template else 0
+    budget = calculate_context_budget(context_window, output_tokens, system_tokens)
+
+    previous_context = strategy.build_previous_context(
+        written_chapters=written_chapters,
+        current_chapter=chapter_number,
+        chapter_outlines=chapter_outlines_list,
+        token_budget=budget,
+    )
 
     # 获取 system/user 模板
     system_template, user_template = get_prompts_from_state(state, "review")
@@ -220,7 +256,7 @@ async def review_chapter_node(
 
         # 流式调用 LLM
         response = ""
-        async for chunk in llm.chat_stream(messages):
+        async for chunk in llm.chat_stream(messages, temperature=NODE_TEMPERATURES["review"]):
             response += chunk
 
         result = parse_review_result(response)
@@ -274,8 +310,8 @@ async def review_node(state: NovelState) -> NovelState:
 
     签名：(state: NovelState) -> NovelState
     """
-    # 获取 LLM 服务（异步）
-    llm = await get_llm_from_state_async(state)
+    # 获取 LLM 服务（审核专用，优先使用 review_llm_config_id）
+    llm = await get_llm_from_state_async(state, for_review=True)
 
     # 获取当前章节信息
     current_chapter = state.get("current_chapter", 1)

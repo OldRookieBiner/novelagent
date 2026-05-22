@@ -123,7 +123,6 @@ novelagent/
 | `backend/app/main.py` | 后端入口，FastAPI 应用配置 |
 | `backend/app/agents/graph.py` | LangGraph 工作流定义、条件路由 |
 | `backend/app/agents/state.py` | NovelState 状态定义、阶段常量 |
-| `backend/app/agents/streaming.py` | LangGraph SSE 流式执行（已废弃，保留兼容） |
 | `backend/app/agents/sse_events.py` | SSE 事件格式化工具（集中管理所有事件字符串） |
 | `backend/app/api/workflow.py` | 工作流 API 路由、stream_workflow_events 核心流函数、build_initial_state |
 | `backend/app/services/workflow_orchestrator.py` | 单节点 SSE 编排器（persist + 事务回滚） |

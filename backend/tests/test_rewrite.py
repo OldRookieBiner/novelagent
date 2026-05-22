@@ -134,7 +134,7 @@ AI味程度：2/10
         """Should retry until review passes"""
         call_count = [0]
 
-        async def mock_chat_stream(messages):
+        async def mock_chat_stream(messages, **kwargs):
             """根据调用次数返回不同结果（奇数次=审核，偶数次=重写）"""
             call_count[0] += 1
             if call_count[0] == 1:
@@ -201,7 +201,7 @@ AI味程度：2/10
         """Should fail after max retries"""
         call_count = [0]
 
-        async def mock_chat_stream(messages):
+        async def mock_chat_stream(messages, **kwargs):
             """奇数次=审核（不通过），偶数次=重写"""
             call_count[0] += 1
             if call_count[0] % 2 == 1:

@@ -403,6 +403,21 @@ export const chaptersApi = {
   },
 };
 
+// ==================== Quality Trend API ====================
+
+export const qualityTrendApi = {
+  /**
+   * 获取项目所有章节的质量分数趋势
+   */
+  async get(projectId: number): Promise<{
+    chapters: Array<{ chapter_number: number; scores: Record<string, number> }>;
+    averages: Record<string, number>;
+    alerts: string[];
+  }> {
+    return request(`/api/projects/${projectId}/chapters/quality-trend`);
+  },
+};
+
 // ==================== Settings API ====================
 
 export const settingsApi = {
@@ -548,6 +563,72 @@ export const modelConfigsApi = {
   async checkHealth(configId: number): Promise<HealthCheckResponse> {
     return request(`/api/model_configs/${configId}/health`, {
       method: "POST",
+    });
+  },
+};
+
+// ==================== Inspiration Chat API ====================
+
+/** 灵感聊天 SSE 回调 */
+export interface InspirationChatCallbacks
+{
+  onChunk: (content: string) => void;
+  onExtracted: (fields: Record<string, unknown>, missing: string[]) => void;
+  onDone: () => void;
+  onError: (error: string) => void;
+}
+
+export const inspirationChatApi = {
+  /**
+   * 灵感聊天 SSE 流式接口
+   * @param projectId - 项目 ID
+   * @param message - 用户消息
+   * @param callbacks - SSE 回调函数
+   * @param options - 流式请求选项
+   * @param llmConfigId - 可选的模型配置 ID
+   */
+  async chat(
+    projectId: number,
+    message: string,
+    callbacks: InspirationChatCallbacks,
+    options?: StreamOptions,
+    llmConfigId?: number | null
+  ): Promise<void> {
+    await createSSEStream(
+      {
+        url: `/api/projects/${projectId}/inspiration/chat`,
+        method: 'POST',
+        body: {
+          message,
+          ...(llmConfigId ? { llm_config_id: llmConfigId } : {}),
+        },
+        signal: options?.signal,
+      },
+      (type, data) => {
+        if (type === 'chunk') {
+          const payload = data as { content: string };
+          callbacks.onChunk(payload.content || String(data));
+        } else if (type === 'extracted') {
+          const payload = data as { fields: Record<string, unknown>; missing: string[] };
+          callbacks.onExtracted(payload.fields, payload.missing);
+        } else if (type === 'done') {
+          callbacks.onDone();
+        } else if (type === 'error') {
+          const payload = data as { message?: string; error?: string };
+          callbacks.onError(payload.message || payload.error || '聊天失败');
+        }
+      },
+      callbacks.onError
+    );
+  },
+
+  /**
+   * 确认灵感数据
+   */
+  async confirm(projectId: number, inspirationData: Record<string, unknown>): Promise<void> {
+    return request(`/api/projects/${projectId}/inspiration/confirm`, {
+      method: 'POST',
+      body: { inspiration_data: inspirationData },
     });
   },
 };

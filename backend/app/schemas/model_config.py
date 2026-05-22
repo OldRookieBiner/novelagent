@@ -46,6 +46,7 @@ class ModelConfigUpdate(BaseModel):
     models: Optional[list[ModelItem]] = None
     is_enabled: Optional[bool] = None
     api_key: Optional[str] = None
+    context_window: Optional[int] = None
     clear_api_key: bool = False
 
 
@@ -64,6 +65,7 @@ class ModelConfigResponse(BaseModel):
     is_default: bool
     health_status: Optional[str] = None
     health_latency: Optional[int] = None
+    context_window: Optional[int] = None
     last_health_check: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime

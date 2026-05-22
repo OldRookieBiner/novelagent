@@ -5,6 +5,7 @@ from typing import Dict, Any
 from sqlalchemy.orm import Session
 
 from app.agents.state import NovelState, STAGE_WRITING
+from app.agents.constants import NODE_TEMPERATURES
 from app.database import SessionLocal
 from app.services.llm import LLMService
 from app.utils.llm import get_llm_from_state_async
@@ -54,7 +55,21 @@ def _build_rewrite_messages(
     strategy_name = info.get("contextStrategy")
     strategy = get_context_strategy(target_words, strategy_name)
     chapter_outlines_list = state.get("chapter_outlines", [])
-    previous_context = strategy.build_previous_context(written_chapters, chapter_number, chapter_outlines_list)
+
+    # 计算上下文 token 预算（动态截断，防止超出模型窗口）
+    from app.agents.token_budget import calculate_context_budget, estimate_tokens
+    context_window = state.get("_context_window", 32000)
+    output_tokens = 8192  # 重写输出约一章
+    system_template, _ = get_prompts_from_state(state, "rewrite")
+    system_tokens = estimate_tokens(system_template) if system_template else 0
+    budget = calculate_context_budget(context_window, output_tokens, system_tokens)
+
+    previous_context = strategy.build_previous_context(
+        written_chapters=written_chapters,
+        current_chapter=chapter_number,
+        chapter_outlines=chapter_outlines_list,
+        token_budget=budget,
+    )
 
     # 获取 system/user 模板
     system_template, user_template = get_prompts_from_state(state, "rewrite")
@@ -99,7 +114,7 @@ async def rewrite_chapter_node(
 
         # 流式调用 LLM
         response = ""
-        async for chunk in llm.chat_stream(messages):
+        async for chunk in llm.chat_stream(messages, temperature=NODE_TEMPERATURES["rewrite"]):
             response += chunk
 
         return response

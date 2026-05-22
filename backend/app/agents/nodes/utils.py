@@ -211,6 +211,16 @@ def get_prompts_from_state(state: dict, key: str) -> tuple[str, str]:
         return "", default or ""
 
 
+def get_prompt_template(system_template: str, user_template: str) -> str:
+    """从 system/user 模板中选择有效模板
+
+    单字符串 prompt 返回 ("", prompt)，此时 user_template 有值。
+    双模板 prompt 返回 (system, user)，此时 user_template 有值。
+    兜底使用 system_template。
+    """
+    return user_template if user_template else system_template
+
+
 def find_chapter_by_number(written_chapters: list[dict], current_chapter: int) -> dict | None:
     """根据 current_chapter 查找已写章节内容
 

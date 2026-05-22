@@ -6,6 +6,7 @@ from typing import Dict, Any, AsyncIterator
 from sqlalchemy.orm import Session
 
 from app.agents.state import NovelState, STAGE_OUTLINE
+from app.agents.constants import NODE_TEMPERATURES
 from app.database import SessionLocal
 from app.services.llm import LLMService
 from app.utils.llm import get_llm_from_state_async
@@ -419,7 +420,7 @@ async def generate_outline_node(state: NovelState, llm: LLMService) -> NovelStat
     """从灵感模板生成大纲"""
     prompt, chapter_count = prepare_outline_prompt(state)
 
-    response = await llm.chat([{"role": "user", "content": prompt}])
+    response = await llm.chat([{"role": "user", "content": prompt}], temperature=NODE_TEMPERATURES["outline_generation"])
 
     outline = parse_outline(response)
 
@@ -545,7 +546,7 @@ async def generate_outline_stream(
     """Generate outline with streaming"""
     prompt, _ = prepare_outline_prompt(state)
 
-    async for chunk in llm.chat_stream([{"role": "user", "content": prompt}]):
+    async for chunk in llm.chat_stream([{"role": "user", "content": prompt}], temperature=NODE_TEMPERATURES["outline_generation"]):
         yield chunk
 
 
@@ -577,7 +578,8 @@ async def outline_generation_node(state: NovelState) -> NovelState:
     writer = get_stream_writer()
     response = ""
     async for chunk in llm.chat_stream(
-        [{"role": "user", "content": prompt}], max_tokens=outline_max_tokens
+        [{"role": "user", "content": prompt}], max_tokens=outline_max_tokens,
+        temperature=NODE_TEMPERATURES["outline_generation"]
     ):
         response += chunk
         writer({"type": "outline_chunk", "content": chunk})

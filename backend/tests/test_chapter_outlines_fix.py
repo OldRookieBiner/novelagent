@@ -7,6 +7,7 @@
 import pytest
 import json
 from unittest.mock import MagicMock, AsyncMock, patch, PropertyMock
+from app.agents.nodes.chapter_generation import parse_single_chapter_outline
 
 
 def _make_mock_stream(chapters_data):
@@ -213,3 +214,27 @@ class TestChapterOutlinesGeneration:
             finally:
                 for p in patches:
                     p.stop()
+
+
+class TestParseSingleChapterOutlineSceneTruncation:
+    """验证 parse_single_chapter_outline 对 scene 字段的防御性截断"""
+
+    def test_scene_truncation_when_over_500_chars(self):
+        """scene 字段超过 500 字符时截断至 500"""
+        long_scene = "一个很长的场景描述" * 100  # > 500 字符
+        response = f"章节名：测试\n场景：{long_scene}\n情节：测试情节"
+        result = parse_single_chapter_outline(response, 1)
+        assert len(result["scene"]) <= 500, f"scene 长度 {len(result['scene'])} 超过 500"
+
+    def test_scene_not_truncated_when_under_500_chars(self):
+        """scene 字段未超过 500 字符时保持原样"""
+        scene = "这是一段正常的场景描述"
+        response = f"章节名：测试\n场景：{scene}\n情节：测试情节"
+        result = parse_single_chapter_outline(response, 1)
+        assert result["scene"] == scene
+
+    def test_scene_empty_when_no_match(self):
+        """无场景匹配时 scene 为空字符串"""
+        response = "章节名：测试\n情节：只有情节没有场景"
+        result = parse_single_chapter_outline(response, 1)
+        assert result["scene"] == ""

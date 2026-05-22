@@ -4,6 +4,7 @@ import re
 from sqlalchemy.orm import Session
 
 from app.agents.state import NovelState, STAGE_CHARACTERS
+from app.agents.constants import NODE_TEMPERATURES
 from app.utils.llm import get_llm_from_state_async
 
 
@@ -135,9 +136,11 @@ async def create_characters_from_outline_node(state: NovelState, config: dict = 
         # 获取 LLM 服务
         llm = await get_llm_from_state_async(state)
 
-        # 从 state 获取预加载的 prompts
-        prompts = state.get("_prompts", {})
-        logger.info(f"character_gen_node: prompts_keys={list(prompts.keys()) if prompts else 'empty'}")
+        # 从 state 获取预加载的 prompts（统一使用 get_prompts_from_state）
+        from app.agents.nodes.utils import get_prompts_from_state, get_prompt_template
+        system_template, user_template = get_prompts_from_state(state, "character_generation")
+        prompt_template = get_prompt_template(system_template, user_template)
+        logger.info(f"character_gen_node: Using prompt from state, template_length={len(prompt_template)}")
 
         # 获取情节节点和情感曲线
         plot_points = state.get("outline_plot_points", [])
@@ -148,35 +151,17 @@ async def create_characters_from_outline_node(state: NovelState, config: dict = 
 
         emotional_curve = state.get("outline_emotional_curve", "") or "未提供"
 
-        if prompts and "character_generation" in prompts:
-            prompt_template = prompts["character_generation"]
-            logger.info(f"character_gen_node: Using prompt from state, template_length={len(prompt_template)}")
-            prompt = prompt_template.format(
-                outline_summary=outline_summary,
-                world_era=world_era,
-                plot_points=plot_points_str,
-                emotional_curve=emotional_curve,
-            )
-        else:
-            # 回退：使用默认 prompt
-            from app.agents.prompts import DEFAULT_PROMPTS
-            default_prompt = DEFAULT_PROMPTS.get("character_generation", "")
-            if default_prompt:
-                prompt = default_prompt.format(
-                    outline_summary=outline_summary,
-                    world_era=world_era,
-                    plot_points=plot_points_str,
-                    emotional_curve=emotional_curve,
-                )
-                logger.info(f"character_gen_node: Using DEFAULT_PROMPTS fallback, length={len(prompt)}")
-            else:
-                prompt = f"根据以下大纲生成角色列表：\n{outline_summary}\n世界观：{world_era}"
-                logger.warning("character_gen_node: No character_generation prompt found, using minimal fallback")
+        prompt = prompt_template.format(
+            outline_summary=outline_summary,
+            world_era=world_era,
+            plot_points=plot_points_str,
+            emotional_curve=emotional_curve,
+        )
 
         logger.info(f"character_gen_node: Calling LLM with prompt length={len(prompt)}")
 
         # 调用 LLM 生成人物
-        response = await llm.chat([{"role": "user", "content": prompt}])
+        response = await llm.chat([{"role": "user", "content": prompt}], temperature=NODE_TEMPERATURES["character_generation"])
 
         logger.info(f"character_gen_node: LLM response length={len(response)}, preview={response[:200] if response else 'EMPTY'}")
 

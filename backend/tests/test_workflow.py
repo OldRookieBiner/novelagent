@@ -74,7 +74,7 @@ class TestWorkflowAPI:
         # 创建测试检查点
         checkpoint = WorkflowCheckpoint(
             project_id=project_with_outline,
-            thread_id="main",
+            thread_id="default",
             checkpoint={
                 "channel_values": {
                     "stage": "writing",
@@ -111,7 +111,7 @@ class TestWorkflowAPI:
         # 创建测试检查点
         checkpoint = WorkflowCheckpoint(
             project_id=project_with_outline,
-            thread_id="main",
+            thread_id="default",
             checkpoint={"channel_values": {"stage": "outline"}},
         )
         db.add(checkpoint)

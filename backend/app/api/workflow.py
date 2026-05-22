@@ -1,7 +1,5 @@
 """Workflow API routes for LangGraph integration"""
 
-import asyncio
-import json
 import logging
 from typing import Optional, AsyncIterator
 from fastapi import APIRouter, HTTPException, status, Depends
@@ -15,12 +13,19 @@ from app.database import get_db
 from app.models.user import User
 from app.models.project import Project
 from app.models.outline import Outline
+from app.models.model_config import ModelConfig
 from app.models.checkpoint import WorkflowCheckpoint
 from app.models.workflow_state import WorkflowState
 from app.utils.auth import get_current_user
 from app.utils.project import get_project_for_user
-from app.agents.sse_events import format_done
-from app.utils.error import format_sse_error
+from app.agents.sse_events import (
+    format_node_start,
+    format_node_done,
+    format_chunk,
+    format_done,
+    format_waiting,
+    format_sse_error,
+)
 from app.utils.deps import get_user_settings_or_raise
 from app.agents.graph import create_novel_graph_with_checkpointer
 from app.agents.state import NovelState
@@ -35,9 +40,15 @@ async def stream_workflow_events(
 ) -> AsyncIterator[str]:
     """共享的 LangGraph 工作流 SSE 事件流生成器
 
-    使用 astream + stream_mode=['updates', 'custom'] 捕获：
-    - custom: 节点通过 get_stream_writer() 发送的结构化流式事件
-    - updates: 节点完成后的状态更新
+    将 LangGraph astream_events 事件转换为 SSE 字符串。
+
+    - 如果 initial_state 不为 None，视为首次执行，先发送 workflow start 事件
+    - 如果 initial_state 为 None，视为恢复执行，先发送 workflow_resume 事件
+
+    处理的事件类型：
+    - on_chain_start → node_start
+    - on_chat_model_stream → chunk（LLM 流式内容）
+    - on_chain_end → node_done（或 waiting 如果等待确认）
 
     Args:
         graph: 编译后的 LangGraph graph
@@ -48,47 +59,47 @@ async def stream_workflow_events(
         SSE 格式字符串，以 \\n\\n 结尾
     """
     try:
+        # 首次执行 vs 恢复执行
         if initial_state is not None:
-            yield f"event: node_start\ndata: {json.dumps({'node': 'workflow', 'message': 'Starting workflow'})}\n\n"
+            yield format_node_start("workflow", "Starting workflow")
         else:
-            yield f"event: node_start\ndata: {json.dumps({'node': 'workflow_resume', 'message': 'Resuming workflow'})}\n\n"
+            yield format_node_start("workflow_resume", "Resuming workflow")
 
-        async for mode_data in graph.astream(
-            initial_state,
-            config,
-            stream_mode=['updates', 'custom'],
-        ):
-            mode, data = mode_data
+        async for event in graph.astream_events(initial_state, config, version="v2"):
+            event_type = event.get("event")
+            event_name = event.get("name", "")
+            event_data = event.get("data", {})
 
-            if mode == 'custom':
-                # 节点通过 get_stream_writer() 发送的结构化事件
-                if isinstance(data, dict) and data.get('type'):
-                    custom_type = data['type']
-                    event_data = {k: v for k, v in data.items() if k != 'type'}
-                    yield f"event: {custom_type}\ndata: {json.dumps(event_data)}\n\n"
+            if event_type == "on_chain_start":
+                yield format_node_start(event_name)
 
-            elif mode == 'updates':
-                if isinstance(data, dict):
-                    for node_name, node_output in data.items():
-                        if not isinstance(node_output, dict):
-                            continue
+            elif event_type == "on_chain_end":
+                output = event_data.get("output", {})
+                # 处理 output 不是字典的情况（如 END 字符串）
+                if isinstance(output, dict):
+                    if output.get("waiting_for_confirmation"):
+                        yield format_waiting(output.get("confirmation_type"), node=event_name)
+                        # 工作流暂停，同时发送 done 事件通知前端当前阶段完成
+                        yield format_done("Workflow paused for confirmation")
+                        return
+                    else:
+                        yield format_node_done(event_name, output)
+                else:
+                    # output 不是字典（如 END 字符串），说明工作流已完成
+                    # 跳过 node_done，直接等待最终的 done 事件
+                    pass
 
-                        if node_output.get("waiting_for_confirmation"):
-                            yield f"event: waiting\ndata: {json.dumps({'node': node_name, 'confirmation_type': node_output.get('confirmation_type')})}\n\n"
-                            yield f"event: done\ndata: {json.dumps({'message': 'Workflow paused for confirmation'})}\n\n"
-                            return
-                        else:
-                            yield f"event: node_done\ndata: {json.dumps({'node': node_name, 'state': node_output})}\n\n"
+            elif event_type == "on_chat_model_stream":
+                chunk = event_data.get("chunk")
+                if chunk:
+                    content = getattr(chunk, "content", str(chunk))
+                    if content:
+                        yield format_chunk(content)
 
-        yield f"event: done\ndata: {json.dumps({'message': 'Workflow completed'})}\n\n"
+        yield format_done("Workflow completed")
 
-    except asyncio.CancelledError:
-        logger.warning("SSE stream cancelled by server")
-        raise
     except Exception as e:
-        logger.error(f"SSE stream error: {e}", exc_info=True)
         yield format_sse_error(e)
-        yield format_done("Error occurred")
 
 
 # ========== Request/Response Schemas ==========
@@ -97,6 +108,7 @@ class WorkflowRunRequest(BaseModel):
     """工作流运行请求"""
     llm_config_id: Optional[int] = None  # 指定模型配置 ID
     llm_model_name: Optional[str] = None  # 指定模型名称（覆盖配置中的默认模型）
+    review_llm_config_id: Optional[int] = None  # 审核使用的模型配置 ID（NULL 则使用主模型）
 
 
 class WorkflowConfirmRequest(BaseModel):
@@ -105,8 +117,6 @@ class WorkflowConfirmRequest(BaseModel):
     outline_title: Optional[str] = None
     outline_summary: Optional[str] = None
     chapter_outlines: Optional[list] = None
-    volumes: Optional[list] = None  # 用户修改后的卷数据
-    arcs: Optional[list] = None  # 用户修改后的弧数据（含 outline 字段）
 
 
 class WorkflowReplanRequest(BaseModel):
@@ -165,7 +175,6 @@ def build_initial_state(
     chapter_outlines = [
         {
             "chapter_number": co.chapter_number,
-            "arc_id": co.arc_id,
             "title": co.title,
             "scene": co.scene,
             "characters": co.characters,
@@ -217,7 +226,6 @@ def build_initial_state(
         "chapter_count": outline.chapter_count_suggested or 0,
         "chapter_outlines": chapter_outlines,
         "chapter_outlines_confirmed": all(co.confirmed for co in project.chapter_outlines) if chapter_outlines else False,
-        "current_arc_index": 0,
 
         # 章节正文
         "written_chapters": written_chapters,
@@ -228,6 +236,7 @@ def build_initial_state(
         "review_result": None,
         "rewrite_count": 0,
         "max_rewrite_count": workflow_state.max_rewrite_count,
+        "refinement_enabled": True,
 
         # 工作流控制
         "waiting_for_confirmation": workflow_state.waiting_for_confirmation,
@@ -236,71 +245,17 @@ def build_initial_state(
         # LLM 服务（优先级：参数 > workflow_state DB > None）
         "llm_config_id": llm_config_id or workflow_state.llm_config_id,
         "llm_model_name": llm_model_name or workflow_state.llm_model_name,
+        "review_llm_config_id": None,  # 审核专用模型配置 ID，由 run_workflow 端点注入
 
         # 预加载：角色和关系（从 DB 获取最新数据）
         "characters": [],
         "relations": [],
         "evolution_plans": [],
         "evolution_records": [],
-
-        # 弧/卷结构（长篇）
-        "volumes": [],
-        "arcs": [],
-        "chapter_summaries": [],
-
-        # 小说篇幅（从 collected_info 读取，不依赖 DB 连接）
-        "novel_length": (outline.collected_info or {}).get("novelLength", "short"),
     }
 
     # 从数据库预加载已持久化的角色（带 id）
     if db is not None:
-        # 预加载弧/卷结构（长篇支持，从 DB 获取最新数据）
-        from app.models.volume import Volume as VolumeModel
-        from app.models.arc import Arc as ArcModel
-
-        db_volumes = db.query(VolumeModel).filter(
-            VolumeModel.project_id == project.id
-        ).order_by(VolumeModel.volume_number).all()
-
-        if db_volumes:
-            volume_id_to_num = {v.id: v.volume_number for v in db_volumes}
-
-            state["volumes"] = [
-                {"id": v.id, "volume_number": v.volume_number, "title": v.title, "summary": v.summary}
-                for v in db_volumes
-            ]
-
-            db_arcs = db.query(ArcModel).filter(
-                ArcModel.volume_id.in_([v.id for v in db_volumes])
-            ).order_by(ArcModel.volume_id, ArcModel.arc_number).all()
-
-            if db_arcs:
-                state["arcs"] = [
-                    {
-                        "id": a.id,
-                        "volume_id": a.volume_id,
-                        "volume_number": volume_id_to_num.get(a.volume_id, 1),
-                        "arc_number": a.arc_number,
-                        "title": a.title,
-                        "summary": a.summary,
-                        "outline": a.outline,
-                        "outline_confirmed": a.outline_confirmed,
-                        "chapter_count": a.chapter_count,
-                    }
-                    for a in db_arcs
-                ]
-
-        # 预加载章节摘要（从 chapters.summary 聚合）
-        chapter_summaries = []
-        for co in project.chapter_outlines:
-            if co.chapter and co.chapter.summary:
-                chapter_summaries.append({
-                    "chapter_number": co.chapter_number,
-                    "summary": co.chapter.summary,
-                })
-        if chapter_summaries:
-            state["chapter_summaries"] = chapter_summaries
-
         from app.models.character import Character, Relation
 
         db_characters = db.query(Character).filter(
@@ -399,6 +354,23 @@ def build_initial_state(
             from app.agents.prompts import DEFAULT_PROMPTS
             state["_prompts"] = DEFAULT_PROMPTS
 
+    # 预加载上下文窗口大小（节点无 DB Session，需要从 state 获取）
+    if db is not None:
+        try:
+            from app.agents.token_budget import get_context_window
+
+            model_name = state.get("llm_model_name", "")
+            model_config_id = state.get("llm_config_id")
+            if model_config_id:
+                config = db.query(ModelConfig).filter(ModelConfig.id == model_config_id).first()
+                state["_context_window"] = get_context_window(model_name, model_config=config)
+            else:
+                state["_context_window"] = get_context_window(model_name)
+        except Exception as e:
+            logger.warning(f"Failed to load context window, using default: {e}")
+            from app.agents.constants import DEFAULT_CONTEXT_WINDOW
+            state["_context_window"] = DEFAULT_CONTEXT_WINDOW
+
     return state
 
 
@@ -421,10 +393,7 @@ def _build_prompts_dict(db: Session) -> dict[str, str | dict]:
         "outline_generation": get_system_prompt(db, "outline_generation"),
         "character_generation": get_system_prompt(db, "character_generation"),
         "relation_generation": get_system_prompt(db, "relation_generation"),
-        "volume_arc_generation": get_system_prompt(db, "volume_arc_generation"),
-        "chapter_summary_generation": get_system_prompt(db, "chapter_summary_generation"),
         "chapter_outline_generation": get_system_prompt(db, "chapter_outline_generation"),
-        "arc_outline_generation": get_system_prompt(db, "arc_outline_generation"),
         "chapter_content_generation": {
             "system": default_cc["system"] if isinstance(default_cc, dict) else default_cc,
             "user": get_system_prompt(db, "chapter_content_generation"),
@@ -500,10 +469,10 @@ async def run_workflow(
     """
     启动或恢复工作流（SSE 流式）。
 
-    使用 LangGraph 的 astream + stream_mode=['updates', 'custom'] 进行流式传输，
+    使用 LangGraph 的 astream_events 进行流式传输，
     发送以下 SSE 事件：
     - node_start: 节点开始执行
-    - chunk/自定义事件: 内容片段（通过 get_stream_writer 发送）
+    - chunk: 内容片段
     - node_done: 节点执行完成
     - waiting: 等待用户确认
     - done: 工作流完成
@@ -552,6 +521,10 @@ async def run_workflow(
 
     # 构建初始状态（预加载 DB 数据，含 _prompts）
     initial_state = build_initial_state(project, outline, workflow_state, llm_config_id, llm_model_name, db=db)
+
+    # 注入审核专用模型配置 ID
+    if request and request.review_llm_config_id:
+        initial_state["review_llm_config_id"] = request.review_llm_config_id
 
     # 创建带检查点的图（复用 db 会话）
     graph = create_novel_graph_with_checkpointer(project_id, "default")
@@ -646,10 +619,6 @@ async def confirm_workflow(
             checkpoint_state["outline_summary"] = request.outline_summary
         if request.chapter_outlines:
             checkpoint_state["chapter_outlines"] = request.chapter_outlines
-        if request.volumes:
-            checkpoint_state["volumes"] = request.volumes
-        if request.arcs:
-            checkpoint_state["arcs"] = request.arcs
 
     # 更新确认状态
     confirmation_type = checkpoint_state.get("confirmation_type")
@@ -719,111 +688,6 @@ async def confirm_workflow(
                 )
                 db.add(rel)
             logger.info(f"Persisted {len(relations_data)} relations to DB for project {project_id}")
-
-    # 同步更新弧/卷（volume_arc 确认）
-    if confirmation_type == "volume_arc":
-        from app.utils.workflow_persistence import persist_volumes_arcs
-        from app.models.volume import Volume as VolumeModel
-        from app.models.arc import Arc as ArcModel
-
-        volumes_data = request.volumes if request and request.volumes else checkpoint_state.get("volumes", [])
-        arcs_data = request.arcs if request and request.arcs else checkpoint_state.get("arcs", [])
-
-        # 更新 checkpoint_state
-        checkpoint_state["volumes"] = volumes_data
-        checkpoint_state["arcs"] = arcs_data
-
-        # 持久化到 DB
-        persist_volumes_arcs({"volumes": volumes_data, "arcs": arcs_data}, project_id, db)
-
-        # 同步更新 chapter_count
-        total_chapters = sum(a.get("chapter_count", 0) for a in arcs_data)
-        checkpoint_state["chapter_count"] = total_chapters
-        outline = db.query(Outline).filter(Outline.project_id == project_id).first()
-        if outline:
-            outline.chapter_count_suggested = total_chapters
-
-        # 从 DB 重新查询带 id 的 volumes/arcs 写回 checkpoint_state
-        db_volumes = db.query(VolumeModel).filter_by(project_id=project_id).order_by(VolumeModel.volume_number).all()
-        volume_id_to_num = {v.id: v.volume_number for v in db_volumes}
-        db_arcs_list = db.query(ArcModel).filter(
-            ArcModel.volume_id.in_([v.id for v in db_volumes])
-        ).order_by(ArcModel.volume_id, ArcModel.arc_number).all()
-        checkpoint_state["volumes"] = [
-            {"id": v.id, "volume_number": v.volume_number, "title": v.title, "summary": v.summary}
-            for v in db_volumes
-        ]
-        checkpoint_state["arcs"] = [
-            {
-                "id": a.id,
-                "volume_id": a.volume_id,
-                "volume_number": volume_id_to_num.get(a.volume_id, 1),
-                "arc_number": a.arc_number,
-                "title": a.title,
-                "summary": a.summary,
-                "chapter_count": a.chapter_count,
-            }
-            for a in db_arcs_list
-        ]
-
-        # 同步更新 WorkflowState.stage + checkpoint_state（保持一致性）
-        from app.utils.workflow import get_or_create_workflow_state
-        wf = get_or_create_workflow_state(db, project_id)
-        wf.stage = "chapter_outlines"
-        checkpoint_state["stage"] = "chapter_outlines"
-
-    # 同步更新弧纲（arc_outlines 确认）
-    if confirmation_type == "arc_outlines":
-        from app.models.arc import Arc as ArcModel
-
-        arcs_data = request.arcs if request and request.arcs else checkpoint_state.get("arcs", [])
-        checkpoint_state["arcs"] = arcs_data
-
-        # 更新 DB 中弧纲确认状态
-        for arc_data in arcs_data:
-            arc_id = arc_data.get("id")
-            if not arc_id:
-                continue
-            arc_record = db.query(ArcModel).filter(ArcModel.id == arc_id).first()
-            if arc_record:
-                arc_record.outline_confirmed = True
-                if arc_data.get("outline"):
-                    arc_record.outline = arc_data["outline"]
-
-        logger.info(f"Persisted arc outlines confirmation for project {project_id}")
-
-    # 同步更新弧章节大纲（arc_chapter_outlines 确认）
-    if confirmation_type == "arc_chapter_outlines":
-        from app.models.outline import ChapterOutline as ChapterOutlineModel
-        from app.models.arc import Arc as ArcModel
-
-        # 确认当前弧的章节大纲
-        current_arc_index = checkpoint_state.get("current_arc_index", 0)
-        arcs_data = checkpoint_state.get("arcs", [])
-        if current_arc_index < len(arcs_data):
-            current_arc = arcs_data[current_arc_index]
-            arc_id = current_arc.get("id")
-            if arc_id:
-                arc_record = db.query(ArcModel).filter(ArcModel.id == arc_id).first()
-                if arc_record:
-                    arc_record.outline_confirmed = True
-
-        # 确认当前弧对应的章节大纲
-        chapter_outlines = checkpoint_state.get("chapter_outlines", [])
-        for co_data in chapter_outlines:
-            chapter_number = co_data.get("chapter_number")
-            if chapter_number:
-                co_record = db.query(ChapterOutlineModel).filter(
-                    ChapterOutlineModel.project_id == project_id,
-                    ChapterOutlineModel.chapter_number == chapter_number,
-                ).first()
-                if co_record:
-                    co_record.confirmed = True
-
-        # 递增弧索引，继续下一弧
-        checkpoint_state["current_arc_index"] = current_arc_index + 1
-
-        logger.info(f"Arc chapter outlines confirmed, advancing to arc {current_arc_index + 1} for project {project_id}")
 
     # 提交所有数据库更改
     db.commit()
@@ -1025,10 +889,6 @@ async def replan_workflow(
     # 先删关系（外键依赖人物），再删人物
     db.query(Relation).filter(Relation.project_id == project_id).delete()
     db.query(Character).filter(Character.project_id == project_id).delete()
-
-    # 5.5 删除旧的弧/卷
-    from app.models.volume import Volume as VolumeModel
-    db.query(VolumeModel).filter(VolumeModel.project_id == project_id).delete()
 
     # 6. 删除章节大纲（cascade 会自动删除关联的 Chapter）
     db.query(ChapterOutline).filter(ChapterOutline.project_id == project_id).delete()

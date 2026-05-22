@@ -1,4 +1,5 @@
 import { Slider } from '@/components/ui/slider'
+import { Input } from '@/components/ui/input'
 import type { ModelItem } from '@/types'
 
 /** 思考强度选项 */
@@ -15,6 +16,7 @@ interface ModelCardProps
   model: ModelItem
   onTemperatureChange: (val: number) => void
   onReasoningEffortChange: (val: string) => void
+  onContextWindowChange: (val: number | null) => void
   onRemove: () => void
 }
 
@@ -22,6 +24,7 @@ export default function ModelCard({
   model,
   onTemperatureChange,
   onReasoningEffortChange,
+  onContextWindowChange,
   onRemove,
 }: ModelCardProps)
 {
@@ -98,6 +101,20 @@ export default function ModelCard({
             )
           })}
         </div>
+      </div>
+
+      {/* 上下文窗口大小 */}
+      <div className="mt-2">
+        <span className="text-[11px] text-slate-500 block mb-1">上下文窗口 (tokens)</span>
+        <Input
+          type="number"
+          placeholder="留空则自动推断"
+          value={model.context_window ?? ''}
+          onChange={(e) =>
+            onContextWindowChange(e.target.value ? parseInt(e.target.value) : null)
+          }
+          className="h-7 text-xs"
+        />
       </div>
     </div>
   )

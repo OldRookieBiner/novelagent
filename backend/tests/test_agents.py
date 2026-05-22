@@ -236,6 +236,7 @@ class TestPromptTemplates:
             main_characters="张三",
             world_setting="现代都市",
             forbidden_words="禁用词列表",
+            style_exemplars="示例文本",
         )
 
         assert "第1章" in user_prompt

@@ -4,6 +4,7 @@ import logging
 import re
 
 from app.agents.state import NovelState, STAGE_VOLUME_ARC
+from app.agents.constants import NODE_TEMPERATURES
 
 logger = logging.getLogger(__name__)
 
@@ -94,14 +95,14 @@ async def volume_arc_planning_node(state: NovelState) -> dict:
         更新 volumes、arcs、chapter_count、stage、waiting_for_confirmation、confirmation_type
     """
     from app.utils.llm import get_llm_from_state_async
-    from app.agents.prompts import DEFAULT_PROMPTS
+    from app.agents.nodes.utils import get_prompts_from_state, get_prompt_template
 
     # 获取 LLM 服务
     llm = await get_llm_from_state_async(state)
 
-    # 构建 prompt
-    prompts = state.get("_prompts", DEFAULT_PROMPTS)
-    prompt_template = prompts.get("volume_arc_generation", DEFAULT_PROMPTS["volume_arc_generation"])
+    # 从 state 获取预加载的 prompts（统一使用 get_prompts_from_state）
+    system_template, user_template = get_prompts_from_state(state, "volume_arc_generation")
+    prompt_template = get_prompt_template(system_template, user_template)
 
     outline_title = state.get("outline_title", "")
     outline_summary = state.get("outline_summary", "")
@@ -134,7 +135,7 @@ async def volume_arc_planning_node(state: NovelState) -> dict:
     # 流式调用 LLM
     messages = [{"role": "user", "content": prompt}]
     response = ""
-    async for chunk in llm.chat_stream(messages):
+    async for chunk in llm.chat_stream(messages, temperature=NODE_TEMPERATURES["volume_arc_generation"]):
         response += chunk
 
     # 解析弧/卷结构
@@ -155,7 +156,6 @@ async def volume_arc_planning_node(state: NovelState) -> dict:
     new_chapter_count = sum(a.get("chapter_count", 0) for a in arcs)
 
     return {
-        **state,
         "volumes": volumes,
         "arcs": arcs,
         "chapter_count": new_chapter_count,
