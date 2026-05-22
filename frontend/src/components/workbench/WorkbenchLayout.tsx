@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import Header from '@/components/layout/Header'
 import { TabNavigation } from './TabNavigation'
 import { WorkbenchSidebar } from './WorkbenchSidebar'
+import { AICompanionSidebar } from './AICompanionSidebar'
 
 interface WorkbenchLayoutProps
 {
@@ -53,6 +54,7 @@ export function WorkbenchLayout({ projectName, progress, children }: WorkbenchLa
         <main className="flex-1 overflow-auto">
           {children}
         </main>
+        <AICompanionSidebar />
       </div>
     </div>
   )
