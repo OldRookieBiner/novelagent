@@ -1,7 +1,7 @@
 """Project model"""
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -22,6 +22,11 @@ class Project(Base):
     total_words = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # 并发控制
+    is_busy = Column(Boolean, default=False)
+    busy_since = Column(DateTime, nullable=True)
+    busy_by = Column(String(20), nullable=True)  # "agent" | "workflow"
 
     # Relationships
     user = relationship("User", back_populates="projects")
