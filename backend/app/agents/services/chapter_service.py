@@ -10,44 +10,12 @@ import json
 from sqlalchemy.orm import Session
 from app.models.outline import ChapterOutline
 from app.models.chapter import Chapter
-from app.services.llm import get_llm_service_from_config, get_llm_service
-from app.models.model_config import ModelConfig
-from app.models.settings import UserSettings
 from app.agents.tool_context import get_model_config_id, get_user_id
-from app.database import SessionLocal
+from app.utils.llm import resolve_llm_service
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-
-def _get_llm_service():
-    """从 tool context 获取 LLM 服务实例"""
-    model_config_id = get_model_config_id()
-    user_id = get_user_id()
-
-    if model_config_id and user_id:
-        db = SessionLocal()
-        try:
-            config = db.query(ModelConfig).filter(ModelConfig.id == model_config_id).first()
-            if config:
-                return get_llm_service_from_config(config, user_id)
-        except Exception as e:
-            logger.warning(f"Failed to get LLM from model config: {e}")
-        finally:
-            db.close()
-
-    if user_id:
-        db = SessionLocal()
-        try:
-            settings = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
-            if settings:
-                return get_llm_service(settings)
-        except Exception as e:
-            logger.warning(f"Failed to get LLM from user settings: {e}")
-        finally:
-            db.close()
-
-    raise ValueError("无法获取 LLM 配置，请先在设置中配置 API Key")
 
 
 def _calc_max_tokens(target_words: int) -> int:
@@ -77,7 +45,7 @@ async def generate_chapter(db: Session, project_id: int, chapter_number: int) ->
 
 请直接输出章节正文，不要输出标题或其他说明。"""
 
-    llm_service = _get_llm_service()
+    llm_service = resolve_llm_service(get_model_config_id(), get_user_id())
     max_tokens = _calc_max_tokens(outline.target_words or 3000)
 
     full_content = ""
@@ -161,7 +129,7 @@ async def review_chapter(db: Session, project_id: int, chapter_number: int) -> d
   "suggestions": "整体改进建议"
 }}"""
 
-    llm_service = _get_llm_service()
+    llm_service = resolve_llm_service(get_model_config_id(), get_user_id())
     try:
         result_text = await llm_service.chat(
             [{"role": "user", "content": prompt}],
@@ -210,7 +178,7 @@ async def rewrite_chapter(db: Session, project_id: int, chapter_number: int, rev
 
 请直接输出重写后的章节正文。"""
 
-    llm_service = _get_llm_service()
+    llm_service = resolve_llm_service(get_model_config_id(), get_user_id())
     max_tokens = _calc_max_tokens(outline.target_words if outline else 3000)
 
     full_content = ""

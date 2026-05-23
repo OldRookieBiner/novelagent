@@ -152,3 +152,35 @@ async def get_llm_from_state_async(state: dict, db: Optional["Session"] = None, 
 
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(_db_executor, get_llm_from_state, state)
+
+
+def resolve_llm_service(model_config_id: int | None = None, user_id: int | None = None):
+    """统一的 LLM 服务解析入口
+
+    优先级：model_config_id > user_settings > error
+    所有 Agent 相关代码统一使用此函数获取 LLMService。
+    """
+    from app.database import SessionLocal
+    from app.models.model_config import ModelConfig
+    from app.models.settings import UserSettings
+    from app.services.llm import get_llm_service_from_config, get_llm_service
+
+    if model_config_id and user_id:
+        db = SessionLocal()
+        try:
+            config = db.query(ModelConfig).filter(ModelConfig.id == model_config_id).first()
+            if config:
+                return get_llm_service_from_config(config, user_id)
+        finally:
+            db.close()
+
+    if user_id:
+        db = SessionLocal()
+        try:
+            settings = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
+            if settings:
+                return get_llm_service(settings)
+        finally:
+            db.close()
+
+    raise ValueError("无法获取 LLM 配置：请先在设置中配置 API Key")

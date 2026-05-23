@@ -6,12 +6,11 @@ from langgraph.prebuilt import create_react_agent
 from langchain_openai import ChatOpenAI
 
 from app.agents.agent_tools import AGENT_TOOLS
-from app.services.llm import get_llm_service_from_config
-from app.models.model_config import ModelConfig
 from app.models.outline import Outline, ChapterOutline
 from app.models.character import Character
 from app.database import SessionLocal
 from app.utils.logger import get_logger
+from app.utils.llm import resolve_llm_service
 
 logger = get_logger(__name__)
 
@@ -62,37 +61,8 @@ def _get_llm_from_service(llm_service) -> ChatOpenAI:
 
 def create_agent_graph(model_config_id: int = None, user_id: int = None):
     """创建 Agent 图实例"""
-    llm = None
-
-    if model_config_id and user_id:
-        db = SessionLocal()
-        try:
-            config = db.query(ModelConfig).filter(ModelConfig.id == model_config_id).first()
-            if config:
-                llm_service = get_llm_service_from_config(config, user_id)
-                llm = _get_llm_from_service(llm_service)
-        except Exception as e:
-            logger.warning(f"Failed to get LLM from model config: {e}")
-        finally:
-            db.close()
-
-    # 如果模型配置获取失败，尝试用户默认设置
-    if llm is None and user_id:
-        db = SessionLocal()
-        try:
-            from app.models.settings import UserSettings
-            from app.services.llm import get_llm_service
-            settings = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
-            if settings:
-                llm_service = get_llm_service(settings)
-                llm = _get_llm_from_service(llm_service)
-        except Exception as e:
-            logger.warning(f"Failed to get LLM from user settings: {e}")
-        finally:
-            db.close()
-
-    if llm is None:
-        raise ValueError("无法获取 LLM 配置：请先在设置中配置 API Key")
+    llm_service = resolve_llm_service(model_config_id, user_id)
+    llm = _get_llm_from_service(llm_service)
 
     graph = create_react_agent(
         model=llm,
