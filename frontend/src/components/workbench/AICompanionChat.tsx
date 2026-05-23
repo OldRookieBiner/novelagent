@@ -1,6 +1,7 @@
 // frontend/src/components/workbench/AICompanionChat.tsx
 
 import { useEffect, useRef, useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { useWorkbenchStore, type AiMessage } from '@/stores/workbenchStore'
 import { AIActionCard } from './AIActionCard'
 
@@ -56,32 +57,65 @@ function MessageContent({ message }: { message: AiMessage })
 function ChapterPreviewCard({ data }: { data: Record<string, unknown> })
 {
   const [expanded, setExpanded] = useState(false)
+  const [fullContent, setFullContent] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
   const preview = String(data.preview || '')
   const title = String(data.title || '')
   const wordCount = Number(data.word_count || 0)
+  const chapterNumber = Number(data.chapter_number || 0)
   const action = String(data.action || 'generated')
   const actionLabel = action === 'rewritten' ? '已重写' : '已生成'
+  const { id } = useParams()
+  const projectId = parseInt(id || '0')
+
+  const handleExpand = async () =>
+  {
+    if (fullContent !== null)
+    {
+      setExpanded(!expanded)
+      return
+    }
+    setLoading(true)
+    try
+    {
+      const res = await fetch(`/api/projects/${projectId}/chapters`)
+      const data = await res.json()
+      const chapter = (data.chapters || []).find(
+        (ch: { chapter_number: number }) => ch.chapter_number === chapterNumber
+      )
+      if (chapter?.content)
+      {
+        setFullContent(chapter.content)
+        setExpanded(true)
+      }
+    }
+    catch
+    {
+      // 加载失败，保持预览状态
+    }
+    finally
+    {
+      setLoading(false)
+    }
+  }
 
   return (
     <div className="my-1.5 rounded bg-slate-800/60 border border-emerald-700/30 px-2.5 py-2">
       <div className="text-[10px] text-emerald-400/80 mb-1">
-        📝 {title} · {actionLabel} · {wordCount}字
+         {title} · {actionLabel} · {wordCount}字
       </div>
-      {preview && (
-        <div className="text-xs text-slate-300 whitespace-pre-wrap leading-relaxed">
-          {expanded ? preview : preview.slice(0, 150)}
-          {preview.length > 150 && (
-            <button
-              onClick={() => setExpanded(!expanded)}
-              className="ml-1 text-slate-500 hover:text-slate-300"
-            >
-              {expanded ? '收起' : '...展开'}
-            </button>
-          )}
-        </div>
-      )}
-      <div className="text-[10px] text-slate-500 mt-1">
-        完整内容可在「写作」标签页查看
+      <div className="text-xs text-slate-300 whitespace-pre-wrap leading-relaxed">
+        {expanded && fullContent ? fullContent : preview.slice(0, 150)}
+        {(preview.length > 150 || (!expanded && wordCount > 200)) && (
+          <button
+            onClick={handleExpand}
+            disabled={loading}
+            className="ml-1 text-slate-500 hover:text-slate-300 disabled:opacity-50"
+          >
+            {loading ? '加载中...' : expanded ? '收起' : '...展开全部'}
+          </button>
+        )}
       </div>
     </div>
   )

@@ -1,14 +1,31 @@
 import { useState } from 'react'
-import { Send } from 'lucide-react'
+import { Send, PenTool, Search, Sparkles, FileText, Users } from 'lucide-react'
+
+interface QuickCommand
+{
+  label: string
+  icon: React.ComponentType<{ className?: string }>
+  prompt: string
+  showWhen: string[]
+}
+
+const QUICK_COMMANDS: QuickCommand[] = [
+  { label: '写下一章', icon: PenTool, prompt: '请继续写下一章', showWhen: ['writing'] },
+  { label: '审核本章', icon: Search, prompt: '请审核当前章节', showWhen: ['writing'] },
+  { label: '润色本章', icon: Sparkles, prompt: '请润色当前章节的文笔，保持情节不变', showWhen: ['writing'] },
+  { label: '查看大纲', icon: FileText, prompt: '请展示当前大纲概要', showWhen: ['outline', 'chapter_outlines', 'characters', 'relations', 'settings'] },
+  { label: '查看角色', icon: Users, prompt: '请展示所有角色', showWhen: ['characters', 'relations'] },
+]
 
 interface AICompanionInputProps
 {
   onSend: (message: string) => void
   disabled?: boolean
   disabledReason?: string
+  activeTab?: string
 }
 
-export function AICompanionInput({ onSend, disabled, disabledReason }: AICompanionInputProps)
+export function AICompanionInput({ onSend, disabled, disabledReason, activeTab }: AICompanionInputProps)
 {
   const [input, setInput] = useState('')
 
@@ -21,11 +38,39 @@ export function AICompanionInput({ onSend, disabled, disabledReason }: AICompani
     setInput('')
   }
 
+  const handleQuickCommand = (prompt: string) =>
+  {
+    setInput(prompt)
+  }
+
+  const visibleCommands = QUICK_COMMANDS.filter(
+    (cmd) => !activeTab || cmd.showWhen.includes(activeTab)
+  )
+
   return (
     <form onSubmit={handleSubmit} className="border-t border-slate-700 p-2">
       {disabled && disabledReason && (
         <div className="text-[10px] text-amber-400/80 mb-1.5 text-center">{disabledReason}</div>
       )}
+
+      {/* 快捷指令按钮 */}
+      {visibleCommands.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-2">
+          {visibleCommands.map((cmd) => (
+            <button
+              key={cmd.label}
+              type="button"
+              onClick={() => handleQuickCommand(cmd.prompt)}
+              disabled={disabled}
+              className="flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200 disabled:opacity-50 transition-colors"
+            >
+              <cmd.icon className="h-3 w-3" />
+              {cmd.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="flex gap-2">
         <input
           type="text"

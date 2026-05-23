@@ -21,6 +21,7 @@ export function AICompanionSidebar()
   } = useWorkbenchStore()
   const workflowRunning = useWorkflowStore((s) => s.isRunning)
   const [sending, setSending] = useState(false)
+  const activeTabFromStore = useWorkbenchStore((s) => s.activeTab)
   const [models, setModels] = useState<ModelConfig[]>([])
   const [selectedModelId, setSelectedModelId] = useState<number | null>(null)
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false)
@@ -86,6 +87,7 @@ export function AICompanionSidebar()
     abortRef.current = controller
 
     const { activeTab, activeMenuItem, aiMessages } = useWorkbenchStore.getState()
+    const selectedChapterNumber = (useWorkbenchStore.getState() as unknown as Record<string, unknown>).selectedChapterNumber as number | undefined
 
     const history = aiMessages
       .filter((m) => m.id !== assistantId)
@@ -215,6 +217,7 @@ export function AICompanionSidebar()
       }, {
         activeTab,
         activeMenuItem,
+        currentChapterNumber: selectedChapterNumber || undefined,
         history,
         modelConfigId: selectedModelId || undefined,
         signal: controller.signal,
@@ -271,7 +274,12 @@ export function AICompanionSidebar()
       <AICompanionChat />
 
       {/* 输入区 */}
-      <AICompanionInput onSend={handleSend} disabled={disabled} disabledReason={disabledReason} />
+      <AICompanionInput
+        onSend={handleSend}
+        disabled={disabled}
+        disabledReason={disabledReason}
+        activeTab={activeTabFromStore}
+      />
     </div>
   )
 }

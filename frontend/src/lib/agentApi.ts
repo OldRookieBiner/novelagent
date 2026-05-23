@@ -20,6 +20,7 @@ export interface AgentChatOptions {
   modelConfigId?: number
   activeTab?: string
   activeMenuItem?: string
+  currentChapterNumber?: number
   history?: Array<{ role: string; content: string }>
   signal?: AbortSignal
 }
@@ -42,6 +43,7 @@ export async function sendAgentMessage(
         model_config_id: options?.modelConfigId,
         active_tab: options?.activeTab,
         active_menu_item: options?.activeMenuItem,
+        current_chapter_number: options?.currentChapterNumber,
         history: options?.history,
       },
       signal: options?.signal,
