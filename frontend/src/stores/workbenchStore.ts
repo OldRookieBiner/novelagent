@@ -4,11 +4,19 @@ import { create } from 'zustand'
 import type { WorkbenchTab, MenuItem } from '@/types/workbench'
 import { SETTINGS_MENUS } from '@/types/workbench'
 
+/** AI 消息内容段 */
+export interface AiMessageSegment {
+  type: 'agent_text' | 'chunk' | 'review' | 'chapter_preview'
+  content: string
+  data?: Record<string, unknown>
+}
+
 /** AI 侧栏消息 */
 export interface AiMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
+  segments: AiMessageSegment[]
   actions?: AiAction[]
   timestamp: number
 }
@@ -18,6 +26,8 @@ export interface AiAction {
   tool: string
   status: 'running' | 'done' | 'error'
   description: string
+  args?: Record<string, unknown>
+  result?: Record<string, unknown>
 }
 
 interface WorkbenchState
@@ -50,6 +60,10 @@ interface WorkbenchState
   addAiUpdateMarker: (module: string) => void
   clearAiUpdateMarker: (module: string) => void
 
+  // Agent 并发控制
+  isAgentBusy: boolean
+  setIsAgentBusy: (busy: boolean) => void
+
   // Tab 切换状态保留
   panelStates: Record<string, { dirty: boolean }>
   setPanelDirty: (panelKey: string, dirty: boolean) => void
@@ -72,6 +86,7 @@ const initialState = {
   aiUpdateMarkers: {} as Record<string, boolean>,
   panelStates: {} as Record<string, { dirty: boolean }>,
   selectedModelKey: '' as string,
+  isAgentBusy: false as boolean,
 }
 
 export const useWorkbenchStore = create<WorkbenchState>((set) => ({
@@ -98,7 +113,12 @@ export const useWorkbenchStore = create<WorkbenchState>((set) => ({
 
   toggleAiSidebar: () => set((state) => ({ aiSidebarOpen: !state.aiSidebarOpen })),
 
-  addAiMessage: (message) => set((state) => ({ aiMessages: [...state.aiMessages, message] })),
+  addAiMessage: (message) => set((state) => ({
+    aiMessages: [...state.aiMessages, {
+      ...message,
+      segments: message.segments || [],
+    }]
+  })),
 
   clearAiMessages: () => set({ aiMessages: [] }),
 
@@ -121,6 +141,8 @@ export const useWorkbenchStore = create<WorkbenchState>((set) => ({
   })),
 
   setSelectedModelKey: (key) => set({ selectedModelKey: key }),
+
+  setIsAgentBusy: (busy) => set({ isAgentBusy: busy }),
 
   reset: () => set(initialState),
 }))
