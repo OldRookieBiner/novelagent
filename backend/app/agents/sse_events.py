@@ -121,3 +121,13 @@ def format_agent_done() -> str:
 def format_ai_update(module: str, summary: str) -> str:
     """格式化 AI 更新通知（前端用于标记「🤖 AI 已更新」）"""
     return f"event: ai_update\ndata: {json.dumps({'module': module, 'summary': summary})}\n\n"
+
+
+def format_agent_review(review: dict) -> str:
+    """格式化 Agent 审核结果事件（结构化数据，前端渲染为卡片）"""
+    return f"event: agent_review\ndata: {json.dumps(review, ensure_ascii=False)}\n\n"
+
+
+def format_agent_chapter_preview(preview: dict) -> str:
+    """格式化 Agent 章节生成/重写预览事件"""
+    return f"event: agent_chapter_preview\ndata: {json.dumps(preview, ensure_ascii=False)}\n\n"
