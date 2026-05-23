@@ -17,7 +17,7 @@ export function AICompanionSidebar()
   const projectId = parseInt(id || '0')
   const {
     aiSidebarOpen, toggleAiSidebar, addAiMessage,
-    isAgentBusy, setIsAgentBusy,
+    setIsAgentBusy,
   } = useWorkbenchStore()
   const workflowRunning = useWorkflowStore((s) => s.isRunning)
   const [sending, setSending] = useState(false)
@@ -31,7 +31,7 @@ export function AICompanionSidebar()
   {
     modelConfigsApi.list().then((res) =>
     {
-      const healthy = (res.configs || []).filter((c: ModelConfig) => c.is_healthy)
+      const healthy = (res.models || []).filter((c: ModelConfig) => c.health_status === 'healthy')
       setModels(healthy)
       if (healthy.length > 0 && !selectedModelId)
       {
