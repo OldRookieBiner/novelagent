@@ -28,6 +28,12 @@ from app.agents.services.chapter_service import (
     review_chapter,
     rewrite_chapter,
 )
+from app.agents.services.edit_service import (
+    edit_paragraph as svc_edit_paragraph,
+    insert_scene as svc_insert_scene,
+    revise_section as svc_revise_section,
+    polish_prose as svc_polish_prose,
+)
 
 
 # --- 读取类 tools ---
@@ -156,6 +162,48 @@ async def rewrite_chapter(project_id: int, chapter_number: int, review_feedback:
         db.close()
 
 
+# --- 编辑类 tools ---
+
+@tool
+async def edit_paragraph(project_id: int, chapter_number: int, paragraph_index: int, new_content: str) -> dict:
+    """替换指定章节的某个段落。paragraph_index 从 0 开始计数。"""
+    db = SessionLocal()
+    try:
+        return await svc_edit_paragraph(db, project_id, chapter_number, paragraph_index, new_content)
+    finally:
+        db.close()
+
+
+@tool
+async def insert_scene(project_id: int, chapter_number: int, position: int, scene_content: str) -> dict:
+    """在章节的指定位置插入新场景。position=0 表示开头，position=N 表示末尾。"""
+    db = SessionLocal()
+    try:
+        return await svc_insert_scene(db, project_id, chapter_number, position, scene_content)
+    finally:
+        db.close()
+
+
+@tool
+async def revise_section(project_id: int, chapter_number: int, instruction: str, start_para: int = 0, end_para: int = -1) -> dict:
+    """按指令修改章节中的段落范围。start_para 和 end_para 从 0 开始计数，-1 表示到末尾。instruction 用自然语言描述修改要求。"""
+    db = SessionLocal()
+    try:
+        return await svc_revise_section(db, project_id, chapter_number, instruction, start_para, end_para)
+    finally:
+        db.close()
+
+
+@tool
+async def polish_prose(project_id: int, chapter_number: int, style_instruction: str = "") -> dict:
+    """润色章节文笔，保持情节不变。style_instruction 可选，指定风格方向。"""
+    db = SessionLocal()
+    try:
+        return await svc_polish_prose(db, project_id, chapter_number, style_instruction)
+    finally:
+        db.close()
+
+
 # 所有 tools 列表
 AGENT_TOOLS = [
     read_outline,
@@ -170,4 +218,8 @@ AGENT_TOOLS = [
     generate_chapter_content,
     review_chapter,
     rewrite_chapter,
+    edit_paragraph,
+    insert_scene,
+    revise_section,
+    polish_prose,
 ]
