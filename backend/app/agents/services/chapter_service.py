@@ -1,30 +1,123 @@
 # backend/app/agents/services/chapter_service.py
 """章节生成/审核/重写核心服务
 
-MVP 方案：生成类 tool 在完成后返回摘要+预览，
-用户在 WritingPanel 查看完整章节。
-流式输出在后续迭代通过 side channel SSE 实现。
+使用与工作流模式相同的 prompt 体系和质量管道（Draft→SelfCheck→Refine）。
+Agent tool 调用本模块的 generate_chapter 即可获得与工作流模式一致的生成质量。
 """
 
 import json
 from sqlalchemy.orm import Session
-from app.models.outline import ChapterOutline
+from app.models.outline import ChapterOutline, Outline
 from app.models.chapter import Chapter
+from app.models.character import Character
 from app.agents.tool_context import get_model_config_id, get_user_id
 from app.utils.llm import resolve_llm_service
 from app.utils.logger import get_logger
+from app.agents.nodes.chapter_generation import (
+    _calc_max_tokens,
+    _build_chapter_content_messages,
+    generate_chapter_content_stream,
+    _self_check_chapter,
+    _refine_chapter_stream,
+)
+from app.agents.nodes.utils import (
+    format_characters_info,
+    format_relations_info,
+    format_evolution_info,
+    format_world_setting,
+    safe_format,
+    get_prompt_template,
+    get_prompts_from_state,
+    parse_words_per_chapter,
+    _format_chapter_outline_str,
+)
+from app.agents.context_strategy import get_context_strategy
+from app.agents.state import NovelState
+from app.agents.prompts import DEFAULT_PROMPTS
 
 logger = get_logger(__name__)
 
 
+def _build_agent_novel_state(db: Session, project_id: int, chapter_number: int) -> NovelState:
+    """从 DB 构建 Agent 模式下的模拟 NovelState
 
-def _calc_max_tokens(target_words: int) -> int:
-    """根据目标字数动态计算 max_tokens"""
-    return max(int(target_words * 2.5) + 512, 8192)
+    Agent tool 不在 LangGraph 工作流中运行，没有现成的 state。
+    从 DB 加载所有必要数据，构建与工作流模式等价的 state dict，
+    确保 _build_chapter_content_messages 等函数可以正常工作。
+    """
+    outline = db.query(Outline).filter(Outline.project_id == project_id).first()
+    characters = db.query(Character).filter(Character.project_id == project_id).all()
+    chapter_outlines = (
+        db.query(ChapterOutline)
+        .filter(ChapterOutline.project_id == project_id)
+        .order_by(ChapterOutline.chapter_number)
+        .all()
+    )
+    chapters = (
+        db.query(Chapter)
+        .filter(Chapter.project_id == project_id)
+        .order_by(Chapter.chapter_number)
+        .all()
+    )
+
+    return {
+        "outline_title": outline.title if outline else "",
+        "outline_summary": outline.summary if outline else "",
+        "outline_plot_points": outline.plot_points if outline else [],
+        "outline_world_setting": outline.world_setting if outline else {},
+        "outline_emotional_curve": outline.emotional_curve if outline else "",
+        "chapter_count": outline.chapter_count_confirmed or outline.chapter_count_suggested or 10,
+        "characters": [
+            {
+                "name": c.name,
+                "role": c.role,
+                "personality": c.personality or "",
+                "core_motivation": c.core_motivation or "",
+                "growth_arc": c.growth_arc or "",
+                "background": c.background or "",
+                "appearance": c.appearance or "",
+                "abilities": c.abilities or "",
+            }
+            for c in characters
+        ],
+        "chapter_outlines": [
+            {
+                "chapter_number": co.chapter_number,
+                "title": co.title,
+                "scene": co.scene or "",
+                "characters": co.characters or "",
+                "plot": co.plot or "",
+                "conflict": co.conflict or "",
+                "turning_point": co.turning_point or "",
+                "hook": co.hook or "",
+                "transition": co.transition or "",
+                "ending": co.ending or "",
+                "target_words": co.target_words or 3000,
+            }
+            for co in chapter_outlines
+        ],
+        "written_chapters": [
+            {
+                "chapter_number": ch.chapter_number,
+                "title": ch.title or "",
+                "content": ch.content or "",
+                "summary": ch.summary or "",
+            }
+            for ch in chapters if ch.content
+        ],
+        "collected_info": {
+            "novelType": getattr(outline, 'novel_type', "") if outline else "",
+            "targetWords": getattr(outline, 'target_words', 100000) if outline else 100000,
+            "stylePreference": getattr(outline, 'style_preference', "") if outline else "",
+            "contextStrategy": getattr(outline, 'context_strategy', None) if outline else None,
+        },
+        "_prompts": DEFAULT_PROMPTS,
+        "arcs": [],
+    }
 
 
 async def generate_chapter(db: Session, project_id: int, chapter_number: int) -> dict:
-    """生成章节正文，完成后写入 DB，返回摘要"""
+    """生成章节正文——使用与工作流模式相同的 prompt 体系和质量管道"""
     outline = db.query(ChapterOutline).filter(
         ChapterOutline.project_id == project_id,
         ChapterOutline.chapter_number == chapter_number,
@@ -32,36 +125,56 @@ async def generate_chapter(db: Session, project_id: int, chapter_number: int) ->
     if not outline:
         return {"error": f"第{chapter_number}章大纲不存在"}
 
-    prompt = f"""请根据以下信息撰写第{chapter_number}章「{outline.title}」的正文：
+    state = _build_agent_novel_state(db, project_id, chapter_number)
+    llm = resolve_llm_service(get_model_config_id(), get_user_id())
 
-章节大纲：
-- 场景：{outline.scene or ''}
-- 出场人物：{outline.characters or ''}
-- 情节要点：{outline.plot or ''}
-- 冲突：{outline.conflict or ''}
-- 结尾：{outline.ending or ''}
+    chapter_outline = {
+        "chapter_number": chapter_number,
+        "title": outline.title,
+        "scene": outline.scene or "",
+        "characters": outline.characters or "",
+        "plot": outline.plot or "",
+        "conflict": outline.conflict or "",
+        "turning_point": outline.turning_point or "",
+        "hook": outline.hook or "",
+        "transition": outline.transition or "",
+        "ending": outline.ending or "",
+        "target_words": outline.target_words or 3000,
+    }
 
-目标字数：{outline.target_words or 3000}字
-
-请直接输出章节正文，不要输出标题或其他说明。"""
-
-    llm_service = resolve_llm_service(get_model_config_id(), get_user_id())
-    max_tokens = _calc_max_tokens(outline.target_words or 3000)
-
-    full_content = ""
+    # Phase 1: Draft
+    draft_content = ""
     try:
-        async for chunk in llm_service.chat_stream(
-            [{"role": "user", "content": prompt}],
-            max_tokens=max_tokens,
-        ):
-            if chunk:
-                full_content += chunk
+        async for chunk in generate_chapter_content_stream(state, chapter_outline, llm):
+            draft_content += chunk
     except Exception as e:
-        logger.error(f"Chapter generation failed: {e}")
+        logger.error(f"Chapter draft generation failed: {e}")
         return {"error": f"生成失败: {str(e)}"}
 
-    if not full_content.strip():
+    if not draft_content.strip():
         return {"error": "生成结果为空，请重试"}
+
+    # Phase 2: SelfCheck
+    try:
+        check_result = await _self_check_chapter(llm, draft_content, state)
+    except Exception as e:
+        logger.warning(f"Chapter self-check failed, using draft: {e}")
+        check_result = {"paragraphs": []}
+
+    # Phase 3: Refine
+    info = state.get("collected_info", {})
+    min_words, _ = parse_words_per_chapter(info)
+
+    if check_result.get("paragraphs"):
+        final_content = ""
+        try:
+            async for chunk in _refine_chapter_stream(llm, draft_content, check_result, min_words, state):
+                final_content += chunk
+        except Exception as e:
+            logger.warning(f"Chapter refine failed, using draft: {e}")
+            final_content = draft_content
+    else:
+        final_content = draft_content
 
     # 写入 DB
     try:
@@ -70,13 +183,13 @@ async def generate_chapter(db: Session, project_id: int, chapter_number: int) ->
             Chapter.chapter_number == chapter_number,
         ).first()
         if chapter:
-            chapter.content = full_content
+            chapter.content = final_content
         else:
             chapter = Chapter(
                 project_id=project_id,
                 chapter_number=chapter_number,
                 title=outline.title,
-                content=full_content,
+                content=final_content,
                 target_words=outline.target_words or 3000,
             )
             db.add(chapter)
@@ -86,8 +199,8 @@ async def generate_chapter(db: Session, project_id: int, chapter_number: int) ->
         logger.error(f"Failed to save chapter: {e}")
         return {"error": f"保存失败: {str(e)}"}
 
-    word_count = len(full_content)
-    preview = full_content[:200] + ("..." if word_count > 200 else "")
+    word_count = len(final_content)
+    preview = final_content[:200] + ("..." if word_count > 200 else "")
     return {
         "success": True,
         "message": f"第{chapter_number}章「{outline.title}」已生成（{word_count}字）",
@@ -99,7 +212,7 @@ async def generate_chapter(db: Session, project_id: int, chapter_number: int) ->
 
 
 async def review_chapter(db: Session, project_id: int, chapter_number: int) -> dict:
-    """审核章节，返回结构化审核结果"""
+    """审核章节——使用系统 prompt 模板"""
     chapter = db.query(Chapter).filter(
         Chapter.project_id == project_id,
         Chapter.chapter_number == chapter_number,
@@ -107,31 +220,44 @@ async def review_chapter(db: Session, project_id: int, chapter_number: int) -> d
     if not chapter or not chapter.content:
         return {"error": f"第{chapter_number}章内容不存在，请先生成"}
 
+    state = _build_agent_novel_state(db, project_id, chapter_number)
+    llm = resolve_llm_service(get_model_config_id(), get_user_id())
+
     outline = db.query(ChapterOutline).filter(
         ChapterOutline.project_id == project_id,
         ChapterOutline.chapter_number == chapter_number,
     ).first()
 
-    prompt = f"""请审核以下章节内容，按 JSON 格式返回审核结果。
+    # 构建章节大纲字符串（供 prompt 模板使用）
+    chapter_outline_data = {
+        "title": outline.title if outline else "",
+        "scene": outline.scene or "",
+        "characters": outline.characters or "",
+        "plot": outline.plot or "",
+        "conflict": outline.conflict or "",
+        "turning_point": outline.turning_point or "",
+        "ending": outline.ending or "",
+    }
+    chapter_outline_str = _format_chapter_outline_str(chapter_outline_data)
 
-章节大纲：
-- 标题：{outline.title if outline else ''}
-- 情节要点：{outline.plot if outline else ''}
+    # 使用 get_prompts_from_state 正确解析 prompt（处理 dict/string 两种格式）
+    system_template, user_template = get_prompts_from_state(state, "review")
+    prompt_template = get_prompt_template(system_template, user_template)
 
-章节正文（前2000字）：
-{chapter.content[:2000]}
+    # 获取题材/风格信息
+    info = state.get("collected_info", {})
+    genre = info.get("novelType", "")
 
-请严格按以下 JSON 格式返回，不要包含其他内容：
-{{
-  "passed": true/false,
-  "scores": {{"情节": 1-10, "人物": 1-10, "文笔": 1-10, "逻辑": 1-10, "节奏": 1-10}},
-  "issues": [{{"type": "逻辑/情节/人物/文笔", "location": "位置描述", "description": "问题描述"}}],
-  "suggestions": "整体改进建议"
-}}"""
+    prompt = safe_format(prompt_template,
+        strictness="standard",
+        chapter_outline=chapter_outline_str,
+        chapter_content=chapter.content,
+        genre=genre,
+        style_preference=info.get("stylePreference", ""),
+    )
 
-    llm_service = resolve_llm_service(get_model_config_id(), get_user_id())
     try:
-        result_text = await llm_service.chat(
+        result_text = await llm.chat(
             [{"role": "user", "content": prompt}],
             max_tokens=2048,
         )
@@ -148,7 +274,7 @@ async def review_chapter(db: Session, project_id: int, chapter_number: int) -> d
 
 
 async def rewrite_chapter(db: Session, project_id: int, chapter_number: int, review_feedback: str) -> dict:
-    """根据审核意见重写章节，完成后写入 DB，返回摘要"""
+    """根据审核意见重写章节——使用 prompt 模板"""
     chapter = db.query(Chapter).filter(
         Chapter.project_id == project_id,
         Chapter.chapter_number == chapter_number,
@@ -156,34 +282,45 @@ async def rewrite_chapter(db: Session, project_id: int, chapter_number: int, rev
     if not chapter or not chapter.content:
         return {"error": f"第{chapter_number}章内容不存在"}
 
+    state = _build_agent_novel_state(db, project_id, chapter_number)
+    llm = resolve_llm_service(get_model_config_id(), get_user_id())
+
     outline = db.query(ChapterOutline).filter(
         ChapterOutline.project_id == project_id,
         ChapterOutline.chapter_number == chapter_number,
     ).first()
 
-    prompt = f"""请根据审核意见重写第{chapter_number}章「{outline.title if outline else ''}」。
+    # 构建章节大纲字符串
+    chapter_outline_data = {
+        "title": outline.title if outline else "",
+        "scene": outline.scene or "",
+        "characters": outline.characters or "",
+        "plot": outline.plot or "",
+        "conflict": outline.conflict or "",
+        "turning_point": outline.turning_point or "",
+        "ending": outline.ending or "",
+    }
+    chapter_outline_str = _format_chapter_outline_str(chapter_outline_data)
 
-原章节正文：
-{chapter.content}
+    # 使用 get_prompts_from_state 正确解析 prompt
+    system_template, user_template = get_prompts_from_state(state, "rewrite")
+    prompt_template = get_prompt_template(system_template, user_template)
 
-审核意见：
-{review_feedback}
+    info = state.get("collected_info", {})
+    genre = info.get("novelType", "")
 
-章节大纲：
-- 情节要点：{outline.plot if outline else ''}
-- 冲突：{outline.conflict if outline else ''}
-- 结尾：{outline.ending if outline else ''}
+    prompt = safe_format(prompt_template,
+        chapter_outline=chapter_outline_str,
+        review_feedback=review_feedback,
+        original_content=chapter.content,
+        genre=genre,
+    )
 
-目标字数：{outline.target_words or 3000}字
-
-请直接输出重写后的章节正文。"""
-
-    llm_service = resolve_llm_service(get_model_config_id(), get_user_id())
     max_tokens = _calc_max_tokens(outline.target_words if outline else 3000)
 
     full_content = ""
     try:
-        async for chunk in llm_service.chat_stream(
+        async for chunk in llm.chat_stream(
             [{"role": "user", "content": prompt}],
             max_tokens=max_tokens,
         ):
