@@ -14,7 +14,8 @@ from app.utils.auth import get_current_user
 from app.utils.project import get_project_for_user
 from app.models.user import User
 from app.models.project import Project
-from app.agents.agent_graph import create_agent_graph, build_project_context
+from app.agents.agent_graph import create_agent_graph
+from app.agents.agent_context import build_project_context
 from app.agents.tool_context import set_tool_context, reset_tool_context
 from app.agents.sse_events import (
     format_agent_text,
@@ -41,6 +42,7 @@ class AgentChatRequest(BaseModel):
     model_config_id: Optional[int] = None
     active_tab: Optional[str] = None
     active_menu_item: Optional[str] = None
+    current_chapter_number: Optional[int] = None
     history: Optional[list[dict]] = None
 
 
@@ -163,17 +165,41 @@ async def agent_chat(
         holder = project.busy_by or "未知"
         raise HTTPException(status_code=409, detail=f"项目正在被{holder}使用，请稍后再试")
 
-    # 构建项目上下文
-    context = build_project_context(project_id)
+    # 构建项目上下文（原文注入 + token budget）
+    context = build_project_context(
+        project_id,
+        current_chapter_number=req.current_chapter_number,
+    )
 
     # 构建 system message
+    current_chapter_line = f"\n当前章节：第{req.current_chapter_number}章" if req.current_chapter_number else ""
     system_content = f"""你是一位专业的小说创作搭档。你可以帮助用户修改大纲、角色设定、章节大纲，也可以生成章节正文、审核章节、重写章节。
 
-当前项目上下文：
-- 大纲：{json.dumps(context.get('outline', {}), ensure_ascii=False)}
-- 角色：{json.dumps(context.get('characters', []), ensure_ascii=False)}
-- 章节大纲：{json.dumps(context.get('chapter_outlines', {}), ensure_ascii=False)}
-- 用户当前查看：{req.active_tab or '未知'}{f' / {req.active_menu_item}' if req.active_menu_item else ''}
+## 项目上下文
+
+### 大纲
+{json.dumps(context.get('outline', {}), ensure_ascii=False)}
+
+### 角色
+{json.dumps(context.get('characters', []), ensure_ascii=False)}
+
+### 章节总览
+{chr(10).join(context.get('all_chapters', []))}
+
+### 当前章节正文
+{json.dumps(context.get('current_chapter', {}), ensure_ascii=False)}
+
+### 当前章节大纲
+{json.dumps(context.get('current_outline', {}), ensure_ascii=False)}
+
+## 行为准则
+
+1. 生成章节后必须调用 review_chapter 审核质量
+2. 审核不通过时应根据审核意见调用 rewrite_chapter 重写
+3. 修改大纲/角色/章节后简要说明改了什么
+4. 优先使用 revise_section 做局部修改，避免整章重写
+
+用户当前查看：{req.active_tab or '未知'}{f' / {req.active_menu_item}' if req.active_menu_item else ''}{current_chapter_line}
 
 请根据用户的需求，调用相应的工具来修改项目内容或生成内容。修改后简要说明你做了什么。"""
 
