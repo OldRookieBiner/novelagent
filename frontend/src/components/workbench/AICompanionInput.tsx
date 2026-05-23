@@ -5,9 +5,10 @@ interface AICompanionInputProps
 {
   onSend: (message: string) => void
   disabled?: boolean
+  disabledReason?: string
 }
 
-export function AICompanionInput({ onSend, disabled }: AICompanionInputProps)
+export function AICompanionInput({ onSend, disabled, disabledReason }: AICompanionInputProps)
 {
   const [input, setInput] = useState('')
 
@@ -22,6 +23,9 @@ export function AICompanionInput({ onSend, disabled }: AICompanionInputProps)
 
   return (
     <form onSubmit={handleSubmit} className="border-t border-slate-700 p-2">
+      {disabled && disabledReason && (
+        <div className="text-[10px] text-amber-400/80 mb-1.5 text-center">{disabledReason}</div>
+      )}
       <div className="flex gap-2">
         <input
           type="text"
