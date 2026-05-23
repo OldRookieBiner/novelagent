@@ -2,11 +2,16 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 补全 5 个 Agent tools、将 Agent 深度融入工作台（模型选择器、并发控制、context 自动刷新）、优化交互体验（tool 可展开详情、混合内容消息）。
+**Goal:** 补全 5 个 Agent tools、将 Agent 深度融入工作台（模型选择器、并发控制、context 自动刷新）、优化交互体验（tool 可展开详情、生成结果预览卡片）。
 
-**Architecture:** Agent tools 调用 services/ 共享能力层，生成类 tool 通过 side channel queue 实现流式输出。前端 AiMessage 支持 segments 混合内容（agent_text + chunk），tool 操作改为可展开卡片。并发控制通过 project 表 is_busy 字段实现乐观锁。
+**Architecture:**
+- Service 层全部 **async**（因为 LLMService.chat/chat_stream 是 async）
+- Tool 使用 `@tool` + async 函数体（`create_react_agent` 原生支持 async tool）
+- 运行时上下文通过 **contextvars** 传递（model_config_id, user_id），线程安全+async 安全
+- 生成类 tool MVP **不做 side channel 流式**——`astream_events` 在 tool 执行期间不产出事件，双源 SSE 方案不可行。改为：tool 执行期间前端显示"生成中..."，完成后返回摘要+预览卡片，完整内容写入 DB 后在 WritingPanel 查看
+- 并发控制通过 project 表 is_busy 字段实现乐观锁（5 分钟超时自动释放）
 
-**Tech Stack:** FastAPI + LangGraph + SQLAlchemy (后端) | React + Zustand + shadcn/ui (前端) | PostgreSQL + Alembic (数据库)
+**Tech Stack:** FastAPI + LangGraph (create_react_agent + async tools) + SQLAlchemy | React + Zustand + shadcn/ui | PostgreSQL + Alembic
 
 ---
 
@@ -21,19 +26,20 @@
 | `backend/app/agents/services/chapter_service.py` | 章节生成/审核/重写核心逻辑 |
 | `backend/app/agents/services/character_service.py` | 角色 CRUD |
 | `backend/app/agents/services/relation_service.py` | 关系读写 |
+| `backend/app/agents/tool_context.py` | contextvars 运行时上下文 |
 | `backend/alembic/versions/20260523_add_project_busy_fields.py` | 数据库迁移 |
 
 ### 修改文件
 
 | 文件 | 改动 |
 |------|------|
-| `backend/app/agents/agent_tools.py` | 新增 5 个 tools + 读写类 tool 改调 services + 生成类 tool 接收 side channel |
-| `backend/app/api/agent.py` | 并发控制 + side channel queue 创建/监听 + chunk 事件转发 |
-| `backend/app/agents/sse_events.py` | 新增 format_agent_chunk 事件 |
+| `backend/app/agents/agent_tools.py` | 全部改为 async tool + 调 services + 新增 5 tools |
+| `backend/app/api/agent.py` | 并发控制 + tool_context 设置/清理 + 生成类 tool 预览卡片事件 |
+| `backend/app/agents/sse_events.py` | 新增 format_agent_review 事件 |
 | `backend/app/models/project.py` | 新增 is_busy / busy_since / busy_by 字段 |
-| `frontend/src/stores/workbenchStore.ts` | AiMessage 支持 segments + isAgentBusy 状态 |
-| `frontend/src/lib/agentApi.ts` | 处理 chunk 事件 + 传递 modelConfigId |
-| `frontend/src/components/workbench/AICompanionSidebar.tsx` | 模型选择器 + 并发禁用逻辑 |
+| `frontend/src/stores/workbenchStore.ts` | AiMessage segments + isAgentBusy + AiAction 含 args/result |
+| `frontend/src/lib/agentApi.ts` | 处理 chunk/review 事件 + 传递 modelConfigId |
+| `frontend/src/components/workbench/AICompanionSidebar.tsx` | 模型选择器 + 并发禁用 + segments 处理 |
 | `frontend/src/components/workbench/AICompanionChat.tsx` | segments 混合内容渲染 |
 | `frontend/src/components/workbench/AIActionCard.tsx` | 可展开详情 |
 
@@ -47,19 +53,21 @@
 
 - [ ] **Step 1: 写迁移文件**
 
+最新 migration 是 `20260518_arc_outline`，以此作为 down_revision。
+
 ```python
 # backend/alembic/versions/20260523_add_project_busy_fields.py
 """add is_busy fields to projects
 
 Revision ID: 20260523_busy
-Revises:
+Revises: 20260518_arc_outline
 Create Date: 2026-05-23
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = '20260523_busy'
-down_revision = None  # 需要根据实际最新 revision 填写
+down_revision = '20260518_arc_outline'
 branch_labels = None
 depends_on = None
 
@@ -85,7 +93,7 @@ def downgrade():
     busy_by = Column(String(20), nullable=True)  # "agent" | "workflow"
 ```
 
-顶部增加 `Boolean` 到 import：`from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey`
+顶部 import 改为：`from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey`
 
 - [ ] **Step 3: 运行迁移**
 
@@ -93,7 +101,7 @@ def downgrade():
 docker exec novelagent-backend-1 alembic upgrade head
 ```
 
-Expected: 迁移成功，无报错
+Expected: 迁移成功
 
 - [ ] **Step 4: 提交**
 
@@ -104,7 +112,68 @@ git commit -m "feat(db): add is_busy fields to projects table for concurrency co
 
 ---
 
-## Task 2: Services 层 — 从 agent_tools 抽出共享能力
+## Task 2: Tool 运行时上下文 — contextvars
+
+**Files:**
+- Create: `backend/app/agents/tool_context.py`
+
+用 contextvars 替代全局变量传递 model_config_id 和 user_id，线程安全且 async 安全。
+
+- [ ] **Step 1: 创建 tool_context.py**
+
+```python
+# backend/app/agents/tool_context.py
+"""Agent tool 运行时上下文
+
+使用 contextvars 在 async 环境中安全传递请求级别的上下文，
+避免全局变量在并发请求间交叉污染。
+"""
+
+from contextvars import ContextVar
+
+# 当前请求的模型配置 ID
+_current_model_config_id: ContextVar[int | None] = ContextVar('model_config_id', default=None)
+
+# 当前请求的用户 ID
+_current_user_id: ContextVar[int | None] = ContextVar('user_id', default=None)
+
+
+def set_tool_context(model_config_id: int | None = None, user_id: int | None = None):
+    """设置当前请求的 tool 上下文，返回重置 token 列表"""
+    tokens = []
+    if model_config_id is not None:
+        tokens.append(_current_model_config_id.set(model_config_id))
+    if user_id is not None:
+        tokens.append(_current_user_id.set(user_id))
+    return tokens
+
+
+def reset_tool_context(tokens: list):
+    """重置 tool 上下文（请求结束时调用）"""
+    for token in tokens:
+        token.var.reset(token)
+
+
+def get_model_config_id() -> int | None:
+    """获取当前请求的模型配置 ID"""
+    return _current_model_config_id.get()
+
+
+def get_user_id() -> int | None:
+    """获取当前请求的用户 ID"""
+    return _current_user_id.get()
+```
+
+- [ ] **Step 2: 提交**
+
+```bash
+git add backend/app/agents/tool_context.py
+git commit -m "feat(backend): add contextvars-based tool context for safe async request scoping"
+```
+
+---
+
+## Task 3: Services 层 — 共享能力
 
 **Files:**
 - Create: `backend/app/agents/services/__init__.py`
@@ -112,6 +181,12 @@ git commit -m "feat(db): add is_busy fields to projects table for concurrency co
 - Create: `backend/app/agents/services/character_service.py`
 - Create: `backend/app/agents/services/relation_service.py`
 - Create: `backend/app/agents/services/chapter_service.py`
+
+关键设计：
+- 全部 **async**（因为 LLMService.chat/chat_stream 是 async）
+- 每个函数接收 `db: Session` 参数，调用方管理 Session 生命周期
+- chapter_service 的 `generate_chapter` / `rewrite_chapter` 在生成完成后将全文写入 DB，返回摘要
+- `review_chapter` 返回结构化审核结果
 
 - [ ] **Step 1: 创建 services 包**
 
@@ -132,7 +207,7 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-def read_outline(db: Session, project_id: int) -> dict:
+async def read_outline(db: Session, project_id: int) -> dict:
     """读取项目大纲"""
     outline = db.query(Outline).filter(Outline.project_id == project_id).first()
     if not outline:
@@ -146,7 +221,7 @@ def read_outline(db: Session, project_id: int) -> dict:
     }
 
 
-def update_outline(db: Session, project_id: int, title: str = None, summary: str = None, plot_points: list = None) -> dict:
+async def update_outline(db: Session, project_id: int, title: str = None, summary: str = None, plot_points: list = None) -> dict:
     """修改项目大纲"""
     outline = db.query(Outline).filter(Outline.project_id == project_id).first()
     if not outline:
@@ -165,7 +240,7 @@ def update_outline(db: Session, project_id: int, title: str = None, summary: str
     return {"success": True, "message": "大纲已更新", "changes": changes}
 
 
-def read_chapter_outlines(db: Session, project_id: int) -> list:
+async def read_chapter_outlines(db: Session, project_id: int) -> list:
     """读取所有章节大纲"""
     outlines = db.query(ChapterOutline).filter(
         ChapterOutline.project_id == project_id
@@ -182,7 +257,7 @@ def read_chapter_outlines(db: Session, project_id: int) -> list:
     ]
 
 
-def update_chapter_outline(db: Session, project_id: int, chapter_outline_id: int, title: str = None, plot: str = None) -> dict:
+async def update_chapter_outline(db: Session, project_id: int, chapter_outline_id: int, title: str = None, plot: str = None) -> dict:
     """修改章节大纲"""
     outline = db.query(ChapterOutline).filter(
         ChapterOutline.id == chapter_outline_id,
@@ -214,7 +289,7 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-def read_characters(db: Session, project_id: int) -> list:
+async def read_characters(db: Session, project_id: int) -> list:
     """读取所有角色"""
     characters = db.query(Character).filter(Character.project_id == project_id).all()
     return [
@@ -230,7 +305,7 @@ def read_characters(db: Session, project_id: int) -> list:
     ]
 
 
-def create_character(db: Session, project_id: int, name: str, role: str, personality: str = "", core_motivation: str = "") -> dict:
+async def create_character(db: Session, project_id: int, name: str, role: str, personality: str = "", core_motivation: str = "") -> dict:
     """新增角色"""
     character = Character(
         project_id=project_id,
@@ -244,7 +319,7 @@ def create_character(db: Session, project_id: int, name: str, role: str, persona
     return {"success": True, "message": f"角色「{name}」已创建", "id": character.id}
 
 
-def update_character(db: Session, project_id: int, character_id: int, name: str = None, role: str = None, personality: str = None, core_motivation: str = None, growth_arc: str = None) -> dict:
+async def update_character(db: Session, project_id: int, character_id: int, name: str = None, role: str = None, personality: str = None, core_motivation: str = None, growth_arc: str = None) -> dict:
     """修改角色"""
     character = db.query(Character).filter(
         Character.id == character_id,
@@ -285,7 +360,7 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-def read_relations(db: Session, project_id: int) -> list:
+async def read_relations(db: Session, project_id: int) -> list:
     """读取项目人物关系"""
     relations = db.query(Relation).filter(Relation.project_id == project_id).all()
     result = []
@@ -304,7 +379,7 @@ def read_relations(db: Session, project_id: int) -> list:
     return result
 
 
-def update_relation(db: Session, project_id: int, relation_id: int, relation_type: str = None, direction: str = None, current_status: str = None, trust_level: int = None) -> dict:
+async def update_relation(db: Session, project_id: int, relation_id: int, relation_type: str = None, direction: str = None, current_status: str = None, trust_level: int = None) -> dict:
     """修改人物关系"""
     relation = db.query(Relation).filter(
         Relation.id == relation_id,
@@ -327,7 +402,6 @@ def update_relation(db: Session, project_id: int, relation_id: int, relation_typ
         relation.trust_level = trust_level
     db.commit()
 
-    # 获取角色名用于消息
     char_a = db.query(Character).filter(Character.id == relation.character_a_id).first()
     char_b = db.query(Character).filter(Character.id == relation.character_b_id).first()
     desc = f"{char_a.name if char_a else '?'} ↔ {char_b.name if char_b else '?'}"
@@ -338,24 +412,34 @@ def update_relation(db: Session, project_id: int, relation_id: int, relation_typ
 
 ```python
 # backend/app/agents/services/chapter_service.py
-"""章节生成/审核/重写核心服务"""
+"""章节生成/审核/重写核心服务
+
+生成类 tool 的 MVP 方案：
+- generate_chapter / rewrite_chapter 调用 LLMService.chat_stream（async）生成全文
+- 生成完成后将全文写入 DB（Chapter 表）
+- 返回摘要信息（字数、预览前200字），前端在聊天中渲染为预览卡片
+- 用户在 WritingPanel 查看完整章节
+- 流式输出在后续迭代通过 side channel SSE 实现
+"""
 
 import json
-import asyncio
 from sqlalchemy.orm import Session
 from app.models.outline import ChapterOutline
 from app.models.chapter import Chapter
 from app.services.llm import get_llm_service_from_config, get_llm_service
 from app.models.model_config import ModelConfig
 from app.models.settings import UserSettings
-from app.agents.context_strategy import get_context_strategy
+from app.agents.tool_context import get_model_config_id, get_user_id
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
-def _get_llm_for_tool(model_config_id: int = None, user_id: int = None):
-    """获取 LLM 服务实例（供 tool 内部调用）"""
+def _get_llm_service() -> "LLMService":
+    """从 tool context 获取 LLM 服务实例"""
+    model_config_id = get_model_config_id()
+    user_id = get_user_id()
+
     if model_config_id and user_id:
         db = Session()
         try:
@@ -367,7 +451,6 @@ def _get_llm_for_tool(model_config_id: int = None, user_id: int = None):
         finally:
             db.close()
 
-    # 回退到用户默认
     if user_id:
         db = Session()
         try:
@@ -379,7 +462,7 @@ def _get_llm_for_tool(model_config_id: int = None, user_id: int = None):
         finally:
             db.close()
 
-    raise ValueError("无法获取 LLM 配置")
+    raise ValueError("无法获取 LLM 配置，请先在设置中配置 API Key")
 
 
 def _calc_max_tokens(target_words: int) -> int:
@@ -387,15 +470,8 @@ def _calc_max_tokens(target_words: int) -> int:
     return max(int(target_words * 2.5) + 512, 8192)
 
 
-async def generate_chapter(
-    db: Session,
-    project_id: int,
-    chapter_number: int,
-    model_config_id: int = None,
-    user_id: int = None,
-    chunk_queue: asyncio.Queue = None,
-) -> dict:
-    """生成章节正文，流式输出到 chunk_queue，完成后写入 DB"""
+async def generate_chapter(db: Session, project_id: int, chapter_number: int) -> dict:
+    """生成章节正文，完成后写入 DB，返回摘要"""
     # 获取章节大纲
     outline = db.query(ChapterOutline).filter(
         ChapterOutline.project_id == project_id,
@@ -403,10 +479,6 @@ async def generate_chapter(
     ).first()
     if not outline:
         return {"error": f"第{chapter_number}章大纲不存在"}
-
-    # 构建上下文
-    context_strategy = get_context_strategy(db, project_id)
-    previous_context = context_strategy.build_context(chapter_number)
 
     prompt = f"""请根据以下信息撰写第{chapter_number}章「{outline.title}」的正文：
 
@@ -419,23 +491,25 @@ async def generate_chapter(
 
 目标字数：{outline.target_words or 3000}字
 
-{previous_context}
-
 请直接输出章节正文，不要输出标题或其他说明。"""
 
-    llm_service = _get_llm_for_tool(model_config_id, user_id)
+    llm_service = _get_llm_service()
     max_tokens = _calc_max_tokens(outline.target_words or 3000)
 
     full_content = ""
     try:
-        for chunk in llm_service.chat_stream(prompt, max_tokens=max_tokens):
+        async for chunk in llm_service.chat_stream(
+            [{"role": "user", "content": prompt}],
+            max_tokens=max_tokens,
+        ):
             if chunk:
                 full_content += chunk
-                if chunk_queue:
-                    await chunk_queue.put(chunk)
     except Exception as e:
         logger.error(f"Chapter generation failed: {e}")
         return {"error": f"生成失败: {str(e)}"}
+
+    if not full_content.strip():
+        return {"error": "生成结果为空，请重试"}
 
     # 写入 DB
     try:
@@ -458,24 +532,22 @@ async def generate_chapter(
     except Exception as e:
         db.rollback()
         logger.error(f"Failed to save chapter: {e}")
-        return {"error": f"保存失败: {str(e)}", "content_generated": len(full_content)}
+        return {"error": f"保存失败: {str(e)}"}
 
+    word_count = len(full_content)
+    preview = full_content[:200] + ("..." if word_count > 200 else "")
     return {
         "success": True,
-        "message": f"第{chapter_number}章「{outline.title}」已生成（{len(full_content)}字）",
+        "message": f"第{chapter_number}章「{outline.title}」已生成（{word_count}字）",
         "chapter_number": chapter_number,
-        "word_count": len(full_content),
+        "title": outline.title,
+        "word_count": word_count,
+        "preview": preview,
     }
 
 
-async def review_chapter(
-    db: Session,
-    project_id: int,
-    chapter_number: int,
-    model_config_id: int = None,
-    user_id: int = None,
-) -> dict:
-    """审核章节，返回结构化结果"""
+async def review_chapter(db: Session, project_id: int, chapter_number: int) -> dict:
+    """审核章节，返回结构化审核结果"""
     chapter = db.query(Chapter).filter(
         Chapter.project_id == project_id,
         Chapter.chapter_number == chapter_number,
@@ -483,7 +555,6 @@ async def review_chapter(
     if not chapter or not chapter.content:
         return {"error": f"第{chapter_number}章内容不存在，请先生成"}
 
-    # 获取章节大纲作为审核参照
     outline = db.query(ChapterOutline).filter(
         ChapterOutline.project_id == project_id,
         ChapterOutline.chapter_number == chapter_number,
@@ -506,10 +577,12 @@ async def review_chapter(
   "suggestions": "整体改进建议"
 }}"""
 
-    llm_service = _get_llm_for_tool(model_config_id, user_id)
+    llm_service = _get_llm_service()
     try:
-        result_text = llm_service.chat(prompt, max_tokens=2048)
-        # 解析 JSON
+        result_text = await llm_service.chat(
+            [{"role": "user", "content": prompt}],
+            max_tokens=2048,
+        )
         result_text = result_text.strip()
         if result_text.startswith("```"):
             result_text = result_text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
@@ -522,16 +595,8 @@ async def review_chapter(
         return {"error": f"审核失败: {str(e)}"}
 
 
-async def rewrite_chapter(
-    db: Session,
-    project_id: int,
-    chapter_number: int,
-    review_feedback: str,
-    model_config_id: int = None,
-    user_id: int = None,
-    chunk_queue: asyncio.Queue = None,
-) -> dict:
-    """根据审核意见重写章节"""
+async def rewrite_chapter(db: Session, project_id: int, chapter_number: int, review_feedback: str) -> dict:
+    """根据审核意见重写章节，完成后写入 DB，返回摘要"""
     chapter = db.query(Chapter).filter(
         Chapter.project_id == project_id,
         Chapter.chapter_number == chapter_number,
@@ -561,33 +626,40 @@ async def rewrite_chapter(
 
 请直接输出重写后的章节正文。"""
 
-    llm_service = _get_llm_for_tool(model_config_id, user_id)
+    llm_service = _get_llm_service()
     max_tokens = _calc_max_tokens(outline.target_words if outline else 3000)
 
     full_content = ""
     try:
-        for chunk in llm_service.chat_stream(prompt, max_tokens=max_tokens):
+        async for chunk in llm_service.chat_stream(
+            [{"role": "user", "content": prompt}],
+            max_tokens=max_tokens,
+        ):
             if chunk:
                 full_content += chunk
-                if chunk_queue:
-                    await chunk_queue.put(chunk)
     except Exception as e:
         logger.error(f"Rewrite failed: {e}")
         return {"error": f"重写失败: {str(e)}"}
 
-    # 写入 DB
+    if not full_content.strip():
+        return {"error": "重写结果为空，请重试"}
+
     try:
         chapter.content = full_content
         db.commit()
     except Exception as e:
         db.rollback()
-        return {"error": f"保存失败: {str(e)}", "content_generated": len(full_content)}
+        return {"error": f"保存失败: {str(e)}"}
 
+    word_count = len(full_content)
+    preview = full_content[:200] + ("..." if word_count > 200 else "")
     return {
         "success": True,
-        "message": f"第{chapter_number}章已重写（{len(full_content)}字）",
+        "message": f"第{chapter_number}章已重写（{word_count}字）",
         "chapter_number": chapter_number,
-        "word_count": len(full_content),
+        "title": outline.title if outline else f"第{chapter_number}章",
+        "word_count": word_count,
+        "preview": preview,
     }
 ```
 
@@ -595,15 +667,20 @@ async def rewrite_chapter(
 
 ```bash
 git add backend/app/agents/services/
-git commit -m "feat(backend): add shared services layer for agent tools"
+git commit -m "feat(backend): add async shared services layer for agent tools"
 ```
 
 ---
 
-## Task 3: 重构 agent_tools — 调 services + 新增 5 个 tools
+## Task 4: 重构 agent_tools — async tools + 调 services + 新增 5 tools
 
 **Files:**
 - Modify: `backend/app/agents/agent_tools.py`
+
+关键设计：
+- 全部 **async** tool（`create_react_agent` 原生支持 async tool）
+- 通过 `tool_context.get_model_config_id()` / `get_user_id()` 获取上下文
+- 每个工具内部管理 `SessionLocal()` 的生命周期
 
 - [ ] **Step 1: 重写 agent_tools.py**
 
@@ -611,14 +688,12 @@ git commit -m "feat(backend): add shared services layer for agent tools"
 # backend/app/agents/agent_tools.py
 """AI 搭档 Agent 的工具集
 
-读写类 tool 调 services/ 共享能力层。
-生成类 tool 接收 side channel queue 实现流式输出。
+全部 async tool，调 services/ 共享能力层。
+运行时上下文通过 tool_context（contextvars）传递。
 """
 
-import asyncio
 from langchain_core.tools import tool
 from app.database import SessionLocal
-from app.utils.logger import get_logger
 
 from app.agents.services.outline_service import (
     read_outline as svc_read_outline,
@@ -641,60 +716,45 @@ from app.agents.services.chapter_service import (
     rewrite_chapter,
 )
 
-logger = get_logger(__name__)
-
-# 生成类 tool 的 side channel queue，由 agent.py 在请求时注入
-_chunk_queue: asyncio.Queue | None = None
-_model_config_id: int | None = None
-_user_id: int | None = None
-
-
-def set_tool_context(chunk_queue: asyncio.Queue = None, model_config_id: int = None, user_id: int = None):
-    """设置 tool 运行时上下文（每次请求前调用）"""
-    global _chunk_queue, _model_config_id, _user_id
-    _chunk_queue = chunk_queue
-    _model_config_id = model_config_id
-    _user_id = user_id
-
 
 # --- 读取类 tools ---
 
 @tool
-def read_outline(project_id: int) -> dict:
+async def read_outline(project_id: int) -> dict:
     """读取项目的大纲信息，包括标题、概述、情节节点、确认状态"""
     db = SessionLocal()
     try:
-        return svc_read_outline(db, project_id)
+        return await svc_read_outline(db, project_id)
     finally:
         db.close()
 
 
 @tool
-def read_characters(project_id: int) -> list:
+async def read_characters(project_id: int) -> list:
     """读取项目的所有角色信息"""
     db = SessionLocal()
     try:
-        return svc_read_characters(db, project_id)
+        return await svc_read_characters(db, project_id)
     finally:
         db.close()
 
 
 @tool
-def read_chapter_outlines(project_id: int) -> list:
+async def read_chapter_outlines(project_id: int) -> list:
     """读取项目的所有章节大纲"""
     db = SessionLocal()
     try:
-        return svc_read_chapter_outlines(db, project_id)
+        return await svc_read_chapter_outlines(db, project_id)
     finally:
         db.close()
 
 
 @tool
-def read_relations(project_id: int) -> list:
+async def read_relations(project_id: int) -> list:
     """读取项目的人物关系，返回关系列表（包含角色名、关系类型、信任度等）"""
     db = SessionLocal()
     try:
-        return svc_read_relations(db, project_id)
+        return await svc_read_relations(db, project_id)
     finally:
         db.close()
 
@@ -702,93 +762,83 @@ def read_relations(project_id: int) -> list:
 # --- 写入类 tools ---
 
 @tool
-def update_outline(project_id: int, title: str = None, summary: str = None, plot_points: list = None) -> dict:
+async def update_outline(project_id: int, title: str = None, summary: str = None, plot_points: list = None) -> dict:
     """修改项目的大纲。可以修改标题、概述或情节节点，只传需要修改的字段"""
     db = SessionLocal()
     try:
-        return svc_update_outline(db, project_id, title, summary, plot_points)
+        return await svc_update_outline(db, project_id, title, summary, plot_points)
     finally:
         db.close()
 
 
 @tool
-def update_character(project_id: int, character_id: int, name: str = None, role: str = None, personality: str = None, core_motivation: str = None, growth_arc: str = None) -> dict:
+async def update_character(project_id: int, character_id: int, name: str = None, role: str = None, personality: str = None, core_motivation: str = None, growth_arc: str = None) -> dict:
     """修改指定角色的信息。只传需要修改的字段"""
     db = SessionLocal()
     try:
-        return svc_update_character(db, project_id, character_id, name, role, personality, core_motivation, growth_arc)
+        return await svc_update_character(db, project_id, character_id, name, role, personality, core_motivation, growth_arc)
     finally:
         db.close()
 
 
 @tool
-def create_character(project_id: int, name: str, role: str, personality: str = "", core_motivation: str = "") -> dict:
+async def create_character(project_id: int, name: str, role: str, personality: str = "", core_motivation: str = "") -> dict:
     """为项目新增一个角色"""
     db = SessionLocal()
     try:
-        return svc_create_character(db, project_id, name, role, personality, core_motivation)
+        return await svc_create_character(db, project_id, name, role, personality, core_motivation)
     finally:
         db.close()
 
 
 @tool
-def update_chapter_outline(project_id: int, chapter_outline_id: int, title: str = None, plot: str = None) -> dict:
+async def update_chapter_outline(project_id: int, chapter_outline_id: int, title: str = None, plot: str = None) -> dict:
     """修改指定章节的大纲。只传需要修改的字段"""
     db = SessionLocal()
     try:
-        return svc_update_chapter_outline(db, project_id, chapter_outline_id, title, plot)
+        return await svc_update_chapter_outline(db, project_id, chapter_outline_id, title, plot)
     finally:
         db.close()
 
 
 @tool
-def update_relations(project_id: int, relation_id: int, relation_type: str = None, direction: str = None, current_status: str = None, trust_level: int = None) -> dict:
+async def update_relations(project_id: int, relation_id: int, relation_type: str = None, direction: str = None, current_status: str = None, trust_level: int = None) -> dict:
     """修改人物关系。可修改关系类型、方向、状态描述、信任度，只传需要修改的字段"""
     db = SessionLocal()
     try:
-        return svc_update_relation(db, project_id, relation_id, relation_type, direction, current_status, trust_level)
+        return await svc_update_relation(db, project_id, relation_id, relation_type, direction, current_status, trust_level)
     finally:
         db.close()
 
 
-# --- 生成类 tools（流式） ---
+# --- 生成类 tools ---
 
 @tool
-def generate_chapter_content(project_id: int, chapter_number: int) -> dict:
-    """生成指定章节的正文内容。生成过程中会流式输出文本，完成后自动保存。"""
+async def generate_chapter_content(project_id: int, chapter_number: int) -> dict:
+    """生成指定章节的正文内容。生成完成后自动保存，可在写作面板查看完整内容。返回生成摘要和预览。"""
     db = SessionLocal()
     try:
-        import asyncio
-        loop = asyncio.get_event_loop()
-        return loop.run_until_complete(
-            generate_chapter(db, project_id, chapter_number, _model_config_id, _user_id, _chunk_queue)
-        )
-    finally:
-        db.close()
-
-
-@tool
-def review_chapter(project_id: int, chapter_number: int) -> dict:
-    """审核指定章节的内容，返回结构化审核结果（分数、问题、建议）"""
-    db = SessionLocal()
-    try:
-        loop = asyncio.get_event_loop()
-        return loop.run_until_complete(
-            review_chapter(db, project_id, chapter_number, _model_config_id, _user_id)
-        )
+        return await generate_chapter(db, project_id, chapter_number)
     finally:
         db.close()
 
 
 @tool
-def rewrite_chapter(project_id: int, chapter_number: int, review_feedback: str) -> dict:
-    """根据审核意见重写指定章节。重写过程中会流式输出文本，完成后自动保存。review_feedback 参数填写审核意见摘要。"""
+async def review_chapter(project_id: int, chapter_number: int) -> dict:
+    """审核指定章节的内容，返回结构化审核结果（分数、问题列表、改进建议）。"""
     db = SessionLocal()
     try:
-        loop = asyncio.get_event_loop()
-        return loop.run_until_complete(
-            rewrite_chapter(db, project_id, chapter_number, review_feedback, _model_config_id, _user_id, _chunk_queue)
-        )
+        return await review_chapter(db, project_id, chapter_number)
+    finally:
+        db.close()
+
+
+@tool
+async def rewrite_chapter(project_id: int, chapter_number: int, review_feedback: str) -> dict:
+    """根据审核意见重写指定章节。重写完成后自动保存，可在写作面板查看。review_feedback 填写审核意见摘要。"""
+    db = SessionLocal()
+    try:
+        return await rewrite_chapter(db, project_id, chapter_number, review_feedback)
     finally:
         db.close()
 
@@ -814,25 +864,35 @@ AGENT_TOOLS = [
 
 ```bash
 git add backend/app/agents/agent_tools.py
-git commit -m "feat(backend): refactor agent_tools to use services layer, add 5 new tools"
+git commit -m "feat(backend): refactor all tools to async, use services layer, add 5 new tools"
 ```
 
 ---
 
-## Task 4: 后端 SSE — side channel + 并发控制 + chunk 事件
+## Task 5: 后端 SSE — 并发控制 + tool_context + 生成结果事件
 
 **Files:**
 - Modify: `backend/app/api/agent.py`
 - Modify: `backend/app/agents/sse_events.py`
 
-- [ ] **Step 1: sse_events.py 新增 format_agent_chunk**
+关键设计：
+- 并发控制：请求前获取 is_busy 锁，流结束后释放（使用独立 Session 避免请求级 Session 失效）
+- tool_context：请求开始时 set，结束后 reset
+- 生成类 tool 完成后通过 `on_tool_end` 事件的 result 传递预览信息
+- 审核结果通过 `on_tool_end` 事件的 result 传递结构化审核数据
 
-在 `sse_events.py` 的 Agent SSE 事件区域末尾添加：
+- [ ] **Step 1: sse_events.py 新增审核结果事件**
+
+在 Agent SSE 事件区域末尾添加：
 
 ```python
-def format_agent_chunk(content: str) -> str:
-    """格式化 Agent 章节正文流式 chunk（区别于 agent_text）"""
-    return f"event: chunk\ndata: {json.dumps({'content': content})}\n\n"
+def format_agent_review(review: dict) -> str:
+    """格式化 Agent 审核结果事件（结构化数据，前端渲染为卡片）"""
+    return f"event: agent_review\ndata: {json.dumps(review, ensure_ascii=False)}\n\n"
+
+def format_agent_chapter_preview(preview: dict) -> str:
+    """格式化 Agent 章节生成/重写预览事件"""
+    return f"event: agent_chapter_preview\ndata: {json.dumps(preview, ensure_ascii=False)}\n\n"
 ```
 
 - [ ] **Step 2: 重写 agent.py**
@@ -842,7 +902,6 @@ def format_agent_chunk(content: str) -> str:
 """AI 搭档 Agent API 路由"""
 
 import json
-import asyncio
 from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
@@ -856,16 +915,16 @@ from app.utils.project import get_project_for_user
 from app.models.user import User
 from app.models.project import Project
 from app.agents.agent_graph import create_agent_graph, build_project_context
-from app.agents.agent_tools import set_tool_context
+from app.agents.tool_context import set_tool_context, reset_tool_context
 from app.agents.sse_events import (
     format_agent_text,
     format_agent_tool_start,
     format_agent_tool_result,
     format_agent_done,
     format_ai_update,
-    format_agent_chunk,
+    format_agent_review,
+    format_agent_chapter_preview,
     format_error_message,
-    format_heartbeat,
 )
 from app.utils.logger import get_logger
 
@@ -885,30 +944,43 @@ class AgentChatRequest(BaseModel):
     history: Optional[list[dict]] = None
 
 
-def _acquire_busy_lock(project: Project, owner: str = "agent") -> bool:
+def _acquire_busy_lock(db: Session, project_id: int, owner: str = "agent") -> bool:
     """尝试获取项目忙锁，返回是否成功"""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        return False
     now = datetime.utcnow()
     if project.is_busy:
-        # 检查是否超时
         if project.busy_since and (now - project.busy_since).total_seconds() > BUSY_TIMEOUT_SECONDS:
-            logger.warning(f"Project {project.id} busy lock expired, preempting (was held by {project.busy_by})")
+            logger.warning(f"Project {project_id} busy lock expired, preempting (was held by {project.busy_by})")
         else:
             return False
     project.is_busy = True
     project.busy_since = now
     project.busy_by = owner
+    db.commit()
     return True
 
 
-def _release_busy_lock(project: Project):
-    """释放项目忙锁"""
-    project.is_busy = False
-    project.busy_since = None
-    project.busy_by = None
+def _release_busy_lock(project_id: int):
+    """释放项目忙锁（使用独立 Session）"""
+    db = SessionLocal()
+    try:
+        project = db.query(Project).filter(Project.id == project_id).first()
+        if project and project.busy_by == "agent":
+            project.is_busy = False
+            project.busy_since = None
+            project.busy_by = None
+            db.commit()
+    except Exception as e:
+        logger.error(f"Failed to release busy lock: {e}")
+        db.rollback()
+    finally:
+        db.close()
 
 
-async def stream_agent_events(graph, messages: list, project_id: int, chunk_queue: asyncio.Queue):
-    """流式输出 Agent 事件，同时监听 side channel 的 chapter chunk"""
+async def stream_agent_events(graph, messages: list, project_id: int):
+    """流式输出 Agent 事件"""
     write_tools = {
         "update_outline", "update_character", "create_character",
         "update_chapter_outline", "update_relations",
@@ -924,75 +996,55 @@ async def stream_agent_events(graph, messages: list, project_id: int, chunk_queu
         "rewrite_chapter": "writing",
     }
 
-    agent_stream_done = False
-
     try:
-        # 同时监听 agent astream 和 chunk_queue
-        agent_aiter = graph.astream_events(
+        async for event in graph.astream_events(
             {"messages": messages},
             config={"configurable": {"thread_id": f"agent-{project_id}"}},
             version="v2",
-        ).__aiter__()
+        ):
+            kind = event.get("event", "")
 
-        while not agent_stream_done:
-            # 用 asyncio.wait 同时等待两个源
-            agent_task = asyncio.create_task(agent_aiter.__anext__())
-            chunk_task = asyncio.create_task(chunk_queue.get())
+            # LLM 文本输出
+            if kind == "on_chat_model_stream":
+                chunk = event.get("data", {}).get("chunk")
+                if chunk and chunk.content and isinstance(chunk.content, str):
+                    yield format_agent_text(chunk.content)
 
-            done, pending = await asyncio.wait(
-                {agent_task, chunk_task},
-                return_when=asyncio.FIRST_COMPLETED,
-            )
+            # Tool 调用开始
+            elif kind == "on_tool_start":
+                tool_name = event.get("name", "")
+                tool_input = event.get("data", {}).get("input", {})
+                yield format_agent_tool_start(tool_name, tool_input)
 
-            # 取消未完成的任务
-            for p in pending:
-                p.cancel()
+            # Tool 调用结束
+            elif kind == "on_tool_end":
+                tool_name = event.get("name", "")
+                tool_output = event.get("data", {}).get("output", {})
 
-            # 处理 agent 事件
-            if agent_task in done:
-                try:
-                    event = agent_task.result()
-                    kind = event.get("event", "")
+                # 写操作发送 ai_update 通知
+                if tool_name in write_tools:
+                    module = module_map.get(tool_name, "unknown")
+                    yield format_ai_update(module, f"{tool_name} 执行完成")
 
-                    if kind == "on_chat_model_stream":
-                        chunk = event.get("data", {}).get("chunk")
-                        if chunk and chunk.content and isinstance(chunk.content, str):
-                            yield format_agent_text(chunk.content)
+                # 序列化 tool output
+                output_data = json.dumps(tool_output, ensure_ascii=False) if isinstance(tool_output, dict) else str(tool_output)
+                yield format_agent_tool_result(tool_name, {"output": output_data[:500]})
 
-                    elif kind == "on_tool_start":
-                        tool_name = event.get("name", "")
-                        tool_input = event.get("data", {}).get("input", {})
-                        yield format_agent_tool_start(tool_name, tool_input)
+                # 生成类 tool：发送章节预览事件
+                if tool_name in ("generate_chapter_content", "rewrite_chapter") and isinstance(tool_output, dict):
+                    if tool_output.get("success"):
+                        yield format_agent_chapter_preview({
+                            "chapter_number": tool_output.get("chapter_number"),
+                            "title": tool_output.get("title", ""),
+                            "word_count": tool_output.get("word_count", 0),
+                            "preview": tool_output.get("preview", ""),
+                            "action": "generated" if tool_name == "generate_chapter_content" else "rewritten",
+                        })
 
-                    elif kind == "on_tool_end":
-                        tool_name = event.get("name", "")
-                        tool_output = event.get("data", {}).get("output", {})
-                        if tool_name in write_tools:
-                            module = module_map.get(tool_name, "unknown")
-                            yield format_ai_update(module, f"{tool_name} 执行完成")
-                        output_str = json.dumps(tool_output, ensure_ascii=False) if isinstance(tool_output, dict) else str(tool_output)
-                        yield format_agent_tool_result(tool_name, {"output": output_str[:500]})
-
-                except StopAsyncIteration:
-                    agent_stream_done = True
-
-            # 处理 chunk_queue 中的章节正文
-            if chunk_task in done:
-                try:
-                    chunk_content = chunk_task.result()
-                    if chunk_content is not None:
-                        yield format_agent_chunk(chunk_content)
-                except Exception:
-                    pass
-
-        # 排空 chunk_queue 中剩余内容
-        while not chunk_queue.empty():
-            try:
-                chunk_content = chunk_queue.get_nowait()
-                if chunk_content is not None:
-                    yield format_agent_chunk(chunk_content)
-            except asyncio.QueueEmpty:
-                break
+                # 审核 tool：发送审核结果事件
+                if tool_name == "review_chapter" and isinstance(tool_output, dict):
+                    if tool_output.get("success") and tool_output.get("review"):
+                        yield format_agent_review(tool_output["review"])
 
         yield format_agent_done()
 
@@ -1012,15 +1064,9 @@ async def agent_chat(
     project = get_project_for_user(project_id, current_user.id, db)
 
     # 并发控制：获取忙锁
-    if not _acquire_busy_lock(project, "agent"):
+    if not _acquire_busy_lock(db, project_id, "agent"):
         holder = project.busy_by or "未知"
         raise HTTPException(status_code=409, detail=f"项目正在被{holder}使用，请稍后再试")
-
-    try:
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise HTTPException(status_code=500, detail="加锁失败")
 
     # 构建项目上下文
     context = build_project_context(project_id)
@@ -1048,34 +1094,24 @@ async def agent_chat(
             user_id=current_user.id,
         )
     except ValueError as e:
-        # 释放锁
-        _release_busy_lock(project)
-        db.commit()
+        _release_busy_lock(project_id)
         raise HTTPException(status_code=400, detail=str(e))
 
-    # 创建 side channel queue 和设置 tool 上下文
-    chunk_queue = asyncio.Queue()
-    set_tool_context(chunk_queue=chunk_queue, model_config_id=req.model_config_id, user_id=current_user.id)
+    # 设置 tool 运行时上下文（contextvars）
+    context_tokens = set_tool_context(
+        model_config_id=req.model_config_id,
+        user_id=current_user.id,
+    )
 
     async def _stream_with_cleanup():
         try:
-            async for event in stream_agent_events(graph, messages, project_id, chunk_queue):
+            async for event in stream_agent_events(graph, messages, project_id):
                 yield event
         finally:
             # 释放忙锁
-            db2 = SessionLocal()
-            try:
-                proj = db2.query(Project).filter(Project.id == project_id).first()
-                if proj and proj.busy_by == "agent":
-                    _release_busy_lock(proj)
-                    db2.commit()
-            except Exception as e:
-                logger.error(f"Failed to release busy lock: {e}")
-                db2.rollback()
-            finally:
-                db2.close()
-            # 清理 tool 上下文
-            set_tool_context()
+            _release_busy_lock(project_id)
+            # 重置 tool 上下文
+            reset_tool_context(context_tokens)
 
     return StreamingResponse(
         _stream_with_cleanup(),
@@ -1092,35 +1128,35 @@ async def agent_chat(
 
 ```bash
 git add backend/app/api/agent.py backend/app/agents/sse_events.py
-git commit -m "feat(backend): add side channel streaming, concurrency control, chunk event"
+git commit -m "feat(backend): add concurrency control, tool context, review/chapter-preview events"
 ```
 
 ---
 
-## Task 5: 前端 — AiMessage segments + chunk 事件处理
+## Task 6: 前端 — AiMessage segments + 新 SSE 事件处理
 
 **Files:**
 - Modify: `frontend/src/stores/workbenchStore.ts`
 - Modify: `frontend/src/lib/agentApi.ts`
 
-- [ ] **Step 1: 更新 workbenchStore.ts — AiMessage 支持 segments + isAgentBusy**
+- [ ] **Step 1: 更新 workbenchStore.ts**
 
-替换 `AiMessage` 接口和添加 `isAgentBusy` 状态：
+替换 `AiMessage` 和 `AiAction` 接口，添加 `isAgentBusy`：
 
 ```typescript
-// 替换 AiMessage 接口
 /** AI 消息内容段 */
 export interface AiMessageSegment {
-  type: 'agent_text' | 'chunk'
+  type: 'agent_text' | 'chunk' | 'review' | 'chapter_preview'
   content: string
+  data?: Record<string, unknown>  // 结构化数据（审核结果、章节预览等）
 }
 
 /** AI 侧栏消息 */
 export interface AiMessage {
   id: string
   role: 'user' | 'assistant'
-  content: string  // 向后兼容，纯文本摘要
-  segments: AiMessageSegment[]  // 结构化内容段
+  content: string  // 纯文本摘要
+  segments: AiMessageSegment[]
   actions?: AiAction[]
   timestamp: number
 }
@@ -1130,8 +1166,8 @@ export interface AiAction {
   tool: string
   status: 'running' | 'done' | 'error'
   description: string
-  args?: Record<string, unknown>  // tool 输入参数（可展开详情）
-  result?: Record<string, unknown>  // tool 返回结果（可展开详情）
+  args?: Record<string, unknown>
+  result?: Record<string, unknown>
 }
 ```
 
@@ -1155,7 +1191,7 @@ export interface AiAction {
   setIsAgentBusy: (busy) => set({ isAgentBusy: busy }),
 ```
 
-更新 `addAiMessage` 使其兼容旧消息（无 segments 字段时初始化为空数组）：
+更新 `addAiMessage`：
 
 ```typescript
   addAiMessage: (message) => set((state) => ({
@@ -1166,9 +1202,7 @@ export interface AiAction {
   })),
 ```
 
-- [ ] **Step 2: 更新 agentApi.ts — 处理 chunk 事件 + 传递 modelConfigId**
-
-替换整个 `AgentChatCallbacks` 接口和 `sendAgentMessage` 函数：
+- [ ] **Step 2: 更新 agentApi.ts — 处理新事件**
 
 ```typescript
 // frontend/src/lib/agentApi.ts
@@ -1179,10 +1213,11 @@ import type { SSEData } from './sseParser'
 /** Agent 聊天 SSE 回调 */
 export interface AgentChatCallbacks {
   onAgentText?: (content: string) => void
-  onChunk?: (content: string) => void
   onToolStart?: (tool: string, args: Record<string, unknown>) => void
   onToolResult?: (tool: string, result: Record<string, unknown>) => void
   onAiUpdate?: (module: string, summary: string) => void
+  onChapterPreview?: (data: Record<string, unknown>) => void
+  onReview?: (data: Record<string, unknown>) => void
   onAgentDone?: () => void
   onError?: (error: string) => void
 }
@@ -1225,9 +1260,6 @@ export async function sendAgentMessage(
         case 'agent_text':
           callbacks.onAgentText?.(String(payload.content || ''))
           break
-        case 'chunk':
-          callbacks.onChunk?.(String(payload.content || ''))
-          break
         case 'agent_tool_start':
           callbacks.onToolStart?.(String(payload.tool || ''), (payload.args as Record<string, unknown>) || {})
           break
@@ -1236,6 +1268,12 @@ export async function sendAgentMessage(
           break
         case 'ai_update':
           callbacks.onAiUpdate?.(String(payload.module || ''), String(payload.summary || ''))
+          break
+        case 'agent_chapter_preview':
+          callbacks.onChapterPreview?.(payload)
+          break
+        case 'agent_review':
+          callbacks.onReview?.(payload)
           break
         case 'agent_done':
           callbacks.onAgentDone?.()
@@ -1256,17 +1294,24 @@ export async function sendAgentMessage(
 
 ```bash
 git add frontend/src/stores/workbenchStore.ts frontend/src/lib/agentApi.ts
-git commit -m "feat(frontend): add AiMessage segments, chunk event, isAgentBusy state"
+git commit -m "feat(frontend): add AiMessage segments, review/chapter-preview events, isAgentBusy"
 ```
 
 ---
 
-## Task 6: 前端 — AICompanionSidebar 模型选择器 + 并发控制 + segments 处理
+## Task 7: 前端 — AICompanionSidebar 模型选择器 + segments 处理 + 并发
 
 **Files:**
 - Modify: `frontend/src/components/workbench/AICompanionSidebar.tsx`
 
 - [ ] **Step 1: 重写 AICompanionSidebar.tsx**
+
+关键改动：
+- 模型选择器下拉菜单（header 区域）
+- segments 处理：agent_text 追加文本，chapter_preview / review 追加结构化 segment
+- tool action 记录 args 和 result
+- 传递 modelConfigId
+- 并发控制：isAgentBusy + workflow 运行时禁用
 
 ```tsx
 // frontend/src/components/workbench/AICompanionSidebar.tsx
@@ -1275,16 +1320,22 @@ import { useState, useRef, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { PanelRightClose, PanelRightOpen, ChevronDown } from 'lucide-react'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
+import { useWorkflowStore } from '@/stores/workflowStore'
 import { AICompanionChat } from './AICompanionChat'
 import { AICompanionInput } from './AICompanionInput'
 import { sendAgentMessage } from '@/lib/agentApi'
 import { modelConfigsApi } from '@/lib/api'
 import type { ModelConfig } from '@/types'
 
-export function AICompanionSidebar() {
+export function AICompanionSidebar()
+{
   const { id } = useParams()
   const projectId = parseInt(id || '0')
-  const { aiSidebarOpen, toggleAiSidebar, addAiMessage, isAgentBusy, setIsAgentBusy, selectedModelKey } = useWorkbenchStore()
+  const {
+    aiSidebarOpen, toggleAiSidebar, addAiMessage,
+    isAgentBusy, setIsAgentBusy,
+  } = useWorkbenchStore()
+  const workflowRunning = useWorkflowStore((s) => s.isRunning)
   const [sending, setSending] = useState(false)
   const [models, setModels] = useState<ModelConfig[]>([])
   const [selectedModelId, setSelectedModelId] = useState<number | null>(null)
@@ -1292,19 +1343,22 @@ export function AICompanionSidebar() {
   const abortRef = useRef<AbortController | null>(null)
 
   // 加载模型配置列表
-  useEffect(() => {
-    modelConfigsApi.list().then((res) => {
+  useEffect(() =>
+  {
+    modelConfigsApi.list().then((res) =>
+    {
       const healthy = (res.configs || []).filter((c: ModelConfig) => c.is_healthy)
       setModels(healthy)
-      // 默认选中第一个
-      if (healthy.length > 0 && !selectedModelId) {
+      if (healthy.length > 0 && !selectedModelId)
+      {
         setSelectedModelId(healthy[0].id)
       }
     }).catch(() => {})
   }, [])
 
   // 折叠状态
-  if (!aiSidebarOpen) {
+  if (!aiSidebarOpen)
+  {
     return (
       <div className="w-10 bg-slate-950 border-l border-slate-800 flex flex-col items-center pt-3 gap-2">
         <button onClick={toggleAiSidebar} className="p-1.5 text-slate-500 hover:text-slate-300 transition-colors" title="展开 AI 搭档">
@@ -1315,9 +1369,15 @@ export function AICompanionSidebar() {
     )
   }
 
+  const disabled = sending || workflowRunning
+  const disabledReason = workflowRunning
+    ? '工作流运行中，Agent 暂不可用'
+    : sending ? 'Agent 思考中...' : undefined
+
   const selectedModel = models.find((m) => m.id === selectedModelId)
 
-  const handleSend = async (message: string) => {
+  const handleSend = async (message: string) =>
+  {
     // 添加用户消息
     addAiMessage({
       id: crypto.randomUUID(),
@@ -1351,9 +1411,11 @@ export function AICompanionSidebar() {
       .slice(-20)
       .map((m) => ({ role: m.role, content: m.content }))
 
-    try {
+    try
+    {
       await sendAgentMessage(projectId, message, {
-        onAgentText: (content) => {
+        onAgentText: (content) =>
+        {
           useWorkbenchStore.setState((state) => ({
             aiMessages: state.aiMessages.map((m) =>
               m.id === assistantId
@@ -1366,20 +1428,8 @@ export function AICompanionSidebar() {
             ),
           }))
         },
-        onChunk: (content) => {
-          useWorkbenchStore.setState((state) => ({
-            aiMessages: state.aiMessages.map((m) =>
-              m.id === assistantId
-                ? {
-                    ...m,
-                    content: m.content + content,
-                    segments: [...m.segments, { type: 'chunk' as const, content }],
-                  }
-                : m
-            ),
-          }))
-        },
-        onToolStart: (tool, args) => {
+        onToolStart: (tool, args) =>
+        {
           const desc = _toolDescription(tool, args)
           useWorkbenchStore.setState((state) => ({
             aiMessages: state.aiMessages.map((m) =>
@@ -1397,8 +1447,10 @@ export function AICompanionSidebar() {
             ),
           }))
         },
-        onToolResult: (tool, result) => {
-          useWorkbenchStore.setState((state) => {
+        onToolResult: (tool, result) =>
+        {
+          useWorkbenchStore.setState((state) =>
+          {
             const msg = state.aiMessages.find((m) => m.id === assistantId)
             if (!msg?.actions) return state
             const actionIdx = [...msg.actions].reverse().findIndex(
@@ -1422,17 +1474,55 @@ export function AICompanionSidebar() {
             }
           })
         },
-        onAiUpdate: (module) => {
+        onChapterPreview: (data) =>
+        {
+          useWorkbenchStore.setState((state) => ({
+            aiMessages: state.aiMessages.map((m) =>
+              m.id === assistantId
+                ? {
+                    ...m,
+                    segments: [...m.segments, {
+                      type: 'chapter_preview' as const,
+                      content: String(data.preview || ''),
+                      data,
+                    }],
+                  }
+                : m
+            ),
+          }))
+        },
+        onReview: (data) =>
+        {
+          useWorkbenchStore.setState((state) => ({
+            aiMessages: state.aiMessages.map((m) =>
+              m.id === assistantId
+                ? {
+                    ...m,
+                    segments: [...m.segments, {
+                      type: 'review' as const,
+                      content: JSON.stringify(data),
+                      data,
+                    }],
+                  }
+                : m
+            ),
+          }))
+        },
+        onAiUpdate: (module) =>
+        {
           useWorkbenchStore.getState().addAiUpdateMarker(module)
-          setTimeout(() => {
+          setTimeout(() =>
+          {
             useWorkbenchStore.getState().clearAiUpdateMarker(module)
           }, 5 * 60 * 1000)
         },
-        onAgentDone: () => {
+        onAgentDone: () =>
+        {
           setSending(false)
           setIsAgentBusy(false)
         },
-        onError: (error) => {
+        onError: (error) =>
+        {
           useWorkbenchStore.setState((state) => ({
             aiMessages: state.aiMessages.map((m) =>
               m.id === assistantId ? { ...m, content: m.content || `出错：${error}` } : m
@@ -1448,7 +1538,9 @@ export function AICompanionSidebar() {
         modelConfigId: selectedModelId || undefined,
         signal: controller.signal,
       })
-    } catch {
+    }
+    catch
+    {
       setSending(false)
       setIsAgentBusy(false)
     }
@@ -1498,13 +1590,14 @@ export function AICompanionSidebar() {
       <AICompanionChat />
 
       {/* 输入区 */}
-      <AICompanionInput onSend={handleSend} disabled={sending} />
+      <AICompanionInput onSend={handleSend} disabled={disabled} disabledReason={disabledReason} />
     </div>
   )
 }
 
 /** 生成 tool 操作的可读描述 */
-function _toolDescription(tool: string, args: Record<string, unknown>): string {
+function _toolDescription(tool: string, args: Record<string, unknown>): string
+{
   const map: Record<string, (args: Record<string, unknown>) => string> = {
     read_outline: () => '读取大纲',
     update_outline: () => '修改大纲',
@@ -1532,10 +1625,11 @@ git commit -m "feat(frontend): add model selector, concurrency control, segments
 
 ---
 
-## Task 7: 前端 — AICompanionChat segments 混合内容渲染
+## Task 8: 前端 — AICompanionChat segments 混合内容渲染 + AIActionCard 可展开
 
 **Files:**
 - Modify: `frontend/src/components/workbench/AICompanionChat.tsx`
+- Modify: `frontend/src/components/workbench/AIActionCard.tsx`
 
 - [ ] **Step 1: 重写 AICompanionChat.tsx**
 
@@ -1547,66 +1641,150 @@ import { useWorkbenchStore, type AiMessage } from '@/stores/workbenchStore'
 import { AIActionCard } from './AIActionCard'
 
 /** 渲染 segments 混合内容 */
-function MessageContent({ message }: { message: AiMessage }) {
-  const [chunkExpanded, setChunkExpanded] = useState(false)
-
+function MessageContent({ message }: { message: AiMessage })
+{
   // 兼容无 segments 的旧消息
-  if (!message.segments || message.segments.length === 0) {
+  if (!message.segments || message.segments.length === 0)
+  {
     return <span className="whitespace-pre-wrap">{message.content}</span>
   }
 
-  // 合并相邻的同类型 segments
-  const merged: Array<{ type: 'agent_text' | 'chunk'; content: string }> = []
-  for (const seg of message.segments) {
+  // 合并相邻的 agent_text segments
+  const merged: Array<{ type: string; content: string; data?: Record<string, unknown> }> = []
+  for (const seg of message.segments)
+  {
     const last = merged[merged.length - 1]
-    if (last && last.type === seg.type) {
+    if (last && last.type === 'agent_text' && seg.type === 'agent_text')
+    {
       last.content += seg.content
-    } else {
-      merged.push({ type: seg.type, content: seg.content })
+    }
+    else
+    {
+      merged.push({ type: seg.type, content: seg.content, data: seg.data })
     }
   }
 
   return (
     <>
-      {merged.map((seg, i) => {
-        if (seg.type === 'agent_text') {
-          return (
-            <span key={i} className="whitespace-pre-wrap">{seg.content}</span>
-          )
+      {merged.map((seg, i) =>
+      {
+        if (seg.type === 'agent_text')
+        {
+          return <span key={i} className="whitespace-pre-wrap">{seg.content}</span>
         }
-        // chunk 类型：章节正文，可折叠
-        const isLong = seg.content.length > 200
-        const displayContent = chunkExpanded || !isLong
-          ? seg.content
-          : seg.content.slice(0, 200) + '...'
-        return (
-          <div key={i} className="my-1.5 rounded bg-slate-800/60 border border-slate-700/50 px-2.5 py-2">
-            <div className="text-[10px] text-emerald-400/70 mb-1 flex items-center gap-1">
-              <span>📝 章节正文</span>
-              {isLong && (
-                <button
-                  onClick={() => setChunkExpanded(!chunkExpanded)}
-                  className="text-slate-500 hover:text-slate-300 transition-colors"
-                >
-                  {chunkExpanded ? '收起' : '展开全文'}
-                </button>
-              )}
-            </div>
-            <div className="text-xs text-slate-300 whitespace-pre-wrap leading-relaxed">
-              {displayContent}
-            </div>
-          </div>
-        )
+
+        if (seg.type === 'chapter_preview')
+        {
+          return <ChapterPreviewCard key={i} data={seg.data || {}} />
+        }
+
+        if (seg.type === 'review')
+        {
+          return <ReviewResultCard key={i} data={seg.data || {}} />
+        }
+
+        // fallback
+        return <span key={i} className="whitespace-pre-wrap">{seg.content}</span>
       })}
     </>
   )
 }
 
-export function AICompanionChat() {
+/** 章节生成/重写预览卡片 */
+function ChapterPreviewCard({ data }: { data: Record<string, unknown> })
+{
+  const [expanded, setExpanded] = useState(false)
+  const preview = String(data.preview || '')
+  const title = String(data.title || '')
+  const wordCount = Number(data.word_count || 0)
+  const action = String(data.action || 'generated')
+  const actionLabel = action === 'rewritten' ? '已重写' : '已生成'
+
+  return (
+    <div className="my-1.5 rounded bg-slate-800/60 border border-emerald-700/30 px-2.5 py-2">
+      <div className="text-[10px] text-emerald-400/80 mb-1">
+        📝 {title} · {actionLabel} · {wordCount}字
+      </div>
+      {preview && (
+        <div className="text-xs text-slate-300 whitespace-pre-wrap leading-relaxed">
+          {expanded ? preview : preview.slice(0, 150)}
+          {preview.length > 150 && (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="ml-1 text-slate-500 hover:text-slate-300"
+            >
+              {expanded ? '收起' : '...展开'}
+            </button>
+          )}
+        </div>
+      )}
+      <div className="text-[10px] text-slate-500 mt-1">
+        完整内容可在「写作」标签页查看
+      </div>
+    </div>
+  )
+}
+
+/** 审核结果卡片 */
+function ReviewResultCard({ data }: { data: Record<string, unknown> })
+{
+  const review = data as {
+    passed?: boolean
+    scores?: Record<string, number>
+    issues?: Array<{ type: string; location: string; description: string }>
+    suggestions?: string
+  }
+
+  const passed = review.passed !== false
+  const scores = review.scores || {}
+  const issues = review.issues || []
+
+  return (
+    <div className={`my-1.5 rounded border px-2.5 py-2 ${
+      passed
+        ? 'bg-green-900/20 border-green-700/30'
+        : 'bg-red-900/20 border-red-700/30'
+    }`}>
+      <div className={`text-[10px] font-medium mb-1 ${
+        passed ? 'text-green-400' : 'text-red-400'
+      }`}>
+        {passed ? '✓ 审核通过' : '✗ 审核未通过'}
+      </div>
+
+      {Object.keys(scores).length > 0 && (
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mb-1">
+          {Object.entries(scores).map(([key, val]) => (
+            <span key={key} className="text-[10px] text-slate-400">
+              {key}: <span className={val >= 7 ? 'text-green-400' : val >= 5 ? 'text-amber-400' : 'text-red-400'}>{val}</span>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {issues.length > 0 && (
+        <div className="space-y-0.5 mb-1">
+          {issues.map((issue, i) => (
+            <div key={i} className="text-[10px] text-slate-400">
+              <span className="text-amber-400">[{issue.type}]</span> {issue.location}: {issue.description}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {review.suggestions && (
+        <div className="text-[10px] text-slate-400 italic">{review.suggestions}</div>
+      )}
+    </div>
+  )
+}
+
+export function AICompanionChat()
+{
   const messages = useWorkbenchStore((s) => s.aiMessages)
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
+  useEffect(() =>
+  {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
@@ -1645,21 +1823,7 @@ export function AICompanionChat() {
 }
 ```
 
-- [ ] **Step 2: 提交**
-
-```bash
-git add frontend/src/components/workbench/AICompanionChat.tsx
-git commit -m "feat(frontend): render mixed agent_text and chunk segments with collapsible chapter content"
-```
-
----
-
-## Task 8: 前端 — AIActionCard 可展开详情
-
-**Files:**
-- Modify: `frontend/src/components/workbench/AIActionCard.tsx`
-
-- [ ] **Step 1: 重写 AIActionCard.tsx**
+- [ ] **Step 2: 重写 AIActionCard.tsx**
 
 ```tsx
 // frontend/src/components/workbench/AIActionCard.tsx
@@ -1668,11 +1832,13 @@ import { useState } from 'react'
 import { Check, Loader2, X, ChevronDown, ChevronRight } from 'lucide-react'
 import type { AiAction } from '@/stores/workbenchStore'
 
-interface AIActionCardProps {
+interface AIActionCardProps
+{
   actions: AiAction[]
 }
 
-export function AIActionCard({ actions }: AIActionCardProps) {
+export function AIActionCard({ actions }: AIActionCardProps)
+{
   if (actions.length === 0) return null
 
   return (
@@ -1684,7 +1850,8 @@ export function AIActionCard({ actions }: AIActionCardProps) {
   )
 }
 
-function ActionItem({ action }: { action: AiAction }) {
+function ActionItem({ action }: { action: AiAction })
+{
   const [expanded, setExpanded] = useState(false)
   const hasDetails = action.args || action.result
 
@@ -1731,86 +1898,55 @@ function ActionItem({ action }: { action: AiAction }) {
 }
 ```
 
-- [ ] **Step 2: 提交**
+- [ ] **Step 3: 提交**
 
 ```bash
-git add frontend/src/components/workbench/AIActionCard.tsx
-git commit -m "feat(frontend): make AIActionCard expandable with tool args and result details"
+git add frontend/src/components/workbench/AICompanionChat.tsx frontend/src/components/workbench/AIActionCard.tsx
+git commit -m "feat(frontend): mixed content rendering with chapter preview and review cards, expandable tool actions"
 ```
 
 ---
 
-## Task 9: 前端 — Workflow 并发禁用 Agent 输入
+## Task 9: 前端 — AICompanionInput 支持 disabledReason
 
 **Files:**
-- Modify: `frontend/src/stores/workbenchStore.ts`（已在 Task 5 添加 isAgentBusy）
-- Modify: `frontend/src/components/workbench/AICompanionInput.tsx`（添加禁用提示）
-- Modify: `frontend/src/components/workbench/AICompanionSidebar.tsx`（Workflow 运行时禁用提示）
+- Modify: `frontend/src/components/workbench/AICompanionInput.tsx`
 
-- [ ] **Step 1: 更新 AICompanionInput.tsx**
+- [ ] **Step 1: 更新 AICompanionInput**
 
-在输入框禁用时显示原因提示。读取文件后修改：将 `disabled` prop 的效果扩展，在禁用时显示提示文字。
-
-修改输入区域：当 `disabled` 为 true 时，显示"Agent 工作中..."或"工作流运行中..."的提示。
-
-在 `AICompanionInput.tsx` 中增加一个 `disabledReason` prop：
+读取现有文件，添加 `disabledReason` prop。在输入框上方显示禁用原因提示。
 
 ```tsx
-// 修改 AICompanionInput 的 props
-interface AICompanionInputProps {
+// 修改 props 接口
+interface AICompanionInputProps
+{
   onSend: (message: string) => void
   disabled: boolean
   disabledReason?: string
 }
 
-export function AICompanionInput({ onSend, disabled, disabledReason }: AICompanionInputProps) {
-  // ... 现有逻辑不变 ...
-
-  // 在输入区域上方，disabled 时显示原因
-  return (
-    <div className="border-t border-slate-800 p-3">
-      {disabled && disabledReason && (
-        <div className="text-[10px] text-amber-400/80 mb-1.5 text-center">{disabledReason}</div>
-      )}
-      {/* 现有输入框 */}
-    </div>
-  )
-}
+// 在输入区域上方添加提示
+{disabled && disabledReason && (
+  <div className="text-[10px] text-amber-400/80 mb-1.5 text-center">{disabledReason}</div>
+)}
 ```
 
-- [ ] **Step 2: 在 AICompanionSidebar 中传递 disabledReason**
-
-在 `AICompanionSidebar.tsx` 中，从 workflowStore 读取 workflow 运行状态：
-
-```tsx
-import { useWorkflowStore } from '@/stores/workflowStore'
-
-// 在组件内：
-const workflowRunning = useWorkflowStore((s) => s.isRunning)
-
-// 渲染输入区：
-<AICompanionInput
-  onSend={handleSend}
-  disabled={sending || workflowRunning}
-  disabledReason={workflowRunning ? '工作流运行中，Agent 暂不可用' : sending ? 'Agent 思考中...' : undefined}
-/>
-```
-
-- [ ] **Step 3: 提交**
+- [ ] **Step 2: 提交**
 
 ```bash
-git add frontend/src/components/workbench/AICompanionInput.tsx frontend/src/components/workbench/AICompanionSidebar.tsx
-git commit -m "feat(frontend): disable agent input during workflow run with reason display"
+git add frontend/src/components/workbench/AICompanionInput.tsx
+git commit -m "feat(frontend): add disabledReason display to AICompanionInput"
 ```
 
 ---
 
 ## Task 10: 集成验证
 
-- [ ] **Step 1: 重启后端**
+- [ ] **Step 1: 重启服务**
 
 ```bash
 docker compose build --no-cache backend && docker compose up -d backend
+docker compose build --no-cache frontend && docker compose up -d frontend
 ```
 
 - [ ] **Step 2: 运行后端测试**
@@ -1819,36 +1955,29 @@ docker compose build --no-cache backend && docker compose up -d backend
 docker exec novelagent-backend-1 pytest -v
 ```
 
-Expected: 所有测试通过
+- [ ] **Step 3: 手动验证功能清单**
 
-- [ ] **Step 3: 重启前端**
+1. AI 侧栏模型选择器：下拉框选模型 → 发消息 → 后端用选定模型
+2. `read_relations` / `update_relations`：读取/修改人物关系
+3. `generate_chapter_content`：发"帮我写第1章" → tool 运行中显示 spinner → 完成后显示预览卡片
+4. `review_chapter`：发"审核第1章" → 显示审核结果卡片（分数+问题+建议）
+5. `rewrite_chapter`：发"根据审核意见重写第1章" → 显示重写预览卡片
+6. Tool 可展开详情：点击 tool 操作行 → 展开显示参数和结果 JSON
+7. 并发控制：Agent 运行中再发消息 → 409 错误
+8. Context 自动刷新：左侧修改大纲 → 发"读取大纲" → Agent 返回最新数据
+9. Workflow 运行时 → Agent 输入框禁用，显示提示
 
-```bash
-docker compose build --no-cache frontend && docker compose up -d frontend
-```
-
-- [ ] **Step 4: 手动验证功能清单**
-
-1. AI 侧栏模型选择器：打开下拉框 → 选择模型 → 发送消息 → 后端使用选定模型
-2. 5 个新 tool：`read_relations` / `update_relations` / `generate_chapter_content` / `review_chapter` / `rewrite_chapter`
-3. 章节生成流式：发送"帮我写第1章" → 聊天中看到章节正文流式输出 → 可折叠
-4. 审核卡片：发送"审核第1章" → 聊天中看到审核结果
-5. Tool 可展开详情：点击 tool 操作 → 展开显示参数和结果
-6. 并发控制：Agent 运行中 → 快速再发消息 → 收到 409 错误提示
-7. Context 自动刷新：在左侧面板修改大纲 → 发送"读取大纲" → Agent 返回最新数据
-
-- [ ] **Step 5: 提交最终版本**
+- [ ] **Step 4: 最终提交**
 
 ```bash
 git add -A
-git commit -m "feat: complete agent evolution and workbench integration
+git commit -m "feat: complete agent evolution and workbench integration v2
 
-- Add 5 new agent tools (read_relations, update_relations, generate_chapter_content, review_chapter, rewrite_chapter)
-- Add shared services layer (outline, chapter, character, relation)
-- Add side channel streaming for chapter generation/rewrite
-- Add concurrency control (is_busy lock on projects table)
+- Add 5 new async agent tools with contextvars-based request scoping
+- Add async shared services layer (outline, chapter, character, relation)
+- Add concurrency control (is_busy lock with 5min timeout)
 - Add model selector dropdown in AI sidebar
-- Add mixed-content message rendering (agent_text + chunk segments)
+- Add chapter preview and review result cards in chat
 - Add expandable tool action cards with args/result details
 - Add workflow/agent mutual exclusion in UI"
 ```
