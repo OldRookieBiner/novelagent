@@ -12,13 +12,12 @@ import { outlineApi } from '@/lib/api'
 interface UseInspirationFormOptions
 {
   projectId: number
-  hasOutline?: boolean
 }
 
-export function useInspirationForm({ projectId, hasOutline = false }: UseInspirationFormOptions)
+export function useInspirationForm({ projectId }: UseInspirationFormOptions)
 {
   const {
-    inspirationFields, setInspirationField, setInspirationFields, setInspirationFieldStatus,
+    inspirationFields, setInspirationField, setInspirationFields,
     inspirationFieldStatus,
   } = useWorkbenchStore()
 

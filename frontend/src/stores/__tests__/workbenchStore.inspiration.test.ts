@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
-import type { InspirationData, FieldStatus } from '@/lib/inspiration/types'
 
 describe('workbenchStore inspiration fields', () =>
 {
