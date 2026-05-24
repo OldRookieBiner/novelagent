@@ -104,20 +104,3 @@ MODEL_CONTEXT_WINDOWS = {
 # 三级策略的第三级：未知模型的默认上下文窗口
 DEFAULT_CONTEXT_WINDOW = 32000
 
-# 灵感对话字段推断规则
-FIELD_INFERENCE_RULES = [
-    (["都市", "现代", "城市", "当代"], {"era": "modern", "novelType": "都市"}),
-    (["修仙", "灵气", "飞升", "仙界", "渡劫"], {"era": "fantasy", "novelType": "仙侠"}),
-    (["古代", "朝代", "皇帝", "宫廷", "江湖"], {"era": "ancient", "novelType": "古言"}),
-    (["未来", "星际", "机甲", "赛博", "AI统治"], {"era": "future", "novelType": "科幻"}),
-    (["甜", "宠", "逆袭", "重生", "穿书"], {"targetReader": "female"}),
-    (["升级", "爽", "热血", "争霸", "称霸"], {"targetReader": "male"}),
-    (["10万字", "10万"], {"targetWords": 100000, "novelLength": "short"}),
-    (["20万字", "20万", "30万字", "30万"], {"targetWords": 200000, "novelLength": "medium"}),
-    (["50万字", "50万", "100万字", "100万", "长篇"], {"targetWords": 500000, "novelLength": "long"}),
-]
-
-# 灵感采集必填字段
-INSPIRATION_REQUIRED_FIELDS = [
-    "novelType", "targetReader", "targetWords", "era",
-]

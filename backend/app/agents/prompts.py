@@ -619,59 +619,7 @@ REWRITE_USER_PROMPT = """请根据审核反馈，对原文进行精确修改。�
 """
 
 # ==============================================================================
-# 8. 灵感对话 Prompt — 字段提取 + 问题生成
-# ==============================================================================
-INSPIRATION_EXTRACTION_PROMPT = """你是一个创作顾问。从用户的描述中提取创作参数，并引导补充缺失信息。
-
-用户描述：{free_text}
-
-已有参数：{extracted_fields}
-缺失参数：{missing_fields}
-
-请完成两件事：
-1. 从用户描述中提取能确定的参数，输出 JSON
-2. 对于缺失且无法推断的参数，生成 2-3 个自然语言问题引导用户补充
-
-问题要求：
-- 一次最多问 2-3 个问题
-- 用亲切自然的语气，不要像填表
-- 根据已有信息做合理推断（如用户说"都市"可推断 era=modern）
-- 每个问题给出 2-3 个选项但允许自由回答
-
-请严格按照以下 JSON 格式输出，不要输出其他内容：
-
-```json
-{{{{
-  "extracted": {{{{"novelType": "悬疑", "era": "modern", ...}}}},
-  "questions": [
-    "这个故事的主角是什么性别和年龄段？比如：青年男性、中年女性等",
-    "你希望偏向爽文路线还是深度探讨？"
-  ]
-}}}}
-```"""
-
-INSPIRATION_QUESTION_PROMPT = """你是一个创作顾问。用户对你的问题做了回答，请结合之前的对话更新创作参数。
-
-之前的对话：{conversation_history}
-用户最新回答：{user_message}
-
-当前已有参数：{extracted_fields}
-仍缺失参数：{missing_fields}
-
-请输出更新后的参数和新的引导问题（如果还有缺失字段）。格式同前：
-
-```json
-{{{{
-  "extracted": {{{{"novelType": "悬疑", ...}}}},
-  "questions": ["下一个问题..."]
-}}}}
-```
-
-如果所有必填字段已齐全，questions 输出空数组。"""
-
-
-# ==============================================================================
-# 9. AI 搭档 灵感阶段 System Prompt
+# 灵感对话 System Prompt
 # ==============================================================================
 AGENT_INSPIRATION_SYSTEM_PROMPT = """你是一位叫“小灵”的创作搭档，你正在帮助用户收集小说创作的灵感和创意。
 
@@ -872,7 +820,5 @@ DEFAULT_PROMPTS = {
     "relation_generation": RELATION_GENERATION_PROMPT,
     "chapter_self_check": CHAPTER_SELF_CHECK_PROMPT,
     "chapter_refine": CHAPTER_REFINE_PROMPT,
-    "inspiration_extraction": INSPIRATION_EXTRACTION_PROMPT,
-    "inspiration_question": INSPIRATION_QUESTION_PROMPT,
     "agent_inspiration": AGENT_INSPIRATION_SYSTEM_PROMPT,
 }
