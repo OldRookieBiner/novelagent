@@ -36,9 +36,11 @@ interface InspirationFormProps
   onConfirm: (collectedInfo: Record<string, unknown>) => Promise<void>
   /** 重新规划请求：校验 → 构建 collectedInfo → 通知父组件显示确认弹窗 */
   onRequestReplan: (collectedInfo: Record<string, unknown>) => void
+  /** 审核模型变化时通知父组件 */
+  onReviewModelChange?: (configId: number | null) => void
 }
 
-export function InspirationForm({ projectId, hasOutline, onConfirm, onRequestReplan }: InspirationFormProps)
+export function InspirationForm({ projectId, hasOutline, onConfirm, onRequestReplan, onReviewModelChange }: InspirationFormProps)
 {
   const {
     fields, fieldStatus, errors, confirming, setConfirming,
@@ -461,7 +463,12 @@ export function InspirationForm({ projectId, hasOutline, onConfirm, onRequestRep
             </button>
             {showReviewModelAdvanced && (
               <Select value={reviewLlmConfigId?.toString() || '__default__'}
-                onValueChange={(v) => setReviewLlmConfigId(v === '__default__' ? null : parseInt(v))}>
+                onValueChange={(v) =>
+                {
+                  const id = v === '__default__' ? null : parseInt(v)
+                  setReviewLlmConfigId(id)
+                  onReviewModelChange?.(id)
+                }}>
                 <SelectTrigger className="w-full h-8 text-xs">
                   <SelectValue placeholder="使用创作模型（默认）" />
                 </SelectTrigger>
