@@ -237,6 +237,7 @@ async def agent_chat(
         graph = create_agent_graph(
             model_config_id=req.model_config_id,
             user_id=current_user.id,
+            stage=stage,
         )
     except ValueError as e:
         _release_busy_lock(project_id)
