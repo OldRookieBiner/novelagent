@@ -34,6 +34,10 @@ from app.agents.services.edit_service import (
     revise_section as svc_revise_section,
     polish_prose as svc_polish_prose,
 )
+from app.agents.services.inspiration_service import (
+    read_inspiration_brief as svc_read_inspiration_brief,
+    update_inspiration_brief as svc_update_inspiration_brief,
+)
 
 
 # --- 读取类 tools ---
@@ -74,6 +78,16 @@ async def read_relations(project_id: int) -> list:
     db = SessionLocal()
     try:
         return await svc_read_relations(db, project_id)
+    finally:
+        db.close()
+
+
+@tool
+async def read_inspiration_brief(project_id: int) -> dict:
+    """读取项目的灵感简报，包括写作风格、核心主题、世界观设定等创作前期收集的全部信息"""
+    db = SessionLocal()
+    try:
+        return await svc_read_inspiration_brief(db, project_id)
     finally:
         db.close()
 
@@ -126,6 +140,16 @@ async def update_relations(project_id: int, relation_id: int, relation_type: str
     db = SessionLocal()
     try:
         return await svc_update_relation(db, project_id, relation_id, relation_type, direction, current_status, trust_level)
+    finally:
+        db.close()
+
+
+@tool
+async def update_inspiration_brief(project_id: int, brief: str) -> dict:
+    """更新项目的灵感简报。brief 为完整的灵感简报 Markdown 文本，会完全替换现有内容"""
+    db = SessionLocal()
+    try:
+        return await svc_update_inspiration_brief(db, project_id, brief)
     finally:
         db.close()
 
@@ -210,11 +234,13 @@ AGENT_TOOLS = [
     read_characters,
     read_chapter_outlines,
     read_relations,
+    read_inspiration_brief,
     update_outline,
     update_character,
     create_character,
     update_chapter_outline,
     update_relations,
+    update_inspiration_brief,
     generate_chapter_content,
     review_chapter,
     rewrite_chapter,
