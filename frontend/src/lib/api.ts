@@ -85,6 +85,16 @@ export function setSessionToken(token: string | null): void {
   }
 }
 
+
+/**
+ * Clear stale token and redirect to login
+ */
+function clearAuthAndRedirect(): void {
+  setSessionToken(null);
+  localStorage.removeItem('auth-storage');
+  window.location.href = '/login';
+}
+
 // ==================== Request Helper ====================
 
 // 请求超时时间（毫秒）
@@ -134,6 +144,10 @@ export async function request<T>(
       signal: controller.signal,
       credentials: 'include', // 发送和接收 cookies
     });
+
+    if (response.status === 401) {
+      clearAuthAndRedirect();
+    }
 
     if (!response.ok) {
       const error: ApiError = await response.json().catch(() => ({

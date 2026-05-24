@@ -599,3 +599,16 @@ GET  /api/projects/{id}/workflow/state    # 获取工作流状态
 POST /api/projects/{id}/workflow/cancel   # 取消工作流（删除检查点）
 PUT  /api/projects/{id}/workflow/stage    # 手动切换工作流阶段
 ```
+
+---
+
+## Agent skills
+
+### Issue tracker
+GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+uses five standard labels: needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+Single-context — one CONTEXT.md + docs/adr/ at repo root. See `docs/agents/domain.md`.

@@ -18,9 +18,10 @@ def build_summary_prompt(chapter_content: str, prompts: dict) -> str:
         格式化后的 prompt
     """
     from app.agents.prompts import DEFAULT_PROMPTS
+    from app.agents.nodes.utils import safe_format
 
     template = prompts.get("chapter_summary_generation", DEFAULT_PROMPTS["chapter_summary_generation"])
-    return template.format(chapter_content=chapter_content)
+    return safe_format(template, chapter_content=chapter_content)
 
 
 def _get_target_chapter_num(written_chapters: list[dict], current_chapter: int) -> int | None:

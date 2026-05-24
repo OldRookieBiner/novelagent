@@ -1,7 +1,7 @@
 """Arc model — 弧"""
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -22,6 +22,8 @@ class Arc(Base):
     title = Column(String(200), nullable=True)
     summary = Column(Text, nullable=True)
     chapter_count = Column(Integer, nullable=False, default=10)
+    outline = Column(Text, nullable=True)                    # 弧纲（详细概要：情节走向、关键事件、角色弧线）
+    outline_confirmed = Column(Boolean, default=False)       # 弧纲是否已确认
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

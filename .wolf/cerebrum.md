@@ -40,6 +40,9 @@
 - [2026-05-15] **防抖自动保存必须用 formStateRef 模式：** useCallback 闭包会捕获表单状态的旧值，导致防抖回调发送过期数据。正确做法：用 useRef 追踪最新表单状态，防抖回调从 ref 读取。triggerAutoSave 只依赖 onUpdate，不依赖表单状态字段。
 - [2026-05-15] **后端 update models 必须保留 health_status：** 前端传来的 models 不包含服务端权威的 health_status/health_latency（这些是健康检查写入的），后端 update 时必须从 DB 中已有 models 读取并保留，否则覆盖健康检查结果。
 - [2026-05-15] **get_system_prompt 必须处理 dict 格式默认值：** `DEFAULT_PROMPTS` 中 `chapter_content_generation`/`review`/`rewrite` 是 dict 格式 `{"system": ..., "user": ...}`。`get_system_prompt` 回退默认值时必须提取 "user" 部分，否则返回 dict 导致下游 `.format()` 报错 `'dict' object has no attribute 'format'`。
+- [2026-05-24] **不能同时保留 `file.ts` 和 `file/` 目录：** TypeScript 模块解析会冲突。删除原文件后 `import ... from '@/lib/file'` 自动解析到 `file/index.ts`。
+- [2026-05-24] **targetReader effect 必须用 prevReaderRef 防止初始化清除：** 初始化从后端回填字段时 targetReader 变化会触发 effect 清除其他字段。使用 ref 追踪前值，仅在真正切换时清除。
+- [2026-05-24] **buildCollectedInfoData 中 selectedModelKey 必须从 store.getState() 读取：** useCallback 闭包会捕获 selectedModelKey 旧值。用 `useWorkbenchStore.getState().selectedModelKey` 实时读取。
 
 ## Decision Log
 

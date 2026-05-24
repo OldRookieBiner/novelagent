@@ -1,6 +1,8 @@
 """Outline API routes"""
 
 import json
+import asyncio
+import logging
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -20,6 +22,7 @@ from app.utils.deps import get_user_settings_or_raise, get_llm_for_context
 from app.utils.project import get_project_for_user, get_project_and_outline
 from app.utils.workflow import get_or_create_workflow_state
 from app.utils.error import format_sse_error
+from app.agents.sse_events import format_done, format_error_message
 from app.agents.state import (
     STAGE_OUTLINE,
     STAGE_CHAPTER_OUTLINES
@@ -48,6 +51,7 @@ from app.agents.nodes.outline_generation import (
 # info_collection_node 已移除，信息收集由前端表单处理
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/{project_id}/outline", response_model=OutlineResponse)
@@ -153,8 +157,13 @@ async def generate_outline(
                 # node_state 为空时仍然发送完成事件
                 yield f"event: done\ndata: {json.dumps({'message': 'Outline generation completed'})}\n\n"
 
+        except asyncio.CancelledError:
+            # async generator 中 CancelledError 后不能 yield（连接已关闭），必须 re-raise
+            logger.warning("大纲生成 SSE 流被取消")
+            raise
         except Exception as e:
             yield format_sse_error(e)
+            yield format_done("Error occurred")
 
     return StreamingResponse(
         stream_generator(),
