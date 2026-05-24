@@ -1,6 +1,13 @@
 // 灵感选项配置和图标映射
 
-import type { ContextStrategyOption } from './types'
+// 上下文策略选项（本地定义，不再依赖已删除的 types.ts）
+interface ContextStrategyOption
+{
+  value: string
+  label: string
+  desc: string
+  recommendedWords: string
+}
 
 // ============================================
 // 上下文策略选项

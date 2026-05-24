@@ -1,66 +1,29 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
 
-describe('workbenchStore inspiration fields', () =>
+describe('workbenchStore inspiration brief', () =>
 {
   beforeEach(() =>
   {
     useWorkbenchStore.getState().reset()
   })
 
-  it('should have default empty inspirationFields', () =>
+  it('should have default empty inspirationBrief', () =>
   {
-    const { inspirationFields } = useWorkbenchStore.getState()
-    expect(inspirationFields).toBeDefined()
-    expect(inspirationFields.novelType).toBe('')
-    expect(inspirationFields.targetWords).toBe(50000)
+    const { inspirationBrief } = useWorkbenchStore.getState()
+    expect(inspirationBrief).toBe('')
   })
 
-  it('should update inspirationFields via setInspirationField', () =>
+  it('should update inspirationBrief via setInspirationBrief', () =>
   {
-    useWorkbenchStore.getState().setInspirationField('novelType', 'xuanhuan')
-    expect(useWorkbenchStore.getState().inspirationFields.novelType).toBe('xuanhuan')
+    useWorkbenchStore.getState().setInspirationBrief('# 测试灵感\n\n这是一个测试')
+    expect(useWorkbenchStore.getState().inspirationBrief).toBe('# 测试灵感\n\n这是一个测试')
   })
 
-  it('should update fieldStatus via setInspirationFieldStatus', () =>
+  it('should reset inspirationBrief on reset()', () =>
   {
-    useWorkbenchStore.getState().setInspirationFieldStatus('novelType', 'agent_populated')
-    expect(useWorkbenchStore.getState().inspirationFieldStatus.novelType).toBe('agent_populated')
-  })
-
-  it('should clear agent_asking status when field is set by user', () =>
-  {
-    useWorkbenchStore.getState().setInspirationFieldStatus('novelType', 'agent_asking')
-    useWorkbenchStore.getState().setInspirationField('novelType', 'xuanhuan')
-    expect(useWorkbenchStore.getState().inspirationFieldStatus.novelType).toBeUndefined()
-  })
-
-  it('should keep agent_populated status when field is set', () =>
-  {
-    useWorkbenchStore.getState().setInspirationFieldStatus('novelType', 'agent_populated')
-    useWorkbenchStore.getState().setInspirationField('novelType', 'dushi')
-    expect(useWorkbenchStore.getState().inspirationFieldStatus.novelType).toBe('agent_populated')
-  })
-
-  it('should batch update inspirationFields via setInspirationFields', () =>
-  {
-    useWorkbenchStore.getState().setInspirationFields({
-      novelType: 'xuanhuan',
-      targetReader: 'male',
-      targetWords: 100000,
-    })
-    const { inspirationFields } = useWorkbenchStore.getState()
-    expect(inspirationFields.novelType).toBe('xuanhuan')
-    expect(inspirationFields.targetReader).toBe('male')
-    expect(inspirationFields.targetWords).toBe(100000)
-  })
-
-  it('should reset inspiration state on reset()', () =>
-  {
-    useWorkbenchStore.getState().setInspirationField('novelType', 'xuanhuan')
-    useWorkbenchStore.getState().setInspirationFieldStatus('novelType', 'agent_populated')
+    useWorkbenchStore.getState().setInspirationBrief('一些内容')
     useWorkbenchStore.getState().reset()
-    expect(useWorkbenchStore.getState().inspirationFields.novelType).toBe('')
-    expect(useWorkbenchStore.getState().inspirationFieldStatus.novelType).toBeUndefined()
+    expect(useWorkbenchStore.getState().inspirationBrief).toBe('')
   })
 })
