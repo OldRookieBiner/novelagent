@@ -1,6 +1,6 @@
 # backend/tests/test_inspiration_service.py
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock
 
 from app.agents.services.inspiration_service import (
     read_inspiration_brief,
