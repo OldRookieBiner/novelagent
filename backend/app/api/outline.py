@@ -18,35 +18,17 @@ from app.schemas.outline import (
     OutlineGenerateRequest,
 )
 from app.utils.auth import get_current_user
-from app.utils.deps import get_user_settings_or_raise, get_llm_for_context
+from app.utils.deps import get_user_settings_or_raise
 from app.utils.project import get_project_for_user, get_project_and_outline
 from app.utils.workflow import get_or_create_workflow_state
 from app.utils.error import format_sse_error
-from app.agents.sse_events import format_done, format_error_message
+from app.agents.sse_events import format_done
 from app.agents.state import (
     STAGE_OUTLINE,
     STAGE_CHAPTER_OUTLINES
 )
 from app.agents.nodes.outline_generation import (
-    generate_outline_stream,
-    parse_outline,
-    outline_generation_node,
-    # 导入章节数计算常量
     DEFAULT_CHAPTER_COUNT,
-    WORDS_THRESHOLD_SHORT,
-    WORDS_THRESHOLD_MEDIUM,
-    WORDS_THRESHOLD_LONG,
-    WORDS_THRESHOLD_VERY_LONG,
-    WORDS_PER_CHAPTER_SHORT,
-    WORDS_PER_CHAPTER_MEDIUM,
-    WORDS_PER_CHAPTER_LONG,
-    WORDS_PER_CHAPTER_VERY_LONG,
-    WORDS_PER_CHAPTER_EPIC,
-    MIN_CHAPTERS_SHORT,
-    MIN_CHAPTERS_MEDIUM,
-    MIN_CHAPTERS_LONG,
-    MIN_CHAPTERS_VERY_LONG,
-    MIN_CHAPTERS_EPIC,
 )
 # info_collection_node 已移除，信息收集由前端表单处理
 
