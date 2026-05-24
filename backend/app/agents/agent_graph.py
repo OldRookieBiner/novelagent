@@ -5,7 +5,7 @@
 from langgraph.prebuilt import create_react_agent
 from langchain_openai import ChatOpenAI
 
-from app.agents.agent_tools import AGENT_TOOLS
+from app.agents.agent_tools import AGENT_TOOLS, INSPIRATION_TOOLS
 from app.agents.agent_context import build_project_context
 from app.utils.llm import resolve_llm_service
 
@@ -26,13 +26,25 @@ def _get_llm_from_service(llm_service) -> ChatOpenAI:
     )
 
 
-def create_agent_graph(model_config_id: int = None, user_id: int = None):
-    """创建 Agent 图实例"""
+def create_agent_graph(model_config_id: int = None, user_id: int = None, stage: str = None):
+    """创建 Agent 图实例
+
+    Args:
+        model_config_id: 模型配置 ID
+        user_id: 用户 ID
+        stage: 工作流阶段（如 "inspiration"），用于限制可用工具
+    """
     llm_service = resolve_llm_service(model_config_id, user_id)
     llm = _get_llm_from_service(llm_service)
 
+    # 灵感阶段：限制工具为只读 + 简报 + 大纲修改
+    if stage == "inspiration":
+        tools = INSPIRATION_TOOLS
+    else:
+        tools = AGENT_TOOLS
+
     graph = create_react_agent(
         model=llm,
-        tools=AGENT_TOOLS,
+        tools=tools,
     )
     return graph

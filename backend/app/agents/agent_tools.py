@@ -228,6 +228,17 @@ async def polish_prose(project_id: int, chapter_number: int, style_instruction: 
         db.close()
 
 
+# 灵感阶段 tools 列表（只读 + 简报 + 大纲修改）
+INSPIRATION_TOOLS = [
+    read_outline,
+    read_characters,
+    read_chapter_outlines,
+    read_relations,
+    read_inspiration_brief,
+    update_outline,
+    update_inspiration_brief,
+]
+
 # 所有 tools 列表
 AGENT_TOOLS = [
     read_outline,

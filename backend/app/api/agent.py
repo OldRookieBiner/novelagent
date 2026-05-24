@@ -15,6 +15,9 @@ from app.utils.project import get_project_for_user
 from app.models.user import User
 from app.models.project import Project
 from app.agents.agent_graph import create_agent_graph
+from app.agents.prompts import AGENT_INSPIRATION_SYSTEM_PROMPT
+from app.models.workflow_state import WorkflowState
+from app.agents.state import STAGE_INSPIRATION
 from app.agents.agent_context import build_project_context
 from app.agents.tool_context import set_tool_context, reset_tool_context
 from app.agents.sse_events import (
@@ -170,15 +173,31 @@ async def agent_chat(
         holder = project.busy_by or "未知"
         raise HTTPException(status_code=409, detail=f"项目正在被{holder}使用，请稍后再试")
 
+    # 读取当前工作流阶段
+    workflow_state = db.query(WorkflowState).filter(
+        WorkflowState.project_id == project_id
+    ).first()
+    stage = workflow_state.stage if workflow_state else None
+
     # 构建项目上下文（原文注入 + token budget）
     context = build_project_context(
         project_id,
         current_chapter_number=req.current_chapter_number,
     )
 
-    # 构建 system message
+    # 构建 system message（阶段感知）
     current_chapter_line = f"\n当前章节：第{req.current_chapter_number}章" if req.current_chapter_number else ""
-    system_content = f"""你是一位专业的小说创作搭档。你可以帮助用户修改大纲、角色设定、章节大纲，也可以生成章节正文、审核章节、重写章节。
+
+    if stage == STAGE_INSPIRATION:
+        # 灵感阶段：使用专门的灵感提示词
+        inspiration_brief = context.get("inspiration_brief", "")
+        system_content = AGENT_INSPIRATION_SYSTEM_PROMPT.format(
+            inspiration_brief=inspiration_brief or "（尚未创建灵感简报，请引导用户描述创意）",
+            active_tab=req.active_tab or "灵感",
+        )
+    else:
+        # 其他阶段：使用通用提示词
+        system_content = f"""你是一位专业的小说创作搭档。你可以帮助用户修改大纲、角色设定、章节大纲，也可以生成章节正文、审核章节、重写章节。
 
 ## 项目上下文
 

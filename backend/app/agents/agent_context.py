@@ -90,6 +90,9 @@ def build_project_context(
                 context["outline"] = outline_data
                 budget.add(outline_tokens)
 
+            # 灵感简报（P2 附带，不受 token budget 限制）
+            context["inspiration_brief"] = outline.inspiration_template or ""
+
         # P3: 角色列表
         characters = db.query(Character).filter(Character.project_id == project_id).all()
         char_list = []
