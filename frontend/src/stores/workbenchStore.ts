@@ -3,6 +3,7 @@
 import { create } from 'zustand'
 import type { WorkbenchTab, MenuItem } from '@/types/workbench'
 import { SETTINGS_MENUS } from '@/types/workbench'
+import type { InspirationData, FieldStatus } from '@/lib/inspiration/types'
 
 /** AI 消息内容段 */
 export interface AiMessageSegment {
@@ -72,6 +73,13 @@ interface WorkbenchState
   selectedModelKey: string
   setSelectedModelKey: (key: string) => void
 
+  // 灵感面板状态（Agent↔表单双向桥接）
+  inspirationFields: InspirationData
+  inspirationFieldStatus: Record<string, FieldStatus>
+  setInspirationField: <K extends keyof InspirationData>(key: K, value: InspirationData[K]) => void
+  setInspirationFieldStatus: (key: string, status: FieldStatus) => void
+  setInspirationFields: (fields: Partial<InspirationData>) => void
+
   // 重置
   reset: () => void
 }
@@ -87,6 +95,15 @@ const initialState = {
   panelStates: {} as Record<string, { dirty: boolean }>,
   selectedModelKey: '' as string,
   isAgentBusy: false as boolean,
+  inspirationFields: {
+    novelType: '',
+    targetWords: 50000,
+    contextStrategy: 'fulltext',
+    coreTheme: '',
+    targetReader: '',
+    wordsPerChapter: '',
+  } as InspirationData,
+  inspirationFieldStatus: {} as Record<string, FieldStatus>,
 }
 
 export const useWorkbenchStore = create<WorkbenchState>((set) => ({
@@ -143,6 +160,29 @@ export const useWorkbenchStore = create<WorkbenchState>((set) => ({
   setSelectedModelKey: (key) => set({ selectedModelKey: key }),
 
   setIsAgentBusy: (busy) => set({ isAgentBusy: busy }),
+
+  setInspirationField: (key, value) => set((state) =>
+  {
+    const newStatus = { ...state.inspirationFieldStatus }
+    // 用户手动设置字段时，清除 agent_asking 状态（表示用户已响应 Agent 询问）
+    // 保留 agent_populated 状态不变（仅 Agent 自身可清除）
+    if (newStatus[key] === 'agent_asking')
+    {
+      delete newStatus[key]
+    }
+    return {
+      inspirationFields: { ...state.inspirationFields, [key]: value },
+      inspirationFieldStatus: newStatus,
+    }
+  }),
+
+  setInspirationFieldStatus: (key, status) => set((state) => ({
+    inspirationFieldStatus: { ...state.inspirationFieldStatus, [key]: status }
+  })),
+
+  setInspirationFields: (fields) => set((state) => ({
+    inspirationFields: { ...state.inspirationFields, ...fields }
+  })),
 
   reset: () => set(initialState),
 }))
