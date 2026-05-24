@@ -440,59 +440,95 @@ async def generate_outline_node(state: NovelState, llm: LLMService) -> NovelStat
 def prepare_outline_prompt(
     state: NovelState,
 ) -> tuple[str, int]:
-    """准备大纲生成提示词和章节数"""
+    """准备大纲生成提示词和章节数
+
+    优先使用 inspiration_template（灵感简报）作为 prompt 主体。
+    灵感简报为空时回退到从 collected_info 构建简易 prompt（向后兼容旧项目）。
+    """
+    import re
+
     inspiration_template = state.get("inspiration_template", "")
     collected_info = state.get("collected_info", {})
 
-    # 获取目标字数和每章字数
-    target_words = collected_info.get("targetWords", 100000)
-    words_per_chapter_str = collected_info.get("wordsPerChapter", "")
-    custom_words_per_chapter = collected_info.get("customWordsPerChapter")
-
-    # 计算每章字数
-    if words_per_chapter_str == "custom" and custom_words_per_chapter:
-        words_per_chapter = custom_words_per_chapter
-    elif words_per_chapter_str and words_per_chapter_str != "custom":
-        try:
-            words_per_chapter = int(words_per_chapter_str)
-        except (ValueError, TypeError):
-            words_per_chapter = WORDS_PER_CHAPTER_MEDIUM  # 默认值
-    else:
-        words_per_chapter = WORDS_PER_CHAPTER_MEDIUM  # 默认值
-
-    # 根据目标字数和每章字数计算章节数
+    # 计算章节数：从灵感简报或 collected_info 提取目标字数
+    target_words = _extract_target_words(inspiration_template, collected_info)
+    words_per_chapter = _extract_words_per_chapter(collected_info)
     if isinstance(target_words, int) and target_words > 0 and words_per_chapter > 0:
-        chapter_count = max(3, int(target_words / words_per_chapter))  # 最少3章
+        chapter_count = max(3, int(target_words / words_per_chapter))
     else:
         chapter_count = DEFAULT_CHAPTER_COUNT
 
-    # 如果没有灵感模板，从 collected_info 生成基本信息
+    # 灵感简报为空时，从 collected_info 构建简易 prompt（向后兼容）
     if not inspiration_template:
-        novel_type = collected_info.get("novelType", "未指定")
-        core_theme = collected_info.get("coreTheme", "未指定")
-        target_reader = collected_info.get("targetReader", "未指定")
-        era = collected_info.get("era", "未指定")
-        genre = collected_info.get("customGenre") or collected_info.get("genre", "未指定")
-        world_setting = collected_info.get("customWorldSetting") or collected_info.get("worldSetting", "未指定")
-        style = collected_info.get("stylePreference", "未指定")
-        target_words_display = f"{target_words}字" if isinstance(target_words, int) else "未指定"
+        inspiration_template = _build_fallback_template(collected_info, target_words)
 
-        # 根据目标读者获取主角设定
-        target_reader_label = "男频" if target_reader == "male" else "女频" if target_reader == "female" else "未指定"
-        if target_reader == "male":
-            protagonist = collected_info.get("customMaleLead") or collected_info.get("maleLead", "未指定")
-            protagonist_label = "男主"
-            gold_finger = collected_info.get("customGoldFinger") or collected_info.get("goldFinger", "未指定")
-        elif target_reader == "female":
-            protagonist = collected_info.get("customFemaleLead") or collected_info.get("femaleLead", "未指定")
-            protagonist_label = "女主"
-            gold_finger = "未指定"
-        else:
-            protagonist = collected_info.get("customProtagonist") or collected_info.get("protagonist", "未指定")
-            protagonist_label = "主角"
-            gold_finger = collected_info.get("customGoldFinger") or collected_info.get("goldFinger", "未指定")
+    # 使用 get_prompts_from_state 统一获取 prompt（支持 dict 格式）
+    from app.agents.nodes.utils import get_prompts_from_state, safe_format
+    system_template, user_template = get_prompts_from_state(state, "outline_generation")
 
-        inspiration_template = f"""# 小说创作灵感
+    prompt = safe_format(user_template,
+        inspiration_template=inspiration_template,
+        chapter_count=chapter_count,
+    )
+
+    return prompt, chapter_count
+
+
+def _extract_target_words(inspiration_template: str, collected_info: dict) -> int:
+    """从灵感简报或 collected_info 提取目标字数"""
+    # 优先从灵感简报中提取
+    if inspiration_template:
+        match = re.search(r'(\d+)\s*[万]\s*字', inspiration_template)
+        if match:
+            wan = int(match.group(1))
+            return wan * 10000
+        match = re.search(r'目标字数[：:]\s*(\d+)', inspiration_template)
+        if match:
+            return int(match.group(1))
+    # 回退到 collected_info
+    target_words = collected_info.get("targetWords", 100000)
+    return target_words if isinstance(target_words, int) else 100000
+
+
+def _extract_words_per_chapter(collected_info: dict) -> int:
+    """从 collected_info 提取每章字数"""
+    words_per_chapter_str = collected_info.get("wordsPerChapter", "")
+    custom_words = collected_info.get("customWordsPerChapter")
+    if words_per_chapter_str == "custom" and custom_words:
+        return custom_words
+    if words_per_chapter_str and words_per_chapter_str != "custom":
+        try:
+            return int(words_per_chapter_str)
+        except (ValueError, TypeError):
+            pass
+    return WORDS_PER_CHAPTER_MEDIUM
+
+
+def _build_fallback_template(collected_info: dict, target_words: int) -> str:
+    """从旧 collected_info 构建简易灵感模板（向后兼容）"""
+    novel_type = collected_info.get("novelType", "未指定")
+    core_theme = collected_info.get("coreTheme", "未指定")
+    target_reader = collected_info.get("targetReader", "未指定")
+    era = collected_info.get("era", "未指定")
+    genre = collected_info.get("customGenre") or collected_info.get("genre", "未指定")
+    world_setting = collected_info.get("customWorldSetting") or collected_info.get("worldSetting", "未指定")
+    style = collected_info.get("stylePreference", "未指定")
+    target_words_display = f"{target_words}字" if isinstance(target_words, int) else "未指定"
+
+    target_reader_label = "男频" if target_reader == "male" else "女频" if target_reader == "female" else "未指定"
+    if target_reader == "male":
+        protagonist = collected_info.get("customMaleLead") or collected_info.get("maleLead", "未指定")
+        protagonist_label = "男主"
+    elif target_reader == "female":
+        protagonist = collected_info.get("customFemaleLead") or collected_info.get("femaleLead", "未指定")
+        protagonist_label = "女主"
+    else:
+        protagonist = collected_info.get("customProtagonist") or collected_info.get("protagonist", "未指定")
+        protagonist_label = "主角"
+
+    gold_finger = collected_info.get("customGoldFinger") or collected_info.get("goldFinger", "未指定")
+
+    return f"""# 小说创作灵感
 
 ## 基本信息
 - **目标读者**：{target_reader_label}
@@ -512,18 +548,6 @@ def prepare_outline_prompt(
 ## 风格
 - **风格偏好**：{style}
 """
-
-    # 使用 get_prompts_from_state 统一获取 prompt（支持 dict 格式）
-    from app.agents.nodes.utils import get_prompts_from_state, safe_format
-    system_template, user_template = get_prompts_from_state(state, "outline_generation")
-
-    # outline_generation 是纯字符串模板（非 system/user dict），使用 user_template
-    prompt = safe_format(user_template,
-        inspiration_template=inspiration_template,
-        chapter_count=chapter_count,
-    )
-
-    return prompt, chapter_count
 
 
 async def generate_outline_stream(

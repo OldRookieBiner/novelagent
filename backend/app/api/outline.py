@@ -234,31 +234,9 @@ async def confirm_outline(
             detail="Outline is already confirmed"
         )
 
-    # 从灵感数据计算章节数
-    collected_info = outline.collected_info or {}
-    target_words = collected_info.get("targetWords", 100000)
-    words_per_chapter_str = collected_info.get("wordsPerChapter", "")
-    custom_words_per_chapter = collected_info.get("customWordsPerChapter")
-
-    # 计算每章字数
-    if words_per_chapter_str == "custom" and custom_words_per_chapter:
-        words_per_chapter = custom_words_per_chapter
-    elif words_per_chapter_str and words_per_chapter_str != "custom":
-        try:
-            words_per_chapter = int(words_per_chapter_str)
-        except (ValueError, TypeError):
-            words_per_chapter = WORDS_PER_CHAPTER_MEDIUM
-    else:
-        words_per_chapter = WORDS_PER_CHAPTER_MEDIUM
-
-    # 根据目标字数和每章字数计算章节数
-    if isinstance(target_words, int) and target_words > 0 and words_per_chapter > 0:
-        chapter_count = max(3, int(target_words / words_per_chapter))
-    else:
-        chapter_count = DEFAULT_CHAPTER_COUNT
-
-    # Update outline with chapter count
-    outline.chapter_count_suggested = chapter_count
+    # 使用 outline_generation_node 已设置的章节数，不再从 collected_info 计算
+    if outline.chapter_count_suggested <= 0:
+        outline.chapter_count_suggested = DEFAULT_CHAPTER_COUNT
     outline.chapter_count_confirmed = True
 
     # Confirm the outline
