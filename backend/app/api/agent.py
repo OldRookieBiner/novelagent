@@ -91,6 +91,7 @@ async def stream_agent_events(graph, messages: list, project_id: int):
         "update_chapter_outline", "update_relations",
         "generate_chapter_content", "rewrite_chapter",
         "edit_paragraph", "insert_scene", "revise_section", "polish_prose",
+        "update_inspiration_brief",
     }
     module_map = {
         "update_outline": "outline",
@@ -104,6 +105,7 @@ async def stream_agent_events(graph, messages: list, project_id: int):
         "insert_scene": "writing",
         "revise_section": "writing",
         "polish_prose": "writing",
+        "update_inspiration_brief": "inspiration",
     }
 
     try:

@@ -7,6 +7,7 @@ from langchain_openai import ChatOpenAI
 
 from app.agents.agent_tools import AGENT_TOOLS, INSPIRATION_TOOLS
 from app.agents.agent_context import build_project_context
+from app.agents.state import STAGE_INSPIRATION
 from app.utils.llm import resolve_llm_service
 
 
@@ -38,7 +39,7 @@ def create_agent_graph(model_config_id: int = None, user_id: int = None, stage: 
     llm = _get_llm_from_service(llm_service)
 
     # 灵感阶段：限制工具为只读 + 简报 + 大纲修改
-    if stage == "inspiration":
+    if stage == STAGE_INSPIRATION:
         tools = INSPIRATION_TOOLS
     else:
         tools = AGENT_TOOLS

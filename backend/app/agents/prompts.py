@@ -874,4 +874,5 @@ DEFAULT_PROMPTS = {
     "chapter_refine": CHAPTER_REFINE_PROMPT,
     "inspiration_extraction": INSPIRATION_EXTRACTION_PROMPT,
     "inspiration_question": INSPIRATION_QUESTION_PROMPT,
+    "agent_inspiration": AGENT_INSPIRATION_SYSTEM_PROMPT,
 }
