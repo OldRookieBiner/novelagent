@@ -2,13 +2,13 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
-import { PanelRightClose, PanelRightOpen, ChevronDown } from 'lucide-react'
+import { PanelRightClose, PanelRightOpen, ChevronDown, Trash2 } from 'lucide-react'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
 import { useWorkflowStore } from '@/stores/workflowStore'
 import { AICompanionChat } from './AICompanionChat'
 import { AICompanionInput } from './AICompanionInput'
 import { sendAgentMessage } from '@/lib/agentApi'
-import { modelConfigsApi } from '@/lib/api'
+import { modelConfigsApi, outlineApi } from '@/lib/api'
 import type { ModelConfig } from '@/types'
 
 export function AICompanionSidebar()
@@ -41,15 +41,25 @@ export function AICompanionSidebar()
     }).catch(() => {})
   }, [])
 
+  // 进入项目时加载对话历史
+  const loadConversation = useWorkbenchStore((s) => s.loadConversation)
+  useEffect(() =>
+  {
+    if (projectId)
+    {
+      loadConversation(projectId)
+    }
+  }, [projectId])  // eslint-disable-line react-hooks/exhaustive-deps
+
   // 折叠状态
   if (!aiSidebarOpen)
   {
     return (
-      <div className="w-10 bg-slate-950 border-l border-slate-800 flex flex-col items-center pt-3 gap-2">
-        <button onClick={toggleAiSidebar} className="p-1.5 text-slate-500 hover:text-slate-300 transition-colors" title="展开 AI 搭档">
+      <div className="w-10 bg-white border-l border-gray-200 flex flex-col items-center pt-3 gap-2">
+        <button onClick={toggleAiSidebar} className="p-1.5 text-gray-400 hover:text-gray-600 transition-colors" title="展开 AI 搭档">
           <PanelRightOpen className="h-4 w-4" />
         </button>
-        <span className="text-slate-600 text-[10px]" style={{ writingMode: 'vertical-lr' }}>AI 搭档</span>
+        <span className="text-gray-400 text-[10px]" style={{ writingMode: 'vertical-lr' }}>AI 搭档</span>
       </div>
     )
   }
@@ -156,6 +166,31 @@ export function AICompanionSidebar()
               ),
             }
           })
+
+          // 灵感简报更新时通知 InspirationPanel 刷新
+          if (tool === 'update_inspiration_brief')
+          {
+            const resultObj = result as Record<string, unknown>
+            const outputStr = typeof resultObj.output === 'string' ? resultObj.output : ''
+            try
+            {
+              const output = JSON.parse(outputStr)
+              if (output.success)
+              {
+                // 重新从后端拉取简报内容以确保一致性
+                outlineApi.get(projectId).then((outline) =>
+                {
+                  if (outline.inspiration_template)
+                  {
+                    window.dispatchEvent(new CustomEvent('inspiration-brief-update', {
+                      detail: { brief: outline.inspiration_template },
+                    }))
+                  }
+                }).catch(() => {})
+              }
+            }
+            catch { /* ignore parse errors */ }
+          }
         },
         onChapterPreview: (data) =>
         {
@@ -231,42 +266,55 @@ export function AICompanionSidebar()
   }
 
   return (
-    <div className="w-[340px] bg-slate-950 border-l border-slate-800 flex flex-col shrink-0">
+    <div className="w-[340px] bg-white border-l border-gray-200 flex flex-col shrink-0">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2.5 border-b border-slate-800">
+      <div className="flex items-center justify-between px-3 py-2.5 border-b border-gray-200">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-slate-200">🤖 AI 搭档</span>
-          <span className="text-[9px] px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded">在线</span>
+          <span className="text-sm font-medium text-gray-700">🤖 AI 搭档</span>
+          <span className="text-[9px] px-1.5 py-0.5 bg-green-100 text-green-600 rounded">在线</span>
 
           {/* 模型选择器 */}
           <div className="relative">
             <button
               onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
-              className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-slate-200 px-1.5 py-0.5 rounded hover:bg-slate-800 transition-colors"
+              className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-gray-600 px-1.5 py-0.5 rounded hover:bg-gray-100 transition-colors"
               title="选择模型"
             >
-              <span className="max-w-[80px] truncate">{selectedModel?.name || '默认'}</span>
+              <span className="max-w-[120px] truncate">{selectedModel?.name || '默认'}{selectedModel?.provider_type === 'single' && selectedModel?.model_name ? `  ·  ${selectedModel.model_name}` : ''}</span>
               <ChevronDown className="h-3 w-3" />
             </button>
             {modelDropdownOpen && models.length > 0 && (
-              <div className="absolute top-full left-0 mt-1 w-48 bg-slate-800 border border-slate-700 rounded-md shadow-lg z-50 py-1 max-h-48 overflow-auto">
+              <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 max-h-48 overflow-auto">
                 {models.map((m) => (
                   <button
                     key={m.id}
                     onClick={() => { setSelectedModelId(m.id); setModelDropdownOpen(false) }}
-                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-700 transition-colors ${
-                      m.id === selectedModelId ? 'text-emerald-400' : 'text-slate-300'
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 transition-colors ${
+                      m.id === selectedModelId ? 'text-emerald-600' : 'text-gray-600'
                     }`}
                   >
-                    {m.name}
+                    {m.name}{m.provider_type === 'single' && m.model_name ? `  ·  ${m.model_name}` : ''}
                   </button>
                 ))}
               </div>
             )}
           </div>
         </div>
-        <button onClick={toggleAiSidebar} className="p-1 text-slate-500 hover:text-slate-300 transition-colors" title="折叠 AI 搭档">
+        <button onClick={toggleAiSidebar} className="p-1 text-gray-400 hover:text-gray-600 transition-colors" title="折叠 AI 搭档">
           <PanelRightClose className="h-4 w-4" />
+        </button>
+        <button
+          onClick={async () =>
+          {
+            if (confirm('确定清空当前项目的所有对话记录？此操作不可撤销。'))
+            {
+              await useWorkbenchStore.getState().clearConversation(projectId)
+            }
+          }}
+          className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+          title="清空对话"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
         </button>
       </div>
 
@@ -300,6 +348,8 @@ function _toolDescription(tool: string, args: Record<string, unknown>): string
     generate_chapter_content: (a) => `生成第${a.chapter_number || '?'}章正文`,
     review_chapter: (a) => `审核第${a.chapter_number || '?'}章`,
     rewrite_chapter: (a) => `重写第${a.chapter_number || '?'}章`,
+    read_inspiration_brief: () => '读取灵感简报',
+    update_inspiration_brief: () => '更新灵感简报',
   }
   return (map[tool] || (() => tool))(args)
 }

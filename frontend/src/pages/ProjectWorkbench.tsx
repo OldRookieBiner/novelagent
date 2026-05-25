@@ -1,5 +1,6 @@
 // frontend/src/pages/ProjectWorkbench.tsx
 
+import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
 import { WorkbenchLayout } from '@/components/workbench/WorkbenchLayout'
@@ -16,7 +17,17 @@ export default function ProjectWorkbench()
   const { id } = useParams<{ id: string }>()
   const projectId = id ? parseInt(id) : null
   const { activeTab, activeMenuItem } = useWorkbenchStore()
+  const setCurrentProjectId = useWorkbenchStore((s) => s.setCurrentProjectId)
   const { project, outline, loading, refreshOutline } = useProjectData(projectId)
+
+  // 进入/切换项目时设置当前项目 ID，触发对话历史加载和隔离
+  useEffect(() =>
+  {
+    if (projectId)
+    {
+      setCurrentProjectId(projectId)
+    }
+  }, [projectId, setCurrentProjectId])
 
   if (loading || !project)
   {

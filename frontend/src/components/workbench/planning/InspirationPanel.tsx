@@ -1,13 +1,14 @@
-// 灵感面板编排组件 — 灵感简报 + AI 搭档布局
+// 灵感面板编排组件 — 灵感简报（AI 搭档通过右侧全局边栏交互）
 
 import { useState, useEffect } from 'react'
-import { collectedInfoApi } from '@/lib/api'
+import { collectedInfoApi, outlineApi, modelConfigsApi } from '@/lib/api'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
 import { toast } from 'sonner'
 import InspirationBrief from './InspirationBrief'
 import { OutlineProgressDialog } from './OutlineProgressDialog'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
-import { MessageSquare, Sparkles } from 'lucide-react'
+import { Sparkles, MessageSquare, ChevronDown, Loader2 } from 'lucide-react'
+import type { ModelConfig } from '@/types'
 
 interface InspirationPanelProps
 {
@@ -21,7 +22,44 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
   const [showProgressDialog, setShowProgressDialog] = useState(false)
   const [showReplanConfirm, setShowReplanConfirm] = useState(false)
   const [pendingTemplate, setPendingTemplate] = useState<string>('')
-  const { setActiveMenuItem, setActiveTab, selectedModelKey, inspirationBrief, setInspirationBrief } = useWorkbenchStore()
+  const [saving, setSaving] = useState(false)
+  const [reviewModels, setReviewModels] = useState<ModelConfig[]>([])
+  const [reviewModelId, setReviewModelId] = useState<number | null>(null)
+  const [reviewDropdownOpen, setReviewDropdownOpen] = useState(false)
+  const {
+    setActiveMenuItem,
+    setActiveTab,
+    selectedModelKey,
+    inspirationBrief,
+    setInspirationBrief,
+    aiSidebarOpen,
+    toggleAiSidebar,
+  } = useWorkbenchStore()
+
+  // 挂载时从后端加载已有的灵感简报
+  useEffect(() =>
+  {
+    let cancelled = false
+    outlineApi.get(projectId).then((outline) =>
+    {
+      if (cancelled) return
+      if (outline.inspiration_template)
+      {
+        setInspirationBrief(outline.inspiration_template)
+      }
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [projectId, setInspirationBrief])
+
+  // 加载审核模型列表
+  useEffect(() =>
+  {
+    modelConfigsApi.list().then((res) =>
+    {
+      const healthy = (res.models || []).filter((c: ModelConfig) => c.health_status === 'healthy')
+      setReviewModels(healthy)
+    }).catch(() => {})
+  }, [])
 
   // 监听 AI 搭档通过自定义事件更新灵感简报
   useEffect(() =>
@@ -43,6 +81,7 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
   // 确认灵感：保存简报 → 打开进度弹窗
   const handleConfirm = async () =>
   {
+    setSaving(true)
     try
     {
       await collectedInfoApi.update(projectId, { inspiration_template: inspirationBrief })
@@ -53,6 +92,10 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
     catch (err)
     {
       toast.error('保存灵感简报失败')
+    }
+    finally
+    {
+      setSaving(false)
     }
   }
 
@@ -74,13 +117,63 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
   const modelConfigId = selectedModelKey ? parseInt(selectedModelKey.split(':')[0]) : undefined
   const modelName = selectedModelKey ? selectedModelKey.split(':').slice(1).join(':') : undefined
 
+  const selectedReviewModel = reviewModels.find((m) => m.id === reviewModelId)
+
   return (
     <div className="flex h-full gap-0">
-      {/* 左列：灵感简报 + 确认按钮 */}
-      <div className="flex-1 flex flex-col border-r">
+      {/* 灵感简报 + 确认按钮 */}
+      <div className="flex-1 flex flex-col">
         <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
-          <h3 className="text-sm font-medium">灵感简报</h3>
+          <div className="flex items-center gap-3">
+            <h3 className="text-sm font-medium">灵感简报</h3>
+            {/* 审核模型选择器 */}
+            <div className="relative">
+              <button
+                onClick={() => setReviewDropdownOpen(!reviewDropdownOpen)}
+                className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-accent transition-colors"
+                title="选择审核模型（不选则使用创作模型）"
+              >
+                <span className="max-w-[100px] truncate">
+                  {selectedReviewModel ? `审核: ${selectedReviewModel.name}` : '审核模型'}
+                </span>
+                <ChevronDown className="h-3 w-3" />
+              </button>
+              {reviewDropdownOpen && reviewModels.length > 0 && (
+                <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 max-h-48 overflow-auto">
+                  <button
+                    onClick={() => { setReviewModelId(null); setReviewDropdownOpen(false) }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 transition-colors ${
+                      reviewModelId === null ? 'text-emerald-600' : 'text-gray-500'
+                    }`}
+                  >
+                    使用创作模型
+                  </button>
+                  {reviewModels.map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={() => { setReviewModelId(m.id); setReviewDropdownOpen(false) }}
+                      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 transition-colors ${
+                        m.id === reviewModelId ? 'text-emerald-600' : 'text-gray-600'
+                      }`}
+                    >
+                      {m.name}{m.provider_type === 'single' && m.model_name ? ` · ${m.model_name}` : ''}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
           <div className="flex items-center gap-2">
+            {/* 未打开 AI 侧栏时显示入口 */}
+            {!aiSidebarOpen && (
+              <button
+                className="text-xs px-3 py-1 border border-emerald-300 text-emerald-600 rounded hover:bg-emerald-50 flex items-center gap-1"
+                onClick={toggleAiSidebar}
+              >
+                <MessageSquare className="h-3 w-3" />
+                AI 搭档
+              </button>
+            )}
             {hasOutline && (
               <button
                 className="text-xs px-3 py-1 border border-orange-300 text-orange-600 rounded hover:bg-orange-50"
@@ -90,11 +183,15 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
               </button>
             )}
             <button
-              className="text-xs px-3 py-1 bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50"
-              disabled={!inspirationBrief.trim()}
+              className="text-xs px-3 py-1 bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 flex items-center gap-1"
+              disabled={!inspirationBrief.trim() || saving}
               onClick={handleConfirm}
             >
-              <Sparkles className="h-3 w-3 inline mr-1" />
+              {saving ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Sparkles className="h-3 w-3" />
+              )}
               确认并生成大纲
             </button>
           </div>
@@ -104,22 +201,6 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
             brief={inspirationBrief}
             onBriefChange={setInspirationBrief}
           />
-        </div>
-      </div>
-
-      {/* 右列：AI 搭档占位 */}
-      <div className="w-[380px] flex flex-col">
-        <div className="flex items-center gap-2 px-4 py-2 border-b bg-muted/30">
-          <MessageSquare className="h-4 w-4 text-muted-foreground" />
-          <h3 className="text-sm font-medium">AI 搭档</h3>
-        </div>
-        <div className="flex-1 flex items-center justify-center p-6 text-center">
-          <div className="space-y-3 max-w-[280px]">
-            <MessageSquare className="h-10 w-10 mx-auto text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground">
-              AI 搭档面板在其他视图中可用。请在右侧对话中描述你的创作灵感，AI 将自动更新灵感简报。
-            </p>
-          </div>
         </div>
       </div>
 
@@ -146,7 +227,7 @@ export function InspirationPanel({ projectId, hasOutline = false, onPlanningComp
         projectId={projectId}
         modelConfigId={modelConfigId}
         modelName={modelName}
-        reviewLlmConfigId={null}
+        reviewLlmConfigId={reviewModelId}
         isReplan={hasOutline}
         collectedInfo={{ inspiration_template: pendingTemplate }}
         inspirationTemplate={pendingTemplate}

@@ -9,6 +9,16 @@ interface InspirationBriefProps
   readOnly?: boolean
 }
 
+/** 移除危险的 HTML 标签和事件处理器 */
+function sanitizeHtml(text: string): string
+{
+  return text
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/\bon\w+\s*=\s*"[^"]*"/gi, '')
+    .replace(/\bon\w+\s*=\s*'[^']*'/gi, '')
+    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
+}
+
 function InspirationBrief({ brief, onBriefChange, readOnly = false }: InspirationBriefProps)
 {
   const [isEditing, setIsEditing] = useState(false)
@@ -20,7 +30,8 @@ function InspirationBrief({ brief, onBriefChange, readOnly = false }: Inspiratio
     {
       return '<div class="text-muted-foreground text-sm italic">AI 搭档尚未创建灵感简报，请在右侧对话中描述你的创作灵感。</div>'
     }
-    return text
+    const sanitized = sanitizeHtml(text)
+    return sanitized
       .split('\n')
       .map(line =>
       {

@@ -76,6 +76,13 @@ interface WorkbenchState
   inspirationBrief: string
   setInspirationBrief: (brief: string) => void
 
+  // 项目隔离
+  currentProjectId: number | null
+  setCurrentProjectId: (id: number | null) => void
+  loadingMessages: boolean
+  loadConversation: (projectId: number) => Promise<void>
+  clearConversation: (projectId: number) => Promise<void>
+
   // 重置
   reset: () => void
 }
@@ -92,9 +99,11 @@ const initialState = {
   selectedModelKey: '' as string,
   isAgentBusy: false as boolean,
   inspirationBrief: '' as string,
+  currentProjectId: null as number | null,
+  loadingMessages: false,
 }
 
-export const useWorkbenchStore = create<WorkbenchState>((set) => ({
+export const useWorkbenchStore = create<WorkbenchState>()((set, get) => ({
   ...initialState,
 
   setActiveTab: (tab) =>
@@ -150,6 +159,51 @@ export const useWorkbenchStore = create<WorkbenchState>((set) => ({
   setIsAgentBusy: (busy) => set({ isAgentBusy: busy }),
 
   setInspirationBrief: (brief) => set({ inspirationBrief: brief }),
+
+  setCurrentProjectId: (id) => {
+    const { currentProjectId } = get()
+    if (id !== currentProjectId) {
+      set({
+        currentProjectId: id,
+        aiMessages: [],
+        aiUpdateMarkers: {},
+        loadingMessages: !!id,
+      })
+      if (id) {
+        Promise.resolve().then(() => get().loadConversation(id))
+      }
+    }
+  },
+
+  loadConversation: async (projectId) => {
+    try {
+      const { fetchConversation } = await import('@/lib/agentApi')
+      const data = await fetchConversation(projectId, 50)
+      set({
+        aiMessages: data.messages.map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          segments: (m.segments || []) as AiMessageSegment[],
+          actions: (m.actions || []) as AiAction[],
+          timestamp: m.timestamp,
+        })),
+        loadingMessages: false,
+      })
+    } catch {
+      set({ loadingMessages: false })
+    }
+  },
+
+  clearConversation: async (projectId) => {
+    try {
+      const { deleteConversation } = await import('@/lib/agentApi')
+      await deleteConversation(projectId)
+      set({ aiMessages: [] })
+    } catch {
+      // 静默失败
+    }
+  },
 
   reset: () => set(initialState),
 }))

@@ -48,9 +48,9 @@ export function AICompanionInput({ onSend, disabled, disabledReason, activeTab }
   )
 
   return (
-    <form onSubmit={handleSubmit} className="border-t border-slate-700 p-2">
+    <form onSubmit={handleSubmit} className="border-t border-gray-200 p-2">
       {disabled && disabledReason && (
-        <div className="text-[10px] text-amber-400/80 mb-1.5 text-center">{disabledReason}</div>
+        <div className="text-[10px] text-amber-600 mb-1.5 text-center">{disabledReason}</div>
       )}
 
       {/* 快捷指令按钮 */}
@@ -62,7 +62,7 @@ export function AICompanionInput({ onSend, disabled, disabledReason, activeTab }
               type="button"
               onClick={() => handleQuickCommand(cmd.prompt)}
               disabled={disabled}
-              className="flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200 disabled:opacity-50 transition-colors"
+              className="flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 disabled:opacity-50 transition-colors"
             >
               <cmd.icon className="h-3 w-3" />
               {cmd.label}
@@ -78,7 +78,7 @@ export function AICompanionInput({ onSend, disabled, disabledReason, activeTab }
           onChange={(e) => setInput(e.target.value)}
           placeholder="说说你的想法..."
           disabled={disabled}
-          className="flex-1 bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+          className="flex-1 bg-gray-50 border border-gray-200 rounded-md px-3 py-2 text-xs text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
         />
         <button
           type="submit"

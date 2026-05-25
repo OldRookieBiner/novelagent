@@ -101,17 +101,17 @@ function ChapterPreviewCard({ data }: { data: Record<string, unknown> })
   }
 
   return (
-    <div className="my-1.5 rounded bg-slate-800/60 border border-emerald-700/30 px-2.5 py-2">
-      <div className="text-[10px] text-emerald-400/80 mb-1">
+    <div className="my-1.5 rounded bg-gray-50 border border-emerald-300 px-2.5 py-2">
+      <div className="text-[10px] text-emerald-600 mb-1">
          {title} · {actionLabel} · {wordCount}字
       </div>
-      <div className="text-xs text-slate-300 whitespace-pre-wrap leading-relaxed">
+      <div className="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed">
         {expanded && fullContent ? fullContent : preview.slice(0, 150)}
         {(preview.length > 150 || (!expanded && wordCount > 200)) && (
           <button
             onClick={handleExpand}
             disabled={loading}
-            className="ml-1 text-slate-500 hover:text-slate-300 disabled:opacity-50"
+            className="ml-1 text-gray-400 hover:text-gray-600 disabled:opacity-50"
           >
             {loading ? '加载中...' : expanded ? '收起' : '...展开全部'}
           </button>
@@ -138,11 +138,11 @@ function ReviewResultCard({ data }: { data: Record<string, unknown> })
   return (
     <div className={`my-1.5 rounded border px-2.5 py-2 ${
       passed
-        ? 'bg-green-900/20 border-green-700/30'
-        : 'bg-red-900/20 border-red-700/30'
+        ? 'bg-green-50 border-green-300'
+        : 'bg-red-50 border-red-300'
     }`}>
       <div className={`text-[10px] font-medium mb-1 ${
-        passed ? 'text-green-400' : 'text-red-400'
+        passed ? 'text-green-600' : 'text-red-600'
       }`}>
         {passed ? '✓ 审核通过' : '✗ 审核未通过'}
       </div>
@@ -150,8 +150,8 @@ function ReviewResultCard({ data }: { data: Record<string, unknown> })
       {Object.keys(scores).length > 0 && (
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 mb-1">
           {Object.entries(scores).map(([key, val]) => (
-            <span key={key} className="text-[10px] text-slate-400">
-              {key}: <span className={val >= 7 ? 'text-green-400' : val >= 5 ? 'text-amber-400' : 'text-red-400'}>{val}</span>
+            <span key={key} className="text-[10px] text-gray-500">
+              {key}: <span className={val >= 7 ? 'text-green-600' : val >= 5 ? 'text-amber-600' : 'text-red-600'}>{val}</span>
             </span>
           ))}
         </div>
@@ -160,15 +160,15 @@ function ReviewResultCard({ data }: { data: Record<string, unknown> })
       {issues.length > 0 && (
         <div className="space-y-0.5 mb-1">
           {issues.map((issue, i) => (
-            <div key={i} className="text-[10px] text-slate-400">
-              <span className="text-amber-400">[{issue.type}]</span> {issue.location}: {issue.description}
+            <div key={i} className="text-[10px] text-gray-500">
+              <span className="text-amber-600">[{issue.type}]</span> {issue.location}: {issue.description}
             </div>
           ))}
         </div>
       )}
 
       {review.suggestions && (
-        <div className="text-[10px] text-slate-400 italic">{review.suggestions}</div>
+        <div className="text-[10px] text-gray-500 italic">{review.suggestions}</div>
       )}
     </div>
   )
@@ -189,7 +189,7 @@ export function AICompanionChat()
       {messages.length === 0 && (
         <div className="flex flex-col items-center justify-center h-full gap-2 text-center">
           <div className="text-2xl">🤖</div>
-          <p className="text-xs text-slate-500 leading-relaxed">
+          <p className="text-xs text-gray-400 leading-relaxed">
             我是你的 AI 编剧搭档<br />
             跟我说说你对小说的想法<br />
             我会帮你修改大纲、角色、章节...
@@ -204,8 +204,8 @@ export function AICompanionChat()
           <div
             className={`max-w-[85%] rounded-lg px-3 py-2 text-xs leading-relaxed ${
               msg.role === 'user'
-                ? 'bg-blue-900/50 text-blue-200'
-                : 'bg-emerald-900/40 text-emerald-200'
+                ? 'bg-blue-50 text-blue-700'
+                : 'bg-emerald-50 text-emerald-700'
             }`}
           >
             <MessageContent message={msg} />

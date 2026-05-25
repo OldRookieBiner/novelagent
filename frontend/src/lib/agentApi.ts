@@ -83,3 +83,73 @@ export async function sendAgentMessage(
     }
   )
 }
+
+/** 会话及消息响应类型 */
+export interface ConversationResponse {
+  conversation_id: number
+  title: string
+  message_count: number
+  messages: Array<{
+    id: string
+    role: 'user' | 'assistant'
+    content: string
+    segments: Array<{ type: string; content: string; data?: Record<string, unknown> }>
+    actions?: Array<{
+      tool: string
+      status: 'running' | 'done' | 'error'
+      description: string
+      args?: Record<string, unknown>
+      result?: Record<string, unknown>
+    }>
+    timestamp: number
+  }>
+}
+
+/** 获取项目会话及消息 */
+export async function fetchConversation(
+  projectId: number,
+  limit?: number,
+  beforeId?: number,
+): Promise<ConversationResponse> {
+  const { getSessionToken } = await import('./api')
+  const API_BASE_URL = import.meta.env.VITE_API_URL || ''
+  const token = getSessionToken()
+
+  const params = new URLSearchParams()
+  if (limit) params.set('limit', String(limit))
+  if (beforeId) params.set('before_id', String(beforeId))
+
+  const query = params.toString()
+  const url = `${API_BASE_URL}/api/projects/${projectId}/agent/conversation${query ? '?' + query : ''}`
+
+  const headers: HeadersInit = {}
+  if (token) {
+    headers['Authorization'] = `Basic ${btoa(`${token}:`)}`
+  }
+
+  const res = await fetch(url, { headers, credentials: 'include' })
+  if (!res.ok) {
+    throw new Error(`Failed to fetch conversation: ${res.status}`)
+  }
+  return res.json()
+}
+
+/** 清空项目会话 */
+export async function deleteConversation(projectId: number): Promise<void> {
+  const { getSessionToken } = await import('./api')
+  const API_BASE_URL = import.meta.env.VITE_API_URL || ''
+  const token = getSessionToken()
+
+  const headers: HeadersInit = {}
+  if (token) {
+    headers['Authorization'] = `Basic ${btoa(`${token}:`)}`
+  }
+
+  const res = await fetch(
+    `${API_BASE_URL}/api/projects/${projectId}/agent/conversation`,
+    { method: 'DELETE', headers, credentials: 'include' },
+  )
+  if (!res.ok) {
+    throw new Error(`Failed to clear conversation: ${res.status}`)
+  }
+}

@@ -375,6 +375,7 @@ export interface ModelConfig {
   health_status?: string
   health_latency?: number
   last_health_check?: string
+  context_window?: number
   created_at: string
   updated_at: string
 }

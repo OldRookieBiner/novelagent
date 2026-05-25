@@ -3,9 +3,8 @@
 from datetime import datetime
 from sqlalchemy import (
     Column, Integer, String, Text, DateTime,
-    ForeignKey, CheckConstraint,
+    ForeignKey, CheckConstraint, JSON,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -57,8 +56,8 @@ class AgentMessage(Base):
     )
     role = Column(String(10), nullable=False)
     content = Column(Text, nullable=False, default='')
-    segments = Column(JSONB, default=list)
-    actions = Column(JSONB, default=list)
+    segments = Column(JSON, default=list)
+    actions = Column(JSON, default=list)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     conversation = relationship('AgentConversation', back_populates='messages')
