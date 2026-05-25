@@ -175,3 +175,35 @@ def build_project_context(
         return context
     finally:
         db.close()
+
+
+# 模型上下文窗口默认映射（context_window 为 NULL 时使用）
+_MODEL_CONTEXT_WINDOW_DEFAULTS: dict[str, int] = {
+    "gpt-4o": 128000,
+    "gpt-4o-mini": 128000,
+    "claude-3.5-sonnet": 200000,
+    "claude-sonnet-4-6": 200000,
+    "deepseek-v3": 128000,
+    "deepseek-r1": 128000,
+    "qwen-plus": 131072,
+}
+
+DEFAULT_CONTEXT_WINDOW = 128000
+
+
+def get_context_window(model_config) -> int:
+    """获取模型的上下文窗口大小
+
+    优先级：model_config.context_window > 默认映射 > 128000
+
+    Args:
+        model_config: ModelConfig 实例或 None
+
+    Returns:
+        token 上限
+    """
+    if model_config and model_config.context_window:
+        return model_config.context_window
+
+    model_name = (model_config.model_name or "") if model_config else ""
+    return _MODEL_CONTEXT_WINDOW_DEFAULTS.get(model_name, DEFAULT_CONTEXT_WINDOW)
