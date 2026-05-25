@@ -12,6 +12,7 @@ from app.models.system_config import SystemConfig
 from app.models.character import Character, Relation, EvolutionPlan, EvolutionRecord
 from app.models.volume import Volume
 from app.models.arc import Arc
+from app.models.agent_conversation import AgentConversation, AgentMessage
 
 __all__ = [
     "User",
@@ -30,4 +31,6 @@ __all__ = [
     "EvolutionRecord",
     "Volume",
     "Arc",
+    "AgentConversation",
+    "AgentMessage",
 ]
