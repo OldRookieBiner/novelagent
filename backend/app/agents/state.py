@@ -1,15 +1,46 @@
-"""LangGraph agent state definitions"""
+"""小说创作智能体状态定义 v2
 
-from typing import TypedDict, Optional, Annotated, Any
+设计原则：
+- state 只存流程控制状态和 ID 引用，不缓存 DB 数据
+- 节点通过 KnowledgeBaseService 从 DB 实时读取业务数据
+- 避免检查点序列化/反序列化性能问题
+
+阶段使用 Enum 替代字符串，确认类型同理。
+"""
+
+from enum import Enum
+from typing import TypedDict, Optional, Annotated
+
+
+class Phase(str, Enum):
+    """创作阶段"""
+    INCUBATION = "incubation"
+    STRUCTURE = "structure"
+    WRITING = "writing"
+    REVISION = "revision"
+
+
+class ConfirmationType(str, Enum):
+    """确认类型——类型安全，避免字符串拼写错误"""
+    INSPIRATION_DIALOGUE = "inspiration_dialogue"
+    STORY_SEED = "story_seed"
+    OUTLINE = "outline"
+    WORLD_SETTING = "world_setting"
+    CHARACTERS = "characters"
+    RELATIONS = "relations"
+    STYLE = "style"
+    FORESHADOWING_PLAN = "foreshadowing_plan"
+    STRUCTURE = "structure"
+    CHAPTER_NODE = "chapter_node"
+    REVIEW_FAILED = "review_failed"
 
 
 def replace_or_append_chapters(
     existing: list[dict], new_items: list[dict]
 ) -> list[dict]:
-    """
-    自定义 reducer：替换同章节号的章节或追加新章节
+    """自定义 reducer：替换同章节号的章节或追加新章节
 
-    用于 written_chapters 字段，解决 rewrite 场景的重复章节问题：
+    用于 written_chapters 字段：
     - 如果新章节的 chapter_number 已存在，则替换
     - 否则追加到列表末尾
     """
@@ -28,119 +59,67 @@ def replace_or_append_chapters(
     return result
 
 
-class CollectedInfo(TypedDict, total=False):
-    """用户收集的信息（v0.5.0 灵感数据，v0.7.x 扩展）"""
-
-    # 必填项
-    novelType: str
-    targetWords: int
-    coreTheme: str
-    targetReader: str
-    era: str  # v0.7.x: 年代设定
-    wordsPerChapter: str
-    customWordsPerChapter: int
-    # 主角设定（根据 targetReader 选择）
-    maleLead: str  # v0.7.x: 男主人设
-    customMaleLead: str
-    femaleLead: str  # v0.7.x: 女主人设
-    customFemaleLead: str
-    # 选填项
-    worldSetting: str
-    customWorldSetting: str
-    genre: str  # v0.7.x: 流派
-    customGenre: str  # v0.7.x: 自定义流派
-    narrative: str
-    goldFinger: str
-    customGoldFinger: str
-    stylePreference: str
-
-
 class NovelState(TypedDict):
-    """小说创作状态 - v0.6.2 LangGraph 重构版"""
+    """小说创作智能体状态 v2
+
+    state 只存流程控制状态和 ID 引用。
+    所有业务数据通过 KnowledgeBaseService 从 DB 实时读取。
+    """
 
     # ========== 基本信息 ==========
     project_id: int
 
     # ========== 阶段控制 ==========
-    stage: str  # inspiration | outline | characters | relations | chapter_outlines | writing | review | complete
+    phase: str  # Phase enum value
 
-    # ========== 灵感/输入 ==========
-    collected_info: dict[str, Any]
-    inspiration_template: Optional[str]
+    # ========== 创意孵化 ==========
+    story_seed: Optional[str]
+    # 创意对话消息（临时，孵化完成后不保留到检查点）
+    inspiration_messages: list[dict]
 
-    # ========== 大纲 ==========
-    outline_title: Optional[str]
-    outline_summary: Optional[str]
-    outline_plot_points: list[dict]  # [{order, event, conflict, hook}]
-    outline_characters: list[dict]  # [{name, role, personality, motivation, arc}]
-    outline_world_setting: Optional[dict]  # {era, core_rules, power_system}
-    outline_emotional_curve: Optional[str]
-    outline_confirmed: bool
-    outline_valid: bool  # 大纲是否有效（有标题或概述即有效）
+    # ========== 知识库 ID 引用 ==========
+    outline_id: Optional[int]
+    world_setting_id: Optional[int]
+    style_constraints_id: Optional[int]
 
-    # ========== 人物设定（v0.8.0）==========
-    characters: list[
-        dict
-    ]  # [{id, name, role, appearance, personality, backstory, catchphrase, habit_action, deep_fear, core_motivation, growth_arc, signature_item}]
-    relations: list[
-        dict
-    ]  # [{character1, character2, relationship_type, description, development}]
-    evolution_plans: list[dict]  # [{chapter_number, character_name, changes}]
-    evolution_records: list[dict]  # [{chapter_number, character_name, actual_changes}]
-
-    # ========== 小说规格 ==========
-    novel_length: str  # short | medium | long
-
-    # ========== 章节大纲 ==========
+    # ========== 结构 ==========
+    current_plot_block_index: int
     chapter_count: int
-    chapter_outlines: list[dict]  # [{chapter_number, title, scene, ...}]
-    chapter_outlines_confirmed: bool
-    arcs: list[dict]  # [{id, title, summary, chapter_start, chapter_end}] 弧纲数据
 
-    # ========== 章节正文（累积）==========
-    # Annotated[List, add] 表示新内容会追加到列表
+    # ========== 写作 ==========
+    current_chapter: int
     written_chapters: Annotated[
         list[dict], replace_or_append_chapters
     ]  # [{chapter_number, content, word_count}]
-    current_chapter: int
-    current_arc_index: int  # 当前弧索引（长篇模式用）
 
-    # ========== 审核/重写 ==========
-    review_mode: str  # step_by_step | hybrid | auto
-    review_result: Optional[dict]  # {passed, scores, issues, feedback}
-    rewrite_count: int
-    max_rewrite_count: int
-    refinement_enabled: bool  # 章节正文自检-精修是否启用（默认 True）
+    # ========== 写后自检 ==========
+    # 自检结果摘要（不存完整数据，完整数据写入 DB）
+    post_write_summary: Optional[str]
+    # 上次深度审查的章节号
+    last_review_chapter: int
 
     # ========== 工作流控制 ==========
     waiting_for_confirmation: bool
-    confirmation_type: Optional[
-        str
-    ]  # outline | characters | relations | chapter_outlines | review_failed
+    confirmation_type: Optional[str]  # ConfirmationType enum value
 
     # ========== LLM 服务 ==========
-    llm_config_id: Optional[int]  # 使用的模型配置 ID
-    llm_model_name: Optional[str]  # 用户选择的模型名称
-    review_llm_config_id: Optional[int]  # 审核使用的模型配置 ID（NULL 则使用主模型）
+    llm_config_id: Optional[int]
+    review_llm_config_id: Optional[int]
+    llm_model_name: Optional[str]
 
     # ========== Prompt 加载（LangGraph 合规）==========
-    _prompts: dict[str, str | dict]  # 预加载的 prompt 模板，chapter_content_generation 为 dict 格式
-    _context_window: int  # 预加载的模型上下文窗口大小（节点无 DB Session）
+    _prompts: dict[str, str | dict]
+    _context_window: int
 
 
-# ========== 阶段常量 ==========
-STAGE_INSPIRATION = "inspiration"
-STAGE_OUTLINE = "outline"
-STAGE_CHARACTERS = "characters"  # v0.8.0: 人物设定
-STAGE_RELATIONS = "relations"  # v0.8.0: 人物关系
-STAGE_VOLUME_ARC = "volume_arc"  # 卷弧规划
-STAGE_ARC_OUTLINES = "arc_outlines"  # 弧纲生成
-STAGE_CHAPTER_OUTLINES = "chapter_outlines"
-STAGE_WRITING = "writing"
-STAGE_REVIEW = "review"
-STAGE_COMPLETE = "complete"
-
-# ========== 工作流模式常量 ==========
-WORKFLOW_MODE_STEP_BY_STEP = "step_by_step"
-WORKFLOW_MODE_HYBRID = "hybrid"
-WORKFLOW_MODE_AUTO = "auto"
+# ========== 兼容旧代码的阶段常量（迁移期使用）==========
+STAGE_INSPIRATION = Phase.INCUBATION.value
+STAGE_OUTLINE = Phase.INCUBATION.value
+STAGE_CHARACTERS = Phase.INCUBATION.value
+STAGE_RELATIONS = Phase.INCUBATION.value
+STAGE_VOLUME_ARC = Phase.STRUCTURE.value
+STAGE_ARC_OUTLINES = Phase.STRUCTURE.value
+STAGE_CHAPTER_OUTLINES = Phase.STRUCTURE.value
+STAGE_WRITING = Phase.WRITING.value
+STAGE_REVIEW = Phase.WRITING.value
+STAGE_COMPLETE = Phase.REVISION.value
