@@ -72,7 +72,7 @@ async def generate_outline(
     db.commit()
 
     # 导入完整 graph 和共享 SSE 流生成器
-    from app.api.workflow import build_initial_state, stream_workflow_events
+    from app.api.workflow_compat import build_initial_state, stream_workflow_events
     from app.agents.graph import create_novel_graph_with_checkpointer
 
     # 构建初始状态

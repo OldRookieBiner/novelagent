@@ -16,7 +16,7 @@ from app.agents.graph import create_novel_graph_with_checkpointer
 from app.services.workflow_orchestrator import WorkflowOrchestrator
 from app.utils.project import get_project_and_outline
 from app.utils.workflow import get_or_create_workflow_state
-from app.api.workflow import build_initial_state
+from app.api.workflow_compat import build_initial_state
 
 
 class ChapterService:

@@ -17,7 +17,7 @@ from app.services.workflow_orchestrator import WorkflowOrchestrator
 from app.utils.project import get_project_and_outline
 from app.utils.deps import get_user_settings_or_raise
 from app.utils.workflow import get_or_create_workflow_state
-from app.api.workflow import build_initial_state
+from app.api.workflow_compat import build_initial_state
 
 
 class OutlineService:

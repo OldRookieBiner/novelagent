@@ -887,7 +887,7 @@ async def generate_relations(
     ).first()
 
     # 构建初始状态
-    from app.api.workflow import build_initial_state
+    from app.api.workflow_compat import build_initial_state
     from app.agents.graph import create_novel_graph_with_checkpointer
     from app.agents.nodes.relation_generation import generate_relations_node
     from app.models.workflow_state import WorkflowState

@@ -39,7 +39,7 @@ from app.agents.nodes.chapter_generation import (
     generate_chapter_content_stream,
     clean_chapter_content,
 )
-from app.api.workflow import build_initial_state
+from app.api.workflow_compat import build_initial_state
 from app.utils.llm import get_llm_from_state_async
 
 router = APIRouter()
