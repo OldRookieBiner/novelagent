@@ -1,303 +1,235 @@
-"""LangGraph 工作流定义 - 小说创作流程"""
+"""创作智能体工作流图定义
+
+工作流分为四个阶段，通过 Phase enum 控制：
+1. INCUBATION — 创意孵化 + 知识库初建
+2. STRUCTURE — 逆向规划 + 结构设计
+3. WRITING — 感知→决策→执行→自检循环
+4. REVISION — 全书修订
+
+写后自检拆分为5个独立节点（单一职责），深度审查每5章条件触发。
+"""
 
 from typing import Literal
 from langgraph.graph import StateGraph, END
 
-from app.agents.state import (
-    NovelState,
-)
-from app.agents.nodes.outline_generation import outline_generation_node
-from app.agents.nodes.chapter_generation import (
-    chapter_outlines_node,
-    generate_chapter_content_node,
-)
-from app.agents.nodes.review import review_node
-from app.agents.nodes.rewrite import rewrite_node
-from app.agents.nodes.wait_confirm import wait_for_confirmation
-from app.agents.nodes.character_generation import create_characters_from_outline_node
-from app.agents.nodes.relation_generation import generate_relations_node
-from app.agents.nodes.volume_arc_planning import volume_arc_planning_node
-from app.agents.nodes.chapter_summary import chapter_summary_node
-from app.agents.nodes.arc_outline_generation import arc_outline_generation_node
+from app.agents.state import NovelState, Phase
+from app.agents.nodes.inspiration_dialogue import inspiration_dialogue_node
+from app.agents.nodes.story_seed import story_seed_node
+from app.agents.nodes.world_setting import world_setting_node
+from app.agents.nodes.style_setup import style_setup_node
+from app.agents.nodes.foreshadowing_plan import foreshadowing_plan_node
+from app.agents.nodes.question_chain import question_chain_design_node
+from app.agents.nodes.plot_blocks import plot_blocks_node
+from app.agents.nodes.subplot_network import subplot_network_node
+from app.agents.nodes.rhythm_curve import rhythm_curve_node
+from app.agents.nodes.chapter_count_estimate import chapter_count_estimate_node
+from app.agents.nodes.context_assembly import context_assembly_node
+from app.agents.nodes.chapter_planning import chapter_planning_node
+from app.agents.nodes.chapter_writing import chapter_writing_node
+from app.agents.nodes.character_consistency import character_consistency_node
+from app.agents.nodes.tracking_update import tracking_update_node
+from app.agents.nodes.style_check import style_check_node
+from app.agents.nodes.scene_update import scene_update_node
+from app.agents.nodes.post_write_summary import post_write_summary_node
+from app.agents.nodes.deep_review import deep_review_node
+from app.agents.nodes.structural_review import structural_review_node
+from app.agents.nodes.character_arc_review import character_arc_review_node
+from app.agents.nodes.final_polish import final_polish_node
 
 
-def route_after_outline(
-    state: NovelState,
-) -> Literal["wait_confirm", "create_characters", "end"]:
-    """大纲生成后的路由
+# ========== 条件路由函数 ==========
 
-    大纲无效时直接终止工作流，避免空大纲导致后续节点崩溃和检查点污染。
-
-    Args:
-        state: 当前状态
-
-    Returns:
-        "end" - 大纲无效，终止工作流
-        "wait_confirm" - 等待用户确认
-        "create_characters" - 继续提取角色
-    """
-    if not state.get("outline_valid", False):
-        return "end"
-    decision = wait_for_confirmation(state)
-    if decision == "wait":
-        return "wait_confirm"
-    return "create_characters"
-
-
-def route_after_chapter_outlines(
-    state: NovelState,
-) -> Literal["wait_confirm", "chapter_content", "chapter_outlines", "end"]:
-    """章节大纲生成后的路由
-
-    长篇按弧模式：当前弧确认后，检查是否还有弧需要生成
-    短/中篇：原有逻辑
-    """
-    if not state.get("chapter_outlines"):
-        return "end"
-
-    # 按弧确认暂停
+def route_after_inspiration(state: NovelState) -> Literal["story_seed", "wait_confirm"]:
+    """创意对话后的路由：对话完成→故事种子，未完成→等待"""
     if state.get("waiting_for_confirmation"):
         return "wait_confirm"
-
-    # 长篇：检查是否还有弧需要生成章节大纲
-    if state.get("novel_length") == "long":
-        arcs = state.get("arcs", [])
-        current_arc_index = state.get("current_arc_index", 0)
-        if current_arc_index < len(arcs):
-            return "chapter_outlines"  # 回到同一节点，生成下一弧
-
-    # 短/中篇 或 长篇所有弧已完成
-    decision = wait_for_confirmation(state)
-    if decision == "wait":
-        return "wait_confirm"
-    return "chapter_content"
+    return "story_seed"
 
 
-def route_after_review(
-    state: NovelState,
-) -> Literal["rewrite", "next_chapter", "chapter_summary", "wait_confirm", "end"]:
-    """审核后的路由
-
-    审核通过且长篇 → 先生成摘要
-    审核通过且短/中篇 → 下一章或结束
-    """
-    # 审核通过
-    if state.get("review_result", {}).get("passed", False):
-        # 长篇：审核通过后先生成摘要
-        if state.get("novel_length") == "long":
-            return "chapter_summary"
-        # 短/中篇：直接下一章
-        if state.get("current_chapter", 0) < state.get("chapter_count", 0):
-            return "next_chapter"
-        return "end"  # 全部完成
-
-    # 审核不通过
-    # 检查是否达到最大重写次数
-    if state.get("rewrite_count", 0) >= state.get("max_rewrite_count", 3):
-        # 超过最大重写次数，让用户决定
-        if state.get("review_mode") == "auto":
-            return "next_chapter"  # auto 模式强制继续
-        return "wait_confirm"
-
-    # 需要重写
-    return "rewrite"
-
-
-def route_after_characters(
-    state: NovelState,
-) -> Literal["wait_confirm", "generate_relations"]:
-    """角色创建后的路由"""
-    decision = wait_for_confirmation(state)
-    if decision == "wait":
-        return "wait_confirm"
-    return "generate_relations"
-
-
-def route_after_relations(
-    state: NovelState,
-) -> Literal["wait_confirm", "volume_arc", "chapter_outlines", "end"]:
-    """关系生成后的路由
-
-    长篇小说（novel_length == "long"）进入弧/卷规划，
-    短/中篇直接进入章节大纲。
-    """
-    if state.get("chapter_count", 0) <= 0:
-        return "end"
-    if not state.get("characters"):
-        return "end"
-    decision = wait_for_confirmation(state)
-    if decision == "wait":
-        return "wait_confirm"
-    # 长篇走弧/卷规划
-    if state.get("novel_length") == "long":
-        return "volume_arc"
-    return "chapter_outlines"
-
-
-def route_after_volume_arc(
-    state: NovelState,
-) -> Literal["wait_confirm", "arc_outlines", "end"]:
-    """弧/卷规划后的路由
-
-    首次执行 → 暂停等确认
-    确认后 → 进入弧纲生成
-    arcs 为空（LLM 解析失败）→ 结束
-    """
+def route_after_knowledge(state: NovelState) -> Literal["wait_confirm", "question_chain"]:
+    """知识库确认后的路由：确认→结构设计，未确认→等待"""
     if state.get("waiting_for_confirmation"):
         return "wait_confirm"
-    if not state.get("arcs"):
-        return "end"
-    return "arc_outlines"
+    return "question_chain"
 
 
-def route_after_arc_outlines(
-    state: NovelState,
-) -> Literal["wait_confirm", "chapter_outlines", "end"]:
-    """弧纲生成后的路由
-
-    弧纲生成完成 → 暂停等确认
-    确认后 → 进入章节大纲生成
-    arcs 为空 → 结束
-    """
+def route_after_structure(state: NovelState) -> Literal["wait_confirm", "context_assembly"]:
+    """结构确认后的路由：确认→写作，未确认→等待"""
     if state.get("waiting_for_confirmation"):
         return "wait_confirm"
-    if not state.get("arcs"):
-        return "end"
-    return "chapter_outlines"
+    return "context_assembly"
 
 
-def route_after_summary(
-    state: NovelState,
-) -> Literal["next_chapter", "end"]:
-    """摘要生成后的路由"""
-    if state.get("current_chapter", 0) < state.get("chapter_count", 0):
-        return "next_chapter"
-    return "end"
+def route_after_chapter_node(state: NovelState) -> Literal["wait_confirm", "chapter_writing"]:
+    """章节点确认后的路由"""
+    if state.get("waiting_for_confirmation"):
+        return "wait_confirm"
+    return "chapter_writing"
 
+
+def route_after_post_write(state: NovelState) -> Literal["deep_review", "context_assembly", "structural_review"]:
+    """写后自检后的路由
+
+    - 每5章触发深度审查
+    - 还有下一章→回到上下文组装
+    - 全部完成→进入修订
+    """
+    current_chapter = state.get("current_chapter", 1)
+    chapter_count = state.get("chapter_count", 0)
+    last_review = state.get("last_review_chapter", 0)
+
+    # 每5章触发深度审查
+    if current_chapter > 0 and (current_chapter % 5 == 0) and last_review < current_chapter - 4:
+        return "deep_review"
+
+    # 全部章节完成→修订
+    if current_chapter > chapter_count:
+        return "structural_review"
+
+    # 继续写下一章
+    return "context_assembly"
+
+
+def route_after_deep_review(state: NovelState) -> Literal["context_assembly", "structural_review"]:
+    """深度审查后的路由"""
+    current_chapter = state.get("current_chapter", 1)
+    chapter_count = state.get("chapter_count", 0)
+
+    if current_chapter > chapter_count:
+        return "structural_review"
+    return "context_assembly"
+
+
+# ========== 图构建 ==========
 
 def create_novel_graph(checkpointer=None):
+    """创建创作智能体工作流图
+
+    工作流：
+
+    入口 → inspiration_dialogue → story_seed → outline_generation
+    → world_setting → character_generation → relation_generation
+    → style_setup → foreshadowing_plan
+    → (用户确认知识库)
+    → question_chain → plot_blocks → subplot_network → rhythm_curve → chapter_count_estimate
+    → (用户确认结构)
+
+    写作循环：
+    context_assembly → chapter_planning → (用户确认章节点) → chapter_writing
+    → character_consistency → tracking_update → style_check → scene_update → post_write_summary
+    → (条件: 每5章→deep_review) → deep_review → (条件: 还有下一章→context_assembly, 全部完成→revision)
+
+    修订：
+    structural_review → character_arc_review → final_polish → END
     """
-    创建小说创作工作流图。
-
-    节点流程：
-    1. 灵感收集（前端表单） → 生成大纲
-    2. 生成大纲 → 提取角色
-    3. 提取角色 → 等待确认（条件）
-    4. 生成关系 → 等待确认（条件）
-    5. 长篇：弧/卷规划 → 等待确认（条件）→ 章节大纲
-    6. 生成章节大纲 → 等待确认（条件）
-    7. 生成章节正文 → 审核
-    8. 审核通过 → 长篇：生成摘要 → 下一章或完成；短/中篇：下一章或完成
-    9. 审核不通过 → 重写或等待用户决定
-
-    Args:
-        checkpointer: 可选的检查点保存器
-
-    Returns:
-        CompiledStateGraph 实例
-    """
-    # 创建图
     graph = StateGraph(NovelState)
 
-    # 添加节点
-    # 所有节点已适配 LangGraph 签名 (state) -> state
-    graph.add_node("outline_generation_node", outline_generation_node)
-    graph.add_node("chapter_outlines_node", chapter_outlines_node)
-    graph.add_node("generate_chapter_content_node", generate_chapter_content_node)
-    graph.add_node("review_node", review_node)
-    graph.add_node("rewrite_node", rewrite_node)
-    graph.add_node(
-        "create_characters_from_outline_node", create_characters_from_outline_node
-    )
-    graph.add_node("generate_relations_node", generate_relations_node)
-    graph.add_node("volume_arc_planning_node", volume_arc_planning_node)
-    graph.add_node("chapter_summary_node", chapter_summary_node)
-    graph.add_node("arc_outline_generation_node", arc_outline_generation_node)
+    # ===== 添加节点 =====
 
-    # 设置入口点
-    graph.set_entry_point("outline_generation_node")
+    # 创意孵化
+    graph.add_node("inspiration_dialogue_node", inspiration_dialogue_node)
+    graph.add_node("story_seed_node", story_seed_node)
+    graph.add_node("world_setting_node", world_setting_node)
+    graph.add_node("style_setup_node", style_setup_node)
+    graph.add_node("foreshadowing_plan_node", foreshadowing_plan_node)
 
-    # 添加边
-    # 大纲 → 角色提取（条件路由）
+    # 结构设计
+    graph.add_node("question_chain_design_node", question_chain_design_node)
+    graph.add_node("plot_blocks_node", plot_blocks_node)
+    graph.add_node("subplot_network_node", subplot_network_node)
+    graph.add_node("rhythm_curve_node", rhythm_curve_node)
+    graph.add_node("chapter_count_estimate_node", chapter_count_estimate_node)
+
+    # 写作
+    graph.add_node("context_assembly_node", context_assembly_node)
+    graph.add_node("chapter_planning_node", chapter_planning_node)
+    graph.add_node("chapter_writing_node", chapter_writing_node)
+
+    # 写后自检（5个独立节点）
+    graph.add_node("character_consistency_node", character_consistency_node)
+    graph.add_node("tracking_update_node", tracking_update_node)
+    graph.add_node("style_check_node", style_check_node)
+    graph.add_node("scene_update_node", scene_update_node)
+    graph.add_node("post_write_summary_node", post_write_summary_node)
+
+    # 深度审查
+    graph.add_node("deep_review_node", deep_review_node)
+
+    # 修订
+    graph.add_node("structural_review_node", structural_review_node)
+    graph.add_node("character_arc_review_node", character_arc_review_node)
+    graph.add_node("final_polish_node", final_polish_node)
+
+    # ===== 设置入口点 =====
+    graph.set_entry_point("inspiration_dialogue_node")
+
+    # ===== 添加边 =====
+
+    # 创意孵化
     graph.add_conditional_edges(
-        "outline_generation_node",
-        route_after_outline,
+        "inspiration_dialogue_node",
+        route_after_inspiration,
+        {"story_seed": "story_seed_node", "wait_confirm": END},
+    )
+    graph.add_edge("story_seed_node", END)  # 等待确认后恢复到下一个节点
+
+    # 知识库构建（确认后按顺序执行）
+    graph.add_edge("world_setting_node", "style_setup_node")
+    graph.add_edge("style_setup_node", "foreshadowing_plan_node")
+    graph.add_conditional_edges(
+        "foreshadowing_plan_node",
+        route_after_knowledge,
+        {"wait_confirm": END, "question_chain": "question_chain_design_node"},
+    )
+
+    # 结构设计
+    graph.add_edge("question_chain_design_node", "plot_blocks_node")
+    graph.add_edge("plot_blocks_node", "subplot_network_node")
+    graph.add_edge("subplot_network_node", "rhythm_curve_node")
+    graph.add_edge("rhythm_curve_node", "chapter_count_estimate_node")
+    graph.add_conditional_edges(
+        "chapter_count_estimate_node",
+        route_after_structure,
+        {"wait_confirm": END, "context_assembly": "context_assembly_node"},
+    )
+
+    # 写作循环
+    graph.add_conditional_edges(
+        "chapter_planning_node",
+        route_after_chapter_node,
+        {"wait_confirm": END, "chapter_writing": "chapter_writing_node"},
+    )
+    graph.add_edge("chapter_writing_node", "character_consistency_node")
+    graph.add_edge("character_consistency_node", "tracking_update_node")
+    graph.add_edge("tracking_update_node", "style_check_node")
+    graph.add_edge("style_check_node", "scene_update_node")
+    graph.add_edge("scene_update_node", "post_write_summary_node")
+
+    # 写后路由
+    graph.add_conditional_edges(
+        "post_write_summary_node",
+        route_after_post_write,
         {
-            "wait_confirm": END,
-            "create_characters": "create_characters_from_outline_node",
-            "end": END,
+            "deep_review": "deep_review_node",
+            "context_assembly": "context_assembly_node",
+            "structural_review": "structural_review_node",
         },
     )
 
+    # 深度审查后路由
     graph.add_conditional_edges(
-        "create_characters_from_outline_node",
-        route_after_characters,
-        {"wait_confirm": END, "generate_relations": "generate_relations_node"},
-    )
-
-    # 关系 → 弧/卷规划（长篇）或章节大纲（短/中篇）
-    graph.add_conditional_edges(
-        "generate_relations_node",
-        route_after_relations,
+        "deep_review_node",
+        route_after_deep_review,
         {
-            "wait_confirm": END,
-            "volume_arc": "volume_arc_planning_node",
-            "chapter_outlines": "chapter_outlines_node",
-            "end": END,
+            "context_assembly": "context_assembly_node",
+            "structural_review": "structural_review_node",
         },
     )
 
-    # 弧/卷规划 → 确认或弧纲生成
-    graph.add_conditional_edges(
-        "volume_arc_planning_node",
-        route_after_volume_arc,
-        {"wait_confirm": END, "arc_outlines": "arc_outline_generation_node", "end": END},
-    )
-
-    # 弧纲生成 → 确认或章节大纲
-    graph.add_conditional_edges(
-        "arc_outline_generation_node",
-        route_after_arc_outlines,
-        {"wait_confirm": END, "chapter_outlines": "chapter_outlines_node", "end": END},
-    )
-
-    # 章节大纲 → 章节正文 或 回到自身（按弧循环）
-    graph.add_conditional_edges(
-        "chapter_outlines_node",
-        route_after_chapter_outlines,
-        {
-            "wait_confirm": END,
-            "chapter_content": "generate_chapter_content_node",
-            "chapter_outlines": "chapter_outlines_node",  # 按弧循环
-            "end": END,
-        },
-    )
-
-    # 章节正文 → 审核
-    graph.add_edge("generate_chapter_content_node", "review_node")
-
-    # 审核 → 重写/下一章/摘要/完成（条件路由）
-    graph.add_conditional_edges(
-        "review_node",
-        route_after_review,
-        {
-            "rewrite": "rewrite_node",
-            "next_chapter": "generate_chapter_content_node",
-            "chapter_summary": "chapter_summary_node",
-            "wait_confirm": END,
-            "end": END,
-        },
-    )
-
-    # 摘要 → 下一章或完成
-    graph.add_conditional_edges(
-        "chapter_summary_node",
-        route_after_summary,
-        {"next_chapter": "generate_chapter_content_node", "end": END},
-    )
-
-    # 重写 → 审核
-    graph.add_edge("rewrite_node", "review_node")
+    # 修订
+    graph.add_edge("structural_review_node", "character_arc_review_node")
+    graph.add_edge("character_arc_review_node", "final_polish_node")
+    graph.add_edge("final_polish_node", END)
 
     return graph.compile(checkpointer=checkpointer)
 
@@ -305,36 +237,20 @@ def create_novel_graph(checkpointer=None):
 def create_novel_graph_with_checkpointer(
     project_id: int, thread_id: str = "default"
 ):
-    """
-    创建带检查点的小说创作工作流图。
-
-    带检查点的图支持暂停/恢复功能，
-    用于实现用户确认后继续执行的流程。
-
-    Args:
-        project_id: 项目 ID
-        thread_id: 线程 ID（默认 "default"）
-
-    Returns:
-        编译后的 StateGraph 实例
-    """
+    """创建带检查点的创作智能体工作流图"""
     from app.agents.checkpointer import get_checkpoint_saver
 
     checkpointer = get_checkpoint_saver(project_id, thread_id)
-
     return create_novel_graph(checkpointer=checkpointer)
 
 
-# 导出的公共 API
 __all__ = [
     "create_novel_graph",
     "create_novel_graph_with_checkpointer",
-    "route_after_outline",
-    "route_after_characters",
-    "route_after_chapter_outlines",
-    "route_after_arc_outlines",
-    "route_after_relations",
-    "route_after_review",
-    "route_after_volume_arc",
-    "route_after_summary",
+    "route_after_inspiration",
+    "route_after_knowledge",
+    "route_after_structure",
+    "route_after_chapter_node",
+    "route_after_post_write",
+    "route_after_deep_review",
 ]
