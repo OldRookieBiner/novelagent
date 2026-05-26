@@ -176,13 +176,96 @@ git commit -m "feat(models): add creation agent tracking models"
 
 - [ ] **Step 1:** 重写 NovelState
 
-核心变化：
-- 阶段控制从旧 stage 枚举改为 phase（incubation/structure/writing/revision）
-- 新增 story_seed, inspiration_messages, plot_blocks, plot_questions, subplots
-- 新增 post_write_results, last_review_chapter
-- confirmation_type 扩展为支持 inspiration_dialogue/story_seed/outline/world_setting/characters/relations/style/foreshadowing_plan/structure/chapter_node/review_failed
-- 保留 replace_or_append_chapters reducer
-- 删除旧的 collected_info, outline_emotional_curve, arcs, review_mode 等管道式字段
+核心原则：state 只存流程控制状态和 ID 引用，不缓存 DB 数据。节点通过 KnowledgeBaseService 实时读取 DB。
+
+```python
+from enum import Enum
+from typing import TypedDict, Optional, Annotated, Any
+
+class Phase(str, Enum):
+    """创作阶段"""
+    INCUBATION = "incubation"
+    STRUCTURE = "structure"
+    WRITING = "writing"
+    REVISION = "revision"
+
+class ConfirmationType(str, Enum):
+    """确认类型——类型安全，避免字符串拼写错误"""
+    INSPIRATION_DIALOGUE = "inspiration_dialogue"
+    STORY_SEED = "story_seed"
+    OUTLINE = "outline"
+    WORLD_SETTING = "world_setting"
+    CHARACTERS = "characters"
+    RELATIONS = "relations"
+    STYLE = "style"
+    FORESHADOWING_PLAN = "foreshadowing_plan"
+    STRUCTURE = "structure"
+    CHAPTER_NODE = "chapter_node"
+    REVIEW_FAILED = "review_failed"
+
+def replace_or_append_chapters(existing: list[dict], new_items: list[dict]) -> list[dict]:
+    # 保留现有 reducer 逻辑
+    result = list(existing)
+    for new_chapter in new_items:
+        chapter_num = new_chapter.get("chapter_number")
+        existing_idx = None
+        for i, ch in enumerate(result):
+            if ch.get("chapter_number") == chapter_num:
+                existing_idx = i
+                break
+        if existing_idx is not None:
+            result[existing_idx] = new_chapter
+        else:
+            result.append(new_chapter)
+    return result
+
+class NovelState(TypedDict):
+    """小说创作智能体状态 v2
+
+    设计原则：只存流程控制状态和 ID 引用。
+    所有业务数据通过 KnowledgeBaseService 从 DB 实时读取。
+    这避免 state 膨胀导致检查点序列化/反序列化性能问题。
+    """
+    # 基本信息
+    project_id: int
+
+    # 阶段控制（使用 Enum 替代字符串）
+    phase: str  # Phase enum value
+
+    # 创意孵化
+    story_seed: Optional[str]
+    inspiration_messages: list[dict]  # 创意对话消息（临时，孵化完成后不保留）
+
+    # 知识库 ID 引用（不缓存数据本身）
+    outline_id: Optional[int]
+    world_setting_id: Optional[int]
+    style_constraints_id: Optional[int]
+
+    # 结构（ID 引用 + 摘要，节点通过 service 读取完整数据）
+    current_plot_block_index: int
+    chapter_count: int
+
+    # 写作
+    current_chapter: int
+    written_chapters: Annotated[list[dict], replace_or_append_chapters]
+
+    # 写后自检结果摘要（不存完整数据，完整数据写入 DB）
+    post_write_summary: Optional[str]
+    last_review_chapter: int  # 上次深度审查的章节号
+
+    # 工作流控制（使用 Enum 替代字符串）
+    waiting_for_confirmation: bool
+    confirmation_type: Optional[str]  # ConfirmationType enum value
+
+    # LLM 服务
+    llm_config_id: Optional[int]
+    review_llm_config_id: Optional[int]
+    llm_model_name: Optional[str]
+
+    # Prompt + 上下文窗口
+    _prompts: dict[str, str | dict]
+    _context_window: int
+```
 
 - [ ] **Step 2:** 提交
 
@@ -225,12 +308,47 @@ git commit -m "feat(models): add creation agent tracking models"
 
 - [ ] **Step 1:** 实现 KnowledgeBaseService
 
+核心设计：每个方法内部创建独立 DB session，操作完成后立即关闭。不持有长生命周期 session。这避免 LangGraph 节点中 session 生命周期管理问题。
+
+```python
+class KnowledgeBaseService:
+    """知识库读写服务 — 所有 Agent 节点共享
+
+    每个 API 内部创建独立 DB session，确保：
+    1. LangGraph 节点无需管理 session 生命周期
+    2. SSE 流式请求中不会出现 session 并发冲突
+    3. 节点失败时自动回滚，不污染其他节点的 session
+    """
+
+    def __init__(self, project_id: int):
+        self.project_id = project_id
+
+    def _get_db(self) -> Session:
+        return SessionLocal()
+
+    def _close_db(self, db: Session):
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        try:
+            db.close()
+        except Exception:
+            pass
+```
+
 核心方法：
 - 读取：get_world_setting, get_characters, get_relations, get_style_constraints, get_plot_blocks, get_foreshadowings(status), get_timeline(chapter_range), get_style_snapshots(last_n)
 - 写入：create_world_setting, update_world_setting, create_character, create_style_constraints, create_plot_block, create_foreshadowing, update_foreshadowing, create_timeline_entry, create_style_snapshot, create_scene_entry
 - 查询：get_pending_foreshadowings, get_overdue_foreshadowings(current_chapter), get_questions_for_chapter, get_current_plot_block(chapter_number)
 
-构造函数接收 db: Session + project_id: int
+节点中使用方式：
+```python
+async def some_node(state: NovelState) -> NovelState:
+    kb = KnowledgeBaseService(project_id=state["project_id"])
+    world_setting = kb.get_world_setting()  # 内部自动创建/关闭 session
+    ...
+```
 
 - [ ] **Step 2:** 提交
 
@@ -297,7 +415,11 @@ git commit -m "feat(models): add creation agent tracking models"
 - Create: `backend/app/agents/nodes/context_assembly.py`
 - Create: `backend/app/agents/nodes/chapter_planning.py`
 - Rewrite: `backend/app/agents/nodes/chapter_generation.py` → `chapter_writing.py`
-- Create: `backend/app/agents/nodes/post_write_update.py`
+- Create: `backend/app/agents/nodes/character_consistency.py`       # 拆分自 post_write_update
+- Create: `backend/app/agents/nodes/tracking_update.py`             # 拆分自 post_write_update
+- Create: `backend/app/agents/nodes/style_check.py`                # 拆分自 post_write_update
+- Create: `backend/app/agents/nodes/scene_update.py`               # 拆分自 post_write_update
+- Create: `backend/app/agents/nodes/post_write_summary.py`         # 拆分自 post_write_update
 - Create: `backend/app/agents/nodes/deep_review.py`
 
 - [ ] **Step 1:** context_assembly_node（感知）
@@ -312,23 +434,17 @@ git commit -m "feat(models): add creation agent tracking models"
 
 基于章节点+上下文+风格约束写正文。保留现有流式生成逻辑，增加风格约束注入。
 
-- [ ] **Step 4:** post_write_update_node（自检——13项子任务）
+- [ ] **Step 4:** 写后自检节点组（6个独立节点，不是1个大节点）
 
-核心方法 _run_post_write_updates()，内部 12 个子函数：
-1. _check_character_consistency — 角色一致性（行为/对话/知识边界）
-2. _update_timeline — 追加时间线
-3. _update_foreshadowing — 更新伏笔表（暗示→强化→揭示）
-4. _update_plot_questions — 更新问题链
-5. _update_dynamic_settings — 更新动态设定
-6. _check_style_taboo — 禁忌词快查
-7. _update_style_stats — 风格统计
-8. _update_subplots — 更新支线网络
-9. _extract_dialogue_samples — 对话样本提取
-10. _update_scene_list — 更新场景清单
-11. _compress_timeline — 时间线压缩
-12. _mark_for_indexing — 标记待索引内容
+拆分为独立节点，每个节点单一职责，失败不影响其他项。在 StateGraph 中串行编排。
 
-结果汇总写入 state["post_write_results"]
+1. `character_consistency_node` — 角色一致性自查（行为/对话/知识边界）+ 更新动态设定
+2. `tracking_update_node` — 追加时间线 + 更新伏笔表（暗示→强化→揭示）+ 更新问题链 + 更新支线网络
+3. `style_check_node` — 禁忌词快查 + 风格统计 + 对话样本提取
+4. `scene_update_node` — 更新场景清单 + 时间线压缩 + 标记待索引内容
+5. `post_write_summary_node` — 汇总所有自检结果，写入 state["post_write_summary"]
+
+每个节点通过 KnowledgeBaseService 读写 DB。节点间通过 state 传递章节号和关键结果。
 
 - [ ] **Step 5:** deep_review_node（每5章触发）
 
@@ -371,9 +487,14 @@ git commit -m "feat(models): add creation agent tracking models"
 → (用户确认知识库)
 → question_chain → plot_blocks → subplot_network → rhythm_curve → chapter_count_estimate
 → (用户确认结构)
-→ context_assembly → chapter_planning → (用户确认章节点) → chapter_writing
-→ post_write_update → (条件: 每5章→deep_review) → context_assembly (下一章)
-或 → structural_review → character_arc_review → final_polish → END
+
+写作循环：
+context_assembly → chapter_planning → (用户确认章节点) → chapter_writing
+→ character_consistency → tracking_update → style_check → scene_update → post_write_summary
+→ (条件: 每5章→deep_review) → deep_review → (条件: 还有下一章→context_assembly, 全部完成→revision)
+
+修订：
+structural_review → character_arc_review → final_polish → END
 ```
 
 - [ ] **Step 2:** 实现条件路由函数
@@ -415,7 +536,46 @@ route_after_inspiration, route_after_knowledge, route_after_structure, route_aft
 - Create: `frontend/src/components/workbench/ProgressDashboard.tsx`
 - Rewrite: `frontend/src/stores/workbenchStore.ts`
 
-- [ ] **Step 1:** 重写 workbenchStore.ts — 新状态（activeTab/selectedChapter/phase 等）
+- [ ] **Step 1:** 重写 workbenchStore.ts
+
+完整类型定义（确保后续前端任务一致）：
+
+```typescript
+type WorkbenchTab = 'writing' | 'knowledge' | 'structure' | 'tracking'
+type Phase = 'incubation' | 'structure' | 'writing' | 'revision'
+
+interface WorkbenchState {
+  // Tab
+  activeTab: WorkbenchTab
+  setActiveTab: (tab: WorkbenchTab) => void
+
+  // 章节选择
+  selectedChapterNumber: number | null
+  setSelectedChapterNumber: (n: number | null) => void
+
+  // 阶段
+  phase: Phase
+  setPhase: (p: Phase) => void
+
+  // AI 侧栏
+  aiSidebarOpen: boolean
+  toggleAiSidebar: () => void
+  aiMessages: AiMessage[]
+  addAiMessage: (msg: AiMessage) => void
+
+  // Agent 并发控制
+  isAgentBusy: boolean
+  setIsAgentBusy: (busy: boolean) => void
+
+  // 模型选择
+  selectedModelKey: string
+  setSelectedModelKey: (key: string) => void
+
+  // 项目隔离
+  currentProjectId: number | null
+  setCurrentProjectId: (id: number | null) => void
+}
+```
 
 - [ ] **Step 2:** 重写 WorkbenchLayout.tsx — 三栏+标签页+底栏布局
 
