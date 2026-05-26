@@ -35,7 +35,7 @@ def get_world_setting(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    project = get_project_for_user(db, project_id, current_user)
+    project = get_project_for_user(project_id, current_user.id, db)
     kb = _get_kb(project.id)
     setting = kb.get_world_setting()
     if not setting:
@@ -50,7 +50,7 @@ def update_world_setting(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    project = get_project_for_user(db, project_id, current_user)
+    project = get_project_for_user(project_id, current_user.id, db)
     kb = _get_kb(project.id)
     setting = kb.get_world_setting()
     if not setting:
@@ -67,7 +67,7 @@ def get_style_constraints(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    project = get_project_for_user(db, project_id, current_user)
+    project = get_project_for_user(project_id, current_user.id, db)
     kb = _get_kb(project.id)
     constraints = kb.get_style_constraints()
     if not constraints:
@@ -82,7 +82,7 @@ def update_style_constraints(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    project = get_project_for_user(db, project_id, current_user)
+    project = get_project_for_user(project_id, current_user.id, db)
     kb = _get_kb(project.id)
     # 风格约束不存在则创建
     constraints = kb.get_style_constraints()
@@ -101,7 +101,7 @@ def get_plot_blocks(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    project = get_project_for_user(db, project_id, current_user)
+    project = get_project_for_user(project_id, current_user.id, db)
     kb = _get_kb(project.id)
     return kb.get_plot_blocks()
 
@@ -115,7 +115,7 @@ def get_foreshadowings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    project = get_project_for_user(db, project_id, current_user)
+    project = get_project_for_user(project_id, current_user.id, db)
     kb = _get_kb(project.id)
     return kb.get_foreshadowings(status=status)
 
@@ -128,7 +128,7 @@ def get_timeline(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    project = get_project_for_user(db, project_id, current_user)
+    project = get_project_for_user(project_id, current_user.id, db)
     kb = _get_kb(project.id)
     return kb.get_timeline()
 
@@ -142,6 +142,6 @@ def get_style_snapshots(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    project = get_project_for_user(db, project_id, current_user)
+    project = get_project_for_user(project_id, current_user.id, db)
     kb = _get_kb(project.id)
     return kb.get_style_snapshots(last_n=last_n)

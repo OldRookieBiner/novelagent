@@ -10,6 +10,8 @@ The new creation agent workflow uses NovelState v2 format.
 import logging
 from typing import Optional, AsyncIterator
 
+from sqlalchemy.orm import Session
+
 from app.models.project import Project
 from app.models.outline import Outline
 from app.models.model_config import ModelConfig
