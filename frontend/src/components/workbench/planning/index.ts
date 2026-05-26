@@ -1,5 +1,1 @@
-// frontend/src/components/workbench/planning/index.ts
-
-export { InspirationPanel } from './InspirationPanel'
-export { CharacterPanel } from './CharacterPanel'
-export { RelationPanel } from './RelationPanel'
+// planning/index.ts — 暂空，旧组件已移至 legacy

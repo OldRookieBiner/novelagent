@@ -8,6 +8,8 @@ import Skeleton from '@/components/ui/skeleton'
 import { chapterOutlinesApi, chaptersApi } from '@/lib/api'
 import { createSSEStream } from '@/lib/sseParser'
 import { AIAssistantPanel } from './AIAssistantPanel'
+import { ChapterNodePanel } from './ChapterNodePanel'
+import type { ChapterNode } from './ChapterNodePanel'
 import TipTapEditor from '@/components/common/TipTapEditor'
 import type { ChapterOutline, Chapter, ReviewResponse } from '@/types'
 import { mapReviewResult } from '@/types'
@@ -114,6 +116,8 @@ export function WritingPanel({ projectId }: WritingPanelProps)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
   const [rewriting, setRewriting] = useState(false)
+  const [chapterNode, setChapterNode] = useState<ChapterNode | null>(null)
+  const [showChapterNode, setShowChapterNode] = useState(false)
   const rewriteAccumulatedRef = useRef('')
 
   useEffect(() =>
@@ -241,6 +245,24 @@ export function WritingPanel({ projectId }: WritingPanelProps)
       toast.error('请先生成前一章的正文')
       return
     }
+
+    // 如果没有现有内容，先展示章节点让用户确认
+    if (!content && !showChapterNode) {
+      setChapterNode({
+        chapterNumber: selectedChapter.chapter_number,
+        title: selectedChapter.title || `第${selectedChapter.chapter_number}章`,
+        causalChain: "",
+        hook: "",
+        scenes: [],
+        characters: [],
+        questionsToAnswer: [],
+        questionsToRaise: [],
+        foreshadowings: [],
+      })
+      setShowChapterNode(true)
+      return
+    }
+    setShowChapterNode(false)
 
     setWritingChapterGenerating(true)
     setWritingGeneratingChapterId(selectedChapter.id)
@@ -663,6 +685,17 @@ export function WritingPanel({ projectId }: WritingPanelProps)
                   )}
                 </div>
               </div>
+              {/* 章节点确认卡片 */}
+              {showChapterNode && chapterNode && (
+                <div className="mb-4">
+                  <ChapterNodePanel
+                    node={chapterNode}
+                    onConfirm={() => { setShowChapterNode(false); handleGenerate(); }}
+                    onReject={() => setShowChapterNode(false)}
+                    onEdit={(updated) => setChapterNode(updated)}
+                  />
+                </div>
+              )}
               {generating && (
                 <div className="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
                   <Loader2 className="h-3 w-3 animate-spin" />

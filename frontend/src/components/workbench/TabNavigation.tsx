@@ -1,15 +1,15 @@
-// frontend/src/components/workbench/TabNavigation.tsx
+// TabNavigation.tsx — 4个标签页
 
-import { Sparkles, Settings, BookOpen, PenTool } from 'lucide-react'
+import { Sparkles, BookOpen, GitBranch, BarChart3 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
-import type { WorkbenchTab } from '@/types/workbench'
+import type { WorkbenchTab } from '@/stores/workbenchStore'
 
 const TABS: { key: WorkbenchTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { key: 'inspiration', label: '灵感', icon: Sparkles },
-  { key: 'settings', label: '设定', icon: Settings },
-  { key: 'chapter_outlines', label: '章节大纲', icon: BookOpen },
-  { key: 'writing', label: '章节正文', icon: PenTool },
+  { key: 'writing', label: '写作', icon: Sparkles },
+  { key: 'knowledge', label: '知识库', icon: BookOpen },
+  { key: 'structure', label: '结构', icon: GitBranch },
+  { key: 'tracking', label: '追踪', icon: BarChart3 },
 ]
 
 export function TabNavigation()

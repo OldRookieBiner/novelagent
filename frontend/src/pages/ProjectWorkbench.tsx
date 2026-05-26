@@ -1,68 +1,91 @@
-// frontend/src/pages/ProjectWorkbench.tsx
+// ProjectWorkbench.tsx — 创作智能体工作台页面
 
-import { useEffect } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
 import { WorkbenchLayout } from '@/components/workbench/WorkbenchLayout'
-import { InspirationPanel } from '@/components/workbench/planning/InspirationPanel'
-import { CharacterPanel } from '@/components/workbench/planning/CharacterPanel'
-import { RelationPanel } from '@/components/workbench/planning/RelationPanel'
-import { OutlinePanel } from '@/components/workbench/creation/OutlinePanel'
-import { ChapterOutlinePanel } from '@/components/workbench/creation/ChapterOutlinePanel'
-import { WritingPanel } from '@/components/workbench/creation/WritingPanel'
+import { WritingTab } from '@/components/workbench/creation/WritingTab'
+import { KnowledgeTab } from '@/components/workbench/knowledge/KnowledgeTab'
+import { StructureTab } from '@/components/workbench/structure/StructureTab'
+import { TrackingTab } from '@/components/workbench/tracking/TrackingTab'
 import { useProjectData } from '@/hooks/useProjectData'
+import { knowledgeApi } from '@/lib/api'
+import type { PlotBlockGroup } from '@/components/workbench/WorkbenchLayout'
 
-export default function ProjectWorkbench()
-{
+export default function ProjectWorkbench() {
   const { id } = useParams<{ id: string }>()
   const projectId = id ? parseInt(id) : null
-  const { activeTab, activeMenuItem } = useWorkbenchStore()
-  const setCurrentProjectId = useWorkbenchStore((s) => s.setCurrentProjectId)
-  const { project, outline, loading, refreshOutline } = useProjectData(projectId)
+  const { activeTab, setCurrentProjectId, phase, setPhase } = useWorkbenchStore()
+  const { project, loading, workflowState } = useProjectData(projectId)
 
-  // 进入/切换项目时设置当前项目 ID，触发对话历史加载和隔离
-  useEffect(() =>
-  {
-    if (projectId)
-    {
+  // 情节块数据（从知识库 API 加载）
+  const [plotBlocks, setPlotBlocks] = useState<PlotBlockGroup[]>([])
+
+  // 进入/切换项目时设置当前项目 ID
+  useEffect(() => {
+    if (projectId) {
       setCurrentProjectId(projectId)
     }
   }, [projectId, setCurrentProjectId])
 
-  if (loading || !project)
-  {
+  // 同步后端工作流阶段到前端
+  useEffect(() => {
+    if (workflowState?.stage) {
+      const stageMap: Record<string, 'incubation' | 'structure' | 'writing' | 'revision'> = {
+        'incubation': 'incubation',
+        'structure': 'structure',
+        'writing': 'writing',
+        'revision': 'revision',
+        // 兼容旧阶段名
+        'outline': 'incubation',
+        'characters': 'incubation',
+        'chapter_outlines': 'structure',
+        'writing_chapters': 'writing',
+        'review': 'revision',
+      }
+      const mapped = stageMap[workflowState.stage]
+      if (mapped && mapped !== phase) {
+        setPhase(mapped)
+      }
+    }
+  }, [workflowState?.stage, phase, setPhase])
+
+  // 加载情节块数据
+  const loadPlotBlocks = useCallback(async () => {
+    if (!projectId) return
+    try {
+      const blocks = await knowledgeApi.getPlotBlocks(projectId)
+      const grouped: PlotBlockGroup[] = blocks.map((block: any) => ({
+        title: block.title,
+        isActive: false, // 将在写作阶段根据 current_chapter 判断
+        chapters: [], // 将从章节大纲填充
+      }))
+      setPlotBlocks(grouped)
+    } catch {
+      // 知识库可能尚未创建，使用空数组
+      setPlotBlocks([])
+    }
+  }, [projectId])
+
+  useEffect(() => {
+    loadPlotBlocks()
+  }, [loadPlotBlocks])
+
+  if (loading || !project) {
     return <div className="flex items-center justify-center h-screen">加载中...</div>
   }
 
-  // 渲染当前 Tab/菜单对应的面板
-  const renderContent = () =>
-  {
-    switch (activeTab)
-    {
-      // 灵感 Tab：全宽展示灵感面板
-      case 'inspiration':
-        return <InspirationPanel projectId={projectId!} hasOutline={!!outline?.title} onPlanningComplete={refreshOutline} />
-
-      // 章节大纲和章节正文是独立 Tab
-      case 'chapter_outlines':
-        return <ChapterOutlinePanel projectId={projectId!} />
+  // 渲染当前标签页内容
+  const renderTabContent = () => {
+    switch (activeTab) {
       case 'writing':
-        return <WritingPanel projectId={projectId!} />
-
-      // 设定 Tab 按侧边栏菜单项渲染
-      case 'settings':
-        switch (activeMenuItem)
-        {
-          case 'outline':
-            return <OutlinePanel projectId={projectId!} />
-          case 'characters':
-            return <CharacterPanel projectId={projectId!} />
-          case 'relations':
-            return <RelationPanel projectId={projectId!} />
-          default:
-            return null
-        }
-
+        return <WritingTab projectId={projectId!} />
+      case 'knowledge':
+        return <KnowledgeTab projectId={projectId!} />
+      case 'structure':
+        return <StructureTab projectId={projectId!} />
+      case 'tracking':
+        return <TrackingTab projectId={projectId!} />
       default:
         return null
     }
@@ -72,8 +95,9 @@ export default function ProjectWorkbench()
     <WorkbenchLayout
       projectName={project.name}
       progress={project.progress_percentage || 0}
+      plotBlocks={plotBlocks}
     >
-      {renderContent()}
+      {renderTabContent()}
     </WorkbenchLayout>
   )
 }

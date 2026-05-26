@@ -1,5 +1,10 @@
-// frontend/src/components/workbench/index.ts
+// workbench/index.ts
 
 export { TabNavigation } from './TabNavigation'
-export { WorkbenchSidebar } from './WorkbenchSidebar'
 export { WorkbenchLayout } from './WorkbenchLayout'
+export { ChapterListPanel } from './ChapterListPanel'
+export { AgentChatPanel } from './AgentChatPanel'
+export { ProgressDashboard } from './ProgressDashboard'
+
+// 类型导出
+export type { PlotBlockGroup } from './WorkbenchLayout'

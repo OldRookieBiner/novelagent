@@ -654,3 +654,78 @@ export const volumesApi = {
     })
   },
 }
+// ==================== Knowledge API ====================
+
+export const knowledgeApi = {
+  /**
+   * 获取世界观
+   */
+  async getWorldSetting(projectId: number): Promise<any>
+  {
+    return request<any>(`/api/projects/${projectId}/world-setting`)
+  },
+
+  /**
+   * 更新世界观
+   */
+  async updateWorldSetting(projectId: number, data: any): Promise<any>
+  {
+    return request<any>(`/api/projects/${projectId}/world-setting`, {
+      method: 'PUT',
+      body: data,
+    })
+  },
+
+  /**
+   * 获取风格约束
+   */
+  async getStyleConstraints(projectId: number): Promise<any>
+  {
+    return request<any>(`/api/projects/${projectId}/style-constraints`)
+  },
+
+  /**
+   * 更新风格约束
+   */
+  async updateStyleConstraints(projectId: number, data: any): Promise<any>
+  {
+    return request<any>(`/api/projects/${projectId}/style-constraints`, {
+      method: 'PUT',
+      body: data,
+    })
+  },
+
+  /**
+   * 获取情节块列表
+   */
+  async getPlotBlocks(projectId: number): Promise<any[]>
+  {
+    return request<any[]>(`/api/projects/${projectId}/plot-blocks`)
+  },
+
+  /**
+   * 获取伏笔列表
+   */
+  async getForeshadowings(projectId: number, status?: string): Promise<any[]>
+  {
+    const query = status ? `?status=${status}` : ''
+    return request<any[]>(`/api/projects/${projectId}/foreshadowings${query}`)
+  },
+
+  /**
+   * 获取时间线
+   */
+  async getTimeline(projectId: number): Promise<any[]>
+  {
+    return request<any[]>(`/api/projects/${projectId}/timeline`)
+  },
+
+  /**
+   * 获取风格统计快照
+   */
+  async getStyleSnapshots(projectId: number, lastN?: number): Promise<any[]>
+  {
+    const query = lastN ? `?last_n=${lastN}` : ''
+    return request<any[]>(`/api/projects/${projectId}/style-snapshots${query}`)
+  },
+}
