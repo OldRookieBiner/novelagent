@@ -13,6 +13,13 @@ from app.models.character import Character, Relation, EvolutionPlan, EvolutionRe
 from app.models.volume import Volume
 from app.models.arc import Arc
 from app.models.agent_conversation import AgentConversation, AgentMessage
+from app.models.world_setting import WorldSetting
+from app.models.style_constraints import StyleConstraints
+from app.models.plot_structure import PlotBlock, PlotQuestion, Subplot
+from app.models.foreshadowing import Foreshadowing
+from app.models.timeline import TimelineEntry
+from app.models.style_snapshot import StyleSnapshot
+from app.models.scene_entry import SceneEntry
 
 __all__ = [
     "User",
@@ -33,4 +40,13 @@ __all__ = [
     "Arc",
     "AgentConversation",
     "AgentMessage",
+    "WorldSetting",
+    "StyleConstraints",
+    "PlotBlock",
+    "PlotQuestion",
+    "Subplot",
+    "Foreshadowing",
+    "TimelineEntry",
+    "StyleSnapshot",
+    "SceneEntry",
 ]
