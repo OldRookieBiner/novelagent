@@ -1,6 +1,7 @@
 """上下文组装节点（感知）
 
 写作循环的第一步：按需加载当前章节所需的所有上下文。
+将组装结果写入 state["assembled_context"]，供下游 chapter_planning_node 使用。
 """
 
 from app.agents.state import NovelState, Phase
@@ -15,6 +16,9 @@ async def context_assembly_node(state: NovelState) -> NovelState:
     2. 待回收伏笔 + 问题链
     3. 涉及角色 + 涉及设定
     4. 前文上下文（通过 context_strategy）
+
+    组装结果写入 state["assembled_context"]，下游节点直接使用，
+    无需重复读取 DB。
     """
     project_id = state["project_id"]
     current_chapter = state.get("current_chapter", 1)
@@ -42,23 +46,48 @@ async def context_assembly_node(state: NovelState) -> NovelState:
     # 7. 大纲
     outline = kb.get_outline()
 
-    # 组装上下文摘要（存入 state 供下游节点使用）
+    # 组装上下文摘要
     context_parts = []
+
+    if outline:
+        context_parts.append(f"【大纲概述】{outline.summary or ''}")
+
     if current_block:
-        context_parts.append(f"当前情节块：{current_block.title}")
+        context_parts.append(f"【当前情节块】{current_block.title}")
         if current_block.must_happen:
             context_parts.append(f"必须事件：{', '.join(current_block.must_happen)}")
+        if current_block.questions_to_answer:
+            context_parts.append(f"需回答问题：{', '.join(current_block.questions_to_answer)}")
+
+    if world_setting:
+        context_parts.append(f"【世界观】{world_setting.core_concept or ''}")
+
+    if characters:
+        chars_summary = ", ".join([f"{c.name}（{c.role}）" for c in characters[:10]])
+        context_parts.append(f"【角色】{chars_summary}")
+
     if overdue:
         context_parts.append(f"⚠️超期伏笔：{', '.join([f.content for f in overdue])}")
+
     if pending:
         context_parts.append(f"待回收伏笔：{', '.join([f.content for f in pending[:5]])}")
+
     if questions:
         context_parts.append(f"待回答问题：{', '.join([q.question_text for q in questions[:3]])}")
 
-    context_summary = "\n".join(context_parts) if context_parts else "（无额外上下文）"
+    if style:
+        style_info = []
+        if style.style_anchor:
+            style_info.append(f"风格锚点：{style.style_anchor}")
+        if style.taboo_words:
+            style_info.append(f"禁忌词：{', '.join(style.taboo_words)}")
+        if style_info:
+            context_parts.append(f"【风格约束】{'；'.join(style_info)}")
+
+    assembled_context = "\n".join(context_parts) if context_parts else "（无额外上下文）"
 
     return {
         **state,
         "phase": Phase.WRITING.value,
-        # 上下文数据不存入 state，下游节点通过 kb 实时读取
+        "assembled_context": assembled_context,
     }

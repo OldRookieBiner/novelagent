@@ -28,7 +28,7 @@ from app.utils.deps import get_user_settings_or_raise
 from app.utils.project import get_project_for_user
 from app.utils.workflow import get_or_create_workflow_state
 from app.utils.error import format_sse_error
-from app.agents.sse_events import format_chunk, format_done, format_error_message, format_heartbeat, format_node_start, format_node_done
+from app.agents.sse_events import format_chunk, format_done, format_sse_error, format_heartbeat, format_node_start, format_node_done
 from app.agents.state import (
     NovelState,
     STAGE_CHAPTER_OUTLINES,

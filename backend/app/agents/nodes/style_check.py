@@ -6,21 +6,23 @@
 import re
 from app.agents.state import NovelState
 from app.agents.services.knowledge_base import KnowledgeBaseService
+from app.agents.nodes.utils import find_chapter_by_number
 
 
 async def style_check_node(state: NovelState) -> NovelState:
     """风格检查"""
     project_id = state["project_id"]
-    current_chapter = state.get("current_chapter", 1) - 1
+    written_chapters = state.get("written_chapters", [])
+    current_chapter = state.get("current_chapter", 1)
     kb = KnowledgeBaseService(project_id)
 
-    # 获取刚写的章节
-    written = state.get("written_chapters", [])
-    content = ""
-    for ch in written:
-        if ch.get("chapter_number") == current_chapter:
-            content = ch.get("content", "")
-            break
+    # 找到刚写完的章节
+    chapter = find_chapter_by_number(written_chapters, current_chapter)
+    if not chapter:
+        return {**state}
+
+    content = chapter.get("content", "")
+    written_chapter_num = chapter.get("chapter_number", current_chapter - 1)
 
     if not content:
         return {**state}
@@ -38,7 +40,7 @@ async def style_check_node(state: NovelState) -> NovelState:
     paragraph_count = len(paragraphs)
     avg_para_len = sum(len(p) for p in paragraphs) / max(paragraph_count, 1)
 
-    # 对话占比（简化：以引号包围的内容）
+    # 对话占比（以引号包围的内容）
     dialogue_chars = len(re.findall(r'[「"『].*?[」"』]', content))
     dialogue_ratio = dialogue_chars / max(len(content), 1)
 
@@ -48,7 +50,7 @@ async def style_check_node(state: NovelState) -> NovelState:
     avg_sent_len = sum(len(s) for s in sentences) / max(len(sentences), 1)
 
     kb.create_style_snapshot({
-        "chapter_number": current_chapter,
+        "chapter_number": written_chapter_num,
         "paragraph_count": paragraph_count,
         "avg_paragraph_length": avg_para_len,
         "dialogue_ratio": round(dialogue_ratio, 3),

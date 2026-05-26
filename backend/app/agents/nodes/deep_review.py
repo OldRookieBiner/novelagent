@@ -14,11 +14,14 @@ from app.agents.nodes.utils import get_prompts_from_state, safe_format
 async def deep_review_node(state: NovelState) -> NovelState:
     """深度审查"""
     project_id = state["project_id"]
-    current_chapter = state.get("current_chapter", 1) - 1
+    current_chapter = state.get("current_chapter", 1)
+    # current_chapter 已在 chapter_writing_node 中递增，
+    # 刚写完的章节号是 current_chapter - 1
+    written_chapter_num = current_chapter - 1
     kb = KnowledgeBaseService(project_id)
 
     # 读取审查所需数据
-    timeline = kb.get_timeline(chapter_range=(max(1, current_chapter - 4), current_chapter))
+    timeline = kb.get_timeline(chapter_range=(max(1, written_chapter_num - 4), written_chapter_num))
     world_setting = kb.get_world_setting()
     outline = kb.get_outline()
     foreshadowings = kb.get_foreshadowings()
@@ -53,11 +56,13 @@ async def deep_review_node(state: NovelState) -> NovelState:
         )
 
     response = ""
-    async for chunk in llm.chat_stream([{"role": "user", "content": prompt_text}], temperature=0.2):
+    async for chunk in llm.chat_stream(
+        [{"role": "user", "content": prompt_text}], temperature=0.2
+    ):
         response += chunk
 
-    # 审查结果不存入 state，由主 Agent 决定是否修改
+    # 更新 last_review_chapter，防止重复触发
     return {
         **state,
-        "last_review_chapter": current_chapter,
+        "last_review_chapter": written_chapter_num,
     }

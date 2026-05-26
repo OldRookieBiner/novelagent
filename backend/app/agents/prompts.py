@@ -547,3 +547,27 @@ def get_prompt_template(prompts: dict, name: str) -> tuple[str, str]:
     if isinstance(template, dict):
         return template.get("system", ""), template.get("user", "")
     return "", str(template)
+
+
+# Backward compatibility: DEFAULT_PROMPTS dict for legacy code
+DEFAULT_PROMPTS = {
+    "inspiration_dialogue": INSPIRATION_DIALOGUE_PROMPT,
+    "story_seed": STORY_SEED_PROMPT,
+    "world_setting": WORLD_SETTING_PROMPT,
+    "style_setup": STYLE_SETUP_PROMPT,
+    "foreshadowing_plan": FORESHADOWING_PLAN_PROMPT,
+    "question_chain": QUESTION_CHAIN_PROMPT,
+    "plot_blocks": PLOT_BLOCKS_PROMPT,
+    "subplot_network": SUBPLOT_NETWORK_PROMPT,
+    "rhythm_curve": RHYTHM_CURVE_PROMPT,
+    "chapter_planning": CHAPTER_PLANNING_PROMPT,
+    "chapter_writing": CHAPTER_WRITING_PROMPT,
+    "post_write_check": POST_WRITE_CHECK_PROMPT,
+    "deep_review": DEEP_REVIEW_PROMPT,
+    "structural_review": STRUCTURAL_REVIEW_PROMPT,
+    "character_arc_review": CHARACTER_ARC_REVIEW_PROMPT,
+    "final_polish": FINAL_POLISH_PROMPT,
+}
+
+# Backward compatibility aliases for legacy code
+AGENT_INSPIRATION_SYSTEM_PROMPT = INSPIRATION_DIALOGUE_PROMPT

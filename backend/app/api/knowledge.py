@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
+from typing import Optional
 
 from app.database import get_db
 from app.models.user import User
@@ -86,7 +87,7 @@ def update_style_constraints(
     # 风格约束不存在则创建
     constraints = kb.get_style_constraints()
     if constraints:
-        updated = kb.update_world_setting(constraints.id, data.model_dump(exclude_none=True))
+        updated = kb.update_style_constraints(constraints.id, data.model_dump(exclude_none=True))
     else:
         updated = kb.create_style_constraints(data.model_dump(exclude_none=True))
     return updated
@@ -110,7 +111,7 @@ def get_plot_blocks(
 @router.get("/projects/{project_id}/foreshadowings", response_model=list[ForeshadowingResponse])
 def get_foreshadowings(
     project_id: int,
-    status: str = None,
+    status: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -137,7 +138,7 @@ def get_timeline(
 @router.get("/projects/{project_id}/style-snapshots", response_model=list[StyleSnapshotResponse])
 def get_style_snapshots(
     project_id: int,
-    last_n: int = None,
+    last_n: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

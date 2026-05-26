@@ -56,6 +56,32 @@ class PlotBlockResponse(BaseModel):
         from_attributes = True
 
 
+class PlotQuestionResponse(BaseModel):
+    id: int
+    project_id: int
+    question_text: Optional[str] = None
+    status: str = "pending"
+    raised_in_chapter: Optional[int] = None
+    answered_in_chapter: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
+class SubplotResponse(BaseModel):
+    id: int
+    project_id: int
+    name: str
+    characters: list = []
+    current_status: Optional[str] = None
+    raised_in_chapter: Optional[int] = None
+    planned_intersection_chapter: Optional[int] = None
+    expected_resolution_chapter: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
 class ForeshadowingResponse(BaseModel):
     id: int
     project_id: int
@@ -95,6 +121,21 @@ class StyleSnapshotResponse(BaseModel):
     avg_paragraph_length: float = 0.0
     dialogue_ratio: float = 0.0
     avg_sentence_length: float = 0.0
+
+    class Config:
+        from_attributes = True
+
+
+class SceneEntryResponse(BaseModel):
+    id: int
+    project_id: int
+    chapter_number: int
+    scene_index: int = 1
+    location: Optional[str] = None
+    scene_description: Optional[str] = None
+    characters_present: list = []
+    mood: Optional[str] = None
+    key_events: list = []
 
     class Config:
         from_attributes = True

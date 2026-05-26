@@ -1,4 +1,7 @@
-"""章节正文生成节点（执行）"""
+"""章节正文生成节点（执行）
+
+基于章节点 + 组装上下文 + 风格约束写正文。
+"""
 
 from app.agents.state import NovelState
 from app.agents.services.knowledge_base import KnowledgeBaseService
@@ -13,48 +16,54 @@ async def chapter_writing_node(state: NovelState) -> NovelState:
     current_chapter = state.get("current_chapter", 1)
     kb = KnowledgeBaseService(project_id)
 
+    # 从 state 读取 chapter_planning_node 的输出
+    chapter_plan = state.get("chapter_plan", "（无章节点）")
+    assembled_context = state.get("assembled_context", "")
+
+    # 读取风格约束
     style = kb.get_style_constraints()
-    style_text = f"禁忌词：{style.taboo_words}\n锚点：{style.style_anchor}" if style else ""
+    style_text = ""
+    if style:
+        parts = []
+        if style.taboo_words:
+            parts.append(f"禁忌词：{', '.join(style.taboo_words)}")
+        if style.style_anchor:
+            parts.append(f"风格锚点：{style.style_anchor}")
+        if style.abstract_rules:
+            parts.append(f"抽象规则：{', '.join(style.abstract_rules)}")
+        if parts:
+            style_text = "\n".join(parts)
 
     llm = await get_llm_from_state_async(state)
     prompts = state.get("_prompts", {})
     _, user_template = get_prompts_from_state(prompts, "chapter_writing")
 
-    # 上下文由 context_assembly_node 准备，此处简化为 DB 读取
+    # 目标字数
     outline = kb.get_outline()
-    characters = kb.get_characters()
-    plot_blocks = kb.get_plot_blocks()
-    current_block = kb.get_current_plot_block(current_chapter)
-
-    context_parts = []
-    if outline:
-        context_parts.append(f"大纲概述：{outline.summary}")
-    if current_block:
-        context_parts.append(f"当前情节块：{current_block.title}")
-    if characters:
-        context_parts.append("角色：" + ", ".join([c.name for c in characters]))
-
-    previous_context = "\n".join(context_parts) if context_parts else ""
-
-    target_words = 3000  # 默认目标字数
+    target_words = 3000
+    if outline and outline.project:
+        # 粗略估算
+        target_words = max(1500, min(5000, (outline.project.target_words or 100000) // max(state.get("chapter_count", 30), 10)))
 
     if user_template:
         prompt_text = safe_format(user_template,
-            chapter_node="（章节点确认后的内容）",
+            chapter_node=chapter_plan,
             style_constraints=style_text,
-            previous_context=previous_context,
+            previous_context=assembled_context,
             target_words=str(target_words),
         )
     else:
         prompt_text = safe_format(CHAPTER_WRITING_PROMPT,
-            chapter_node="（章节点确认后的内容）",
+            chapter_node=chapter_plan,
             style_constraints=style_text,
-            previous_context=previous_context,
+            previous_context=assembled_context,
             target_words=str(target_words),
         )
 
     response = ""
-    async for chunk in llm.chat_stream([{"role": "user", "content": prompt_text}], temperature=0.8):
+    async for chunk in llm.chat_stream(
+        [{"role": "user", "content": prompt_text}], temperature=0.8
+    ):
         response += chunk
 
     # 保存章节内容到 state
@@ -69,4 +78,7 @@ async def chapter_writing_node(state: NovelState) -> NovelState:
         **state,
         "written_chapters": [new_chapter],
         "current_chapter": current_chapter + 1,
+        # 清除写作工作记忆，避免下章误用
+        "chapter_plan": None,
+        "assembled_context": None,
     }

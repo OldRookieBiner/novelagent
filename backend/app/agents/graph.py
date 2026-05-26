@@ -7,6 +7,12 @@
 4. REVISION — 全书修订
 
 写后自检拆分为5个独立节点（单一职责），深度审查每5章条件触发。
+
+LangGraph human-in_the_loop 模式：
+- 需要用户确认时，设置 waiting_for_confirmation=True + confirmation_type
+- 图执行到 END 暂停，前端通过 checkpointer thread_id 恢复
+- 恢复时调用 graph.invoke(None, config) 或 graph.stream(None, config)
+- LangGraph 自动从检查点恢复状态，跳过已完成节点
 """
 
 from typing import Literal
@@ -35,35 +41,46 @@ from app.agents.nodes.deep_review import deep_review_node
 from app.agents.nodes.structural_review import structural_review_node
 from app.agents.nodes.character_arc_review import character_arc_review_node
 from app.agents.nodes.final_polish import final_polish_node
+from app.agents.nodes.outline_generation import outline_generation_node
+from app.agents.nodes.character_generation import character_generation_node
+from app.agents.nodes.relation_generation import relation_generation_node
 
 
 # ========== 条件路由函数 ==========
 
-def route_after_inspiration(state: NovelState) -> Literal["story_seed", "wait_confirm"]:
-    """创意对话后的路由：对话完成→故事种子，未完成→等待"""
-    if state.get("waiting_for_confirmation"):
-        return "wait_confirm"
+def route_after_inspiration(state: NovelState) -> Literal["story_seed"]:
+    """创意对话后的路由：对话完成→故事种子
+
+    创意对话通过 waiting_for_confirmation 暂停，
+    用户确认后 LangGraph 从检查点恢复，inspiration_dialogue_node
+    检测到已有对话历史，返回下一节点。
+    """
     return "story_seed"
 
 
-def route_after_knowledge(state: NovelState) -> Literal["wait_confirm", "question_chain"]:
-    """知识库确认后的路由：确认→结构设计，未确认→等待"""
+def route_after_knowledge(state: NovelState) -> Literal["question_chain"]:
+    """知识库确认后的路由：确认→结构设计
+
+    foreshadowing_plan_node 完成后如果 waiting_for_confirmation=True，
+    图暂停到 END，用户确认后恢复执行 question_chain_design_node。
+    如果 waiting_for_confirmation=False，直接继续。
+    """
     if state.get("waiting_for_confirmation"):
-        return "wait_confirm"
+        return "__end__"
     return "question_chain"
 
 
-def route_after_structure(state: NovelState) -> Literal["wait_confirm", "context_assembly"]:
-    """结构确认后的路由：确认→写作，未确认→等待"""
+def route_after_structure(state: NovelState) -> Literal["context_assembly"]:
+    """结构确认后的路由：确认→写作"""
     if state.get("waiting_for_confirmation"):
-        return "wait_confirm"
+        return "__end__"
     return "context_assembly"
 
 
-def route_after_chapter_node(state: NovelState) -> Literal["wait_confirm", "chapter_writing"]:
+def route_after_chapter_node(state: NovelState) -> Literal["chapter_writing"]:
     """章节点确认后的路由"""
     if state.get("waiting_for_confirmation"):
-        return "wait_confirm"
+        return "__end__"
     return "chapter_writing"
 
 
@@ -107,10 +124,13 @@ def create_novel_graph(checkpointer=None):
 
     工作流：
 
-    入口 → inspiration_dialogue → story_seed → outline_generation
-    → world_setting → character_generation → relation_generation
-    → style_setup → foreshadowing_plan
+    创意孵化：
+    inspiration_dialogue ⇄ 用户 ↔ story_seed → outline_generation
+    → character_generation → relation_generation
+    → world_setting → style_setup → foreshadowing_plan
     → (用户确认知识库)
+
+    结构设计：
     → question_chain → plot_blocks → subplot_network → rhythm_curve → chapter_count_estimate
     → (用户确认结构)
 
@@ -129,6 +149,9 @@ def create_novel_graph(checkpointer=None):
     # 创意孵化
     graph.add_node("inspiration_dialogue_node", inspiration_dialogue_node)
     graph.add_node("story_seed_node", story_seed_node)
+    graph.add_node("outline_generation_node", outline_generation_node)
+    graph.add_node("character_generation_node", character_generation_node)
+    graph.add_node("relation_generation_node", relation_generation_node)
     graph.add_node("world_setting_node", world_setting_node)
     graph.add_node("style_setup_node", style_setup_node)
     graph.add_node("foreshadowing_plan_node", foreshadowing_plan_node)
@@ -166,20 +189,25 @@ def create_novel_graph(checkpointer=None):
     # ===== 添加边 =====
 
     # 创意孵化
+    # inspiration_dialogue 通过 waiting_for_confirmation 暂停到 END
+    # 用户确认后 LangGraph 恢复执行 → 检查消息 → story_seed 或继续对话
     graph.add_conditional_edges(
         "inspiration_dialogue_node",
         route_after_inspiration,
-        {"story_seed": "story_seed_node", "wait_confirm": END},
+        {"story_seed": "story_seed_node"},
     )
-    graph.add_edge("story_seed_node", END)  # 等待确认后恢复到下一个节点
+    graph.add_edge("story_seed_node", "outline_generation_node")
+    graph.add_edge("outline_generation_node", "character_generation_node")
+    graph.add_edge("character_generation_node", "relation_generation_node")
+    graph.add_edge("relation_generation_node", "world_setting_node")
 
-    # 知识库构建（确认后按顺序执行）
+    # 知识库构建
     graph.add_edge("world_setting_node", "style_setup_node")
     graph.add_edge("style_setup_node", "foreshadowing_plan_node")
     graph.add_conditional_edges(
         "foreshadowing_plan_node",
         route_after_knowledge,
-        {"wait_confirm": END, "question_chain": "question_chain_design_node"},
+        {"question_chain": "question_chain_design_node"},
     )
 
     # 结构设计
@@ -190,14 +218,14 @@ def create_novel_graph(checkpointer=None):
     graph.add_conditional_edges(
         "chapter_count_estimate_node",
         route_after_structure,
-        {"wait_confirm": END, "context_assembly": "context_assembly_node"},
+        {"context_assembly": "context_assembly_node"},
     )
 
     # 写作循环
     graph.add_conditional_edges(
         "chapter_planning_node",
         route_after_chapter_node,
-        {"wait_confirm": END, "chapter_writing": "chapter_writing_node"},
+        {"chapter_writing": "chapter_writing_node"},
     )
     graph.add_edge("chapter_writing_node", "character_consistency_node")
     graph.add_edge("character_consistency_node", "tracking_update_node")

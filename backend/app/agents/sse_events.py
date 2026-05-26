@@ -55,3 +55,38 @@ def format_sse_error(error: str) -> str:
     """格式化错误事件"""
     import json
     return f"event: error\ndata: {json.dumps({'error': error}, ensure_ascii=False)}\n\n"
+
+
+def format_heartbeat() -> str:
+    """SSE heartbeat comment to keep connection alive"""
+    return ": heartbeat\n\n"
+
+
+# Backward compatibility alias
+format_error_message = format_sse_error
+
+
+# Backward compatibility stubs for legacy agent.py
+def format_agent_text(content: str) -> str:
+    return format_chunk(content)
+
+def format_agent_tool_start(tool_name: str, args: dict = None) -> str:
+    import json
+    return f"event: agent_tool_start\ndata: {json.dumps({'tool': tool_name, 'args': args or {}}, ensure_ascii=False)}\n\n"
+
+def format_agent_tool_result(tool_name: str, result: str) -> str:
+    import json
+    return f"event: agent_tool_result\ndata: {json.dumps({'tool': tool_name, 'result': result}, ensure_ascii=False)}\n\n"
+
+def format_agent_done(message: str = "完成") -> str:
+    return format_done(message)
+
+def format_ai_update(data: dict) -> str:
+    return format_progress(data)
+
+def format_agent_review(data: dict) -> str:
+    import json
+    return f"event: agent_review\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+def format_agent_chapter_preview(content: str) -> str:
+    return format_chunk(content)

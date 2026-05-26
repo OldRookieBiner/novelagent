@@ -145,8 +145,9 @@ app.include_router(
 )
 app.include_router(
     inspiration_router, tags=["inspiration"]
-app.include_router(knowledge_router, prefix="/api", tags=["knowledge"])
 )
+app.include_router(knowledge_router, prefix="/api", tags=["knowledge"])
+
 
 
 @app.get("/")

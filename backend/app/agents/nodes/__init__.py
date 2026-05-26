@@ -1,53 +1,26 @@
-"""Agent nodes"""
+"""Agent nodes
 
-from app.agents.nodes.outline_generation import (
-    generate_outline_node,
-    generate_outline_stream,
-    parse_outline,
-)
-from app.agents.nodes.chapter_generation import (
-    generate_single_chapter_outline,
-    generate_chapter_outlines_stream,
-    generate_chapter_content_stream,
-    parse_single_chapter_outline,
-)
-from app.agents.nodes.review import (
-    review_chapter_node,
-    parse_review_result,
-    check_review_passed,
-)
-from app.agents.nodes.rewrite import rewrite_chapter_node, rewrite_with_retry
+导出创作智能体节点函数。
+旧版节点函数（generate_outline_node 等）已移除，
+保留解析函数以兼容旧 API。
+"""
+
+from app.agents.nodes.outline_generation import outline_generation_node
 from app.agents.nodes.character_generation import (
-    create_characters_from_outline_node,
-    extract_characters_from_outline,
+    character_generation_node,
+    parse_character_generation_response,
 )
 from app.agents.nodes.relation_generation import (
-    generate_relations_node,
+    relation_generation_node,
     parse_relations_response,
 )
 
 __all__ = [
-    # Outline
-    "generate_outline_node",
-    "generate_outline_stream",
-    "parse_outline",
-    # Chapter outline
-    "generate_single_chapter_outline",
-    "generate_chapter_outlines_stream",
-    "parse_single_chapter_outline",
-    # Chapter content
-    "generate_chapter_content_stream",
-    # Review
-    "review_chapter_node",
-    "parse_review_result",
-    "check_review_passed",
-    # Rewrite
-    "rewrite_chapter_node",
-    "rewrite_with_retry",
-    # Character generation
-    "create_characters_from_outline_node",
-    "extract_characters_from_outline",
-    # Relation generation
-    "generate_relations_node",
+    # 创作智能体节点
+    "outline_generation_node",
+    "character_generation_node",
+    "relation_generation_node",
+    # 解析工具（旧 API 兼容）
+    "parse_character_generation_response",
     "parse_relations_response",
 ]

@@ -64,6 +64,10 @@ class NovelState(TypedDict):
 
     state 只存流程控制状态和 ID 引用。
     所有业务数据通过 KnowledgeBaseService 从 DB 实时读取。
+
+    例外：chapter_plan 是章节规划的 LLM 输出，在写作循环内
+    从 chapter_planning 传递到 chapter_writing，不写入 DB，
+    因为它是一个临时的工作记忆。
     """
 
     # ========== 基本信息 ==========
@@ -91,6 +95,12 @@ class NovelState(TypedDict):
     written_chapters: Annotated[
         list[dict], replace_or_append_chapters
     ]  # [{chapter_number, content, word_count}]
+
+    # ========== 写作工作记忆（循环内临时传递，不写 DB）==========
+    # chapter_planning_node 的 LLM 输出，传给 chapter_writing_node
+    chapter_plan: Optional[str]
+    # context_assembly_node 组装的上下文摘要，传给下游写作节点
+    assembled_context: Optional[str]
 
     # ========== 写后自检 ==========
     # 自检结果摘要（不存完整数据，完整数据写入 DB）
