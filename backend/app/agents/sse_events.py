@@ -76,6 +76,47 @@ def format_warning(warning_type: str, data: dict) -> str:
     return f"event: warning\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
+
+# ========== Phase 4: 卷管理事件 ==========
+
+
+def format_volume_transition(data: dict) -> str:
+    """Format volume transition event (卷过渡).
+
+    data: {current_volume, new_volume, chapter_offset, unreclaimed_foreshadowings, active_subplots}
+    """
+    import json
+    return f"event: volume_transition
+data: {json.dumps(data, ensure_ascii=False)}
+
+"
+
+
+def format_volume_review(data: dict) -> str:
+    """Format per-volume revision report event (逐卷修订报告).
+
+    data: {volume_number, review_type, issues: [{severity, description, suggestion}]}
+    """
+    import json
+    return f"event: volume_review
+data: {json.dumps(data, ensure_ascii=False)}
+
+"
+
+
+def format_revision_report(data: dict) -> str:
+    """Format full-book revision report event (全书修订报告).
+
+    data: {revision_context, total_volumes, issues: [{severity, description, suggestion}],
+           modifications: [{chapter, location, change}]}
+    """
+    import json
+    return f"event: revision_report
+data: {json.dumps(data, ensure_ascii=False)}
+
+"
+
+
 # Backward compatibility alias
 format_error_message = format_sse_error
 
