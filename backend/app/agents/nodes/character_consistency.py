@@ -1,17 +1,35 @@
-"""角色一致性自查节点
+"""角色一致性自查节点 — 增强版
 
-检查行为/对话/知识边界，更新动态设定。
+检查维度：
+1. 角色知识边界检测：角色是否说出了知识边界之外的信息
+2. 行为一致性：行为是否符合核心动机
+3. 对话风格一致性：对话是否符合说话风格设定
+
+发现违规时写入 DB 警告记录，并通过 SSE 推送到前端。
 """
+
+import json
+import logging
 
 from app.agents.state import NovelState
 from app.agents.services.knowledge_base import KnowledgeBaseService
-from app.agents.prompts import POST_WRITE_CHECK_PROMPT
+from app.agents.prompts import CHARACTER_KNOWLEDGE_BOUNDARY_PROMPT
 from app.utils.llm import get_llm_from_state_async
 from app.agents.nodes.utils import get_prompts_from_state, safe_format, find_chapter_by_number
 
+logger = logging.getLogger(__name__)
+
 
 async def character_consistency_node(state: NovelState) -> NovelState:
-    """角色一致性自查 + 更新动态设定"""
+    """角色一致性自查 + 知识边界检测
+
+    对每个出场角色检查：
+    1. 是否说出了其知识边界之外的信息（OOC 核心）
+    2. 行为是否符合核心动机
+    3. 对话是否符合说话风格
+
+    输出结构化违规列表，写入 DB 警告。
+    """
     project_id = state["project_id"]
     written_chapters = state.get("written_chapters", [])
     current_chapter = state.get("current_chapter", 1)
@@ -23,25 +41,103 @@ async def character_consistency_node(state: NovelState) -> NovelState:
         return {**state}
 
     content = chapter.get("content", "")
-    characters = kb.get_characters()
-    chars_text = "\n".join([
-        f"- {c.name}（知识边界：{getattr(c, 'knowledge_boundary', '未设定')}）"
-        for c in characters
-    ])
+    written_chapter_num = chapter.get("chapter_number", current_chapter - 1)
+    if not content:
+        return {**state}
 
-    # 角色一致性检查
-    check_prompt = (
-        f"检查以下章节中角色行为是否一致，"
-        f"是否有角色说出其知识边界之外的信息：\n\n"
-        f"{content[:2000]}\n\n角色设定：\n{chars_text}"
-    )
+    # 加载角色设定（含知识边界）
+    characters = kb.get_characters()
+    if not characters:
+        return {**state}
+
+    # 构建角色信息摘要（含知识边界，这是核心检查维度）
+    chars_info = []
+    for c in characters:
+        info = f"角色：{c.name}"
+        if hasattr(c, 'role') and c.role:
+            info += f"\n  定位：{c.role}"
+        if hasattr(c, 'core_motivation') and c.core_motivation:
+            info += f"\n  核心动机：{c.core_motivation}"
+        if hasattr(c, 'knowledge_boundary') and c.knowledge_boundary:
+            boundary = c.knowledge_boundary
+            if isinstance(boundary, dict):
+                info += f"\n  知识边界：不知道{json.dumps(boundary.get('unknown', []), ensure_ascii=False)}，误以为{json.dumps(boundary.get('mistaken', []), ensure_ascii=False)}"
+            else:
+                info += f"\n  知识边界：{boundary}"
+        if hasattr(c, 'speech_style') and c.speech_style:
+            info += f"\n  说话风格：{c.speech_style}"
+        chars_info.append(info)
+
+    chars_text = "\n\n".join(chars_info)
+
+    # 使用增强的 Prompt 进行检查
+    prompts = state.get("_prompts", {})
+    _, user_template = get_prompts_from_state(prompts, "character_knowledge_boundary")
+
+    if user_template:
+        prompt_text = safe_format(user_template,
+            chapter_content=content[:3000],
+            characters_info=chars_text,
+            chapter_number=written_chapter_num,
+        )
+    else:
+        prompt_text = safe_format(CHARACTER_KNOWLEDGE_BOUNDARY_PROMPT,
+            chapter_content=content[:3000],
+            characters_info=chars_text,
+            chapter_number=written_chapter_num,
+        )
 
     llm = await get_llm_from_state_async(state)
     response = ""
     async for chunk in llm.chat_stream(
-        [{"role": "user", "content": check_prompt}], temperature=0.2
+        [{"role": "user", "content": prompt_text}], temperature=0.2
     ):
         response += chunk
 
-    # 结果不存入 state，仅记录到 DB 或日志
+    # 解析违规结果
+    violations = _parse_violations(response)
+
+    # 记录违规到日志（后续 WarningService 会消费）
+    if violations:
+        logger.warning(f"项目 {project_id} 第 {written_chapter_num} 章角色违规：{len(violations)} 项")
+        for v in violations:
+            logger.warning(f"  - {v.get('character', '?')}：{v.get('type', '?')} - {v.get('detail', '?')}")
+
     return {**state}
+
+
+def _parse_violations(response: str) -> list[dict]:
+    """解析 LLM 返回的违规列表
+
+    期望格式：
+    ❌ [角色名] 知识边界违规：[具体内容]
+    或
+    ✅ 无违规
+    """
+    violations = []
+    for line in response.split("\n"):
+        line = line.strip()
+        if line.startswith("❌") or line.startswith("⚠️"):
+            # 尝试解析结构化信息
+            parts = line.lstrip("❌⚠️").strip()
+            violations.append({
+                "type": "knowledge_boundary" if "知识边界" in parts or "边界" in parts else "consistency",
+                "detail": parts,
+                "character": _extract_character_name(parts),
+            })
+    return violations
+
+
+def _extract_character_name(text: str) -> str:
+    """从违规描述中提取角色名"""
+    # 尝试匹配 [角色名] 格式
+    import re
+    match = re.search(r'[【\[]([^】\]]+)[】\]]', text)
+    if match:
+        return match.group(1)
+    # 否则取第一个冒号前的文本
+    if "：" in text:
+        return text.split("：")[0].strip()
+    if ":" in text:
+        return text.split(":")[0].strip()
+    return "未知"

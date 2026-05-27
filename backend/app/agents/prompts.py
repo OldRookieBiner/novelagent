@@ -404,6 +404,51 @@ CHAPTER_WRITING_PROMPT = """基于以下章节点和上下文，写本章正文�
 6. 场景之间要有过渡，不能跳切
 7. 章节结尾必须有钩子，让读者想继续看"""
 
+
+CHARACTER_KNOWLEDGE_BOUNDARY_PROMPT = """你是角色一致性审查员，专注检测知识边界违规。
+
+## 待检查章节（第{chapter_number}章）
+{chapter_content}
+
+## 角色设定
+{characters_info}
+
+## 检查要求
+
+逐角色检查以下维度：
+
+### 1. 知识边界违规（最重要）
+角色是否说出了、暗示了、或以行动表明知道其「知识边界」之外的信息？
+
+检查方法：
+- 对每个角色，对照其「知识边界」字段
+- 如果角色说出/做出只有「知道该信息」才能说/做的事 → ❌ 违规
+- 如果角色合理推断出该信息（有明确线索） → ✅ 合理推断
+
+### 2. 行为一致性
+角色的行为是否符合其核心动机和人物弧？
+
+### 3. 对话风格一致性
+角色的对话是否符合其说话风格设定？
+
+## 输出格式
+
+对每个角色输出检查结果：
+
+[角色名]
+- 知识边界：✅ 无违规 / ❌ 违规 — [具体描述：角色说了/做了什么，这超出了什么知识边界]
+- 行为一致性：✅ / ⚠️ — [描述]
+- 对话风格：✅ / ⚠️ — [描述]
+
+如果没有违规，输出：
+✅ 全部角色无违规
+
+## 注意
+- 知识边界是最重要的检查维度
+- 合理推断不等于违规——角色可以基于已知信息推理
+- 误以为的信息如果与实际一致，不算违规
+- 重点关注对话中角色的「知情」程度"""
+
 POST_WRITE_CHECK_PROMPT = """检查刚写完的章节是否存在一致性问题。
 
 ## 章节内容
@@ -562,6 +607,7 @@ DEFAULT_PROMPTS = {
     "rhythm_curve": RHYTHM_CURVE_PROMPT,
     "chapter_planning": CHAPTER_PLANNING_PROMPT,
     "chapter_writing": CHAPTER_WRITING_PROMPT,
+    "character_knowledge_boundary": CHARACTER_KNOWLEDGE_BOUNDARY_PROMPT,
     "post_write_check": POST_WRITE_CHECK_PROMPT,
     "deep_review": DEEP_REVIEW_PROMPT,
     "structural_review": STRUCTURAL_REVIEW_PROMPT,
