@@ -1,24 +1,19 @@
-# backend/app/agents/agent_graph.py
+"""Free Operation Agent graph definition
 
-"""AI 搭档 Agent 图定义"""
+Uses LangGraph create_react_agent with phase-aware cognitive tools.
+Shares KnowledgeBaseService with the main writing loop.
+"""
 
 from langgraph.prebuilt import create_react_agent
 from langchain_openai import ChatOpenAI
 
-from app.agents.agent_tools import AGENT_TOOLS, INSPIRATION_TOOLS
-from app.agents.agent_context import build_project_context
-from app.agents.state import STAGE_INSPIRATION
+from app.agents.agent_tools import INCUBATION_TOOLS, STRUCTURE_TOOLS, WRITING_TOOLS
+from app.agents.state import Phase
 from app.utils.llm import resolve_llm_service
 
 
 def _get_llm_from_service(llm_service) -> ChatOpenAI:
-    """将 LLMService 转换为 LangChain ChatOpenAI 兼容对象
-
-    复用 LLMService 的 api_key/base_url/model 配置，
-    保留 provider 级别的连接信息，但 tool calling 走 LangChain 协议。
-    注意：这里不使用 LLMService 的 chat/chat_stream 方法，
-    因为 create_react_agent 内部管理 LLM 调用。
-    """
+    """Convert LLMService to LangChain ChatOpenAI for tool calling."""
     return ChatOpenAI(
         model=llm_service.model,
         api_key=llm_service.api_key,
@@ -27,22 +22,32 @@ def _get_llm_from_service(llm_service) -> ChatOpenAI:
     )
 
 
-def create_agent_graph(model_config_id: int = None, user_id: int = None, stage: str = None):
-    """创建 Agent 图实例
+# Phase -> tool list mapping
+_PHASE_TOOLS = {
+    Phase.INCUBATION.value: INCUBATION_TOOLS,
+    Phase.STRUCTURE.value: STRUCTURE_TOOLS,
+    Phase.WRITING.value: WRITING_TOOLS,
+    Phase.REVISION.value: WRITING_TOOLS,
+}
+
+
+def create_agent_graph(
+    model_config_id: int | None = None,
+    user_id: int | None = None,
+    phase: str | None = None,
+):
+    """Create a Free Operation Agent graph instance.
 
     Args:
-        model_config_id: 模型配置 ID
-        user_id: 用户 ID
-        stage: 工作流阶段（如 "inspiration"），用于限制可用工具
+        model_config_id: Model config ID for LLM selection
+        user_id: User ID for LLM service resolution
+        phase: Current creation phase (determines available tools)
     """
     llm_service = resolve_llm_service(model_config_id, user_id)
     llm = _get_llm_from_service(llm_service)
 
-    # 灵感阶段：限制工具为只读 + 简报 + 大纲修改
-    if stage == STAGE_INSPIRATION:
-        tools = INSPIRATION_TOOLS
-    else:
-        tools = AGENT_TOOLS
+    # Select tools by phase
+    tools = _PHASE_TOOLS.get(phase, WRITING_TOOLS)
 
     graph = create_react_agent(
         model=llm,
