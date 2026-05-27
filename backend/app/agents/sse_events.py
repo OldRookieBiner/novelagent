@@ -62,6 +62,20 @@ def format_heartbeat() -> str:
     return ": heartbeat\n\n"
 
 
+
+def format_impact_assessment(data: dict) -> str:
+    """Format impact assessment report event for frontend display."""
+    import json
+    return f"event: impact_assessment\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def format_warning(warning_type: str, data: dict) -> str:
+    """Format a warning event (foreshadowing overdue, style drift, etc.)."""
+    import json
+    payload = {"type": warning_type, **data}
+    return f"event: warning\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
 # Backward compatibility alias
 format_error_message = format_sse_error
 
