@@ -1,40 +1,50 @@
-# backend/app/agents/tool_context.py
-"""Agent tool 运行时上下文
+"""Agent tool runtime context
 
-使用 contextvars 在 async 环境中安全传递请求级别的上下文，
-避免全局变量在并发请求间交叉污染。
+Uses contextvars to safely pass request-level context in async environments,
+preventing cross-contamination between concurrent requests.
 """
 
 from contextvars import ContextVar
 
-# 当前请求的模型配置 ID
-_current_model_config_id: ContextVar[int | None] = ContextVar('model_config_id', default=None)
+# Current request model config ID
+_current_model_config_id: ContextVar[int | None] = ContextVar("model_config_id", default=None)
 
-# 当前请求的用户 ID
-_current_user_id: ContextVar[int | None] = ContextVar('user_id', default=None)
+# Current request user ID
+_current_user_id: ContextVar[int | None] = ContextVar("user_id", default=None)
+
+# Current request project ID — shared by all cognitive tools
+_current_project_id: ContextVar[int | None] = ContextVar("project_id", default=None)
 
 
-def set_tool_context(model_config_id: int | None = None, user_id: int | None = None):
-    """设置当前请求的 tool 上下文，返回重置 token 列表"""
+def set_tool_context(
+    model_config_id: int | None = None,
+    user_id: int | None = None,
+    project_id: int | None = None,
+):
+    """Set tool context for the current request, return reset tokens"""
     tokens = []
     if model_config_id is not None:
         tokens.append(_current_model_config_id.set(model_config_id))
     if user_id is not None:
         tokens.append(_current_user_id.set(user_id))
+    if project_id is not None:
+        tokens.append(_current_project_id.set(project_id))
     return tokens
 
 
 def reset_tool_context(tokens: list):
-    """重置 tool 上下文（请求结束时调用）"""
+    """Reset tool context (called when request ends)"""
     for token in tokens:
         token.var.reset(token)
 
 
 def get_model_config_id() -> int | None:
-    """获取当前请求的模型配置 ID"""
     return _current_model_config_id.get()
 
 
 def get_user_id() -> int | None:
-    """获取当前请求的用户 ID"""
     return _current_user_id.get()
+
+
+def get_project_id() -> int | None:
+    return _current_project_id.get()
