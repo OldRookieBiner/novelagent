@@ -672,6 +672,253 @@ def get_prompt_template(prompts: dict, name: str) -> tuple[str, str]:
     return "", str(template)
 
 
+
+# ==============================================================================
+# 5. 卷管理阶段（Phase 4）
+# ==============================================================================
+
+
+VOLUME_TRANSITION_PROMPT = """你是卷过渡分析专家，负责总结当前卷的关键信息，为下一卷的创作做好准备。
+
+## 当前卷信息
+- 当前卷号：第{current_volume}卷
+- 新卷号：第{new_volume}卷
+- 章节偏移：{chapter_offset}
+
+## 未回收伏笔
+{unreclaimed_foreshadowings}
+
+## 活跃支线
+{active_subplots}
+
+## 角色数量
+{character_count}个角色
+
+## 输出要求
+
+请生成一段卷过渡摘要，包含：
+
+### 1. 当前卷收尾评估
+- 已完成的核心情节线
+- 未完成的伏笔和支线
+- 角色状态变化
+
+### 2. 下一卷创作建议
+- 应优先回收的伏笔（标注紧迫度）
+- 应推进的支线
+- 角色弧线推进方向
+
+### 3. 注意事项
+- 跨卷连续性问题
+- 角色状态衔接
+- 设定一致性提醒
+
+## 注意
+- 摘要应简洁实用，不要冗余复述
+- 重点关注需要跨卷追踪的元素
+- 为下一卷的创作提供清晰的方向指引"""
+
+VOLUME_REVIEW_PROMPT = """你是独立审查员，对当前卷进行结构完整性检查（卷内范围）。
+
+## 审查范围
+当前卷：第{volume_number}卷
+
+## 伏笔表（当前卷范围）
+{foreshadowings}
+
+## 问题链（当前卷范围）
+{plot_questions}
+
+## 时间线（当前卷范围）
+{timeline}
+
+## 支线（当前卷范围）
+{subplots}
+
+## 检查维度
+
+1. **伏笔闭环**：当前卷内的伏笔是否已回收？跨卷伏笔是否已升级追踪？
+2. **问题链闭环**：当前卷内的问题链是否合理推进？
+3. **时间线一致性**：当前卷内事件时序是否有逻辑矛盾
+4. **支线闭环**：当前卷内的支线是否达预期状态？跨卷支线是否已升级追踪？
+5. **卷收尾质量**：是否为下一卷留下了足够的钩子？
+
+## 输出格式
+
+列出所有发现的问题，标注严重程度（🔴严重/🟡轻微）和修改建议。
+
+### 卷收尾评价
+- 收尾质量：✅完整 / ⚠️有遗漏 / ❌有明显断点
+- 钩子设置：✅有效 / ⚠️弱 / ❌无钩子"""
+
+PER_VOLUME_STRUCTURAL_REVIEW_PROMPT = """你是独立审查员，对当前卷进行结构完整性检查（卷内范围）。
+
+## 审查范围
+当前卷：第{volume_number}卷
+章节范围：第{chapter_start}章 - 第{chapter_end}章
+
+## 伏笔表（当前卷范围）
+{foreshadowings}
+
+## 问题链（当前卷范围）
+{plot_questions}
+
+## 时间线（当前卷范围）
+{timeline}
+
+## 支线（当前卷范围）
+{subplots}
+
+## 跨卷伏笔
+{cross_volume_foreshadowings}
+
+## 检查维度
+
+1. **伏笔闭环**：当前卷内的伏笔是否已回收？跨卷伏笔是否已升级追踪？
+2. **问题链闭环**：当前卷内的问题链是否合理推进？
+3. **时间线一致性**：当前卷内事件时序是否有逻辑矛盾
+4. **支线闭环**：当前卷内的支线是否达预期状态？跨卷支线是否已升级追踪？
+5. **核心冲突推进**：当前卷是否推进了至少一条核心冲突线？
+
+## 输出格式
+
+列出所有发现的问题，标注严重程度（🔴严重/🟡轻微）和修改建议。"""
+
+FULL_BOOK_STRUCTURAL_REVIEW_PROMPT = """你是独立审查员，对全书进行结构完整性检查（跨卷范围）。
+
+## 全书卷数
+{total_volumes}卷
+
+## 伏笔表（全书）
+{foreshadowings}
+
+## 跨卷伏笔
+{cross_volume_foreshadowings}
+
+## 问题链（全书）
+{plot_questions}
+
+## 时间线（各卷边界）
+{timeline}
+
+## 支线（全书）
+{subplots}
+
+## 跨卷支线
+{cross_volume_subplots}
+
+## 角色变化日志
+{character_change_logs}
+
+## 检查维度
+
+1. **伏笔闭环**：所有伏笔（含跨卷）是否已回收？
+2. **跨卷伏笔追踪**：跨卷伏笔是否在预期卷数内回收？是否有超期跨卷伏笔？
+3. **问题链闭环**：每个钩子是否在后续被回答？跨卷问题链是否连续？
+4. **时间线一致性**：卷间事件时序是否衔接？Volume.character_snapshot 转换是否合理？
+5. **支线闭环**：所有支线（含跨卷）是否达"已解决"？跨卷支线是否按预期交汇？
+6. **角色弧连续性**：跨卷角色状态是否一致？角色变化是否有铺垫？
+7. **核心冲突推进**：每卷是否推进至少一条冲突线？
+
+## 输出格式
+
+列出所有发现的问题，标注严重程度（🔴严重/🟡轻微）和修改建议。按卷组织问题。"""
+
+PER_VOLUME_CHARACTER_ARC_REVIEW_PROMPT = """检查当前卷角色弧与风格一致性。
+
+## 审查范围
+当前卷：第{volume_number}卷
+
+## 角色设定
+{characters}
+
+## 风格约束
+{style_constraints}
+
+## 风格统计（当前卷）
+{style_stats}
+
+## 检查维度
+
+1. **角色弧验证**：当前卷内角色弧线起点和终点是否有体现？转折是否有铺垫？
+2. **风格一致性**：当前卷禁忌词检查、对话占比偏离基准检查
+3. **角色状态衔接**：卷首角色状态是否与上卷末尾衔接？
+
+## 输出格式
+
+逐角色输出：[角色名] 起点✓/✗ 转折铺垫✓/✗ 终点体现✓/✗
+当前卷风格问题列表（如有）"""
+
+FULL_BOOK_CHARACTER_ARC_REVIEW_PROMPT = """检查全书角色弧与风格一致性（跨卷范围）。
+
+## 全书卷数
+{total_volumes}卷
+
+## 角色设定
+{characters}
+
+## 风格约束
+{style_constraints}
+
+## 风格统计（全书）
+{style_stats}
+
+## 角色变化日志
+{character_change_logs}
+
+## 卷边界角色快照
+{volume_snapshots}
+
+## 检查维度
+
+1. **角色弧验证**：逐角色检查全弧线起点和终点在正文体现、转折有铺垫
+2. **跨卷角色状态跳变**：对比相邻卷的 character_snapshot，检测无铺垫的状态跳变
+3. **风格一致性**：逐卷风格检查，是否有卷间风格不一致
+4. **开场钩子闭环**：开场问题在结局中被回答
+
+## 输出格式
+
+逐角色输出：[角色名] 全弧✓/✗ 跨卷衔接✓/✗
+跨卷角色状态跳变列表（如有）
+逐卷风格问题列表（如有）"""
+
+FINAL_POLISH_FULL_PROMPT = """基于审查结果，执行最终润色。
+
+## 审查问题清单
+{review_issues}
+
+## 修订范围
+{revision_scope}
+
+## 修改规则
+
+### 🔴 严重问题（必须修改）
+1. 生成具体的修改文本
+2. 标注受影响的章节和段落
+3. 修改后更新受影响的追踪数据
+
+### 🟠 中等问题（建议修改）
+1. 生成修改建议
+2. 作者可以选择接受或拒绝
+
+### 🟡🟢 轻微问题（记录但不修改）
+1. 记录问题
+2. 供后续创作参考
+
+### 最终一致性检查
+1. 修改后重新检查受影响区域的一致性
+2. 确保修改不引入新问题
+
+## 输出
+1. 所有修改的内容和位置
+2. 受影响的追踪数据更新摘要
+3. 修改后一致性检查结果
+
+## 注意
+- 修改应保持风格一致性，修改部分不应与未修改部分有明显差异
+- 优先处理🔴问题，其次🟠
+- 每个修改都应说明理由和影响范围"""
+
 # Backward compatibility: DEFAULT_PROMPTS dict for legacy code
 DEFAULT_PROMPTS = {
     "inspiration_dialogue": INSPIRATION_DIALOGUE_PROMPT,
@@ -692,6 +939,13 @@ DEFAULT_PROMPTS = {
     "structural_review": STRUCTURAL_REVIEW_PROMPT,
     "character_arc_review": CHARACTER_ARC_REVIEW_PROMPT,
     "final_polish": FINAL_POLISH_PROMPT,
+    "volume_transition": VOLUME_TRANSITION_PROMPT,
+    "volume_review": VOLUME_REVIEW_PROMPT,
+    "per_volume_structural_review": PER_VOLUME_STRUCTURAL_REVIEW_PROMPT,
+    "full_book_structural_review": FULL_BOOK_STRUCTURAL_REVIEW_PROMPT,
+    "per_volume_character_arc_review": PER_VOLUME_CHARACTER_ARC_REVIEW_PROMPT,
+    "full_book_character_arc_review": FULL_BOOK_CHARACTER_ARC_REVIEW_PROMPT,
+    "final_polish_full": FINAL_POLISH_FULL_PROMPT,
 }
 
 # Backward compatibility aliases for legacy code
