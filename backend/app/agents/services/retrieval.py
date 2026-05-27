@@ -102,6 +102,15 @@ def _index_dir(project_id: int) -> str:
     return path
 
 
+
+
+def _volume_index_dir(project_id: int, volume_number: int) -> str:
+    """获取项目卷级索引目录路径"""
+    base = os.environ.get("NOVELAGENT_INDEX_DIR", "/tmp/novelagent_index")
+    path = os.path.join(base, str(project_id), f"volume_{volume_number}")
+    os.makedirs(path, exist_ok=True)
+    return path
+
 # ========== 索引构建 ==========
 
 def _collect_documents_from_db(project_id: int) -> tuple[list[str], list[dict]]:
@@ -275,39 +284,395 @@ def build_index(project_id: int) -> bool:
         return False
 
 
+
+def _collect_volume_documents_from_db(project_id: int, volume_number: int) -> tuple[list[str], list[dict]]:
+    """从 DB 收集指定卷的知识库文本，返回 (docs, meta)
+
+    卷级数据来源：该卷范围内的时间线、伏笔、场景清单、章节内容
+    """
+    from app.agents.services.knowledge_base import KnowledgeBaseService
+    kb = KnowledgeBaseService(project_id)
+
+    docs = []
+    meta = []
+
+    def _add(text: str, source: str):
+        if not text or not text.strip():
+            return
+        chunks_list = chunk_text(text)
+        for i, chunk in enumerate(chunks_list):
+            docs.append(chunk)
+            meta.append({"source": source, "chunk": i})
+
+    # 获取卷信息
+    volume = kb.get_volume(volume_number)
+    if not volume:
+        return docs, meta
+
+    chapter_start = volume.chapter_offset + 1
+    # 计算卷的章节范围（到下一卷的 chapter_offset 为止）
+    volumes = kb.get_volumes()
+    next_volume = None
+    for v in volumes:
+        if v.volume_number == volume_number + 1:
+            next_volume = v
+            break
+    chapter_end = next_volume.chapter_offset if next_volume else 999999
+
+    # 1. 时间线（卷范围）
+    timeline = kb.get_timeline(chapter_range=(chapter_start, chapter_end))
+    for t in timeline:
+        parts = [f"第{t.chapter_number}章"]
+        if t.summary:
+            parts.append(t.summary)
+        if t.causal_chain:
+            parts.append(f"因果链：{t.causal_chain}")
+        if t.emotion_tag:
+            parts.append(f"情绪：{t.emotion_tag}")
+        _add(" | ".join(parts), f"timeline/{t.chapter_number}")
+
+    # 2. 伏笔（卷范围）
+    foreshadowings = kb.get_foreshadowings()
+    for f in foreshadowings:
+        if f.planted_chapter and chapter_start <= f.planted_chapter <= chapter_end:
+            parts = [f"伏笔：{f.content}"]
+            parts.append(f"等级：{f.level}，状态：{f.status}")
+            if f.expected_resolve_chapter:
+                parts.append(f"预期回收：第{f.expected_resolve_chapter}章")
+            _add("\n".join(parts), f"foreshadowing/{f.id}")
+
+    # 3. 场景清单（卷范围）
+    scenes = kb.get_scene_entries()
+    for s in scenes:
+        if chapter_start <= s.chapter_number <= chapter_end:
+            _add(f"第{s.chapter_number}章：{s.scene_description}", f"scene/{s.chapter_number}")
+
+    # 4. 卷摘要
+    if volume.summary:
+        _add(f"第{volume_number}卷摘要：{volume.summary}", f"volume_summary/{volume_number}")
+    if volume.last_block_summary:
+        _add(f"第{volume_number}卷末尾摘要：{volume.last_block_summary}", f"volume_block_summary/{volume_number}")
+
+    return docs, meta
+
+
+def build_volume_index(project_id: int, volume_number: int) -> bool:
+    """为指定卷构建 FAISS + BM25 索引
+
+    索引内容：卷范围的时间线、伏笔、场景清单、章节内容
+    存储路径：/tmp/novelagent_index/{project_id}/volume_{volume_number}/
+
+    Returns:
+        True if index built successfully, False otherwise
+    """
+    model = _get_model()
+    if model is None:
+        logger.warning(f"项目 {project_id} 卷{volume_number}: 模型不可用，跳过索引构建")
+        return False
+
+    docs, meta = _collect_volume_documents_from_db(project_id, volume_number)
+    if not docs:
+        logger.warning(f"项目 {project_id} 卷{volume_number}: 无文档可索引")
+        return False
+
+    index_path = _volume_index_dir(project_id, volume_number)
+
+    try:
+        # FAISS 索引
+        embeddings = model.encode(docs, show_progress_bar=False)
+        emb_array = np.array(embeddings).astype("float32")
+        import faiss
+        index = faiss.IndexFlatIP(emb_array.shape[1])
+        faiss.normalize_L2(emb_array)
+        index.add(emb_array)
+        faiss.write_index(index, os.path.join(index_path, "index.faiss"))
+        np.save(os.path.join(index_path, "embeddings.npy"), emb_array)
+
+        # 元数据
+        with open(os.path.join(index_path, "meta.json"), "w", encoding="utf-8") as f:
+            json.dump({"docs": docs, "meta": meta}, f, ensure_ascii=False, indent=2)
+
+        # BM25 索引
+        try:
+            from rank_bm25 import BM25Okapi
+            tokenized_corpus = [_tokenize_chinese(d) for d in docs]
+            bm25 = BM25Okapi(tokenized_corpus)
+            with open(os.path.join(index_path, "bm25.pkl"), "wb") as f:
+                pickle.dump(bm25, f)
+        except ImportError:
+            logger.warning("rank_bm25 未安装，BM25 检索不可用")
+
+        logger.info(f"项目 {project_id} 卷{volume_number}: 索引构建完成，{len(docs)} 个文档块")
+        return True
+
+    except Exception as e:
+        logger.error(f"项目 {project_id} 卷{volume_number}: 索引构建失败: {e}")
+        return False
+
+
+def build_global_index(project_id: int) -> bool:
+    """为项目构建全局索引
+
+    全局索引包含：世界观、角色、关系、风格约束、情节块、跨卷追踪
+    不包含：时间线、伏笔（这些由卷级索引覆盖）
+    存储路径：/tmp/novelagent_index/{project_id}/global/
+
+    Returns:
+        True if index built successfully, False otherwise
+    """
+    model = _get_model()
+    if model is None:
+        logger.warning(f"项目 {project_id}: 模型不可用，跳过全局索引构建")
+        return False
+
+    docs, meta = _collect_global_documents_from_db(project_id)
+    if not docs:
+        logger.warning(f"项目 {project_id}: 无文档可索引")
+        return False
+
+    base = os.environ.get("NOVELAGENT_INDEX_DIR", "/tmp/novelagent_index")
+    index_path = os.path.join(base, str(project_id), "global")
+    os.makedirs(index_path, exist_ok=True)
+
+    try:
+        # FAISS 索引
+        embeddings = model.encode(docs, show_progress_bar=False)
+        emb_array = np.array(embeddings).astype("float32")
+        import faiss
+        index = faiss.IndexFlatIP(emb_array.shape[1])
+        faiss.normalize_L2(emb_array)
+        index.add(emb_array)
+        faiss.write_index(index, os.path.join(index_path, "index.faiss"))
+        np.save(os.path.join(index_path, "embeddings.npy"), emb_array)
+
+        # 元数据
+        with open(os.path.join(index_path, "meta.json"), "w", encoding="utf-8") as f:
+            json.dump({"docs": docs, "meta": meta}, f, ensure_ascii=False, indent=2)
+
+        # BM25 索引
+        try:
+            from rank_bm25 import BM25Okapi
+            tokenized_corpus = [_tokenize_chinese(d) for d in docs]
+            bm25 = BM25Okapi(tokenized_corpus)
+            with open(os.path.join(index_path, "bm25.pkl"), "wb") as f:
+                pickle.dump(bm25, f)
+        except ImportError:
+            logger.warning("rank_bm25 未安装，BM25 检索不可用")
+
+        logger.info(f"项目 {project_id}: 全局索引构建完成，{len(docs)} 个文档块")
+        return True
+
+    except Exception as e:
+        logger.error(f"项目 {project_id}: 全局索引构建失败: {e}")
+        return False
+
+
+def _collect_global_documents_from_db(project_id: int) -> tuple[list[str], list[dict]]:
+    """从 DB 收集全局知识库文本（不含卷级数据），返回 (docs, meta)
+
+    全局数据来源：世界观、角色、关系、风格约束、情节块、跨卷追踪
+    """
+    from app.agents.services.knowledge_base import KnowledgeBaseService
+    kb = KnowledgeBaseService(project_id)
+
+    docs = []
+    meta = []
+
+    def _add(text: str, source: str):
+        if not text or not text.strip():
+            return
+        chunks_list = chunk_text(text)
+        for i, chunk in enumerate(chunks_list):
+            docs.append(chunk)
+            meta.append({"source": source, "chunk": i})
+
+    # 1. 世界观
+    ws = kb.get_world_setting()
+    if ws:
+        parts = []
+        if ws.core_concept:
+            parts.append(f"核心理念：{ws.core_concept}")
+        if ws.tiered_settings:
+            parts.append(f"分级设定：{ws.tiered_settings}")
+        if ws.key_locations:
+            parts.append(f"关键地点：{ws.key_locations}")
+        _add("\n".join(parts), "world_setting")
+
+    # 2. 角色
+    characters = kb.get_characters()
+    for char in characters:
+        parts = [f"角色：{char.name}"]
+        if hasattr(char, 'role') and char.role:
+            parts.append(f"定位：{char.role}")
+        if hasattr(char, 'core_motivation') and char.core_motivation:
+            parts.append(f"核心动机：{char.core_motivation}")
+        if hasattr(char, 'core_conflict') and char.core_conflict:
+            parts.append(f"核心冲突：{char.core_conflict}")
+        if hasattr(char, 'character_arc') and char.character_arc:
+            parts.append(f"人物弧：{char.character_arc}")
+        if hasattr(char, 'knowledge_boundary') and char.knowledge_boundary:
+            parts.append(f"知识边界：{char.knowledge_boundary}")
+        if hasattr(char, 'speech_style') and char.speech_style:
+            parts.append(f"说话风格：{char.speech_style}")
+        _add("\n".join(parts), f"character/{char.name}")
+
+    # 3. 关系
+    relations = kb.get_relations()
+    if relations:
+        rel_parts = []
+        for r in relations:
+            rel_parts.append(str(r))
+        _add("\n".join(rel_parts), "relations")
+
+    # 4. 风格约束
+    style = kb.get_style_constraints()
+    if style:
+        parts = []
+        if style.taboo_words:
+            parts.append(f"禁忌词：{', '.join(style.taboo_words)}")
+        if style.forbidden_patterns:
+            parts.append(f"禁用句式：{', '.join(style.forbidden_patterns) if isinstance(style.forbidden_patterns, list) else style.forbidden_patterns}")
+        if style.style_anchor:
+            parts.append(f"风格锚点：{style.style_anchor}")
+        if style.abstract_rules:
+            parts.append(f"抽象风格规则：{style.abstract_rules}")
+        _add("\n".join(parts), "style_constraints")
+
+    # 5. 情节块
+    blocks = kb.get_plot_blocks()
+    for block in blocks:
+        parts = [f"情节块：{block.title}"]
+        if block.must_happen:
+            parts.append(f"必须事件：{', '.join(block.must_happen) if isinstance(block.must_happen, list) else block.must_happen}")
+        if hasattr(block, 'questions_to_answer') and block.questions_to_answer:
+            parts.append(f"要回答的问题：{', '.join(block.questions_to_answer) if isinstance(block.questions_to_answer, list) else block.questions_to_answer}")
+        if hasattr(block, 'questions_to_raise') and block.questions_to_raise:
+            parts.append(f"要提出的问题：{', '.join(block.questions_to_raise) if isinstance(block.questions_to_raise, list) else block.questions_to_raise}")
+        _add("\n".join(parts), f"plot_block/{block.title}")
+
+    # 6. 跨卷伏笔
+    cv_foreshadowings = kb.get_cross_volume_foreshadowings()
+    for cvf in cv_foreshadowings:
+        parts = [f"跨卷伏笔 (ID:{cvf.source_foreshadowing_id})"]
+        parts.append(f"出现{cvf.appearance_count}次，预期回收卷：{cvf.expected_volume}，状态：{cvf.status}")
+        _add("\n".join(parts), f"cross_volume_foreshadowing/{cvf.id}")
+
+    # 7. 跨卷支线
+    cv_subplots = kb.get_cross_volume_subplots()
+    for cvs in cv_subplots:
+        parts = [f"跨卷支线 (ID:{cvs.source_subplot_id})"]
+        parts.append(f"状态：{cvs.status}，预期交汇卷：{cvs.expected_intersection_volume}")
+        _add("\n".join(parts), f"cross_volume_subplot/{cvs.id}")
+
+    return docs, meta
+
+
 # ========== 检索 ==========
 
 def search(
     project_id: int,
     query: str,
     top_k: int = 5,
+    volume_number: Optional[int] = None,
 ) -> list[dict]:
-    """混合语义检索
+    """双层级混合语义检索
 
     FAISS × 0.7 + BM25 × 0.3，时间线条目应用时间衰减权重。
     索引不存在时自动降级为关键词匹配。
+
+    双层级检索策略：
+    - 指定 volume_number 时：先搜卷级索引，不足时补充全局索引
+    - 未指定 volume_number 时：仅搜全局索引（向后兼容）
 
     Args:
         project_id: 项目 ID
         query: 自然语言查询
         top_k: 返回结果数
+        volume_number: 可选卷号，启用卷级优先检索
 
     Returns:
         [{"score": float, "source": str, "text": str}]
     """
+    if volume_number is not None:
+        return _dual_tier_search(project_id, query, top_k, volume_number)
+
+    # 无卷号 → 全局检索（向后兼容）
     index_path = _index_dir(project_id)
     meta_path = os.path.join(index_path, "meta.json")
     faiss_path = os.path.join(index_path, "index.faiss")
 
-    # 索引不存在 → 降级为关键词匹配
-    if not os.path.exists(meta_path) or not os.path.exists(faiss_path):
+    # 也尝试新的 global/ 路径
+    global_path = os.path.join(_index_dir(project_id), "global")
+    global_meta = os.path.join(global_path, "meta.json")
+    global_faiss = os.path.join(global_path, "index.faiss")
+
+    # 优先使用 global/ 索引，其次使用旧索引
+    search_path = None
+    if os.path.exists(global_meta) and os.path.exists(global_faiss):
+        search_path = global_path
+    elif os.path.exists(meta_path) and os.path.exists(faiss_path):
+        search_path = index_path
+
+    if search_path is None:
         return _keyword_fallback(project_id, query, top_k)
 
     try:
-        return _hybrid_search(index_path, query, top_k)
+        return _hybrid_search(search_path, query, top_k)
     except Exception as e:
         logger.warning(f"混合检索失败，降级为关键词匹配: {e}")
         return _keyword_fallback(project_id, query, top_k)
+
+
+
+def _dual_tier_search(project_id: int, query: str, top_k: int, volume_number: int) -> list[dict]:
+    """双层级检索：先搜卷级索引，不足时补充全局索引
+
+    1. 搜卷级索引 → 获取卷范围结果
+    2. 如果卷级结果 < top_k → 补充全局索引
+    3. 合并去重（按 source 去重，保留最高分）
+    """
+    volume_path = _volume_index_dir(project_id, volume_number)
+    global_path = os.path.join(_index_dir(project_id), "global")
+
+    volume_results = []
+    global_results = []
+
+    # 卷级检索
+    vol_meta = os.path.join(volume_path, "meta.json")
+    vol_faiss = os.path.join(volume_path, "index.faiss")
+    if os.path.exists(vol_meta) and os.path.exists(vol_faiss):
+        try:
+            volume_results = _hybrid_search(volume_path, query, top_k)
+        except Exception as e:
+            logger.warning(f"卷级检索失败: {e}")
+
+    # 全局检索（补充）
+    glob_meta = os.path.join(global_path, "meta.json")
+    glob_faiss = os.path.join(global_path, "index.faiss")
+    if os.path.exists(glob_meta) and os.path.exists(glob_faiss):
+        try:
+            global_results = _hybrid_search(global_path, query, top_k)
+        except Exception as e:
+            logger.warning(f"全局检索失败: {e}")
+
+    if not volume_results and not global_results:
+        return _keyword_fallback(project_id, query, top_k)
+
+    # 合并去重：按 source 去重，保留最高分
+    seen_sources = {}
+    for r in volume_results:
+        src = r["source"]
+        if src not in seen_sources or r["score"] > seen_sources[src]["score"]:
+            seen_sources[src] = r
+
+    for r in global_results:
+        src = r["source"]
+        if src not in seen_sources or r["score"] > seen_sources[src]["score"]:
+            seen_sources[src] = r
+
+    # 按分数排序，截断到 top_k
+    merged = sorted(seen_sources.values(), key=lambda x: x["score"], reverse=True)[:top_k]
+    return merged
 
 
 def _hybrid_search(index_path: str, query: str, top_k: int) -> list[dict]:
@@ -445,31 +810,56 @@ class RetrievalService:
     """语义检索服务
 
     封装索引构建和检索操作，供 LangGraph 节点和 Agent 工具使用。
+    支持双层级检索：卷级索引（时间线/伏笔/场景）+ 全局索引（设定/角色/情节块）。
     """
 
     def __init__(self, project_id: int):
         self.project_id = project_id
 
-    def rebuild_index(self) -> bool:
-        """全量重建索引"""
-        return build_index(self.project_id)
+    def rebuild_index(self, current_volume: Optional[int] = None) -> bool:
+        """全量重建索引
 
-    def search(self, query: str, top_k: int = 5) -> list[dict]:
-        """语义检索
+        单卷项目：构建全局索引（向后兼容）
+        多卷项目：构建全局索引 + 当前卷索引
+
+        Args:
+            current_volume: 当前卷号，构建卷级索引时传入
+        """
+        global_ok = build_global_index(self.project_id)
+
+        # 也构建旧格式索引（向后兼容 context_assembly 等节点）
+        legacy_ok = build_index(self.project_id)
+
+        volume_ok = True
+        if current_volume is not None and current_volume > 0:
+            volume_ok = build_volume_index(self.project_id, current_volume)
+
+        return global_ok and legacy_ok and volume_ok
+
+    def rebuild_volume_index(self, volume_number: int) -> bool:
+        """重建指定卷的索引"""
+        return build_volume_index(self.project_id, volume_number)
+
+    def search(self, query: str, top_k: int = 5, volume_number: Optional[int] = None) -> list[dict]:
+        """语义检索（支持双层级）
 
         Args:
             query: 自然语言查询
             top_k: 返回结果数
+            volume_number: 可选卷号，启用卷级优先检索
 
         Returns:
             [{"score": float, "source": str, "text": str}]
         """
-        return search(self.project_id, query, top_k)
+        return search(self.project_id, query, top_k, volume_number=volume_number)
 
     def is_index_available(self) -> bool:
         """检查索引是否可用"""
         index_path = _index_dir(self.project_id)
+        global_path = os.path.join(index_path, "global")
         return (
-            os.path.exists(os.path.join(index_path, "meta.json"))
-            and os.path.exists(os.path.join(index_path, "index.faiss"))
+            (os.path.exists(os.path.join(index_path, "meta.json"))
+             and os.path.exists(os.path.join(index_path, "index.faiss")))
+            or (os.path.exists(os.path.join(global_path, "meta.json"))
+                and os.path.exists(os.path.join(global_path, "index.faiss")))
         )

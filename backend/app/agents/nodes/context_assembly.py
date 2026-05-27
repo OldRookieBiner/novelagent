@@ -25,6 +25,7 @@ async def context_assembly_node(state: NovelState) -> NovelState:
     """
     project_id = state["project_id"]
     current_chapter = state.get("current_chapter", 1)
+    current_volume = state.get("current_volume", 1)
     kb = KnowledgeBaseService(project_id)
     retrieval = RetrievalService(project_id)
 
@@ -80,7 +81,7 @@ async def context_assembly_node(state: NovelState) -> NovelState:
 
     if search_queries:
         query = " ".join(search_queries)
-        results = retrieval.search(query, top_k=8)
+        results = retrieval.search(query, top_k=8, volume_number=current_volume)
 
         if results:
             retrieval_parts = ["【相关知识库（语义检索）】"]

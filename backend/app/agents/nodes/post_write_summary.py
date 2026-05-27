@@ -1,6 +1,7 @@
 """写后自检汇总节点
 
 汇总所有自检结果，运行预警检查，写入 state["post_write_summary"]。
+Phase 4: 传递 current_volume 给预警检查和索引重建。
 """
 
 import logging
@@ -17,11 +18,12 @@ async def post_write_summary_node(state: NovelState) -> NovelState:
     """汇总写后自检结果 + 运行预警检查
 
     1. 读取最新追踪数据生成摘要
-    2. 运行 WarningService.check_all() 检测质量信号
+    2. 运行 WarningService.check_all() 检测质量信号（含跨卷预警）
     3. 预警结果写入 state（供 SSE 推送）
     """
     project_id = state["project_id"]
     current_chapter = state.get("current_chapter", 1)
+    current_volume = state.get("current_volume", 1)
     kb = KnowledgeBaseService(project_id)
 
     # current_chapter 已在 chapter_writing_node 中递增 1，
@@ -45,9 +47,9 @@ async def post_write_summary_node(state: NovelState) -> NovelState:
     else:
         parts.append("  伏笔：无超期")
 
-    # ========== 预警检查 ==========
+    # ========== 预警检查（含跨卷预警）==========
     warning_service = WarningService(project_id)
-    warnings = warning_service.check_all(written_chapter_num)
+    warnings = warning_service.check_all(written_chapter_num, current_volume)
 
     if warnings:
         parts.append(f"\n  预警：")
@@ -58,7 +60,7 @@ async def post_write_summary_node(state: NovelState) -> NovelState:
     if written_chapter_num > 0 and written_chapter_num % 5 == 0:
         retrieval = RetrievalService(project_id)
         try:
-            success = retrieval.rebuild_index()
+            success = retrieval.rebuild_index(current_volume=current_volume)
             if success:
                 parts.append(f"  检索索引：已重建")
             else:
