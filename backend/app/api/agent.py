@@ -1,5 +1,7 @@
-# backend/app/api/agent.py
-"""AI 搭档 Agent API 路由"""
+"""AI Creation Agent API routes
+
+Phase-aware agent chat with cognitive tools and impact assessment.
+"""
 
 import json
 from datetime import datetime
@@ -17,19 +19,19 @@ from app.models.project import Project
 from app.models.agent_conversation import AgentConversation, AgentMessage
 from app.models.model_config import ModelConfig
 from app.agents.agent_graph import create_agent_graph
-from app.agents.prompts import AGENT_INSPIRATION_SYSTEM_PROMPT
+from app.agents.prompts import AGENT_SYSTEM_PROMPT
 from app.models.workflow_state import WorkflowState
-from app.agents.state import STAGE_INSPIRATION
-from app.agents.agent_context import build_project_context, get_context_window, estimate_tokens
+from app.agents.state import Phase
+from app.agents.agent_context import build_agent_context, get_context_window, estimate_tokens
 from app.agents.tool_context import set_tool_context, reset_tool_context
+from app.agents.services.knowledge_base import KnowledgeBaseService
 from app.agents.sse_events import (
     format_agent_text,
     format_agent_tool_start,
     format_agent_tool_result,
     format_agent_done,
-    format_ai_update,
-    format_agent_review,
-    format_agent_chapter_preview,
+    format_impact_assessment,
+    format_warning,
     format_error_message,
 )
 from app.utils.logger import get_logger
@@ -38,11 +40,23 @@ logger = get_logger(__name__)
 
 router = APIRouter()
 
-BUSY_TIMEOUT_SECONDS = 300  # 5 分钟超时自动释放
+BUSY_TIMEOUT_SECONDS = 300
+
+PHASE_LABELS = {
+    Phase.INCUBATION.value: "创意孵化",
+    Phase.STRUCTURE.value: "结构设计",
+    Phase.WRITING.value: "写作中",
+    Phase.REVISION.value: "修订中",
+}
+
+# Tools that produce impact assessment reports
+IMPACT_TOOLS = {"propose_setting_change", "propose_outline_adjustment", "propose_chapter_rewrite"}
+
+# Tools that produce warnings
+WARNING_TOOLS = {"foreshadowing_check", "style_analysis", "rhythm_analysis"}
 
 
 class AgentChatRequest(BaseModel):
-    """Agent 聊天请求"""
     message: str
     model_config_id: Optional[int] = None
     active_tab: Optional[str] = None
@@ -51,15 +65,21 @@ class AgentChatRequest(BaseModel):
     history: Optional[list[dict]] = None
 
 
+class ImpactDecisionRequest(BaseModel):
+    """Author decision on a proposed setting change."""
+    change_id: int
+    decision: str  # "proceed" | "adjust" | "abandon"
+    adjusted_value: Optional[str] = None  # JSON, only when decision="adjust"
+
+
 def _acquire_busy_lock(db: Session, project_id: int, owner: str = "agent") -> bool:
-    """尝试获取项目忙锁，返回是否成功"""
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         return False
     now = datetime.utcnow()
     if project.is_busy:
         if project.busy_since and (now - project.busy_since).total_seconds() > BUSY_TIMEOUT_SECONDS:
-            logger.warning(f"Project {project_id} busy lock expired, preempting (was held by {project.busy_by})")
+            logger.warning(f"Project {project_id} busy lock expired, preempting")
         else:
             return False
     project.is_busy = True
@@ -70,7 +90,6 @@ def _acquire_busy_lock(db: Session, project_id: int, owner: str = "agent") -> bo
 
 
 def _release_busy_lock(project_id: int):
-    """释放项目忙锁（使用独立 Session）"""
     db = SessionLocal()
     try:
         project = db.query(Project).filter(Project.id == project_id).first()
@@ -87,7 +106,6 @@ def _release_busy_lock(project_id: int):
 
 
 def _get_or_create_conversation(db: Session, project_id: int) -> AgentConversation:
-    """获取或创建项目会话（每个项目仅一个）"""
     conv = db.query(AgentConversation).filter(
         AgentConversation.project_id == project_id
     ).first()
@@ -99,32 +117,16 @@ def _get_or_create_conversation(db: Session, project_id: int) -> AgentConversati
     return conv
 
 
-def _save_message(
-    db: Session,
-    conversation_id: int,
-    role: str,
-    content: str,
-    segments: list | None = None,
-    actions: list | None = None,
-) -> AgentMessage:
-    """保存一条消息（不 commit，由调用方管理事务）"""
-    msg = AgentMessage(
-        conversation_id=conversation_id,
-        role=role,
-        content=content or "",
-        segments=segments or [],
-        actions=actions or [],
-    )
-    db.add(msg)
-    return msg
-
-
 def _save_user_message(project_id: int, message: str):
-    """保存用户消息（独立 Session，fire-and-forget）"""
     db = SessionLocal()
     try:
         conv = _get_or_create_conversation(db, project_id)
-        _save_message(db, conv.id, "user", message)
+        msg = AgentMessage(
+            conversation_id=conv.id,
+            role="user",
+            content=message or "",
+        )
+        db.add(msg)
         conv.message_count = (conv.message_count or 0) + 1
         if not conv.title:
             conv.title = message[:50]
@@ -138,11 +140,17 @@ def _save_user_message(project_id: int, message: str):
 
 
 def _save_assistant_message(project_id: int, content: str, segments: list, actions: list):
-    """保存 assistant 消息（独立 Session，agent_done 后调用）"""
     db = SessionLocal()
     try:
         conv = _get_or_create_conversation(db, project_id)
-        _save_message(db, conv.id, "assistant", content, segments, actions)
+        msg = AgentMessage(
+            conversation_id=conv.id,
+            role="assistant",
+            content=content or "",
+            segments=segments or [],
+            actions=actions or [],
+        )
+        db.add(msg)
         conv.message_count = (conv.message_count or 0) + 1
         conv.updated_at = datetime.utcnow()
         db.commit()
@@ -153,14 +161,9 @@ def _save_assistant_message(project_id: int, content: str, segments: list, actio
         db.close()
 
 
-def _build_truncated_history(
-    history: list[dict],
-    history_budget: int,
-) -> list[dict]:
-    """从最新往前截断 history，不超 history_budget token"""
+def _build_truncated_history(history: list[dict], history_budget: int) -> list[dict]:
     if not history or history_budget <= 0:
         return []
-
     kept: list[dict] = []
     used = 0
     for msg in reversed(history):
@@ -178,33 +181,7 @@ async def stream_agent_events(
     project_id: int,
     accumulator: dict | None = None,
 ):
-    """流式输出 Agent 事件
-
-    accumulator 为 dict 时，函数会在其中累积 full_content/segments/actions，
-    供调用方在流结束后保存到 DB。
-    """
-    write_tools = {
-        "update_outline", "update_character", "create_character",
-        "update_chapter_outline", "update_relations",
-        "generate_chapter_content", "rewrite_chapter",
-        "edit_paragraph", "insert_scene", "revise_section", "polish_prose",
-        "update_inspiration_brief",
-    }
-    module_map = {
-        "update_outline": "outline",
-        "update_character": "characters",
-        "create_character": "characters",
-        "update_chapter_outline": "chapter_outlines",
-        "update_relations": "relations",
-        "generate_chapter_content": "writing",
-        "rewrite_chapter": "writing",
-        "edit_paragraph": "writing",
-        "insert_scene": "writing",
-        "revise_section": "writing",
-        "polish_prose": "writing",
-        "update_inspiration_brief": "inspiration",
-    }
-
+    """Stream Agent events with cognitive tool awareness."""
     try:
         async for event in graph.astream_events(
             {"messages": messages},
@@ -238,40 +215,26 @@ async def stream_agent_events(
                 tool_name = event.get("name", "")
                 tool_output = event.get("data", {}).get("output", {})
 
-                if tool_name in write_tools:
-                    module = module_map.get(tool_name, "unknown")
-                    yield format_ai_update(module, f"{tool_name} 执行完成")
+                output_str = json.dumps(tool_output, ensure_ascii=False) if isinstance(tool_output, dict) else str(tool_output)
+                yield format_agent_tool_result(tool_name, {"output": output_str[:800]})
 
-                output_data = json.dumps(tool_output, ensure_ascii=False) if isinstance(tool_output, dict) else str(tool_output)
-                yield format_agent_tool_result(tool_name, {"output": output_data[:500]})
-
-                # 标记 action 为 done
                 if accumulator is not None:
                     actions = accumulator.get("actions", [])
                     for a in reversed(actions):
                         if a["tool"] == tool_name and a.get("status") == "running":
                             a["status"] = "done"
-                            a["result"] = (
-                                tool_output if isinstance(tool_output, dict)
-                                else {"output": str(tool_output)}
-                            )
+                            a["result"] = tool_output if isinstance(tool_output, dict) else {"output": str(tool_output)}
                             break
 
-                # 生成类 tool：发送章节预览事件
-                if tool_name in ("generate_chapter_content", "rewrite_chapter") and isinstance(tool_output, dict):
-                    if tool_output.get("success"):
-                        yield format_agent_chapter_preview({
-                            "chapter_number": tool_output.get("chapter_number"),
-                            "title": tool_output.get("title", ""),
-                            "word_count": tool_output.get("word_count", 0),
-                            "preview": tool_output.get("preview", ""),
-                            "action": "generated" if tool_name == "generate_chapter_content" else "rewritten",
-                        })
+                # Impact assessment tools: emit dedicated SSE event
+                if tool_name in IMPACT_TOOLS and isinstance(tool_output, dict):
+                    if tool_output.get("change_id"):
+                        yield format_impact_assessment(tool_output)
 
-                # 审核 tool：发送审核结果事件
-                if tool_name == "review_chapter" and isinstance(tool_output, dict):
-                    if tool_output.get("success") and tool_output.get("review"):
-                        yield format_agent_review(tool_output["review"])
+                # Warning-producing tools: emit warning if flagged
+                if tool_name in WARNING_TOOLS and isinstance(tool_output, dict):
+                    if tool_output.get("warning"):
+                        yield format_warning(tool_name, {"message": tool_output["warning"]})
 
         yield format_agent_done()
 
@@ -288,9 +251,8 @@ async def get_conversation(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """获取当前项目的 AI 搭档会话及消息"""
+    """Get the agent conversation and messages."""
     get_project_for_user(project_id, current_user.id, db)
-
     conv = _get_or_create_conversation(db, project_id)
 
     query = db.query(AgentMessage).filter(
@@ -300,10 +262,7 @@ async def get_conversation(
         query = query.filter(AgentMessage.id < before_id)
     query = query.order_by(AgentMessage.created_at.desc()).limit(limit)
 
-    messages_raw = query.all()
-    # 反转为升序
-    messages_raw = list(reversed(messages_raw))
-
+    messages_raw = list(reversed(query.all()))
     messages = [
         {
             "id": str(m.id),
@@ -330,9 +289,8 @@ async def clear_conversation(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """清空当前项目的 AI 搭档对话"""
+    """Clear the agent conversation."""
     get_project_for_user(project_id, current_user.id, db)
-
     conv = db.query(AgentConversation).filter(
         AgentConversation.project_id == project_id
     ).first()
@@ -344,7 +302,6 @@ async def clear_conversation(
         conv.title = ""
         conv.updated_at = datetime.utcnow()
         db.commit()
-
     return {"detail": "对话已清空"}
 
 
@@ -355,24 +312,22 @@ async def agent_chat(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """与 AI 搭档对话（SSE 流式）"""
+    """Chat with the AI creation agent (SSE streaming)."""
     project = get_project_for_user(project_id, current_user.id, db)
 
-    # 并发控制：获取忙锁
     if not _acquire_busy_lock(db, project_id, "agent"):
         holder = project.busy_by or "未知"
         raise HTTPException(status_code=409, detail=f"项目正在被{holder}使用，请稍后再试")
 
-    # 保存用户消息到 DB（fire-and-forget，失败不阻塞）
     _save_user_message(project_id, req.message)
 
-    # 读取当前工作流阶段
+    # Read current workflow phase
     workflow_state = db.query(WorkflowState).filter(
         WorkflowState.project_id == project_id
     ).first()
-    stage = workflow_state.stage if workflow_state else None
+    phase = workflow_state.stage if workflow_state else Phase.INCUBATION.value
 
-    # 获取模型 context_window
+    # Get model context window
     model_config = None
     if req.model_config_id:
         model_config = db.query(ModelConfig).filter(
@@ -380,55 +335,25 @@ async def agent_chat(
         ).first()
     context_window = get_context_window(model_config)
 
-    # 构建项目上下文（原文注入 + token budget）
-    context = build_project_context(
+    # Build phase-aware project context
+    context = build_agent_context(
         project_id,
+        phase=phase,
         current_chapter_number=req.current_chapter_number,
     )
 
-    # 构建 system message（阶段感知）
-    current_chapter_line = f"\n当前章节：第{req.current_chapter_number}章" if req.current_chapter_number else ""
+    # Format context block for system prompt
+    context_block = json.dumps(context, ensure_ascii=False, default=str)
 
-    if stage == STAGE_INSPIRATION:
-        # 灵感阶段：使用专门的灵感提示词
-        inspiration_brief = context.get("inspiration_brief", "")
-        system_content = AGENT_INSPIRATION_SYSTEM_PROMPT.format(
-            inspiration_brief=inspiration_brief or "（尚未创建灵感简报，请引导用户描述创意）",
-            active_tab=req.active_tab or "灵感",
-        )
-    else:
-        # 其他阶段：使用通用提示词
-        system_content = f"""你是一位专业的小说创作搭档。你可以帮助用户修改大纲、角色设定、章节大纲，也可以生成章节正文、审核章节、重写章节。
+    # Build system message
+    phase_label = PHASE_LABELS.get(phase, "未知阶段")
+    system_content = AGENT_SYSTEM_PROMPT.format(
+        phase_label=phase_label,
+        project_name=project.name,
+        context_block=context_block,
+    )
 
-## 项目上下文
-
-### 大纲
-{json.dumps(context.get('outline', {}), ensure_ascii=False)}
-
-### 角色
-{json.dumps(context.get('characters', []), ensure_ascii=False)}
-
-### 章节总览
-{chr(10).join(context.get('all_chapters', []))}
-
-### 当前章节正文
-{json.dumps(context.get('current_chapter', {}), ensure_ascii=False)}
-
-### 当前章节大纲
-{json.dumps(context.get('current_outline', {}), ensure_ascii=False)}
-
-## 行为准则
-
-1. 生成章节后必须调用 review_chapter 审核质量
-2. 审核不通过时应根据审核意见调用 rewrite_chapter 重写
-3. 修改大纲/角色/章节后简要说明改了什么
-4. 优先使用 revise_section 做局部修改，避免整章重写
-
-用户当前查看：{req.active_tab or '未知'}{f' / {req.active_menu_item}' if req.active_menu_item else ''}{current_chapter_line}
-
-请根据用户的需求，调用相应的工具来修改项目内容或生成内容。修改后简要说明你做了什么。"""
-
-    # 计算 history budget 并截断
+    # Calculate history budget and truncate
     system_used = estimate_tokens(system_content)
     history_budget = int(context_window * 0.7) - system_used
     truncated_history = _build_truncated_history(
@@ -436,26 +361,26 @@ async def agent_chat(
         max(history_budget, 0),
     )
 
-    # 拼装 messages
     messages = [{"role": "system", "content": system_content}]
     messages.extend(truncated_history)
     messages.append({"role": "user", "content": req.message})
 
-    # 创建 Agent 图
+    # Create agent graph with phase-aware tools
     try:
         graph = create_agent_graph(
             model_config_id=req.model_config_id,
             user_id=current_user.id,
-            stage=stage,
+            phase=phase,
         )
     except ValueError as e:
         _release_busy_lock(project_id)
         raise HTTPException(status_code=400, detail=str(e))
 
-    # 设置 tool 运行时上下文（contextvars）
+    # Set tool context (including project_id for cognitive tools)
     context_tokens = set_tool_context(
         model_config_id=req.model_config_id,
         user_id=current_user.id,
+        project_id=project_id,
     )
 
     async def _stream_with_cleanup():
@@ -463,7 +388,6 @@ async def agent_chat(
         try:
             async for event in stream_agent_events(graph, messages, project_id, accumulator=acc):
                 yield event
-            # 流完成后保存 assistant 消息
             _save_assistant_message(
                 project_id,
                 content=acc.get("full", ""),
@@ -483,3 +407,89 @@ async def agent_chat(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.post("/{project_id}/agent/impact-decision")
+async def impact_decision(
+    project_id: int,
+    req: ImpactDecisionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Author decides on a proposed setting change.
+
+    Three options:
+    - proceed: Apply the change as proposed
+    - adjust: Apply with adjusted value (requires adjusted_value)
+    - abandon: Discard the proposal
+    """
+    get_project_for_user(project_id, current_user.id, db)
+    kb = KnowledgeBaseService(project_id)
+
+    change = kb.get_setting_change(req.change_id)
+    if not change:
+        raise HTTPException(status_code=404, detail="变更提案不存在")
+    if change.status != "proposed":
+        raise HTTPException(status_code=400, detail=f"提案状态为 {change.status}，无法决策")
+
+    if req.decision == "abandon":
+        kb.update_setting_change(req.change_id, {
+            "status": "abandoned",
+            "author_decision": "abandon",
+        })
+        return {"change_id": req.change_id, "status": "abandoned", "message": "已放弃修改"}
+
+    elif req.decision == "proceed":
+        _apply_change(kb, change)
+        kb.update_setting_change(req.change_id, {
+            "status": "applied",
+            "author_decision": "proceed",
+        })
+        return {"change_id": req.change_id, "status": "applied", "message": "已按原方案修改"}
+
+    elif req.decision == "adjust":
+        if not req.adjusted_value:
+            raise HTTPException(status_code=400, detail="adjust 决策需要提供 adjusted_value")
+        try:
+            adjusted = json.loads(req.adjusted_value)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="adjusted_value 不是有效的 JSON")
+
+        # Apply the adjusted value instead
+        change.new_value = adjusted
+        _apply_change(kb, change)
+        kb.update_setting_change(req.change_id, {
+            "status": "applied",
+            "author_decision": "adjust",
+            "new_value": adjusted,
+        })
+        return {"change_id": req.change_id, "status": "applied", "message": "已按调整方案修改"}
+
+    else:
+        raise HTTPException(status_code=400, detail=f"无效决策: {req.decision}")
+
+
+def _apply_change(kb: KnowledgeBaseService, change):
+    """Apply a proposed change to the actual knowledge base object.
+
+    Delegates to the appropriate KnowledgeBaseService update method
+    based on target_type.
+    """
+    target_type = change.target_type
+    target_id = change.target_id
+    new_value = change.new_value if not isinstance(change.new_value, str) else json.loads(change.new_value)
+
+    if target_type == "world_setting":
+        kb.update_world_setting(target_id, new_value)
+    elif target_type == "character":
+        kb.update_character_direct(target_id, new_value)
+    elif target_type == "style":
+        kb.update_style_constraints(target_id, new_value)
+    elif target_type == "foreshadowing":
+        kb.update_foreshadowing(target_id, new_value)
+    elif target_type == "outline_adjustment":
+        # Outline adjustments are structural; mark as applied but don't auto-modify
+        pass
+    elif target_type == "chapter_rewrite":
+        # Chapter rewrites are handled by the main writing loop
+        pass
