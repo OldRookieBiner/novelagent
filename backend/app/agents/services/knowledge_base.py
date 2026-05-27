@@ -511,3 +511,155 @@ class KnowledgeBaseService:
             return entry
         finally:
             self._close_db_write(db, committed)
+
+    # ========== 变更提案 ==========
+
+    def create_setting_change(self, data: dict) -> "SettingChange":
+        from app.models.setting_change import SettingChange
+        db = self._get_db()
+        committed = False
+        try:
+            change = SettingChange(project_id=self.project_id, **data)
+            db.add(change)
+            db.commit()
+            committed = True
+            db.refresh(change)
+            return change
+        finally:
+            self._close_db_write(db, committed)
+
+    def get_setting_changes(self, status: Optional[str] = None) -> list:
+        from app.models.setting_change import SettingChange
+        db = self._get_db()
+        try:
+            query = db.query(SettingChange).filter(
+                SettingChange.project_id == self.project_id
+            )
+            if status:
+                query = query.filter(SettingChange.status == status)
+            return query.order_by(SettingChange.created_at.desc()).all()
+        finally:
+            self._close_db_read(db)
+
+    def get_setting_change(self, change_id: int) -> Optional["SettingChange"]:
+        from app.models.setting_change import SettingChange
+        db = self._get_db()
+        try:
+            return db.query(SettingChange).filter(
+                SettingChange.id == change_id,
+                SettingChange.project_id == self.project_id,
+            ).first()
+        finally:
+            self._close_db_read(db)
+
+    def update_setting_change(self, change_id: int, data: dict) -> "SettingChange":
+        from app.models.setting_change import SettingChange
+        db = self._get_db()
+        committed = False
+        try:
+            change = db.query(SettingChange).filter(
+                SettingChange.id == change_id,
+                SettingChange.project_id == self.project_id,
+            ).first()
+            if not change:
+                raise ValueError(f"SettingChange {change_id} not found")
+            for key, value in data.items():
+                setattr(change, key, value)
+            db.commit()
+            committed = True
+            db.refresh(change)
+            return change
+        finally:
+            self._close_db_write(db, committed)
+
+    # ========== 章节访问 ==========
+
+    def get_chapter_by_number(self, chapter_number: int) -> Optional["Chapter"]:
+        """Get chapter content by chapter number."""
+        from app.models.outline import ChapterOutline
+        from app.models.chapter import Chapter
+        db = self._get_db()
+        try:
+            co = db.query(ChapterOutline).filter(
+                ChapterOutline.project_id == self.project_id,
+                ChapterOutline.chapter_number == chapter_number,
+            ).first()
+            if not co:
+                return None
+            return db.query(Chapter).filter(
+                Chapter.chapter_outline_id == co.id,
+            ).first()
+        finally:
+            self._close_db_read(db)
+
+    def update_character_direct(self, character_id: int, data: dict) -> Character:
+        """Update character fields directly. Used by _apply_change in agent API."""
+        db = self._get_db()
+        committed = False
+        try:
+            char = db.query(Character).filter(
+                Character.id == character_id,
+                Character.project_id == self.project_id,
+            ).first()
+            if not char:
+                raise ValueError(f"Character {character_id} not found")
+            for key, value in data.items():
+                if hasattr(char, key):
+                    setattr(char, key, value)
+            db.commit()
+            committed = True
+            db.refresh(char)
+            return char
+        finally:
+            self._close_db_write(db, committed)
+
+    # ========== 影响评估搜索 ==========
+
+    def search_chapters_for_references(self, keywords: list[str], max_chapters: int = 50) -> list[dict]:
+        """Search written chapter content for references to given keywords.
+
+        Returns list of {chapter_number, title, matching_paragraphs: [{index, text}]}
+        Used by impact_assessment to find affected content.
+        """
+        from app.models.outline import ChapterOutline
+        from app.models.chapter import Chapter
+        db = self._get_db()
+        try:
+            results = []
+            outlines = db.query(ChapterOutline).filter(
+                ChapterOutline.project_id == self.project_id,
+            ).order_by(ChapterOutline.chapter_number).limit(max_chapters).all()
+
+            # Batch load chapters for all outlines to avoid N+1
+            outline_ids = [co.id for co in outlines]
+            chapters_map = {}
+            if outline_ids:
+                chapters = db.query(Chapter).filter(
+                    Chapter.chapter_outline_id.in_(outline_ids),
+                ).all()
+                chapters_map = {ch.chapter_outline_id: ch for ch in chapters}
+
+            for co in outlines:
+                chapter = chapters_map.get(co.id)
+                if not chapter or not chapter.content:
+                    continue
+
+                paragraphs = chapter.content.split("\n")
+                matching = []
+                for i, para in enumerate(paragraphs):
+                    if not para.strip():
+                        continue
+                    for kw in keywords:
+                        if kw in para:
+                            matching.append({"index": i, "text": para[:200]})
+                            break
+
+                if matching:
+                    results.append({
+                        "chapter_number": co.chapter_number,
+                        "title": co.title or "",
+                        "matching_paragraphs": matching,
+                    })
+            return results
+        finally:
+            self._close_db_read(db)
