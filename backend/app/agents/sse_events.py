@@ -86,10 +86,8 @@ def format_volume_transition(data: dict) -> str:
     data: {current_volume, new_volume, chapter_offset, unreclaimed_foreshadowings, active_subplots}
     """
     import json
-    return f"event: volume_transition
-data: {json.dumps(data, ensure_ascii=False)}
-
-"
+    payload = json.dumps(data, ensure_ascii=False)
+    return "event: volume_transition\ndata: " + payload + "\n\n"
 
 
 def format_volume_review(data: dict) -> str:
@@ -98,10 +96,8 @@ def format_volume_review(data: dict) -> str:
     data: {volume_number, review_type, issues: [{severity, description, suggestion}]}
     """
     import json
-    return f"event: volume_review
-data: {json.dumps(data, ensure_ascii=False)}
-
-"
+    payload = json.dumps(data, ensure_ascii=False)
+    return "event: volume_review\ndata: " + payload + "\n\n"
 
 
 def format_revision_report(data: dict) -> str:
@@ -111,10 +107,8 @@ def format_revision_report(data: dict) -> str:
            modifications: [{chapter, location, change}]}
     """
     import json
-    return f"event: revision_report
-data: {json.dumps(data, ensure_ascii=False)}
-
-"
+    payload = json.dumps(data, ensure_ascii=False)
+    return "event: revision_report\ndata: " + payload + "\n\n"
 
 
 # Backward compatibility alias

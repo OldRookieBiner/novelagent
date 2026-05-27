@@ -24,7 +24,7 @@ export function ChapterListPanel({ blocks }: ChapterListPanelProps)
   const { selectedChapterNumber, setSelectedChapterNumber } = useWorkbenchStore()
 
   return (
-    <div className="w-[180px] bg-white border-r border-gray-200 overflow-y-auto flex-shrink-0">
+    <>
       {blocks.map((block) => (
         <div key={block.title}>
           {/* 情节块标题 */}
@@ -69,6 +69,6 @@ export function ChapterListPanel({ blocks }: ChapterListPanelProps)
           ))}
         </div>
       ))}
-    </div>
+    </>
   )
 }
