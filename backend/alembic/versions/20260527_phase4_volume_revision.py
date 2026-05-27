@@ -17,7 +17,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers
 revision = "20260527_phase4_volume_revision"
-down_revision = "20260527_phase2_setting_change"
+down_revision = "20260527_phase2"
 branch_labels = None
 depends_on = None
 
