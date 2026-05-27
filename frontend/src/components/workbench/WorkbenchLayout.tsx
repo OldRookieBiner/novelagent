@@ -9,6 +9,7 @@ import { TabNavigation } from './TabNavigation'
 import { ChapterListPanel } from './ChapterListPanel'
 import { AgentChatPanel } from './AgentChatPanel'
 import { ProgressDashboard } from './ProgressDashboard'
+import { VolumePanel, VolumeInfo } from './VolumePanel'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
 
 export interface PlotBlockGroup {
@@ -26,6 +27,8 @@ interface WorkbenchLayoutProps {
   overdueForeshadowings?: number
   styleStatus?: 'stable' | 'drift' | 'unknown'
   currentBlock?: string
+  volumes?: VolumeInfo[]
+  currentVolume?: number
   children: ReactNode
 }
 
@@ -38,6 +41,8 @@ export function WorkbenchLayout({
   overdueForeshadowings = 0,
   styleStatus = 'unknown',
   currentBlock = '',
+  volumes = [],
+  currentVolume = 1,
   children,
 }: WorkbenchLayoutProps) {
   const phase = useWorkbenchStore((s) => s.phase)
@@ -77,8 +82,16 @@ export function WorkbenchLayout({
 
       {/* 主内容区：三栏 */}
       <div className="flex flex-1 overflow-hidden">
-        {/* 左栏：章节列表 */}
-        <ChapterListPanel blocks={plotBlocks} />
+        {/* 左栏：章节列表 + 卷管理 */}
+        <div className="w-[180px] bg-white border-r border-gray-200 overflow-y-auto flex-shrink-0 flex flex-col">
+          <ChapterListPanel blocks={plotBlocks} />
+          {volumes.length > 0 && (
+            <>
+              <div className="border-t border-gray-100 mx-2" />
+              <VolumePanel volumes={volumes} currentVolume={currentVolume} />
+            </>
+          )}
+        </div>
 
         {/* 中栏：标签页内容 */}
         <main className="flex-1 overflow-auto">
