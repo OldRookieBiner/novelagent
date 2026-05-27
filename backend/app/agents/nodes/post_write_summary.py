@@ -1,15 +1,24 @@
 """写后自检汇总节点
 
-汇总所有自检结果，写入 state["post_write_summary"]。
+汇总所有自检结果，运行预警检查，写入 state["post_write_summary"]。
 """
+
+import logging
 
 from app.agents.state import NovelState
 from app.agents.services.knowledge_base import KnowledgeBaseService
-from app.agents.nodes.utils import find_chapter_by_number
+from app.agents.services.warning import WarningService
+
+logger = logging.getLogger(__name__)
 
 
 async def post_write_summary_node(state: NovelState) -> NovelState:
-    """汇总写后自检结果"""
+    """汇总写后自检结果 + 运行预警检查
+
+    1. 读取最新追踪数据生成摘要
+    2. 运行 WarningService.check_all() 检测质量信号
+    3. 预警结果写入 state（供 SSE 推送）
+    """
     project_id = state["project_id"]
     current_chapter = state.get("current_chapter", 1)
     kb = KnowledgeBaseService(project_id)
@@ -34,6 +43,15 @@ async def post_write_summary_node(state: NovelState) -> NovelState:
         parts.append(f"  ⚠️ 超期伏笔：{len(overdue)}个")
     else:
         parts.append("  伏笔：无超期")
+
+    # ========== 预警检查 ==========
+    warning_service = WarningService(project_id)
+    warnings = warning_service.check_all(written_chapter_num)
+
+    if warnings:
+        parts.append(f"\n  预警：")
+        for w in warnings:
+            parts.append(f"    {w['emoji']} {w['title']}：{w['message']}")
 
     summary = "\n".join(parts)
 
