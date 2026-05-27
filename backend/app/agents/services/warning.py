@@ -210,10 +210,110 @@ class WarningService:
         self._mark_emitted(key)
         return warning
 
-    def check_all(self, current_chapter: int) -> list[dict]:
+    def check_cross_volume_subplot_overdue(self, current_volume: int) -> Optional[dict]:
+        """检查跨卷支线超期
+
+        novelskills 规则：交汇点后2卷未交汇 → 🟡
+        """
+        if current_volume <= 1:
+            return None
+
+        cvs_list = self.kb.get_cross_volume_subplots(status="active")
+        overdue = []
+        for cvs in cvs_list:
+            if cvs.expected_intersection_volume and current_volume > cvs.expected_intersection_volume + 1:
+                overdue.append(f"跨卷支线#{cvs.id}")
+
+        if not overdue:
+            return None
+
+        key = f"cross_volume_subplot_overdue_{current_volume}"
+        if self._is_deduped(key):
+            return None
+
+        warning = {
+            "type": "cross_volume_subplot_overdue",
+            "level": "warning",
+            "emoji": "🟡",
+            "title": f"跨卷支线超期（{len(overdue)}个）",
+            "message": f"有 {len(overdue)} 个跨卷支线超过预期交汇卷：" + "；".join(overdue[:3]),
+        }
+        self._mark_emitted(key)
+        return warning
+
+    def check_character_state_jump(self, current_volume: int) -> Optional[dict]:
+        """检查角色状态跳变
+
+        novelskills 规则：跨卷角色状态无铺垫跳变 → 🟡
+        对比相邻卷的 character_snapshot 检测异常变化。
+        """
+        if current_volume <= 1:
+            return None
+
+        ccl = self.kb.get_character_change_logs(volume_number=current_volume - 1)
+        if not ccl:
+            return None
+
+        # 检查是否有大量无铺垫变化
+        jump_chars = []
+        for log in ccl:
+            changes = log.changes if isinstance(log.changes, dict) else {}
+            if len(changes) >= 3:  # 单角色同时3个以上属性变化视为跳变
+                jump_chars.append(f"角色#{log.character_id}")
+
+        if not jump_chars:
+            return None
+
+        key = f"character_state_jump_{current_volume}"
+        if self._is_deduped(key):
+            return None
+
+        warning = {
+            "type": "character_state_jump",
+            "level": "warning",
+            "emoji": "🟡",
+            "title": f"角色状态跳变（{len(jump_chars)}个）",
+            "message": f"以下角色在上卷末尾有大量无铺垫状态变化：" + "；".join(jump_chars[:3]),
+        }
+        self._mark_emitted(key)
+        return warning
+
+    def check_long_term_foreshadowing_overdue(self, current_volume: int) -> Optional[dict]:
+        """检查长期伏笔超期
+
+        novelskills 规则：预期回收卷后2卷未回收 → 🟡
+        """
+        if current_volume <= 1:
+            return None
+
+        cvf_list = self.kb.get_cross_volume_foreshadowings(status="active")
+        overdue = []
+        for cvf in cvf_list:
+            if cvf.expected_volume and current_volume > cvf.expected_volume + 1:
+                overdue.append(f"跨卷伏笔#{cvf.id}（预期第{cvf.expected_volume}卷回收）")
+
+        if not overdue:
+            return None
+
+        key = f"long_term_foreshadowing_overdue_{current_volume}"
+        if self._is_deduped(key):
+            return None
+
+        warning = {
+            "type": "long_term_foreshadowing_overdue",
+            "level": "warning",
+            "emoji": "🟡",
+            "title": f"长期伏笔超期（{len(overdue)}个）",
+            "message": f"有 {len(overdue)} 个跨卷伏笔超过预期回收卷：" + "；".join(overdue[:3]),
+        }
+        self._mark_emitted(key)
+        return warning
+
+    def check_all(self, current_chapter: int, current_volume: int = 1) -> list[dict]:
         """执行所有预警检查，返回预警列表
 
         由 post_write_summary_node 或 deep_review_node 调用。
+        current_volume > 1 时额外执行跨卷预警检查。
         """
         warnings = []
 
@@ -224,6 +324,14 @@ class WarningService:
             self.check_setting_conflict(current_chapter),
             self.check_question_chain_stall(current_chapter),
         ]
+
+        # 跨卷预警（仅多卷项目）
+        if current_volume > 1:
+            checks.extend([
+                self.check_cross_volume_subplot_overdue(current_volume),
+                self.check_character_state_jump(current_volume),
+                self.check_long_term_foreshadowing_overdue(current_volume),
+            ])
 
         for w in checks:
             if w is not None:
