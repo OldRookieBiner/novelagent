@@ -1,21 +1,21 @@
-// workbenchStore.ts — 创作智能体工作台状态管理
+// workbenchStore.ts — Creation agent workbench state management
 
 import { create } from 'zustand'
 
-/** 工作台标签页 */
+/** Workbench tab */
 export type WorkbenchTab = 'writing' | 'knowledge' | 'structure' | 'tracking'
 
-/** 创作阶段 */
+/** Creation phase */
 export type Phase = 'incubation' | 'structure' | 'writing' | 'revision'
 
-/** AI 消息内容段 */
+/** AI message content segment */
 export interface AiMessageSegment {
-  type: 'agent_text' | 'chunk' | 'review' | 'chapter_preview' | 'warning'
+  type: 'agent_text' | 'chunk' | 'review' | 'chapter_preview' | 'warning' | 'tool_start' | 'tool_result'
   content: string
   data?: Record<string, unknown>
 }
 
-/** AI 侧栏消息 */
+/** AI sidebar message */
 export interface AiMessage {
   id: string
   role: 'user' | 'assistant'
@@ -24,35 +24,68 @@ export interface AiMessage {
   timestamp: number
 }
 
+/** Impact assessment report from a propose_* tool */
+export interface ImpactReport {
+  change_id: number
+  status: string
+  impact_level: string
+  impact_label: string
+  affected_chapters: number
+  affected_paragraphs: number
+  detail: string
+  next_steps: string
+}
+
+/** Warning from a perception tool */
+export interface AgentWarning {
+  type: string
+  message: string
+  timestamp: number
+}
+
 interface WorkbenchState {
-  // Tab 状态
+  // Tab state
   activeTab: WorkbenchTab
   setActiveTab: (tab: WorkbenchTab) => void
 
-  // 章节选择
+  // Chapter selection
   selectedChapterNumber: number | null
   setSelectedChapterNumber: (n: number | null) => void
 
-  // 创作阶段
+  // Phase
   phase: Phase
   setPhase: (p: Phase) => void
 
-  // AI 侧栏状态
+  // AI sidebar
   aiSidebarOpen: boolean
   toggleAiSidebar: () => void
   aiMessages: AiMessage[]
   addAiMessage: (message: AiMessage) => void
   clearAiMessages: () => void
 
-  // Agent 并发控制
+  // Impact assessment
+  pendingImpacts: ImpactReport[]
+  addPendingImpact: (report: ImpactReport) => void
+  removePendingImpact: (changeId: number) => void
+
+  // Warnings
+  agentWarnings: AgentWarning[]
+  addAgentWarning: (warning: AgentWarning) => void
+  clearAgentWarnings: () => void
+
+  // Agent busy state
   isAgentBusy: boolean
   setIsAgentBusy: (busy: boolean) => void
 
-  // 模型选择
+  // Agent sending state
+  isAgentSending: boolean
+  setIsAgentSending: (sending: boolean) => void
+
+  // Model selection
   selectedModelKey: string
   setSelectedModelKey: (key: string) => void
 
-  // 项目隔离
+  // Project isolation
   currentProjectId: number | null
   setCurrentProjectId: (id: number | null) => void
 }
@@ -62,15 +95,15 @@ export const useWorkbenchStore = create<WorkbenchState>((set) => ({
   activeTab: 'writing',
   setActiveTab: (tab) => set({ activeTab: tab }),
 
-  // 章节
+  // Chapter
   selectedChapterNumber: null,
   setSelectedChapterNumber: (n) => set({ selectedChapterNumber: n }),
 
-  // 阶段
+  // Phase
   phase: 'incubation',
   setPhase: (p) => set({ phase: p }),
 
-  // AI 侧栏
+  // AI sidebar
   aiSidebarOpen: true,
   toggleAiSidebar: () => set((s) => ({ aiSidebarOpen: !s.aiSidebarOpen })),
   aiMessages: [],
@@ -78,15 +111,32 @@ export const useWorkbenchStore = create<WorkbenchState>((set) => ({
     set((s) => ({ aiMessages: [...s.aiMessages, message] })),
   clearAiMessages: () => set({ aiMessages: [] }),
 
-  // Agent
+  // Impact assessment
+  pendingImpacts: [],
+  addPendingImpact: (report) =>
+    set((s) => ({ pendingImpacts: [...s.pendingImpacts, report] })),
+  removePendingImpact: (changeId) =>
+    set((s) => ({ pendingImpacts: s.pendingImpacts.filter((r) => r.change_id !== changeId) })),
+
+  // Warnings
+  agentWarnings: [],
+  addAgentWarning: (warning) =>
+    set((s) => ({ agentWarnings: [...s.agentWarnings, { ...warning, timestamp: Date.now() }] })),
+  clearAgentWarnings: () => set({ agentWarnings: [] }),
+
+  // Agent busy
   isAgentBusy: false,
   setIsAgentBusy: (busy) => set({ isAgentBusy: busy }),
 
-  // 模型
+  // Agent sending
+  isAgentSending: false,
+  setIsAgentSending: (sending) => set({ isAgentSending: sending }),
+
+  // Model
   selectedModelKey: '',
   setSelectedModelKey: (key) => set({ selectedModelKey: key }),
 
-  // 项目
+  // Project
   currentProjectId: null,
   setCurrentProjectId: (id) => set({ currentProjectId: id }),
 }))
