@@ -14,6 +14,7 @@ from langchain_core.tools import tool
 
 from app.agents.tool_context import get_project_id
 from app.agents.services.knowledge_base import KnowledgeBaseService
+from app.agents.services.retrieval import RetrievalService
 
 
 def _kb() -> KnowledgeBaseService:
@@ -52,13 +53,26 @@ async def knowledge_search(query: str, target: str = "all") -> dict:
     """Search the knowledge base for specific information.
 
     Use when the user asks about any aspect of the novel's settings,
-    characters, plot, or style. Returns structured results from the DB.
+    characters, plot, or style. Uses semantic retrieval when available,
+    falls back to structured DB queries.
 
     Args:
         query: Natural language search query (e.g., "主角的魔法限制", "世界观核心规则")
         target: Which part to search - "world_setting", "characters",
                 "foreshadowing", "timeline", "plot", "style", or "all"
     """
+    project_id = get_project_id()
+    if project_id is None:
+        raise ValueError("project_id not set in tool context")
+
+    # Try semantic retrieval first (FAISS+BM25 hybrid)
+    retrieval = RetrievalService(project_id)
+    if retrieval.is_index_available():
+        results = retrieval.search(query, top_k=8)
+        if results:
+            return {"found": True, "method": "semantic", "results": results}
+
+    # Fallback to structured DB queries
     kb = _kb()
     results = {}
 
