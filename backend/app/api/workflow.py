@@ -200,6 +200,10 @@ def build_initial_state(
         "post_write_summary": None,
         "last_review_chapter": 0,
 
+        # 卷管理（Phase 4）
+        "current_volume": 1,
+        "revision_context": None,
+
         # 工作流控制
         "waiting_for_confirmation": False,
         "confirmation_type": None,

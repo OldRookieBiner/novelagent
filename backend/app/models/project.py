@@ -85,5 +85,16 @@ class Project(Base):
         "SettingChange", back_populates="project", cascade="all, delete-orphan"
     )
 
+    # Relationships — 跨卷追踪模型（Phase 4）
+    cross_volume_foreshadowings = relationship(
+        "CrossVolumeForeshadowing", back_populates="project", cascade="all, delete-orphan"
+    )
+    cross_volume_subplots = relationship(
+        "CrossVolumeSubplot", back_populates="project", cascade="all, delete-orphan"
+    )
+    character_change_logs = relationship(
+        "CharacterChangeLog", back_populates="project", cascade="all, delete-orphan"
+    )
+
     def __repr__(self):
         return f"<Project {self.name}>"

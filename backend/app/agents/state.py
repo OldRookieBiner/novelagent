@@ -6,6 +6,11 @@
 - 避免检查点序列化/反序列化性能问题
 
 阶段使用 Enum 替代字符串，确认类型同理。
+
+Phase 4 新增：
+- VOLUME_TRANSITION 确认类型
+- current_volume 字段（当前卷号）
+- revision_context 字段（修订范围控制）
 """
 
 from enum import Enum
@@ -33,6 +38,13 @@ class ConfirmationType(str, Enum):
     STRUCTURE = "structure"
     CHAPTER_NODE = "chapter_node"
     REVIEW_FAILED = "review_failed"
+    VOLUME_TRANSITION = "volume_transition"
+
+
+class RevisionContext(str, Enum):
+    """修订范围控制"""
+    PER_VOLUME = "per_volume"    # 逐卷修订（卷过渡后）
+    FULL_BOOK = "full_book"      # 全书修订（所有章节完成后）
 
 
 def replace_or_append_chapters(
@@ -107,6 +119,12 @@ class NovelState(TypedDict):
     post_write_summary: Optional[str]
     # 上次深度审查的章节号
     last_review_chapter: int
+
+    # ========== 卷管理（Phase 4）==========
+    current_volume: int  # 当前卷号（1-based）
+    # 修订范围控制：per_volume = 逐卷修订, full_book = 全书修订
+    # 修订节点读取此字段决定审查范围
+    revision_context: Optional[str]  # RevisionContext enum value
 
     # ========== 工作流控制 ==========
     waiting_for_confirmation: bool

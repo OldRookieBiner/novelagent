@@ -21,6 +21,7 @@ from app.models.timeline import TimelineEntry
 from app.models.style_snapshot import StyleSnapshot
 from app.models.scene_entry import SceneEntry
 from app.models.setting_change import SettingChange
+from app.models.cross_volume import CrossVolumeForeshadowing, CrossVolumeSubplot, CharacterChangeLog
 
 __all__ = [
     "User",
@@ -51,4 +52,7 @@ __all__ = [
     "StyleSnapshot",
     "SceneEntry",
     "SettingChange",
+    "CrossVolumeForeshadowing",
+    "CrossVolumeSubplot",
+    "CharacterChangeLog",
 ]
