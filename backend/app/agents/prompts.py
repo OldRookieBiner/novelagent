@@ -511,6 +511,84 @@ DEEP_REVIEW_PROMPT = """你是独立审查员（只读，不修改原文），�
 # 4. 全书修订阶段
 # ==============================================================================
 
+
+DEEP_REVIEW_ENHANCED_PROMPT = """你是独立审查员（只读，不修改原文），对最近5章进行6维度深度审查。
+
+## 审查范围
+第{chapter_number}章及前4章
+
+## 时间线（最近5章）
+{timeline_entries}
+
+## 设定集
+{world_setting}
+
+## 大纲（含支线网络）
+{outline}
+
+## 伏笔表
+{foreshadowings}
+
+## 支线网络
+{subplot_text}
+
+## 风格统计（最近10章）
+{style_stats}
+
+## 是否包含风格漂移检测
+{include_style_drift}
+
+## 检查维度（6个维度，每个必须输出）
+
+### 1. 情节一致性
+检查时间线中事件是否有逻辑矛盾。
+输出：✅ 无矛盾 / ⚠️ 疑似矛盾 / ❌ 明显矛盾
+如有问题，列出具体矛盾点。
+
+### 2. 伏笔追踪
+- 待回收伏笔是否超过预期回收位置2个情节块？
+- 是否有伏笔出现1次就直接回收（违反暗示→强化→揭示分级）？
+输出：✅ 全部正常 / ⚠️ 有超期 / ❌ 有违规回收
+如有问题，列出具体伏笔编号和问题描述。
+
+### 3. 支线追踪
+- 支线是否长期无推进（3+情节块无更新）？
+- 交汇点已过仍未交汇的支线？
+输出：✅ 全部推进中 / ⚠️ 有停滞 / ❌ 有断线
+
+### 4. 节奏审查
+- 连续3+章相同情绪且无预期节奏变化 → 单调
+- 节奏分数≤2连续2+章 → 拖沓
+- 与预期节奏曲线持续偏离
+输出：✅ 节奏正常 / ⚠️ 有单调段 / ❌ 节奏失控
+
+### 5. 设定违反
+- 是否有🔴设定被违反（无铺垫的突破）？
+- 🟡设定突破是否有代价？
+输出：✅ 无违反 / ⚠️ 有🟡突破 / ❌ 有🔴违反
+
+### 6. POV 审查
+- 同场景是否混入非POV角色的内心独白？
+- 单章POV切换是否超过3次？
+输出：✅ POV一致 / ⚠️ 切换频繁 / ❌ POV混乱
+
+### 额外：风格漂移检测（仅{include_style_drift}时执行）
+如果上方标记为「是」，检查最近10章风格统计是否偏离基准±25%。
+
+## 总结格式
+
+| 维度 | 结果 | 问题数量 |
+|------|------|---------|
+| 情节一致性 | ✅/⚠️/❌ | N |
+| 伏笔追踪 | ✅/⚠️/❌ | N |
+| 支线追踪 | ✅/⚠️/❌ | N |
+| 节奏审查 | ✅/⚠️/❌ | N |
+| 设定违反 | ✅/⚠️/❌ | N |
+| POV 审查 | ✅/⚠️/❌ | N |
+
+整体评价：[1-2句总结]
+修改建议：[如有问题，列出优先修改项]"""
+
 STRUCTURAL_REVIEW_PROMPT = """你是独立审查员，对全书进行结构完整性检查。
 
 ## 伏笔表
@@ -610,6 +688,7 @@ DEFAULT_PROMPTS = {
     "character_knowledge_boundary": CHARACTER_KNOWLEDGE_BOUNDARY_PROMPT,
     "post_write_check": POST_WRITE_CHECK_PROMPT,
     "deep_review": DEEP_REVIEW_PROMPT,
+    "deep_review_enhanced": DEEP_REVIEW_ENHANCED_PROMPT,
     "structural_review": STRUCTURAL_REVIEW_PROMPT,
     "character_arc_review": CHARACTER_ARC_REVIEW_PROMPT,
     "final_polish": FINAL_POLISH_PROMPT,
