@@ -8,6 +8,7 @@ import logging
 from app.agents.state import NovelState
 from app.agents.services.knowledge_base import KnowledgeBaseService
 from app.agents.services.warning import WarningService
+from app.agents.services.retrieval import RetrievalService
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,19 @@ async def post_write_summary_node(state: NovelState) -> NovelState:
         parts.append(f"\n  预警：")
         for w in warnings:
             parts.append(f"    {w['emoji']} {w['title']}：{w['message']}")
+
+    # ========== 每5章重建语义检索索引 ==========
+    if written_chapter_num > 0 and written_chapter_num % 5 == 0:
+        retrieval = RetrievalService(project_id)
+        try:
+            success = retrieval.rebuild_index()
+            if success:
+                parts.append(f"  检索索引：已重建")
+            else:
+                parts.append(f"  检索索引：重建失败（模型可能未就绪）")
+        except Exception as e:
+            logger.warning(f"检索索引重建失败: {e}")
+            parts.append(f"  检索索引：重建失败")
 
     summary = "\n".join(parts)
 
