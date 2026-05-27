@@ -663,3 +663,210 @@ class KnowledgeBaseService:
             return results
         finally:
             self._close_db_read(db)
+
+    # ========== 卷管理 ==========
+
+    def get_volumes(self) -> list:
+        """获取项目所有卷"""
+        from app.models.volume import Volume
+        db = self._get_db()
+        try:
+            return db.query(Volume).filter(
+                Volume.project_id == self.project_id
+            ).order_by(Volume.volume_number).all()
+        finally:
+            self._close_db_read(db)
+
+    def get_volume(self, volume_number: int):
+        """获取指定卷号"""
+        from app.models.volume import Volume
+        db = self._get_db()
+        try:
+            return db.query(Volume).filter(
+                Volume.project_id == self.project_id,
+                Volume.volume_number == volume_number,
+            ).first()
+        finally:
+            self._close_db_read(db)
+
+    def create_volume(self, data: dict):
+        """创建新卷"""
+        from app.models.volume import Volume
+        db = self._get_db()
+        committed = False
+        try:
+            volume = Volume(project_id=self.project_id, **data)
+            db.add(volume)
+            db.commit()
+            committed = True
+            db.refresh(volume)
+            return volume
+        finally:
+            self._close_db_write(db, committed)
+
+    def update_volume(self, volume_id: int, data: dict):
+        """更新卷字段"""
+        from app.models.volume import Volume
+        db = self._get_db()
+        committed = False
+        try:
+            volume = db.query(Volume).filter(
+                Volume.id == volume_id,
+                Volume.project_id == self.project_id,
+            ).first()
+            if not volume:
+                raise ValueError(f"Volume {volume_id} not found")
+            for key, value in data.items():
+                setattr(volume, key, value)
+            db.commit()
+            committed = True
+            db.refresh(volume)
+            return volume
+        finally:
+            self._close_db_write(db, committed)
+
+    def get_current_volume(self):
+        """获取当前（最新）卷"""
+        from app.models.volume import Volume
+        db = self._get_db()
+        try:
+            return db.query(Volume).filter(
+                Volume.project_id == self.project_id
+            ).order_by(Volume.volume_number.desc()).first()
+        finally:
+            self._close_db_read(db)
+
+    # ========== 跨卷伏笔 ==========
+
+    def get_cross_volume_foreshadowings(self, status: Optional[str] = None) -> list:
+        """获取跨卷伏笔"""
+        from app.models.cross_volume import CrossVolumeForeshadowing
+        db = self._get_db()
+        try:
+            query = db.query(CrossVolumeForeshadowing).filter(
+                CrossVolumeForeshadowing.project_id == self.project_id
+            )
+            if status:
+                query = query.filter(CrossVolumeForeshadowing.status == status)
+            return query.all()
+        finally:
+            self._close_db_read(db)
+
+    def create_cross_volume_foreshadowing(self, data: dict):
+        """创建跨卷伏笔"""
+        from app.models.cross_volume import CrossVolumeForeshadowing
+        db = self._get_db()
+        committed = False
+        try:
+            cvf = CrossVolumeForeshadowing(project_id=self.project_id, **data)
+            db.add(cvf)
+            db.commit()
+            committed = True
+            db.refresh(cvf)
+            return cvf
+        finally:
+            self._close_db_write(db, committed)
+
+    def update_cross_volume_foreshadowing(self, cvf_id: int, data: dict):
+        """更新跨卷伏笔"""
+        from app.models.cross_volume import CrossVolumeForeshadowing
+        db = self._get_db()
+        committed = False
+        try:
+            cvf = db.query(CrossVolumeForeshadowing).filter(
+                CrossVolumeForeshadowing.id == cvf_id,
+                CrossVolumeForeshadowing.project_id == self.project_id,
+            ).first()
+            if not cvf:
+                raise ValueError(f"CrossVolumeForeshadowing {cvf_id} not found")
+            for key, value in data.items():
+                setattr(cvf, key, value)
+            db.commit()
+            committed = True
+            db.refresh(cvf)
+            return cvf
+        finally:
+            self._close_db_write(db, committed)
+
+    # ========== 跨卷支线 ==========
+
+    def get_cross_volume_subplots(self, status: Optional[str] = None) -> list:
+        """获取跨卷支线"""
+        from app.models.cross_volume import CrossVolumeSubplot
+        db = self._get_db()
+        try:
+            query = db.query(CrossVolumeSubplot).filter(
+                CrossVolumeSubplot.project_id == self.project_id
+            )
+            if status:
+                query = query.filter(CrossVolumeSubplot.status == status)
+            return query.all()
+        finally:
+            self._close_db_read(db)
+
+    def create_cross_volume_subplot(self, data: dict):
+        """创建跨卷支线"""
+        from app.models.cross_volume import CrossVolumeSubplot
+        db = self._get_db()
+        committed = False
+        try:
+            cvs = CrossVolumeSubplot(project_id=self.project_id, **data)
+            db.add(cvs)
+            db.commit()
+            committed = True
+            db.refresh(cvs)
+            return cvs
+        finally:
+            self._close_db_write(db, committed)
+
+    def update_cross_volume_subplot(self, cvs_id: int, data: dict):
+        """更新跨卷支线"""
+        from app.models.cross_volume import CrossVolumeSubplot
+        db = self._get_db()
+        committed = False
+        try:
+            cvs = db.query(CrossVolumeSubplot).filter(
+                CrossVolumeSubplot.id == cvs_id,
+                CrossVolumeSubplot.project_id == self.project_id,
+            ).first()
+            if not cvs:
+                raise ValueError(f"CrossVolumeSubplot {cvs_id} not found")
+            for key, value in data.items():
+                setattr(cvs, key, value)
+            db.commit()
+            committed = True
+            db.refresh(cvs)
+            return cvs
+        finally:
+            self._close_db_write(db, committed)
+
+    # ========== 角色变化日志 ==========
+
+    def get_character_change_logs(self, volume_number: Optional[int] = None) -> list:
+        """获取角色变化日志"""
+        from app.models.cross_volume import CharacterChangeLog
+        db = self._get_db()
+        try:
+            query = db.query(CharacterChangeLog).filter(
+                CharacterChangeLog.project_id == self.project_id
+            )
+            if volume_number is not None:
+                query = query.filter(CharacterChangeLog.volume_number == volume_number)
+            return query.order_by(CharacterChangeLog.volume_number, CharacterChangeLog.character_id).all()
+        finally:
+            self._close_db_read(db)
+
+    def create_character_change_log(self, data: dict):
+        """创建角色变化日志"""
+        from app.models.cross_volume import CharacterChangeLog
+        db = self._get_db()
+        committed = False
+        try:
+            log = CharacterChangeLog(project_id=self.project_id, **data)
+            db.add(log)
+            db.commit()
+            committed = True
+            db.refresh(log)
+            return log
+        finally:
+            self._close_db_write(db, committed)
