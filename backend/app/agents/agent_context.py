@@ -1,21 +1,24 @@
-# backend/app/agents/agent_context.py
-"""Agent 上下文构建器
+"""Phase-aware context builder for the Free Operation Agent
 
-按优先级将项目数据注入 Agent system message，受 token budget 约束。
-与 agent_graph.py 分离，方便独立测试。
+Reads project data via KnowledgeBaseService (shared with the main writing loop).
+Injects a prioritized, token-budget-constrained context into the agent system prompt.
+
+Priorities differ by phase:
+- incubation: outline + world setting basics
+- structure: outline + characters + plot blocks + foreshadowing
+- writing: outline + characters + foreshadowing + style + timeline
+- revision: full outline + all tracking data
 """
 
 import json
 import re
 
-from app.database import SessionLocal
-from app.models.outline import Outline, ChapterOutline
-from app.models.character import Character
-from app.models.chapter import Chapter
+from app.agents.services.knowledge_base import KnowledgeBaseService
+from app.agents.state import Phase
 
 
 class BudgetTracker:
-    """Token 预算追踪器"""
+    """Token budget tracker"""
 
     def __init__(self, max_tokens: int):
         self.max = max_tokens
@@ -32,152 +35,178 @@ class BudgetTracker:
 
 
 def estimate_tokens(text: str) -> int:
-    """粗略估算 token 数：中文字数 × 2，英文单词数 × 1.3"""
-    chinese_chars = len(re.findall(r'[一-鿿]', text))
-    english_words = len(re.findall(r'[a-zA-Z]+', text))
+    """Estimate token count: Chinese chars x2, English words x1.3"""
+    chinese_chars = len(re.findall(r"[一-鿿]", text))
+    english_words = len(re.findall(r"[a-zA-Z]+", text))
     return int(chinese_chars * 2 + english_words * 1.3)
 
 
-def build_project_context(
+def _serialize(obj) -> dict | list:
+    """Serialize ORM object to dict (handles detached sessions)."""
+    if obj is None:
+        return {}
+    if isinstance(obj, list):
+        return [_serialize(item) for item in obj]
+    if hasattr(obj, "__dict__") and hasattr(obj, "__table__"):
+        return {
+            c.name: getattr(obj, c.name)
+            for c in obj.__table__.columns
+            if c.name not in ("created_at", "updated_at")
+        }
+    return obj if isinstance(obj, (dict, list)) else str(obj)
+
+
+def build_agent_context(
     project_id: int,
+    phase: str = "incubation",
     current_chapter_number: int | None = None,
     max_tokens: int = 12000,
 ) -> dict:
-    """构建项目上下文，按优先级注入原文，受 token budget 约束
+    """Build phase-aware project context for the agent system prompt.
 
-    优先级：
-    P1: 当前章节完整正文
-    P2: 完整大纲
-    P3: 角色列表
-    P4: 当前章节大纲
-    P5: 所有章节标题+状态
-    P6: 前后章节摘要
+    Uses KnowledgeBaseService (independent sessions per read).
+    Returns a dict with context sections to be formatted by the caller.
     """
-    db = SessionLocal()
-    try:
-        budget = BudgetTracker(max_tokens)
-        context: dict = {}
+    kb = KnowledgeBaseService(project_id)
+    budget = BudgetTracker(max_tokens)
+    context: dict = {}
 
-        # P1: 当前章节完整正文
-        if current_chapter_number:
-            chapter = db.query(Chapter).filter(
-                Chapter.project_id == project_id,
-                Chapter.chapter_number == current_chapter_number,
-            ).first()
-            if chapter and chapter.content:
-                content_tokens = estimate_tokens(chapter.content)
-                if budget.can_add(content_tokens):
-                    context["current_chapter"] = {
-                        "chapter_number": current_chapter_number,
-                        "title": chapter.title,
-                        "content": chapter.content,
-                    }
-                    budget.add(content_tokens)
+    # === Always load: outline ===
+    outline = kb.get_outline()
+    if outline:
+        outline_data = _serialize(outline)
+        outline_json = json.dumps(outline_data, ensure_ascii=False)
+        tokens = estimate_tokens(outline_json)
+        if budget.can_add(tokens):
+            context["outline"] = outline_data
+            budget.add(tokens)
 
-        # P2: 完整大纲
-        outline = db.query(Outline).filter(Outline.project_id == project_id).first()
-        if outline:
-            outline_data = {
-                "title": outline.title,
-                "summary": outline.summary or "",
-                "plot_points": outline.plot_points or [],
-                "chapter_count": outline.chapter_count_confirmed or outline.chapter_count_suggested or 0,
-                "confirmed": outline.confirmed,
-            }
-            outline_json = json.dumps(outline_data, ensure_ascii=False)
-            outline_tokens = estimate_tokens(outline_json)
-            if budget.can_add(outline_tokens):
-                context["outline"] = outline_data
-                budget.add(outline_tokens)
+    # === Phase-specific loading ===
+    if phase == Phase.INCUBATION.value:
+        _load_incubation_context(kb, budget, context)
+    elif phase == Phase.STRUCTURE.value:
+        _load_structure_context(kb, budget, context)
+    elif phase == Phase.WRITING.value:
+        _load_writing_context(kb, budget, context, current_chapter_number)
+    elif phase == Phase.REVISION.value:
+        _load_revision_context(kb, budget, context)
 
-            # 灵感简报（P2 附带，不受 token budget 限制）
-            context["inspiration_brief"] = outline.inspiration_template or ""
-
-        # P3: 角色列表
-        characters = db.query(Character).filter(Character.project_id == project_id).all()
-        char_list = []
-        for c in characters:
-            char_info = f"{c.name}（{c.role}）：{c.personality or ''}。动机：{c.core_motivation or ''}"
-            char_tokens = estimate_tokens(char_info)
-            if budget.can_add(char_tokens):
-                char_list.append({
-                    "id": c.id,
-                    "name": c.name,
-                    "role": c.role,
-                    "personality": c.personality or "",
-                    "core_motivation": c.core_motivation or "",
-                    "growth_arc": c.growth_arc or "",
-                })
-                budget.add(char_tokens)
-        context["characters"] = char_list
-
-        # P4: 当前章节大纲
-        if current_chapter_number:
-            co = db.query(ChapterOutline).filter(
-                ChapterOutline.project_id == project_id,
-                ChapterOutline.chapter_number == current_chapter_number,
-            ).first()
-            if co:
-                co_data = {
-                    "title": co.title,
-                    "plot": co.plot or "",
-                    "conflict": co.conflict or "",
-                    "ending": co.ending or "",
-                    "target_words": co.target_words or 3000,
-                }
-                co_json = json.dumps(co_data, ensure_ascii=False)
-                if budget.can_add(estimate_tokens(co_json)):
-                    context["current_outline"] = co_data
-                    budget.add(estimate_tokens(co_json))
-
-        # P5: 所有章节标题+状态
-        chapter_outlines = db.query(ChapterOutline).filter(
-            ChapterOutline.project_id == project_id
-        ).order_by(ChapterOutline.chapter_number).all()
-        all_chapters = []
-        for co in chapter_outlines:
-            chapter = db.query(Chapter).filter(
-                Chapter.project_id == project_id,
-                Chapter.chapter_number == co.chapter_number,
-            ).first()
-            entry = f"第{co.chapter_number}章《{co.title}》"
-            if chapter and chapter.content:
-                entry += f"（已写，{len(chapter.content)}字）"
-            else:
-                entry += "（待写）"
-            entry_tokens = estimate_tokens(entry)
-            if budget.can_add(entry_tokens):
-                all_chapters.append(entry)
-                budget.add(entry_tokens)
-        context["all_chapters"] = all_chapters
-
-        # P6: 前后章节摘要
-        if current_chapter_number:
-            adjacent = []
-            for offset in [-2, -1, 1]:
-                cn = current_chapter_number + offset
-                if cn < 1:
-                    continue
-                ch = db.query(Chapter).filter(
-                    Chapter.project_id == project_id,
-                    Chapter.chapter_number == cn,
-                ).first()
-                if ch and ch.content:
-                    summary_text = f"第{cn}章：{ch.content[:150]}"
-                    adj_tokens = estimate_tokens(summary_text)
-                    if budget.can_add(adj_tokens):
-                        adjacent.append(summary_text)
-                        budget.add(adj_tokens)
-            if adjacent:
-                context["adjacent_summaries"] = adjacent
-
-        context["_budget_used"] = budget.used
-        return context
-    finally:
-        db.close()
+    context["_budget_used"] = budget.used
+    context["_budget_max"] = budget.max
+    return context
 
 
-# 模型上下文窗口默认映射（context_window 为 NULL 时使用）
+def _load_incubation_context(kb: KnowledgeBaseService, budget: BudgetTracker, context: dict):
+    ws = kb.get_world_setting()
+    if ws:
+        data = _serialize(ws)
+        data_json = json.dumps(data, ensure_ascii=False)
+        if budget.can_add(estimate_tokens(data_json)):
+            context["world_setting"] = data
+            budget.add(estimate_tokens(data_json))
+
+
+def _load_structure_context(kb: KnowledgeBaseService, budget: BudgetTracker, context: dict):
+    chars = kb.get_characters()
+    char_list = []
+    for c in chars:
+        info = {"id": c.id, "name": c.name, "role": c.role, "core_motivation": c.core_motivation or ""}
+        info_json = json.dumps(info, ensure_ascii=False)
+        tokens = estimate_tokens(info_json)
+        if budget.can_add(tokens):
+            char_list.append(info)
+            budget.add(tokens)
+    context["characters"] = char_list
+
+    blocks = kb.get_plot_blocks()
+    block_list = []
+    for b in blocks:
+        info = {"id": b.id, "title": b.title, "chapter_start": b.chapter_start, "chapter_end": b.chapter_end, "expected_mood": b.expected_mood}
+        info_json = json.dumps(info, ensure_ascii=False)
+        tokens = estimate_tokens(info_json)
+        if budget.can_add(tokens):
+            block_list.append(info)
+            budget.add(tokens)
+    context["plot_blocks"] = block_list
+
+    foreshadowings = kb.get_foreshadowings()
+    fs_list = []
+    for f in foreshadowings:
+        info = {"id": f.id, "content": f.content[:60], "planted_chapter": f.planted_chapter, "expected_resolve_chapter": f.expected_resolve_chapter, "status": f.status}
+        info_json = json.dumps(info, ensure_ascii=False)
+        tokens = estimate_tokens(info_json)
+        if budget.can_add(tokens):
+            fs_list.append(info)
+            budget.add(tokens)
+    context["foreshadowings"] = fs_list
+
+
+def _load_writing_context(kb: KnowledgeBaseService, budget: BudgetTracker, context: dict, current_chapter_number: int | None):
+    chars = kb.get_characters()
+    char_list = []
+    for c in chars:
+        info = {"id": c.id, "name": c.name, "role": c.role, "core_motivation": c.core_motivation or "", "personality": (c.personality or "")[:100]}
+        info_json = json.dumps(info, ensure_ascii=False)
+        tokens = estimate_tokens(info_json)
+        if budget.can_add(tokens):
+            char_list.append(info)
+            budget.add(tokens)
+    context["characters"] = char_list
+
+    ws = kb.get_world_setting()
+    if ws:
+        data = {"core_concept": ws.core_concept or "", "red_settings": ws.tiered_settings.get("red", []) if ws.tiered_settings else [], "key_locations": ws.key_locations or []}
+        data_json = json.dumps(data, ensure_ascii=False)
+        if budget.can_add(estimate_tokens(data_json)):
+            context["world_setting"] = data
+            budget.add(estimate_tokens(data_json))
+
+    pending = kb.get_pending_foreshadowings()
+    overdue = kb.get_overdue_foreshadowings(current_chapter_number) if current_chapter_number else []
+    context["pending_foreshadowings"] = [{"id": f.id, "content": f.content[:60], "expected_resolve_chapter": f.expected_resolve_chapter} for f in pending]
+    context["overdue_foreshadowings"] = [{"id": f.id, "content": f.content[:60], "expected_resolve_chapter": f.expected_resolve_chapter} for f in overdue]
+
+    style = kb.get_style_constraints()
+    if style:
+        data = {"taboo_words": style.taboo_words or [], "forbidden_patterns": style.forbidden_patterns or [], "abstract_rules": style.abstract_rules or []}
+        data_json = json.dumps(data, ensure_ascii=False)
+        if budget.can_add(estimate_tokens(data_json)):
+            context["style_constraints"] = data
+            budget.add(estimate_tokens(data_json))
+
+    if current_chapter_number:
+        block = kb.get_current_plot_block(current_chapter_number)
+        if block:
+            context["current_plot_block"] = {"title": block.title, "expected_mood": block.expected_mood, "must_happen": block.must_happen or []}
+
+        questions = kb.get_questions_for_chapter(current_chapter_number)
+        context["questions_for_chapter"] = [{"id": q.id, "question": q.question_text[:60]} for q in questions]
+
+    timeline = kb.get_timeline()
+    if timeline:
+        recent = timeline[:5]
+        context["recent_timeline"] = [{"chapter": t.chapter_number, "summary": (t.summary or "")[:80], "emotion_tag": t.emotion_tag} for t in recent]
+
+
+def _load_revision_context(kb: KnowledgeBaseService, budget: BudgetTracker, context: dict):
+    chars = kb.get_characters()
+    context["characters"] = _serialize(chars)
+    foreshadowings = kb.get_foreshadowings()
+    context["foreshadowings"] = _serialize(foreshadowings)
+    questions = kb.get_plot_questions()
+    context["plot_questions"] = _serialize(questions)
+    subplots = kb.get_subplots()
+    context["subplots"] = _serialize(subplots)
+    timeline = kb.get_timeline()
+    context["timeline"] = _serialize(timeline)
+    style = kb.get_style_constraints()
+    if style:
+        context["style_constraints"] = _serialize(style)
+    snapshots = kb.get_style_snapshots()
+    context["style_snapshots"] = _serialize(snapshots)
+
+
+# Model context window defaults
 _MODEL_CONTEXT_WINDOW_DEFAULTS: dict[str, int] = {
     "gpt-4o": 128000,
     "gpt-4o-mini": 128000,
@@ -192,18 +221,8 @@ DEFAULT_CONTEXT_WINDOW = 128000
 
 
 def get_context_window(model_config) -> int:
-    """获取模型的上下文窗口大小
-
-    优先级：model_config.context_window > 默认映射 > 128000
-
-    Args:
-        model_config: ModelConfig 实例或 None
-
-    Returns:
-        token 上限
-    """
+    """Get model context window size."""
     if model_config and model_config.context_window:
         return model_config.context_window
-
     model_name = (model_config.model_name or "") if model_config else ""
     return _MODEL_CONTEXT_WINDOW_DEFAULTS.get(model_name, DEFAULT_CONTEXT_WINDOW)
