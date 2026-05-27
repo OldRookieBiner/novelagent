@@ -20,6 +20,7 @@ from app.models.foreshadowing import Foreshadowing
 from app.models.timeline import TimelineEntry
 from app.models.style_snapshot import StyleSnapshot
 from app.models.scene_entry import SceneEntry
+from app.models.setting_change import SettingChange
 
 __all__ = [
     "User",
@@ -49,4 +50,5 @@ __all__ = [
     "TimelineEntry",
     "StyleSnapshot",
     "SceneEntry",
+    "SettingChange",
 ]
