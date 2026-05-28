@@ -4,9 +4,9 @@
 
 **Goal:** 合并写作页面两个聊天窗口为统一的 Agent 面板，并为 Agent 添加模型选择功能，同时调整标签页顺序对齐创作流程。
 
-**Architecture:** 前端改动为主。删除 InspirationChat 组件，增强 AgentChatPanel（模型选择器、阶段感知、重构为 agentApi），调整 TabNavigation 顺序，WritingTab 增加阶段引导卡片。后端无变更。
+**Architecture:** 前端改动为主。先补齐 agentApi.ts 的事件处理缺陷（impact_assessment/warning），再删除 InspirationChat、增强 AgentChatPanel（模型选择器、阶段感知、重构为 agentApi），调整 TabNavigation 顺序，WritingTab 增加阶段引导卡片。后端无变更。
 
-**Tech Stack:** React 18, TypeScript, shadcn/ui Select, Zustand, agentApi.ts (SSE)
+**Tech Stack:** React 18, TypeScript, Zustand, agentApi.ts (SSE), shadcn/ui
 
 ---
 
@@ -14,16 +14,72 @@
 
 | 操作 | 文件 | 职责 |
 |------|------|------|
+| 修改 | `frontend/src/lib/agentApi.ts` | 补齐 impact_assessment/warning 事件回调 |
 | 修改 | `frontend/src/components/workbench/TabNavigation.tsx` | 标签顺序：知识库→结构→写作→追踪 |
 | 修改 | `frontend/src/stores/workbenchStore.ts` | 默认 activeTab 改为 knowledge |
 | 修改 | `frontend/src/components/workbench/creation/WritingTab.tsx` | 移除 InspirationChat，加阶段引导卡片 |
 | 删除 | `frontend/src/components/workbench/creation/InspirationChat.tsx` | 不再需要 |
+| 修改 | `frontend/src/components/workbench/creation/index.ts` | 移除 InspirationChat 导出 |
 | 修改 | `frontend/src/components/workbench/AgentChatPanel.tsx` | 模型选择器、阶段标签、重构为 agentApi、空状态文案 |
-| 不变 | `frontend/src/components/workbench/creation/index.ts` | 确认无 InspirationChat 导出 |
+| 不变 | 后端 | 无变更 |
 
 ---
 
-### Task 1: 标签页重排
+### Task 1: 补齐 agentApi.ts 事件处理
+
+**根因：** `sendAgentMessage` 缺少 `impact_assessment` 和 `warning` 两个 SSE 事件类型的处理。当前 AgentChatPanel 直接 fetch 时手动处理了这两个事件，如果直接重构为 agentApi 而不补齐，影响评估和预警功能会丢失。
+
+**Files:**
+- Modify: `frontend/src/lib/agentApi.ts`
+
+- [ ] **Step 1: 在 AgentChatCallbacks 接口增加 impact 和 warning 回调**
+
+在 `AgentChatCallbacks` 接口中添加：
+
+```ts
+export interface AgentChatCallbacks {
+  onAgentText?: (content: string) => void
+  onToolStart?: (tool: string, args: Record<string, unknown>) => void
+  onToolResult?: (tool: string, result: Record<string, unknown>) => void
+  onImpactAssessment?: (data: Record<string, unknown>) => void
+  onWarning?: (data: Record<string, unknown>) => void
+  onAiUpdate?: (module: string, summary: string) => void
+  onChapterPreview?: (data: Record<string, unknown>) => void
+  onReview?: (data: Record<string, unknown>) => void
+  onAgentDone?: () => void
+  onError?: (error: string) => void
+}
+```
+
+- [ ] **Step 2: 在 sendAgentMessage 的 switch 中添加事件分发**
+
+在 `switch (type)` 块中，`case 'agent_review'` 之后、`case 'agent_done'` 之前，添加：
+
+```ts
+        case 'impact_assessment':
+          callbacks.onImpactAssessment?.(payload)
+          break
+        case 'warning':
+          callbacks.onWarning?.(payload)
+          break
+```
+
+- [ ] **Step 3: 验证编译**
+
+```bash
+cd frontend && npx tsc --noEmit 2>&1 | head -20
+```
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add frontend/src/lib/agentApi.ts
+git commit -m "fix(frontend): agentApi 补齐 impact_assessment 和 warning 事件处理"
+```
+
+---
+
+### Task 2: 标签页重排
 
 **Files:**
 - Modify: `frontend/src/components/workbench/TabNavigation.tsx`
@@ -52,7 +108,7 @@ activeTab: 'knowledge',
 
 - [ ] **Step 3: 验证**
 
-启动前端开发服务器，确认标签顺序为知识库→结构→写作→追踪，默认激活知识库标签。
+启动前端，确认标签顺序为知识库→结构→写作→追踪，默认激活知识库标签。
 
 - [ ] **Step 4: Commit**
 
@@ -63,16 +119,28 @@ git commit -m "refactor(frontend): 标签页顺序对齐创作流程 知识库�
 
 ---
 
-### Task 2: 删除 InspirationChat，WritingTab 统一渲染
+### Task 3: 删除 InspirationChat，WritingTab 统一渲染
 
 **Files:**
 - Delete: `frontend/src/components/workbench/creation/InspirationChat.tsx`
 - Modify: `frontend/src/components/workbench/creation/WritingTab.tsx`
-- Check: `frontend/src/components/workbench/creation/index.ts`
+- Modify: `frontend/src/components/workbench/creation/index.ts`
 
-- [ ] **Step 1: 检查 index.ts 是否导出 InspirationChat**
+- [ ] **Step 1: 修改 index.ts 移除 InspirationChat 导出**
 
-读取 `frontend/src/components/workbench/creation/index.ts`，如果有 InspirationChat 导出则一并移除。
+将 `frontend/src/components/workbench/creation/index.ts` 中的 `export { InspirationChat } from './InspirationChat'` 行删除。
+
+修改后：
+
+```ts
+export { OutlinePanel } from './OutlinePanel'
+export { ChapterOutlinePanel } from './ChapterOutlinePanel'
+export { WritingPanel } from './WritingPanel'
+export { AIAssistantPanel } from './AIAssistantPanel'
+export { WritingTab } from './WritingTab'
+export { ChapterNodePanel } from './ChapterNodePanel'
+export type { ChapterNode } from './ChapterNodePanel'
+```
 
 - [ ] **Step 2: 删除 InspirationChat.tsx**
 
@@ -80,7 +148,7 @@ git commit -m "refactor(frontend): 标签页顺序对齐创作流程 知识库�
 rm frontend/src/components/workbench/creation/InspirationChat.tsx
 ```
 
-- [ ] **Step 3: 修改 WritingTab.tsx**
+- [ ] **Step 3: 重写 WritingTab.tsx**
 
 移除 InspirationChat 引用和孵化阶段分支，添加阶段引导卡片：
 
@@ -134,13 +202,15 @@ export function WritingTab({ projectId }: WritingTabProps) {
 }
 ```
 
-- [ ] **Step 4: 移除 index.ts 中的 InspirationChat 导出（如有）**
+- [ ] **Step 4: 验证编译**
 
-- [ ] **Step 5: 验证**
+```bash
+cd frontend && npx tsc --noEmit 2>&1 | head -20
+```
 
-启动前端，确认孵化阶段写作标签显示 WritingPanel（空状态）+ 引导卡片，而非灵感对话。
+确认无类型错误，无 InspirationChat 相关引用报错。
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add frontend/src/components/workbench/creation/
@@ -149,16 +219,19 @@ git commit -m "refactor(frontend): 移除 InspirationChat，写作标签统一�
 
 ---
 
-### Task 3: AgentChatPanel 重构 — 使用 agentApi + 模型选择器 + 阶段感知
+### Task 4: AgentChatPanel 重构 — 使用 agentApi + 模型选择器 + 阶段感知
 
 **Files:**
 - Modify: `frontend/src/components/workbench/AgentChatPanel.tsx`
 
-这是最大的改动。将 AgentChatPanel 从直接 fetch 重构为使用 `sendAgentMessage`，并增加模型选择器和阶段标签。
+这是最大的改动。将 AgentChatPanel 从直接 fetch 手动解析 SSE 重构为使用 `sendAgentMessage`，并增加模型选择器和阶段感知。
+
+**关键修复点：**
+- 通过 agentApi 的 `onImpactAssessment`/`onWarning` 回调维持影响评估和预警功能
+- 模型选择器使用 `useEffect` + `mousedown` 事件监听实现 click-outside 关闭
+- 组件卸载时清理事件监听，防止内存泄漏
 
 - [ ] **Step 1: 重写 AgentChatPanel.tsx**
-
-完整替换为以下内容：
 
 ```tsx
 // AgentChatPanel.tsx — Right panel: AI creation agent chat
@@ -216,37 +289,50 @@ export function AgentChatPanel() {
   const [modelsLoaded, setModelsLoaded] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const modelSelectorRef = useRef<HTMLDivElement>(null)
 
+  // 自动滚动到底部
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [aiMessages, pendingImpacts])
 
-  // 加载模型配置列表
+  // 加载模型配置列表（仅一次）
   useEffect(() => {
-    if (!modelsLoaded) {
-      modelConfigsApi.list().then((res) => {
-        const enabled = res.models
-          .filter((m: ModelConfig) => m.is_enabled)
-          .map((m: ModelConfig) => ({
-            id: m.id,
-            name: m.name,
-            isDefault: m.is_default,
-          }))
-        setModelOptions(enabled)
-        // 自动选中默认模型
-        const defaultModel = enabled.find((m: ModelOption) => m.isDefault)
-        if (defaultModel) {
-          setSelectedModelId(defaultModel.id)
-        }
-        setModelsLoaded(true)
-      }).catch(() => {
-        setModelsLoaded(true)
-      })
-    }
+    if (modelsLoaded) return
+    modelConfigsApi.list().then((res) => {
+      const enabled = res.models
+        .filter((m: ModelConfig) => m.is_enabled)
+        .map((m: ModelConfig) => ({
+          id: m.id,
+          name: m.name,
+          isDefault: m.is_default,
+        }))
+      setModelOptions(enabled)
+      const defaultModel = enabled.find((m: ModelOption) => m.isDefault)
+      if (defaultModel) {
+        setSelectedModelId(defaultModel.id)
+      }
+      setModelsLoaded(true)
+    }).catch(() => {
+      setModelsLoaded(true)
+    })
   }, [modelsLoaded])
 
+  // 模型选择器 click-outside 关闭
+  useEffect(() => {
+    if (!modelSelectorOpen) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (modelSelectorRef.current && !modelSelectorRef.current.contains(e.target as Node)) {
+        setModelSelectorOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [modelSelectorOpen])
+
+  // SSE chat handler — 使用 agentApi
   const handleSend = useCallback(async () => {
     if (!input.trim() || !currentProjectId || isAgentSending) return
 
@@ -296,6 +382,12 @@ export function AgentChatPanel() {
               data: { tool, result },
             })
           },
+          onImpactAssessment: (data) => {
+            addPendingImpact(data as ImpactReport)
+          },
+          onWarning: (data) => {
+            addAgentWarning(data as AgentWarning)
+          },
           onAgentDone: () => {},
           onError: (error) => {
             assistantMsg.content = assistantMsg.content || `错误：${error}`
@@ -314,7 +406,7 @@ export function AgentChatPanel() {
       setIsAgentSending(false)
       abortRef.current = null
     }
-  }, [input, currentProjectId, isAgentSending, selectedModelId, addAiMessage, setIsAgentSending])
+  }, [input, currentProjectId, isAgentSending, selectedModelId, addAiMessage, addPendingImpact, addAgentWarning, setIsAgentSending])
 
   const handleImpactDecision = async (changeId: number, decision: string) => {
     if (!currentProjectId) return
@@ -330,7 +422,7 @@ export function AgentChatPanel() {
         removePendingImpact(changeId)
       }
     } catch {
-      // Silently fail
+      // 静默失败
     }
   }
 
@@ -380,7 +472,7 @@ export function AgentChatPanel() {
       </div>
 
       {/* 模型选择器 */}
-      <div className="px-3 py-1.5 border-b border-gray-50">
+      <div className="px-3 py-1.5 border-b border-gray-50" ref={modelSelectorRef}>
         <div className="relative">
           <button
             onClick={() => setModelSelectorOpen(!modelSelectorOpen)}
@@ -539,12 +631,14 @@ cd frontend && npx tsc --noEmit 2>&1 | head -20
 
 - [ ] **Step 3: 验证功能**
 
-启动前端开发服务器，确认：
+启动前端，确认：
 - AgentChatPanel 顶部显示阶段标签
 - 模型选择器下拉正常，可选择不同模型
+- 点击选择器外部区域自动关闭下拉
 - 发送消息时 model_config_id 正确传递
 - 空状态文案按阶段变化
-- 工具调用、影响评估等功能不受影响
+- 影响评估卡片正常显示
+- 预警消息正常显示
 
 - [ ] **Step 4: Commit**
 
@@ -558,14 +652,25 @@ git commit -m "feat(frontend): AgentChatPanel 增加模型选择器、阶段标�
 ## Self-Review
 
 **1. Spec coverage:**
-- 标签页重排 ✅ Task 1
-- 写作标签阶段引导 ✅ Task 2
-- 删除 InspirationChat ✅ Task 2
-- AgentChatPanel 模型选择器 ✅ Task 3
-- AgentChatPanel 阶段标签 ✅ Task 3
-- AgentChatPanel 空状态文案 ✅ Task 3
-- AgentChatPanel 重构为 agentApi ✅ Task 3
+- 标签页重排 ✅ Task 2
+- 写作标签阶段引导 ✅ Task 3
+- 删除 InspirationChat ✅ Task 3
+- AgentChatPanel 模型选择器 ✅ Task 4
+- AgentChatPanel 阶段标签 ✅ Task 4
+- AgentChatPanel 空状态文案 ✅ Task 4
+- AgentChatPanel 重构为 agentApi ✅ Task 4
+- agentApi 补齐事件处理 ✅ Task 1（新增，修复根因缺陷）
 
 **2. Placeholder scan:** 无 TBD/TODO/模糊描述。
 
-**3. Type consistency:** ModelConfig 类型来自 `@/types`，sendAgentMessage 接口来自 `@/lib/agentApi`，AiMessage/ImpactReport/AgentWarning 来自 workbenchStore — 均为已有类型。
+**3. Type consistency:**
+- `ModelConfig` 类型来自 `@/types` ✅
+- `sendAgentMessage` 接口来自 `@/lib/agentApi` ✅
+- `AiMessage`/`ImpactReport`/`AgentWarning` 来自 workbenchStore ✅
+- `onImpactAssessment`/`onWarning` 回调在 Task 1 中定义，Task 4 中使用 ✅
+- `modelConfigsApi.list()` 返回 `ModelConfigListResponse`（含 `models: ModelConfig[]`）✅
+
+**4. 根因修复确认：**
+- agentApi.ts 缺失事件处理 → Task 1 在源头补齐，而非在 AgentChatPanel 中 workaround ✅
+- 模型选择器 click-outside → useEffect + mousedown 监听 + 组件卸载清理 ✅
+- InspirationChat 删除 → index.ts 导出同步清理 ✅
