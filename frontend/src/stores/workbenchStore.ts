@@ -92,7 +92,7 @@ interface WorkbenchState {
 
 export const useWorkbenchStore = create<WorkbenchState>((set) => ({
   // Tab
-  activeTab: 'writing',
+  activeTab: 'knowledge',
   setActiveTab: (tab) => set({ activeTab: tab }),
 
   // Chapter

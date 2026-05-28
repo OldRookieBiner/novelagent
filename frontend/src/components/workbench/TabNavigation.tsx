@@ -6,9 +6,9 @@ import { useWorkbenchStore } from '@/stores/workbenchStore'
 import type { WorkbenchTab } from '@/stores/workbenchStore'
 
 const TABS: { key: WorkbenchTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { key: 'writing', label: '写作', icon: Sparkles },
   { key: 'knowledge', label: '知识库', icon: BookOpen },
   { key: 'structure', label: '结构', icon: GitBranch },
+  { key: 'writing', label: '写作', icon: Sparkles },
   { key: 'tracking', label: '追踪', icon: BarChart3 },
 ]
 
