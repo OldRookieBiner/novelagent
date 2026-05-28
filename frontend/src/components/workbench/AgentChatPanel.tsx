@@ -1,11 +1,32 @@
 // AgentChatPanel.tsx — Right panel: AI creation agent chat
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { PanelRightClose, PanelRightOpen, Send, AlertTriangle, ShieldCheck } from 'lucide-react'
+import { PanelRightClose, PanelRightOpen, Send, AlertTriangle, ShieldCheck, ChevronDown } from 'lucide-react'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
+import { sendAgentMessage } from '@/lib/agentApi'
+import { modelConfigsApi } from '@/lib/api'
 import type { AiMessage, ImpactReport, AgentWarning } from '@/stores/workbenchStore'
+import type { ModelConfig } from '@/types'
 
-const API_BASE = '/api/projects'
+const PHASE_LABELS: Record<string, string> = {
+  incubation: '创意孵化',
+  structure: '结构设计',
+  writing: '写作中',
+  revision: '修订中',
+}
+
+const PHASE_EMPTY_HINTS: Record<string, string> = {
+  incubation: '描述你的小说创意，智能体将帮你完善世界观、角色和风格',
+  structure: '和智能体讨论情节安排和结构设计',
+  writing: '和智能体讨论你的创作想法',
+  revision: '和智能体讨论修订方向',
+}
+
+interface ModelOption {
+  id: number
+  name: string
+  isDefault: boolean
+}
 
 export function AgentChatPanel() {
   const {
@@ -23,16 +44,59 @@ export function AgentChatPanel() {
     setIsAgentSending,
   } = useWorkbenchStore()
 
-  const [input, setInput] = useState('')
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const phase = useWorkbenchStore((s) => s.phase)
 
+  const [input, setInput] = useState('')
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>([])
+  const [selectedModelId, setSelectedModelId] = useState<number | null>(null)
+  const [modelSelectorOpen, setModelSelectorOpen] = useState(false)
+  const [modelsLoaded, setModelsLoaded] = useState(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const modelSelectorRef = useRef<HTMLDivElement>(null)
+
+  // 自动滚动到底部
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [aiMessages, pendingImpacts])
 
-  // SSE chat handler
+  // 加载模型配置列表（仅一次）
+  useEffect(() => {
+    if (modelsLoaded) return
+    modelConfigsApi.list().then((res) => {
+      const enabled = res.models
+        .filter((m: ModelConfig) => m.is_enabled)
+        .map((m: ModelConfig) => ({
+          id: m.id,
+          name: m.name,
+          isDefault: m.is_default,
+        }))
+      setModelOptions(enabled)
+      const defaultModel = enabled.find((m: ModelOption) => m.isDefault)
+      if (defaultModel) {
+        setSelectedModelId(defaultModel.id)
+      }
+      setModelsLoaded(true)
+    }).catch(() => {
+      setModelsLoaded(true)
+    })
+  }, [modelsLoaded])
+
+  // 模型选择器 click-outside 关闭
+  useEffect(() => {
+    if (!modelSelectorOpen) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (modelSelectorRef.current && !modelSelectorRef.current.contains(e.target as Node)) {
+        setModelSelectorOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [modelSelectorOpen])
+
+  // SSE chat handler — 使用 agentApi
   const handleSend = useCallback(async () => {
     if (!input.trim() || !currentProjectId || isAgentSending) return
 
@@ -57,86 +121,62 @@ export function AgentChatPanel() {
     }
     addAiMessage(assistantMsg)
 
+    const controller = new AbortController()
+    abortRef.current = controller
+
     try {
-      const res = await fetch(`${API_BASE}/${currentProjectId}/agent/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: messageText }),
-      })
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: res.statusText }))
-        assistantMsg.content = `错误：${err.detail || res.statusText}`
-        setIsAgentSending(false)
-        return
-      }
-
-      const reader = res.body?.getReader()
-      if (!reader) return
-
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        let lastEventType = ''
-        for (const line of lines) {
-          if (line.startsWith('event: ')) {
-            lastEventType = line.slice(7).trim()
-            continue
-          }
-          if (line.startsWith('data: ')) {
-            const dataStr = line.slice(6)
-            try {
-              const data = JSON.parse(dataStr)
-              // Dispatch based on the SSE event type
-              if (lastEventType === 'chunk' && data.content && typeof data.content === 'string') {
-                assistantMsg.content += data.content
-              } else if (lastEventType === 'agent_tool_start' && data.tool) {
-                assistantMsg.segments.push({
-                  type: 'tool_start' as any,
-                  content: `调用 ${data.tool}...`,
-                  data,
-                })
-              } else if (lastEventType === 'agent_tool_result' && data.tool) {
-                assistantMsg.segments.push({
-                  type: 'tool_result' as any,
-                  content: `${data.tool} 完成`,
-                  data,
-                })
-              } else if (lastEventType === 'impact_assessment' && data.change_id !== undefined) {
-                addPendingImpact(data as ImpactReport)
-              } else if (lastEventType === 'warning' && data.message) {
-                addAgentWarning(data as AgentWarning)
-              }
-            } catch {
-              // Not JSON, skip
-            }
-            lastEventType = ''
-          }
+      await sendAgentMessage(
+        currentProjectId,
+        messageText,
+        {
+          onAgentText: (content) => {
+            assistantMsg.content += content
+          },
+          onToolStart: (tool, args) => {
+            assistantMsg.segments.push({
+              type: 'tool_start' as any,
+              content: `调用 ${tool}...`,
+              data: { tool, args },
+            })
+          },
+          onToolResult: (tool, result) => {
+            assistantMsg.segments.push({
+              type: 'tool_result' as any,
+              content: `${tool} 完成`,
+              data: { tool, result },
+            })
+          },
+          onImpactAssessment: (data) => {
+            addPendingImpact(data as unknown as ImpactReport)
+          },
+          onWarning: (data) => {
+            addAgentWarning(data as unknown as AgentWarning)
+          },
+          onAgentDone: () => {},
+          onError: (error) => {
+            assistantMsg.content = assistantMsg.content || `错误：${error}`
+          },
+        },
+        {
+          modelConfigId: selectedModelId ?? undefined,
+          signal: controller.signal,
         }
-      }
+      )
     } catch (err: any) {
       if (err.name !== 'AbortError') {
-        assistantMsg.content = `连接错误：${err.message}`
+        assistantMsg.content = assistantMsg.content || `连接错误：${err.message}`
       }
     } finally {
       setIsAgentSending(false)
+      abortRef.current = null
     }
-  }, [input, currentProjectId, isAgentSending, addAiMessage, addPendingImpact, addAgentWarning, setIsAgentSending])
+  }, [input, currentProjectId, isAgentSending, selectedModelId, addAiMessage, addPendingImpact, addAgentWarning, setIsAgentSending])
 
-  // Impact decision handler
   const handleImpactDecision = async (changeId: number, decision: string) => {
     if (!currentProjectId) return
 
     try {
-      const res = await fetch(`${API_BASE}/${currentProjectId}/agent/impact-decision`, {
+      const res = await fetch(`/api/projects/${currentProjectId}/agent/impact-decision`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ change_id: changeId, decision }),
@@ -146,11 +186,11 @@ export function AgentChatPanel() {
         removePendingImpact(changeId)
       }
     } catch {
-      // Silently fail
+      // 静默失败
     }
   }
 
-  // Collapsed state
+  // 折叠状态
   if (!aiSidebarOpen) {
     return (
       <div className="w-10 bg-white border-l border-gray-200 flex flex-col items-center pt-3 gap-2">
@@ -174,11 +214,18 @@ export function AgentChatPanel() {
     )
   }
 
+  const selectedModelName = selectedModelId
+    ? modelOptions.find(m => m.id === selectedModelId)?.name
+    : '默认模型'
+
   return (
     <div className="w-[300px] bg-white border-l border-gray-200 flex flex-col flex-shrink-0">
       {/* Header */}
-      <div className="px-3 py-2.5 border-b border-gray-100 font-semibold text-sm flex items-center gap-2">
-        <span>✦ 智能体</span>
+      <div className="px-3 py-2.5 border-b border-gray-100 flex items-center gap-2">
+        <span className="font-semibold text-sm">✦ 智能体</span>
+        <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+          {PHASE_LABELS[phase] || '未知'}
+        </span>
         <div className={`w-1.5 h-1.5 rounded-full ml-auto ${isAgentSending ? 'bg-amber-500 animate-pulse' : 'bg-green-500'}`} />
         <button
           onClick={toggleAiSidebar}
@@ -186,6 +233,45 @@ export function AgentChatPanel() {
         >
           <PanelRightClose className="h-3.5 w-3.5" />
         </button>
+      </div>
+
+      {/* 模型选择器 */}
+      <div className="px-3 py-1.5 border-b border-gray-50" ref={modelSelectorRef}>
+        <div className="relative">
+          <button
+            onClick={() => setModelSelectorOpen(!modelSelectorOpen)}
+            className="w-full flex items-center justify-between gap-1 rounded border border-gray-200 px-2 py-1 text-[10px] text-foreground hover:border-gray-300 transition-colors"
+          >
+            <span className="truncate">{selectedModelName}</span>
+            <ChevronDown className="h-3 w-3 shrink-0 text-gray-400" />
+          </button>
+          {modelSelectorOpen && (
+            <div className="absolute left-0 right-0 top-full mt-0.5 bg-white border border-gray-200 rounded shadow-sm z-10 max-h-40 overflow-y-auto">
+              <button
+                onClick={() => { setSelectedModelId(null); setModelSelectorOpen(false) }}
+                className={cn(
+                  'w-full text-left px-2 py-1.5 text-[10px] hover:bg-muted/50',
+                  !selectedModelId && 'text-primary font-medium'
+                )}
+              >
+                默认模型
+              </button>
+              {modelOptions.map(m => (
+                <button
+                  key={m.id}
+                  onClick={() => { setSelectedModelId(m.id); setModelSelectorOpen(false) }}
+                  className={cn(
+                    'w-full text-left px-2 py-1.5 text-[10px] hover:bg-muted/50',
+                    selectedModelId === m.id && 'text-primary font-medium'
+                  )}
+                >
+                  {m.name}
+                  {m.isDefault && <span className="ml-1 text-muted-foreground">(默认)</span>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Warnings */}
@@ -204,7 +290,7 @@ export function AgentChatPanel() {
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
         {aiMessages.length === 0 && (
           <div className="text-center text-muted-foreground text-xs py-8">
-            和智能体讨论你的创作想法
+            {PHASE_EMPTY_HINTS[phase] || '和智能体讨论你的创作想法'}
           </div>
         )}
         {aiMessages.map((msg) => (
@@ -218,7 +304,6 @@ export function AgentChatPanel() {
             )}
           >
             {msg.content || (msg.role === 'assistant' && isAgentSending ? '...' : '')}
-            {/* Tool segments */}
             {msg.segments.filter(s => s.type === 'tool_result').map((s, i) => (
               <div key={i} className="mt-1 text-[10px] text-muted-foreground border-t border-gray-100 pt-1">
                 {s.content}
