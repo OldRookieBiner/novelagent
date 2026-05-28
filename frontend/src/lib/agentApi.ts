@@ -8,6 +8,8 @@ export interface AgentChatCallbacks {
   onAgentText?: (content: string) => void
   onToolStart?: (tool: string, args: Record<string, unknown>) => void
   onToolResult?: (tool: string, result: Record<string, unknown>) => void
+  onImpactAssessment?: (data: Record<string, unknown>) => void
+  onWarning?: (data: Record<string, unknown>) => void
   onAiUpdate?: (module: string, summary: string) => void
   onChapterPreview?: (data: Record<string, unknown>) => void
   onReview?: (data: Record<string, unknown>) => void
@@ -69,6 +71,12 @@ export async function sendAgentMessage(
           break
         case 'agent_review':
           callbacks.onReview?.(payload)
+          break
+        case 'impact_assessment':
+          callbacks.onImpactAssessment?.(payload)
+          break
+        case 'warning':
+          callbacks.onWarning?.(payload)
           break
         case 'agent_done':
           callbacks.onAgentDone?.()
