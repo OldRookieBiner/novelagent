@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Globe, Edit3, Check, X } from 'lucide-react'
 import { knowledgeApi } from '@/lib/api'
+import ReactMarkdown from 'react-markdown'
 
 interface WorldSettingViewProps {
   data: any
@@ -32,7 +33,11 @@ export function WorldSettingView({ data, loading, projectId, onUpdate }: WorldSe
     )
   }
 
-  if (!data) {
+  // 过滤来自 Outline.world_setting 的旧格式数据（含 era/core_rules/power_system）
+  // 正确的 WorldSetting 数据应包含 core_concept/tiered_settings/key_locations
+  const isOldFormat = data && ('era' in data || 'core_rules' in data || 'power_system' in data) && !data.core_concept
+
+  if (!data || isOldFormat) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-muted-foreground text-xs">
         <Globe className="h-8 w-8 mb-3 text-muted-foreground/30" />
@@ -78,7 +83,7 @@ export function WorldSettingView({ data, loading, projectId, onUpdate }: WorldSe
         )}
       </div>
 
-      {/* 核心概念 */}
+      {/* 核心概念 - 支持 Markdown */}
       <div>
         <div className="text-[10px] text-muted-foreground mb-1">核心概念</div>
         {editing ? (
@@ -98,8 +103,27 @@ export function WorldSettingView({ data, loading, projectId, onUpdate }: WorldSe
               </button>
             </div>
           </div>
+        ) : data.core_concept ? (
+          <div className="text-sm bg-muted/50 rounded-lg p-3 leading-relaxed">
+            <div className="markdown-content text-sm leading-relaxed">
+              <ReactMarkdown
+                components={{
+                  h1: ({children}) => <h1 className="text-base font-bold mt-3 mb-2">{children}</h1>,
+                  h2: ({children}) => <h2 className="text-sm font-semibold mt-2 mb-1">{children}</h2>,
+                  h3: ({children}) => <h3 className="text-xs font-medium mt-2 mb-1">{children}</h3>,
+                  p: ({children}) => <p className="mb-1.5 last:mb-0">{children}</p>,
+                  ul: ({children}) => <ul className="list-disc list-inside mb-2 space-y-0.5">{children}</ul>,
+                  ol: ({children}) => <ol className="list-decimal list-inside mb-2 space-y-0.5">{children}</ol>,
+                  li: ({children}) => <li className="text-xs">{children}</li>,
+                  strong: ({children}) => <strong className="font-semibold">{children}</strong>,
+                }}
+              >{data.core_concept}</ReactMarkdown>
+            </div>
+          </div>
         ) : (
-          <div className="text-sm bg-muted/50 rounded-lg p-3 leading-relaxed">{data.core_concept}</div>
+          <div className="text-xs text-muted-foreground bg-muted/30 rounded-lg p-3">
+            核心概念尚未填写，点击右上角编辑按钮添加
+          </div>
         )}
       </div>
 
@@ -118,7 +142,18 @@ export function WorldSettingView({ data, loading, projectId, onUpdate }: WorldSe
             </div>
             <ul className="space-y-1">
               {items.map((item: string, i: number) => (
-                <li key={i} className="text-xs bg-muted/30 rounded px-3 py-1.5">{item}</li>
+                <li key={i} className="text-xs bg-muted/30 rounded px-3 py-1.5">
+                  {/* 支持 Markdown 列表项 */}
+                  <ReactMarkdown
+              components={{
+                p: ({children}) => <>{children}</>,
+                ul: ({children}) => <ul className="list-disc list-inside mb-0 space-y-0.5">{children}</ul>,
+                ol: ({children}) => <ol className="list-decimal list-inside mb-0 space-y-0.5">{children}</ol>,
+                li: ({children}) => <li className="text-xs">{children}</li>,
+                strong: ({children}) => <strong className="font-semibold">{children}</strong>,
+              }}
+            >{item}</ReactMarkdown>
+                </li>
               ))}
             </ul>
           </div>
