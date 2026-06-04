@@ -28,6 +28,7 @@ from app.models.style_snapshot import StyleSnapshot
 from app.models.scene_entry import SceneEntry
 from app.models.character import Character, Relation
 from app.models.outline import Outline
+from app.models.project import Project
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,34 @@ class KnowledgeBaseService:
             ).first()
         finally:
             self._close_db_read(db)
+
+    # ========== 故事种子 ==========
+
+    def get_story_seed(self) -> Optional[str]:
+        """获取项目的故事种子文本"""
+        db = self._get_db()
+        try:
+            project = db.query(Project).filter(
+                Project.id == self.project_id
+            ).first()
+            return project.story_seed if project else None
+        finally:
+            self._close_db_read(db)
+
+    def update_story_seed(self, story_seed: str) -> None:
+        """更新项目的故事种子"""
+        db = self._get_db()
+        committed = False
+        try:
+            project = db.query(Project).filter(
+                Project.id == self.project_id
+            ).first()
+            if project:
+                project.story_seed = story_seed
+                db.commit()
+                committed = True
+        finally:
+            self._close_db_write(db, committed)
 
     # ========== 世界观 ==========
 
@@ -162,6 +191,98 @@ class KnowledgeBaseService:
             return db.query(Relation).filter(
                 Relation.project_id == self.project_id
             ).all()
+        finally:
+            self._close_db_read(db)
+
+    def create_relation(self, data: dict) -> Relation:
+        db = self._get_db()
+        committed = False
+        try:
+            relation = Relation(project_id=self.project_id, **data)
+            db.add(relation)
+            db.commit()
+            committed = True
+            db.refresh(relation)
+            return relation
+        finally:
+            self._close_db_write(db, committed)
+
+    def update_relation(self, relation_id: int, data: dict) -> Relation:
+        db = self._get_db()
+        committed = False
+        try:
+            relation = db.query(Relation).filter(
+                Relation.id == relation_id,
+                Relation.project_id == self.project_id,
+            ).first()
+            if not relation:
+                raise ValueError(f"Relation {relation_id} not found")
+            for key, value in data.items():
+                setattr(relation, key, value)
+            db.commit()
+            committed = True
+            db.refresh(relation)
+            return relation
+        finally:
+            self._close_db_write(db, committed)
+
+
+    # ========== 关系演变规划 ==========
+
+    def get_evolution_plans_triggering_at(self, chapter_number: int) -> list:
+        """获取在指定章节触发的关系演变规划（未触发且 trigger_chapter <= chapter_number）"""
+        from app.models.character import EvolutionPlan, Relation as RelationModel
+
+        db = self._get_db()
+        try:
+            # 先获取项目所有的关系
+            relation_ids = db.query(RelationModel.id).filter(
+                RelationModel.project_id == self.project_id
+            ).all()
+            relation_ids = [r.id for r in relation_ids]
+
+            if not relation_ids:
+                return []
+
+            # 查询在这些关系中，trigger_chapter <= chapter_number 且未触发的规划
+            plans = (
+                db.query(EvolutionPlan)
+                .filter(
+                    EvolutionPlan.relation_id.in_(relation_ids),
+                    EvolutionPlan.trigger_chapter <= chapter_number,
+                    EvolutionPlan.is_triggered == False
+                )
+                .all()
+            )
+            return plans
+        finally:
+            self._close_db_read(db)
+
+    def get_relations_with_plans(self) -> list[dict]:
+        """获取所有关系及其演变规划"""
+        from app.models.character import EvolutionPlan, Relation as RelationModel
+
+        db = self._get_db()
+        try:
+            relations = (
+                db.query(RelationModel)
+                .filter(RelationModel.project_id == self.project_id)
+                .all()
+            )
+
+            result = []
+            for rel in relations:
+                plans = (
+                    db.query(EvolutionPlan)
+                    .filter(EvolutionPlan.relation_id == rel.id)
+                    .order_by(EvolutionPlan.trigger_chapter)
+                    .all()
+                )
+                result.append({
+                    "relation": rel,
+                    "plans": plans,
+                })
+            return result
         finally:
             self._close_db_read(db)
 
@@ -661,6 +782,134 @@ class KnowledgeBaseService:
                         "matching_paragraphs": matching,
                     })
             return results
+        finally:
+            self._close_db_read(db)
+
+
+    # ========== 批量读取（单次 DB 会话）==========
+
+    def batch_read_for_index(self) -> dict:
+        """单次 DB 会话批量读取所有知识库数据，用于检索索引构建。
+
+        解决 _collect_documents_from_db 中为每个数据类型创建独立会话的 N+1 问题。
+        返回的 ORM 对象在 session 关闭后为 detached 状态，调用方应立即提取所需字段。
+
+        Returns:
+            dict with keys: world_setting, characters, relations, style_constraints,
+                           plot_blocks, plot_questions, subplots, foreshadowings,
+                           timeline, style_snapshots, scene_entries
+        """
+        from app.models.world_setting import WorldSetting
+        from app.models.style_constraints import StyleConstraints
+        from app.models.plot_structure import PlotBlock, PlotQuestion, Subplot
+        from app.models.foreshadowing import Foreshadowing
+        from app.models.timeline import TimelineEntry
+        from app.models.style_snapshot import StyleSnapshot
+        from app.models.scene_entry import SceneEntry
+        from app.models.character import Character, Relation
+
+        db = self._get_db()
+        try:
+            result = {}
+            result["world_setting"] = db.query(WorldSetting).filter(
+                WorldSetting.project_id == self.project_id
+            ).first()
+            result["characters"] = db.query(Character).filter(
+                Character.project_id == self.project_id
+            ).all()
+            result["relations"] = db.query(Relation).filter(
+                Relation.project_id == self.project_id
+            ).all()
+            result["style_constraints"] = db.query(StyleConstraints).filter(
+                StyleConstraints.project_id == self.project_id
+            ).first()
+            result["plot_blocks"] = db.query(PlotBlock).filter(
+                PlotBlock.project_id == self.project_id
+            ).order_by(PlotBlock.chapter_start).all()
+            result["plot_questions"] = db.query(PlotQuestion).filter(
+                PlotQuestion.project_id == self.project_id
+            ).all()
+            result["subplots"] = db.query(Subplot).filter(
+                Subplot.project_id == self.project_id
+            ).all()
+            result["foreshadowings"] = db.query(Foreshadowing).filter(
+                Foreshadowing.project_id == self.project_id
+            ).all()
+            result["timeline"] = db.query(TimelineEntry).filter(
+                TimelineEntry.project_id == self.project_id
+            ).order_by(TimelineEntry.chapter_number).all()
+            result["style_snapshots"] = db.query(StyleSnapshot).filter(
+                StyleSnapshot.project_id == self.project_id
+            ).all()
+            result["scene_entries"] = db.query(SceneEntry).filter(
+                SceneEntry.project_id == self.project_id
+            ).all()
+            return result
+        finally:
+            self._close_db_read(db)
+
+    def batch_read_volume_for_index(self, volume_number: int) -> dict:
+        """单次 DB 会话批量读取指定卷的知识库数据。
+
+        Returns:
+            dict with keys: volume, next_volume, timeline, foreshadowings,
+                           scene_entries, cross_volume_foreshadowings, cross_volume_subplots
+        """
+        from app.models.volume import Volume
+        from app.models.timeline import TimelineEntry
+        from app.models.foreshadowing import Foreshadowing
+        from app.models.scene_entry import SceneEntry
+        from app.models.cross_volume import CrossVolumeForeshadowing, CrossVolumeSubplot
+
+        db = self._get_db()
+        try:
+            result = {}
+            result["volume"] = db.query(Volume).filter(
+                Volume.project_id == self.project_id,
+                Volume.volume_number == volume_number,
+            ).first()
+            result["next_volume"] = db.query(Volume).filter(
+                Volume.project_id == self.project_id,
+                Volume.volume_number == volume_number + 1,
+            ).first()
+
+            volume = result["volume"]
+            next_volume = result["next_volume"]
+            if volume:
+                chapter_start = volume.chapter_offset + 1
+                chapter_end = next_volume.chapter_offset if next_volume else 999999
+
+                result["timeline"] = db.query(TimelineEntry).filter(
+                    TimelineEntry.project_id == self.project_id,
+                    TimelineEntry.chapter_number >= chapter_start,
+                    TimelineEntry.chapter_number <= chapter_end,
+                ).order_by(TimelineEntry.chapter_number).all()
+
+                result["foreshadowings"] = db.query(Foreshadowing).filter(
+                    Foreshadowing.project_id == self.project_id,
+                    Foreshadowing.planted_chapter >= chapter_start,
+                    Foreshadowing.planted_chapter <= chapter_end,
+                ).all()
+
+                result["scene_entries"] = db.query(SceneEntry).filter(
+                    SceneEntry.project_id == self.project_id,
+                    SceneEntry.chapter_number >= chapter_start,
+                    SceneEntry.chapter_number <= chapter_end,
+                ).order_by(SceneEntry.id).all()
+            else:
+                result["timeline"] = []
+                result["foreshadowings"] = []
+                result["scene_entries"] = []
+
+            result["cross_volume_foreshadowings"] = db.query(CrossVolumeForeshadowing).filter(
+                CrossVolumeForeshadowing.project_id == self.project_id,
+            ).all()
+
+            result["cross_volume_subplots"] = db.query(CrossVolumeSubplot).filter(
+                CrossVolumeSubplot.project_id == self.project_id,
+            ).all()
+
+            return result
         finally:
             self._close_db_read(db)
 

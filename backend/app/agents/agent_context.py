@@ -174,6 +174,33 @@ def _load_writing_context(kb: KnowledgeBaseService, budget: BudgetTracker, conte
             context["style_constraints"] = data
             budget.add(estimate_tokens(data_json))
 
+    # 上一章结尾 500 字（确保下章开头的场景衔接）
+    if current_chapter_number and current_chapter_number > 1:
+        prev = kb.get_chapter_by_number(current_chapter_number - 1)
+        if prev and prev.content:
+            closing = prev.content[-500:] if len(prev.content) > 500 else prev.content
+            closing_json = json.dumps({"closing_scene": closing.strip()}, ensure_ascii=False)
+            closing_tokens = estimate_tokens(closing_json)
+            if budget.can_add(closing_tokens):
+                context["previous_chapter_closing"] = closing.strip()
+                budget.add(closing_tokens)
+
+    # 最近的变更决策（让 Agent 知道用户已经批准/放弃了哪些修改）
+    recent_decisions = kb.get_setting_changes(status="applied")
+    if recent_decisions:
+        decision_list = []
+        for d in recent_decisions[:5]:
+            decision_list.append({
+                "target_type": d.target_type,
+                "decision": getattr(d, "author_decision", "unknown"),
+                "summary": (d.description or "")[:80],
+            })
+        decision_json = json.dumps(decision_list, ensure_ascii=False)
+        decision_tokens = estimate_tokens(decision_json)
+        if budget.can_add(decision_tokens):
+            context["recent_decisions"] = decision_list
+            budget.add(decision_tokens)
+
     if current_chapter_number:
         block = kb.get_current_plot_block(current_chapter_number)
         if block:
@@ -186,6 +213,28 @@ def _load_writing_context(kb: KnowledgeBaseService, budget: BudgetTracker, conte
     if timeline:
         recent = timeline[:5]
         context["recent_timeline"] = [{"chapter": t.chapter_number, "summary": (t.summary or "")[:80], "emotion_tag": t.emotion_tag} for t in recent]
+
+    # 关系演变规划（让 LLM 知道当前章节的关系变化）
+    if current_chapter_number:
+        pending_plans = kb.get_evolution_plans_triggering_at(current_chapter_number)
+        if pending_plans:
+            evolution_cues = []
+            for plan in pending_plans:
+                char_a = plan.relation.character_a.name
+                char_b = plan.relation.character_b.name
+                cue = (
+                    f"第{plan.trigger_chapter}章，{char_a}和{char_b}的关系将发生变化："
+                    f"{plan.status_before or '待定'} → {plan.status_after}，"
+                    f"信任度 {plan.trust_before or 50} → {plan.trust_after or 50}。"
+                    f"事件：{plan.event_description}"
+                )
+                evolution_cues.append(cue)
+            cues_json = json.dumps(evolution_cues, ensure_ascii=False)
+            cues_tokens = estimate_tokens(cues_json)
+            if budget.can_add(cues_tokens):
+                context["relation_evolution_cues"] = evolution_cues
+                budget.add(cues_tokens)
+
 
 
 def _load_revision_context(kb: KnowledgeBaseService, budget: BudgetTracker, context: dict):
@@ -220,9 +269,24 @@ _MODEL_CONTEXT_WINDOW_DEFAULTS: dict[str, int] = {
 DEFAULT_CONTEXT_WINDOW = 128000
 
 
-def get_context_window(model_config) -> int:
-    """Get model context window size."""
+def get_context_window(model_config, model_name: str | None = None) -> int:
+    """Get model context window size.
+
+    优先级：
+    1. 子模型的 context_window（coding_plan 类型 + model_name 指定时）
+    2. 配置级别的 context_window
+    3. 硬编码映射表
+    4. 默认值
+    """
+    # 优先查找子模型的 context_window
+    if model_config and model_name and model_config.models:
+        for m in model_config.models:
+            if m.get("is_enabled", True) and (m.get("id") == model_name or m.get("name") == model_name):
+                if m.get("context_window"):
+                    return m["context_window"]
+                break
+
     if model_config and model_config.context_window:
         return model_config.context_window
-    model_name = (model_config.model_name or "") if model_config else ""
-    return _MODEL_CONTEXT_WINDOW_DEFAULTS.get(model_name, DEFAULT_CONTEXT_WINDOW)
+    fallback_name = model_name or ((model_config.model_name or "") if model_config else "")
+    return _MODEL_CONTEXT_WINDOW_DEFAULTS.get(fallback_name, DEFAULT_CONTEXT_WINDOW)
