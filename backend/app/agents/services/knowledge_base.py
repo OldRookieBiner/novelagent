@@ -1119,3 +1119,127 @@ class KnowledgeBaseService:
             return log
         finally:
             self._close_db_write(db, committed)
+
+    # ========== 关系演变检测与记录 ==========
+
+    def create_evolution_record(
+        self,
+        relation_id: int,
+        chapter_number: int,
+        content: str,
+        status_change: str | None = None,
+        trust_change: int | None = None,
+        triggered_plan_id: int | None = None,
+    ):
+        """创建演变记录，幂等检查：同一章节同一关系只创建一条"""
+        from app.models.character import EvolutionRecord
+
+        db = self._get_db()
+        committed = False
+        try:
+            # 幂等检查
+            existing = (
+                db.query(EvolutionRecord)
+                .filter(
+                    EvolutionRecord.relation_id == relation_id,
+                    EvolutionRecord.chapter_number == chapter_number,
+                )
+                .first()
+            )
+            if existing:
+                return existing  # 已存在，返回现有记录
+
+            record = EvolutionRecord(
+                relation_id=relation_id,
+                chapter_number=chapter_number,
+                content=content,
+                status_change=status_change,
+                trust_change=trust_change,
+                triggered_plan_id=triggered_plan_id,
+            )
+            db.add(record)
+            db.commit()
+            committed = True
+            db.refresh(record)
+            return record
+        finally:
+            self._close_db_write(db, committed)
+
+    def mark_evolution_plan_triggered(self, relation_id: int, chapter_number: int) -> list:
+        """标记指定章节的演变规划为已触发"""
+        from app.models.character import EvolutionPlan
+
+        db = self._get_db()
+        committed = False
+        try:
+            plans = (
+                db.query(EvolutionPlan)
+                .filter(
+                    EvolutionPlan.relation_id == relation_id,
+                    EvolutionPlan.trigger_chapter == chapter_number,
+                    EvolutionPlan.is_triggered == False,
+                )
+                .all()
+            )
+            for plan in plans:
+                plan.is_triggered = True
+            db.commit()
+            committed = True
+            return plans
+        finally:
+            self._close_db_write(db, committed)
+
+    def update_relation_trust_level(self, relation_id: int, new_trust_level: int) -> None:
+        """更新关系的信任度"""
+        from app.models.character import Relation as RelationModel
+
+        db = self._get_db()
+        committed = False
+        try:
+            relation = (
+                db.query(RelationModel)
+                .filter(RelationModel.id == relation_id)
+                .first()
+            )
+            if relation:
+                relation.trust_level = max(0, min(100, new_trust_level))
+                db.commit()
+                committed = True
+        finally:
+            self._close_db_write(db, committed)
+
+    def get_relations_involved_characters(self, character_names: list[str]) -> list[Relation]:
+        """获取涉及指定角色的所有关系"""
+        from app.models.character import Character, Relation as RelationModel
+
+        db = self._get_db()
+        try:
+            # 找到这些角色的 ID
+            characters = (
+                db.query(Character)
+                .filter(
+                    Character.project_id == self.project_id,
+                    Character.name.in_(character_names),
+                )
+                .all()
+            )
+            character_ids = [c.id for c in characters]
+
+            if not character_ids:
+                return []
+
+            # 找到涉及这些角色的关系
+            relations = (
+                db.query(RelationModel)
+                .filter(
+                    RelationModel.project_id == self.project_id,
+                    (RelationModel.character_a_id.in_(character_ids)) |
+                    (RelationModel.character_b_id.in_(character_ids)),
+                )
+                .all()
+            )
+            return relations
+        finally:
+            self._close_db_read(db)
+
+
