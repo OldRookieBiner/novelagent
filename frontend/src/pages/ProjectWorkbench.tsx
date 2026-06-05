@@ -9,14 +9,14 @@ import { KnowledgeTab } from '@/components/workbench/knowledge/KnowledgeTab'
 import { StructureTab } from '@/components/workbench/structure/StructureTab'
 import { TrackingTab } from '@/components/workbench/tracking/TrackingTab'
 import { useProjectData } from '@/hooks/useProjectData'
-import { knowledgeApi } from '@/lib/api'
+import { knowledgeApi, projectsApi } from '@/lib/api'
 import type { PlotBlockGroup } from '@/components/workbench/WorkbenchLayout'
 
 export default function ProjectWorkbench() {
   const { id } = useParams<{ id: string }>()
   const projectId = id ? parseInt(id) : null
   const { activeTab, setCurrentProjectId, phase, setPhase } = useWorkbenchStore()
-  const { project, loading, workflowState } = useProjectData(projectId)
+  const { project, loading, workflowState, refreshProject } = useProjectData(projectId)
 
   // 情节块数据（从知识库 API 加载）
   const [plotBlocks, setPlotBlocks] = useState<PlotBlockGroup[]>([])
@@ -71,6 +71,13 @@ export default function ProjectWorkbench() {
     loadPlotBlocks()
   }, [loadPlotBlocks])
 
+  // 修改项目名
+  const handleNameChange = async (newName: string) => {
+    if (!projectId) return
+    await projectsApi.update(projectId, { name: newName })
+    await refreshProject()
+  }
+
   if (loading || !project) {
     return <div className="flex items-center justify-center h-screen">加载中...</div>
   }
@@ -91,11 +98,15 @@ export default function ProjectWorkbench() {
     }
   }
 
+  const showChapterList = activeTab === 'tracking'
   return (
     <WorkbenchLayout
       projectName={project.name}
+
+      onNameChange={handleNameChange}
       progress={project.progress_percentage || 0}
       plotBlocks={plotBlocks}
+      showChapterList={showChapterList}
     >
       {renderTabContent()}
     </WorkbenchLayout>

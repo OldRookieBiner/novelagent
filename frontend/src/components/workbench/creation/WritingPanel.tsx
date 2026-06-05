@@ -7,12 +7,10 @@ import { Button } from '@/components/ui/button'
 import Skeleton from '@/components/ui/skeleton'
 import { chapterOutlinesApi, chaptersApi } from '@/lib/api'
 import { createSSEStream } from '@/lib/sseParser'
-import { AIAssistantPanel } from './AIAssistantPanel'
 import { ChapterNodePanel } from './ChapterNodePanel'
 import type { ChapterNode } from './ChapterNodePanel'
 import TipTapEditor from '@/components/common/TipTapEditor'
-import type { ChapterOutline, Chapter, ReviewResponse } from '@/types'
-import { mapReviewResult } from '@/types'
+import type { ChapterOutline, Chapter } from '@/types'
 import { toast } from 'sonner'
 import { useWorkflowStore } from '@/stores/workflowStore'
 import { useShallow } from 'zustand/react/shallow'
@@ -114,11 +112,8 @@ export function WritingPanel({ projectId }: WritingPanelProps)
   const abortControllerRef = useRef<AbortController | null>(null)
   const [mode, setMode] = useState<'preview' | 'edit'>('preview')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [rightCollapsed, setRightCollapsed] = useState(false)
-  const [rewriting, setRewriting] = useState(false)
   const [chapterNode, setChapterNode] = useState<ChapterNode | null>(null)
   const [showChapterNode, setShowChapterNode] = useState(false)
-  const rewriteAccumulatedRef = useRef('')
 
   useEffect(() =>
   {
@@ -382,109 +377,7 @@ export function WritingPanel({ projectId }: WritingPanelProps)
     }
     clearWritingGenerationState()
     toast.info('已取消生成')
-  }
-
-  // 重写流式内容回调
-  const handleRewriteChunk = useCallback((chunk: string) =>
-  {
-    if (!rewriting) setRewriting(true)
-    rewriteAccumulatedRef.current += chunk
-    const html = rewriteAccumulatedRef.current
-      .split('\n')
-      .filter(p => p.trim())
-      .map(p => `<p>${p}</p>`)
-      .join('')
-    setContent(html)
-  }, [rewriting])
-
-  // 重写完成回调
-  const handleRewriteDone = useCallback((data: { chapter: { id?: number; content?: string; word_count?: number } }) =>
-  {
-    setRewriting(false)
-    rewriteAccumulatedRef.current = ''
-    if (chapterContent)
-    {
-      const newRewriteCount = (chapterContent.rewrite_count || 0) + 1
-      setChapterContent({
-        ...chapterContent,
-        content: data.chapter.content || '',
-        word_count: data.chapter.word_count ?? 0,
-        rewrite_count: newRewriteCount,
-        review_passed: false,
-        review_result: null,
-        review_feedback: undefined,
-      })
-      // 更新编辑器显示内容
-      if (data.chapter.content)
-      {
-        setContent(formatContentAsHtml(data.chapter.content))
-      }
-    }
-  }, [chapterContent])
-
-  // 审核结果清除回调
-  const handleReviewCleared = useCallback(() =>
-  {
-    if (chapterContent)
-    {
-      setChapterContent({
-        ...chapterContent,
-        review_passed: false,
-        review_result: null,
-        review_feedback: undefined,
-      })
-    }
-  }, [chapterContent])
-
-  // 审核完成回调
-  const handleReviewComplete = useCallback((result: ReviewResponse) =>
-  {
-    if (chapterContent)
-    {
-      setChapterContent({
-        ...chapterContent,
-        review_passed: result.passed,
-        review_result: {
-          passed: result.passed,
-          scores: result.scores || {},
-          issues: result.issues || [],
-          suggestions: result.feedback,
-        },
-        review_feedback: result.feedback,
-      })
-    }
-  }, [chapterContent])
-
-  // 审核结果缓存：仅在 review_result 数据变化时重新计算，避免每次渲染创建新对象
-  const initialReviewResultMemo = useMemo(
-    () => chapterContent ? mapReviewResult(chapterContent.review_result) : null,
-    [chapterContent?.review_result]
-  )
-
-  // 点击审核问题，定位到编辑器中对应段落
-  const handleIssueClick = useCallback((issue: { paragraph_start?: string }) =>
-  {
-    if (!issue.paragraph_start) return
-    // 在编辑器的 DOM 中搜索匹配段落并滚动高亮
-    const editorEl = document.querySelector('.tiptap.ProseMirror')
-      ?? document.querySelector('.ProseMirror')
-      ?? document.querySelector('[contenteditable="true"]')
-    if (!editorEl) return
-
-    const paragraphs = editorEl.querySelectorAll('p')
-    for (const p of paragraphs)
-    {
-      if (p.textContent?.startsWith(issue.paragraph_start!))
-      {
-        p.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        p.classList.add('review-highlight')
-        setTimeout(() => p.classList.remove('review-highlight'), 5000)
-        break
-      }
-    }
-  }, [])
-
-  const navigateChapter = (direction: 'prev' | 'next') =>
+  }  const navigateChapter = (direction: 'prev' | 'next') =>
   {
     if (!selectedChapter) return
     const currentIndex = chapters.findIndex(c => c.id === selectedChapter.id)
@@ -750,21 +643,6 @@ export function WritingPanel({ projectId }: WritingPanelProps)
         </div>
       </div>
 
-      {/* 右侧审核面板 */}
-      <AIAssistantPanel
-        key={selectedChapter?.chapter_number}
-        projectId={projectId}
-        chapterNumber={selectedChapter?.chapter_number}
-        chapterContent={content}
-        initialReviewResult={initialReviewResultMemo}
-        onReviewComplete={handleReviewComplete}
-        onRewriteChunk={handleRewriteChunk}
-        onRewriteDone={handleRewriteDone}
-        onReviewCleared={handleReviewCleared}
-        onIssueClick={handleIssueClick}
-        collapsed={rightCollapsed}
-        onToggleCollapse={() => setRightCollapsed(!rightCollapsed)}
-      />
     </div>
   )
 }
