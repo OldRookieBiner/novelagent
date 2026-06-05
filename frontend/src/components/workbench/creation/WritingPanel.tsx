@@ -377,7 +377,9 @@ export function WritingPanel({ projectId }: WritingPanelProps)
     }
     clearWritingGenerationState()
     toast.info('已取消生成')
-  }  const navigateChapter = (direction: 'prev' | 'next') =>
+  }
+
+  const navigateChapter = (direction: 'prev' | 'next') =>
   {
     if (!selectedChapter) return
     const currentIndex = chapters.findIndex(c => c.id === selectedChapter.id)
