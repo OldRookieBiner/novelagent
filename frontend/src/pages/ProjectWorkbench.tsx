@@ -98,7 +98,7 @@ export default function ProjectWorkbench() {
     }
   }
 
-  const showChapterList = activeTab === 'tracking'
+  const showChapterList = false
   return (
     <WorkbenchLayout
       projectName={project.name}
