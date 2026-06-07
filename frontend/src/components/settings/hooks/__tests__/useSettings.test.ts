@@ -22,8 +22,6 @@ vi.mock('@/lib/api', () => ({
 vi.mock('@/stores/settingsStore', () => ({
   useSettingsStore: vi.fn(() => ({
     setSettings: vi.fn(),
-    workflowMode: 'hybrid',
-    setWorkflowMode: vi.fn(),
   })),
 }))
 

@@ -11,65 +11,16 @@ import json
 from typing import Optional
 
 
-def format_node_start(node_name: str, node_label: Optional[str] = None) -> str:
-    """格式化节点开始事件
-
-    Args:
-        node_name: 节点名称（用于路由标识）
-        node_label: 可选的人类可读标签（如 "Starting creation agent"）
-    """
-    payload = {"node": node_name}
-    if node_label:
-        payload["label"] = node_label
-    return f"event: node_start\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
-def format_node_done(node_name: str, data: Optional[dict] = None) -> str:
-    """格式化节点完成事件"""
-    payload = {"node": node_name}
-    if data:
-        payload.update(data)
-    return f"event: node_done\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
-def format_chunk(content: str) -> str:
-    """格式化流式文本块"""
-    return f"event: chunk\ndata: {json.dumps({'content': content}, ensure_ascii=False)}\n\n"
-
-
-def format_done(message: str = "完成") -> str:
-    """格式化完成事件"""
-    return f"event: done\ndata: {json.dumps({'message': message}, ensure_ascii=False)}\n\n"
-
-
-def format_waiting(confirmation_type: str, node: Optional[str] = None, **kwargs) -> str:
-    """格式化等待确认事件
-
-    Args:
-        confirmation_type: 确认类型
-        node: 可选的节点名称
-        **kwargs: 额外数据字段
-    """
-    payload = {"confirmation_type": confirmation_type}
-    if node:
-        payload["node"] = node
-    payload.update(kwargs)
-    return f"event: waiting\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
-
-
-def format_progress(data: dict) -> str:
-    """格式化进度事件"""
-    return f"event: progress\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
 def format_sse_error(error: str) -> str:
     """格式化错误事件"""
     return f"event: error\ndata: {json.dumps({'error': error}, ensure_ascii=False)}\n\n"
 
-
-def format_heartbeat() -> str:
-    """SSE heartbeat comment to keep connection alive"""
-    return ": heartbeat\n\n"
 
 
 def format_impact_assessment(data: dict) -> str:
@@ -84,25 +35,9 @@ def format_warning(warning_type: str, data: dict) -> str:
     return f"event: warning\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
-# ========== Phase 4: 卷管理事件 ==========
 
 
-def format_volume_transition(data: dict) -> str:
-    """Format volume transition event (卷过渡)."""
-    payload = json.dumps(data, ensure_ascii=False)
-    return f"event: volume_transition\ndata: {payload}\n\n"
 
-
-def format_volume_review(data: dict) -> str:
-    """Format per-volume revision report event (逐卷修订报告)."""
-    payload = json.dumps(data, ensure_ascii=False)
-    return f"event: volume_review\ndata: {payload}\n\n"
-
-
-def format_revision_report(data: dict) -> str:
-    """Format full-book revision report event (全书修订报告)."""
-    payload = json.dumps(data, ensure_ascii=False)
-    return f"event: revision_report\ndata: {payload}\n\n"
 
 
 # Backward compatibility alias

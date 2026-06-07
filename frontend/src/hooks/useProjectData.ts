@@ -1,9 +1,9 @@
 // frontend/src/hooks/useProjectData.ts
 import { useState, useEffect, useCallback } from 'react'
-import { projectsApi, outlineApi, chapterOutlinesApi, workflowApi } from '@/lib/api'
+import { projectsApi, outlineApi, chapterOutlinesApi } from '@/lib/api'
 import { useProjectStore } from '@/stores/projectStore'
-import { useWorkflowStore } from '@/stores/workflowStore'
-import type { ProjectDetail, ChapterOutline, Outline, WorkflowStateResponse } from '@/types'
+import { useWorkbenchStore } from '@/stores/workbenchStore'
+import type { ProjectDetail, ChapterOutline, Outline } from '@/types'
 
 interface UseProjectDataResult
 {
@@ -11,18 +11,16 @@ interface UseProjectDataResult
   outline: Outline | null
   chapterOutlines: ChapterOutline[]
   selectedChapter: ChapterOutline | null
-  workflowState: WorkflowStateResponse | null
   loading: boolean
   setSelectedChapter: (chapter: ChapterOutline | null) => void
   refreshProject: () => Promise<void>
   refreshOutline: () => Promise<void>
   refreshChapterOutlines: () => Promise<void>
-  refreshWorkflowState: () => Promise<void>
 }
 
 /**
  * 项目数据获取 Hook
- * 统一管理项目、大纲、章节大纲、工作流状态的获取和更新
+ * 统一管理项目、大纲、章节大纲的获取和更新
  */
 export function useProjectData(projectId: number | null): UseProjectDataResult
 {
@@ -30,15 +28,12 @@ export function useProjectData(projectId: number | null): UseProjectDataResult
   const [outline, setOutline] = useState<Outline | null>(null)
   const [chapterOutlines, setChapterOutlines] = useState<ChapterOutline[]>([])
   const [selectedChapter, setSelectedChapter] = useState<ChapterOutline | null>(null)
-  const [workflowState, setWorkflowState] = useState<WorkflowStateResponse | null>(null)
   const [loading, setLoading] = useState(true)
 
   // Store actions
   const setCurrentProject = useProjectStore((state) => state.setCurrentProject)
   const setProjectOutline = useProjectStore((state) => state.setOutline)
   const setProjectChapterOutlines = useProjectStore((state) => state.setChapterOutlines)
-  const setWorkflowStage = useWorkflowStore((state) => state.setStage)
-  const setWorkflowProjectId = useWorkflowStore((state) => state.setProjectId)
 
   // 刷新项目数据
   const refreshProject = useCallback(async () =>
@@ -49,7 +44,18 @@ export function useProjectData(projectId: number | null): UseProjectDataResult
       const projectData = await projectsApi.get(projectId)
       setProject(projectData)
       setCurrentProject(projectData)
-    } catch (err)
+
+      // 同步工作流阶段到 workbenchStore
+      if (projectData.workflow_state?.stage)
+      {
+        const { phase, setPhase } = useWorkbenchStore.getState()
+        if (projectData.workflow_state.stage !== phase)
+        {
+          setPhase(projectData.workflow_state.stage as any)
+        }
+      }
+    }
+    catch (err)
     {
       console.error('Failed to refresh project:', err)
     }
@@ -64,7 +70,8 @@ export function useProjectData(projectId: number | null): UseProjectDataResult
       const outlineData = await outlineApi.get(projectId)
       setOutline(outlineData)
       setProjectOutline(outlineData)
-    } catch (err)
+    }
+    catch (err)
     {
       console.error('Failed to refresh outline:', err)
     }
@@ -83,27 +90,12 @@ export function useProjectData(projectId: number | null): UseProjectDataResult
       {
         setSelectedChapter(chaptersData[0])
       }
-    } catch (err)
+    }
+    catch (err)
     {
       console.error('Failed to refresh chapter outlines:', err)
     }
   }, [projectId, setProjectChapterOutlines, selectedChapter])
-
-  // 刷新工作流状态
-  const refreshWorkflowState = useCallback(async () =>
-  {
-    if (!projectId) return
-    try
-    {
-      const state = await workflowApi.getWorkflowState(projectId)
-      setWorkflowState(state)
-      setWorkflowProjectId(projectId)
-      setWorkflowStage(state.stage)
-    } catch (err)
-    {
-      console.error('Failed to refresh workflow state:', err)
-    }
-  }, [projectId, setWorkflowProjectId, setWorkflowStage])
 
   // 初始数据加载
   useEffect(() =>
@@ -115,7 +107,6 @@ export function useProjectData(projectId: number | null): UseProjectDataResult
       setLoading(true)
       try
       {
-        // 并行获取项目和大纲
         const [projectData, outlineData] = await Promise.all([
           projectsApi.get(projectId),
           outlineApi.get(projectId),
@@ -125,7 +116,12 @@ export function useProjectData(projectId: number | null): UseProjectDataResult
         setOutline(outlineData)
         setProjectOutline(outlineData)
 
-        // 获取章节大纲
+        // 同步工作流阶段
+        if (projectData.workflow_state?.stage)
+        {
+          useWorkbenchStore.getState().setPhase(projectData.workflow_state.stage as any)
+        }
+
         const chaptersData = await chapterOutlinesApi.list(projectId)
         setChapterOutlines(chaptersData)
         setProjectChapterOutlines(chaptersData)
@@ -133,10 +129,12 @@ export function useProjectData(projectId: number | null): UseProjectDataResult
         {
           setSelectedChapter(chaptersData[0])
         }
-      } catch (err)
+      }
+      catch (err)
       {
         console.error('Failed to fetch project:', err)
-      } finally
+      }
+      finally
       {
         setLoading(false)
       }
@@ -145,23 +143,15 @@ export function useProjectData(projectId: number | null): UseProjectDataResult
     fetchData()
   }, [projectId, setCurrentProject, setProjectOutline, setProjectChapterOutlines])
 
-  // 获取工作流状态
-  useEffect(() =>
-  {
-    refreshWorkflowState()
-  }, [refreshWorkflowState])
-
   return {
     project,
     outline,
     chapterOutlines,
     selectedChapter,
-    workflowState,
     loading,
     setSelectedChapter,
     refreshProject,
     refreshOutline,
     refreshChapterOutlines,
-    refreshWorkflowState,
   }
 }

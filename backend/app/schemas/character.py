@@ -270,27 +270,6 @@ class EvolutionRecordListResponse(BaseModel):
 
 # ==================== AI 生成请求 Schemas ====================
 
-
-class CharacterGenerateRequest(BaseModel):
-    """AI 批量生成人物请求 Schema"""
-
-    count: int = Field(3, ge=1, le=20, description="生成数量")
-    roles: Optional[List[str]] = Field(
-        None, description="指定角色类型列表，如 ['主角', '反派']"
-    )
-    additional_context: Optional[str] = Field(None, description="额外上下文信息")
-
-
-class RelationGenerateRequest(BaseModel):
-    """AI 生成关系规划请求 Schema"""
-
-    character_ids: Optional[List[int]] = Field(
-        None, description="指定人物 ID 列表，为空则生成所有人物间的关系"
-    )
-    relation_types: Optional[List[str]] = Field(None, description="指定关系类型列表")
-    additional_context: Optional[str] = Field(None, description="额外上下文信息")
-
-
 class CharacterOptimizeRequest(BaseModel):
     """AI 优化单个人物请求 Schema"""
 

@@ -51,8 +51,6 @@ export default function Settings()
     setReviewMode,
     maxRewriteCount,
     setMaxRewriteCount,
-    workflowMode,
-    setWorkflowMode,
     saving,
     saved,
     handleSaveReviewSettings,
@@ -168,8 +166,6 @@ export default function Settings()
               maxRewriteCount={maxRewriteCount}
               onReviewModeChange={setReviewMode}
               onMaxRewriteCountChange={setMaxRewriteCount}
-              workflowMode={workflowMode}
-              onWorkflowModeChange={setWorkflowMode}
               saving={saving}
               saved={saved}
               onSave={handleSaveReviewSettings}

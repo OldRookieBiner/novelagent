@@ -16,6 +16,7 @@ async def test_chat_uses_instance_temperature_by_default():
         service.client = AsyncMock()
         service.model = "test"
         service.temperature = 0.3
+        service.fallback_models = []
         service.reasoning_effort = None
         service.client.chat.completions.create = AsyncMock(return_value=mock_response)
 
@@ -38,6 +39,7 @@ async def test_chat_uses_instance_reasoning_effort():
         service.client = AsyncMock()
         service.model = "test"
         service.temperature = 0.7
+        service.fallback_models = []
         service.reasoning_effort = "high"
         service.client.chat.completions.create = AsyncMock(return_value=mock_response)
 
@@ -60,6 +62,7 @@ async def test_chat_skips_reasoning_effort_when_none():
         service.client = AsyncMock()
         service.model = "test"
         service.temperature = 0.7
+        service.fallback_models = []
         service.reasoning_effort = None
         service.client.chat.completions.create = AsyncMock(return_value=mock_response)
 
@@ -83,6 +86,7 @@ async def test_chat_skips_reasoning_effort_when_none_string():
         service.model = "test"
         service.temperature = 0.7
         service.reasoning_effort = "none"
+        service.fallback_models = []
         service.client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         await service.chat([{"role": "user", "content": "test"}])
@@ -104,6 +108,7 @@ async def test_chat_allows_temperature_override():
         service.client = AsyncMock()
         service.model = "test"
         service.temperature = 0.3
+        service.fallback_models = []
         service.reasoning_effort = None
         service.client.chat.completions.create = AsyncMock(return_value=mock_response)
 
@@ -132,6 +137,7 @@ async def test_chat_stream_uses_instance_params():
         service.client = AsyncMock()
         service.model = "test"
         service.temperature = 0.5
+        service.fallback_models = []
         service.reasoning_effort = "medium"
         service.client.chat.completions.create = AsyncMock(return_value=mock_stream())
 

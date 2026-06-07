@@ -6,15 +6,10 @@ from pydantic import BaseModel
 
 
 class WorkflowStateBase(BaseModel):
-    """WorkflowState 基础 Schema"""
+    """WorkflowState 基础 Schema（Agent 模式精简版）"""
 
-    thread_id: str = "main"
-    stage: str = "inspiration"
-    workflow_mode: str = "hybrid"
-    max_rewrite_count: int = 3
+    stage: str = "incubation"
     current_chapter: int = 1
-    waiting_for_confirmation: bool = False
-    confirmation_type: Optional[str] = None
 
 
 class WorkflowStateResponse(WorkflowStateBase):

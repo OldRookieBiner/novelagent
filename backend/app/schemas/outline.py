@@ -132,13 +132,3 @@ class CollectedInfoUpdate(BaseModel):
     inspiration_template: Optional[str] = None
 
 
-class OutlineGenerateRequest(BaseModel):
-    """Request body for outline generation"""
-
-    llm_config_id: Optional[int] = None
-
-
-class ChapterOutlinesGenerateRequest(BaseModel):
-    """Request body for chapter outlines generation"""
-
-    llm_config_id: Optional[int] = None

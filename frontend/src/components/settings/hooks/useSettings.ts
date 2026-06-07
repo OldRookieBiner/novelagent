@@ -37,8 +37,6 @@ export function useSettings()
 
   // 工作流模式状态
   const setSettings = useSettingsStore((state) => state.setSettings)
-  const workflowMode = useSettingsStore((state) => state.workflowMode)
-  const setWorkflowMode = useSettingsStore((state) => state.setWorkflowMode)
 
   // 系统提示词状态
   const [prompts, setPrompts] = useState<SystemPrompt[]>([])
@@ -366,8 +364,6 @@ export function useSettings()
     setReviewMode,
     maxRewriteCount,
     setMaxRewriteCount,
-    workflowMode,
-    setWorkflowMode,
     saving,
     saved,
     handleSaveReviewSettings,

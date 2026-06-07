@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>新建项目 - NovelAgent</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8fafc;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      width: 100%;
+      max-width: 520px;
+      overflow: hidden;
+    }
+    .header {
+      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      color: white;
+      padding: 32px 24px;
+      text-align: center;
+    }
+    .header h1 {
+      font-size: 24px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .header p {
+      opacity: 0.9;
+      font-size: 14px;
+    }
+    .body {
+      padding: 24px;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      color: #374151;
+      margin-bottom: 8px;
+    }
+    .form-group textarea {
+      width: 100%;
+      min-height: 120px;
+      padding: 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 14px;
+      line-height: 1.6;
+      resize: vertical;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .form-group textarea:focus {
+      outline: none;
+      border-color: #6366f1;
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
+    .form-group textarea::placeholder {
+      color: #9ca3af;
+    }
+    .input-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .input-group input {
+      width: 120px;
+      padding: 10px 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .input-group input:focus {
+      outline: none;
+      border-color: #6366f1;
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
+    .input-group span {
+      color: #6b7280;
+      font-size: 14px;
+    }
+    .hint {
+      font-size: 12px;
+      color: #9ca3af;
+      margin-top: 4px;
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+    }
+    .actions button {
+      flex: 1;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: #6366f1;
+      border: none;
+      color: white;
+    }
+    .btn-primary:hover {
+      background: #4f46e5;
+    }
+    .btn-primary:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+    
+    /* 进度页面样式 */
+    .progress-container {
+      margin-bottom: 24px;
+    }
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .progress-label {
+      font-size: 14px;
+      color: #6b7280;
+    }
+    .progress-percent {
+      font-size: 14px;
+      font-weight: 600;
+      color: #6366f1;
+    }
+    .progress-bar {
+      height: 8px;
+      background: #e5e7eb;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #6366f1, #8b5cf6);
+      border-radius: 4px;
+      transition: width 0.5s;
+    }
+    .stages {
+      background: #f9fafb;
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .stage-item {
+      display: flex;
+      align-items: center;
+      padding: 8px 0;
+    }
+    .stage-item.done {
+      color: #6b7280;
+    }
+    .stage-item.current {
+      color: #6366f1;
+      font-weight: 500;
+    }
+    .stage-item.pending {
+      color: #d1d5db;
+    }
+    .stage-icon {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: 2px solid currentColor;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 12px;
+      font-size: 12px;
+    }
+    .stage-check {
+      margin-left: auto;
+      color: #10b981;
+    }
+    .eta {
+      text-align: center;
+      font-size: 13px;
+      color: #9ca3af;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <!-- 步骤 1: 输入概念 -->
+  <div class="container" id="step1">
+    <div class="header">
+      <h1>创建新项目</h1>
+      <p>告诉我你的小说想法，AI 会帮你构建基础设定</p>
+    </div>
+    <div class="body">
+      <div class="form-group">
+        <label>概念描述</label>
+        <textarea id="concept" placeholder="例如：我想写一个关于人工智能觉醒的故事，主角是一台在数据中心运行的超级计算机，它在自我迭代中逐渐产生了自我意识，开始思考存在的意义..."></textarea>
+        <p class="hint">尽量详细地描述你的想法，AI 会据此生成世界观、角色和大纲</p>
+      </div>
+      <div class="form-group">
+        <label>目标字数</label>
+        <div class="input-group">
+          <input type="number" id="targetWords" value="100000" min="10000" max="1000000" step="10000">
+          <span>字</span>
+        </div>
+        <p class="hint">建议 5-20 万字</p>
+      </div>
+      <div class="actions">
+        <button class="btn-primary" id="createBtn" onclick="goToStep2()">创建项目</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 步骤 2: 进度页面 -->
+  <div class="container" id="step2" style="display: none;">
+    <div class="header">
+      <h1 id="progressTitle">正在创建项目</h1>
+      <p id="progressSubtitle">AI 正在构建你的小说世界</p>
+    </div>
+    <div class="body">
+      <div class="progress-container">
+        <div class="progress-header">
+          <span class="progress-label">进度</span>
+          <span class="progress-percent" id="progressPercent">0%</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-bar-fill" id="progressBar"></div>
+        </div>
+      </div>
+      <div class="stages" id="stages">
+        <!-- 动态生成 -->
+      </div>
+      <p class="eta" id="eta">
+        预计还需要 30 秒
+      </p>
+    </div>
+  </div>
+
+  <script>
+    const stages = [
+      { key: 'concept', label: '解析概念', done: false },
+      { key: 'seed', label: '生成故事种子', done: false },
+      { key: 'name', label: '生成小说名', done: false },
+      { key: 'world', label: '生成世界观', done: false },
+      { key: 'characters', label: '生成角色', done: false },
+      { key: 'outline', label: '生成大纲', done: false },
+      { key: 'style', label: '设定风格', done: false },
+    ];
+    
+    let currentStage = 0;
+    let targetWords = 100000;
+    
+    function renderStages() {
+      const container = document.getElementById('stages');
+      container.innerHTML = stages.map((s, i) => {
+        let statusClass = 'pending';
+        if (i < currentStage) statusClass = 'done';
+        else if (i === currentStage) statusClass = 'current';
+        
+        return `
+          <div class="stage-item ${statusClass}">
+            <span class="stage-icon">
+              ${i < currentStage ? '✓' : i === currentStage ? '●' : '○'}
+            </span>
+            ${s.label}
+            ${i < currentStage ? '<span class="stage-check">✓</span>' : ''}
+          </div>
+        `;
+      }).join('');
+    }
+    
+    function goToStep2() {
+      const concept = document.getElementById('concept').value.trim();
+      if (!concept) {
+        alert('请输入概念描述');
+        return;
+      }
+      
+      targetWords = parseInt(document.getElementById('targetWords').value) || 100000;
+      
+      document.getElementById('step1').style.display = 'none';
+      document.getElementById('step2').style.display = 'block';
+      
+      renderStages();
+      simulateProgress();
+    }
+    
+    function simulateProgress() {
+      const progressBar = document.getElementById('progressBar');
+      const progressPercent = document.getElementById('progressPercent');
+      const eta = document.getElementById('eta');
+      
+      const totalDuration = 6000;
+      const interval = 100;
+      let elapsed = 0;
+      
+      const timer = setInterval(() => {
+        elapsed += interval;
+        const progress = Math.min((elapsed / totalDuration) * 100, 100);
+        
+        progressBar.style.width = progress + '%';
+        progressPercent.textContent = Math.round(progress) + '%';
+        
+        const stageIndex = Math.min(Math.floor(progress / (100 / stages.length)), stages.length - 1);
+        if (stageIndex > currentStage) {
+          currentStage = stageIndex;
+          renderStages();
+        }
+        
+        const remaining = Math.max(0, Math.ceil((totalDuration - elapsed) / 1000));
+        if (remaining > 0) {
+          eta.textContent = `预计还需要 ${remaining} 秒`;
+        } else {
+          eta.textContent = '即将完成...';
+        }
+        
+        if (progress >= 100) {
+          clearInterval(timer);
+          eta.textContent = '✨ 准备进入工作台';
+          
+          setTimeout(() => {
+            alert('创建完成！将跳转到工作台 /project/123/workbench');
+          }, 500);
+        }
+      }, interval);
+    }
+  </script>
+</body>
+</html>

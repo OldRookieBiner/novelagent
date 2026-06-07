@@ -21,7 +21,6 @@ vi.mock('@/lib/api', () => ({
   settingsApi: {},
   modelConfigsApi: {},
   systemPromptsApi: {},
-  workflowApi: {},
   outlineApi: {},
   chapterOutlinesApi: {},
   chaptersApi: {},

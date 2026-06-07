@@ -1,3 +1,4 @@
+from enum import Enum
 """Agent 共享常量"""
 
 # 禁用词汇列表（AI 味检测用）
@@ -114,4 +115,22 @@ MODEL_CONTEXT_WINDOWS = {
 
 # 三级策略的第三级：未知模型的默认上下文窗口
 DEFAULT_CONTEXT_WINDOW = 32000
+
+
+
+# ========== Phase Enum ==========
+
+class Phase(str, Enum):
+    """创作阶段"""
+    INCUBATION = "incubation"
+    STRUCTURE = "structure"
+    WRITING = "writing"
+    REVISION = "revision"
+
+    @classmethod
+    def values(cls):
+        return [cls.INCUBATION, cls.STRUCTURE, cls.WRITING, cls.REVISION]
+
+# 默认章节数（大纲未指定时使用）
+DEFAULT_CHAPTER_COUNT = 20
 

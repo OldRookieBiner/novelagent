@@ -14,7 +14,7 @@ import json
 import re
 
 from app.agents.services.knowledge_base import KnowledgeBaseService
-from app.agents.state import Phase
+from app.agents.constants import Phase
 
 
 class BudgetTracker:

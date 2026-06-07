@@ -45,6 +45,7 @@ const TOOL_LABELS: Record<string, string> = {
   writer_block_assist: '卡文辅助',
   suggest_foreshadowing: '建议伏笔',
   suggest_plot_twist: '建议情节转折',
+  advance_phase: '推进阶段',
   expand_world_setting: '扩展世界观',
   // Creation
   create_world_setting: '创建世界观',
@@ -516,6 +517,10 @@ export function AgentChatPanel() {
                 data: { tool, result },
               }],
             }))
+            // advance_phase 工具推进阶段后同步前端状态
+            if (tool === 'advance_phase' && result?.advanced && result?.suggested_phase) {
+              useWorkbenchStore.getState().setPhase(result.suggested_phase as any)
+            }
           },
           onImpactAssessment: (data) => {
             addPendingImpact(data as unknown as ImpactReport)

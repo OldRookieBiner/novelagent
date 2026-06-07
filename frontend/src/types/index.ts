@@ -24,18 +24,18 @@ export interface LoginResponse {
 // ==================== Project Types ====================
 
 /**
- * 工作流状态（后端 WorkflowState 模型）
+ * 创作阶段（Agent 模式，与后端 Phase enum 对齐）
+ */
+export type Phase = 'incubation' | 'structure' | 'writing' | 'revision'
+
+/**
+ * 工作流状态（后端 WorkflowState 模型，Agent 模式精简版）
  */
 export interface WorkflowStateData {
   id: number
   project_id: number
-  thread_id: string
-  stage: WorkflowStage
-  workflow_mode: WorkflowMode
-  max_rewrite_count: number
+  stage: Phase
   current_chapter: number
-  waiting_for_confirmation: boolean
-  confirmation_type: ConfirmationType | null
   created_at: string
   updated_at: string
 }
@@ -75,7 +75,7 @@ export interface ProjectCreate {
 export interface ProjectUpdate {
   name?: string
   target_words?: number
-  stage?: string  // 临时保留，用于兼容旧代码
+  stage?: string
 }
 
 // ==================== Outline Types ====================
@@ -466,85 +466,8 @@ export interface HealthCheckResponse {
   model_results?: ModelHealthResult[]
 }
 
-// ==================== Workflow Types ====================
-
-/**
- * 工作流模式
- * - step_by_step: 步步为营模式，每个阶段需手动确认
- * - hybrid: 混合模式，大纲和章节大纲需确认，写作自动进行
- * - auto: 全自动模式，无需确认
- */
-export type WorkflowMode = 'step_by_step' | 'hybrid' | 'auto'
-
-/**
- * 工作流阶段
- */
-export type WorkflowStage =
-  | 'inspiration'
-  | 'outline'
-  | 'characters'
-  | 'relations'
-  | 'volume_arc'
-  | 'arc_outlines'
-  | 'chapter_outlines'
-  | 'writing'
-  | 'review'
-  | 'complete'
-
-/**
- * 确认类型
- */
-export type ConfirmationType = 'outline' | 'chapter_outlines' | 'review_failed' | 'volume_arc' | 'arc_outlines' | 'arc_chapter_outlines'
-
-/**
- * 工作流状态
- */
-export interface WorkflowState {
-  stage: WorkflowStage
-  currentChapter: number
-  totalChapters: number
-  writtenChaptersCount: number
-  waitingForConfirmation: boolean
-  confirmationType: ConfirmationType | null
-  hasCheckpoint: boolean
-  updatedAt: string | null
-}
-
-/**
- * 工作流 API 响应
- */
-export interface WorkflowStateResponse {
-  project_id: number
-  stage: WorkflowStage
-  has_checkpoint: boolean
-  current_chapter: number
-  total_chapters: number
-  written_chapters_count: number
-  waiting_for_confirmation: boolean
-  confirmation_type: ConfirmationType | null
-  updated_at: string | null
-}
-
 // SSE 数据类型（定义在 sseParser.ts，此处 re-export）
-export type { SSEData } from '@/lib/sseParser'
-import type { SSEData } from '@/lib/sseParser'
-
-/**
- * SSE 事件类型
- */
-export interface WorkflowSSEEvent {
-  type: 'node_start' | 'node_done' | 'chunk' | 'checkpoint' | 'waiting' | 'done' | 'error'
-  data: SSEData
-}
-
-/**
- * 已写章节
- */
-export interface WrittenChapter {
-  chapter_number: number
-  content: string
-  word_count: number
-}
+export type { SSEData } from '@/lib/sseParser'  
 
 // ==================== Character Setting Module Types ====================
 

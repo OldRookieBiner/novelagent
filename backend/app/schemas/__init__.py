@@ -24,18 +24,8 @@ from app.schemas.chapter import (
     ChapterOutlineResponse,
     ChapterContentUpdate,
     ChapterResponse,
-    ReviewRequest,
-    ReviewResponse,
 )
 from app.schemas.settings import SettingsBase, SettingsUpdate, SettingsResponse
-from app.schemas.system_prompt import (
-    AGENT_TYPES,
-    AgentTypeKey,
-    AgentTypeMeta,
-    SystemPromptResponse,
-    SystemPromptListResponse,
-    SystemPromptUpdate,
-)
 from app.schemas.character import (
     CharacterBase,
     CharacterCreate,
@@ -58,8 +48,6 @@ from app.schemas.character import (
     EvolutionRecordCreate,
     EvolutionRecordResponse,
     EvolutionRecordListResponse,
-    CharacterGenerateRequest,
-    RelationGenerateRequest,
     CharacterOptimizeRequest,
 )
 
@@ -91,12 +79,6 @@ __all__ = [
     "SettingsBase",
     "SettingsUpdate",
     "SettingsResponse",
-    "AGENT_TYPES",
-    "AgentTypeKey",
-    "AgentTypeMeta",
-    "SystemPromptResponse",
-    "SystemPromptListResponse",
-    "SystemPromptUpdate",
     # Character schemas
     "CharacterBase",
     "CharacterCreate",
