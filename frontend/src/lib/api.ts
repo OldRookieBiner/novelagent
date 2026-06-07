@@ -23,9 +23,6 @@ import type {
   ChatMessage,
   ChatResponse,
   ApiError,
-  SystemPrompt,
-  SystemPromptListResponse,
-  SystemPromptUpdate,
   ModelConfig,
   ModelConfigListResponse,
   ModelConfigCreate,
@@ -433,30 +430,6 @@ export const collectedInfoApi = {
     return request<Outline>(`/api/projects/${projectId}/outline/collected-info`, {
       method: "PUT",
       body: data,
-    });
-  },
-};
-
-// ==================== System Prompts API ====================
-
-export const systemPromptsApi = {
-  async list(): Promise<SystemPromptListResponse> {
-    return request<SystemPromptListResponse>("/api/system/prompts/");
-  },
-
-  async update(
-    agentType: string,
-    data: SystemPromptUpdate
-  ): Promise<SystemPrompt> {
-    return request<SystemPrompt>(`/api/system/prompts/${agentType}/`, {
-      method: "PUT",
-      body: data,
-    });
-  },
-
-  async reset(agentType: string): Promise<SystemPrompt> {
-    return request<SystemPrompt>(`/api/system/prompts/${agentType}/reset/`, {
-      method: "POST",
     });
   },
 };

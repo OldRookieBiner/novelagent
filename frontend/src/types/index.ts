@@ -341,26 +341,6 @@ export interface ApiError {
   detail: string;
 }
 
-// ==================== System Prompt Types ====================
-
-export interface SystemPrompt {
-  agent_type: string;
-  agent_name: string;
-  description: string;
-  prompt_content: string;
-  variables: string[];
-  variable_descriptions: Record<string, string>;
-  updated_at?: string;
-}
-
-export interface SystemPromptListResponse {
-  prompts: SystemPrompt[];
-}
-
-export interface SystemPromptUpdate {
-  prompt_content: string;
-}
-
 // ==================== Model Config Types ====================
 
 /**
