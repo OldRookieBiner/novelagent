@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 删除已失效的 Prompt 管理功能（前端面板 + 后端 API + ORM 模型 + 数据库表），消除对用户的误导。
+**Goal:** 删除已失效的 Prompt 管理功能（前端面板 + 后端 API + ORM 模型 + Schema + 数据库表），消除对用户的误导。
 
-**Architecture:** 前端设置页移除「智能体 → Prompt 管理」入口及所有相关状态/组件；后端移除 API 路由、prompt_loader 服务、SystemConfig 模型；新建 Alembic 迁移删除 system_config 表。`DEFAULT_PROMPTS` 字典保留（被 review_utils.py 等文件引用）。
+**Architecture:** 前端设置页移除「智能体 → Prompt 管理」入口及所有相关状态/组件；后端移除 API 路由、prompt_loader 服务、SystemConfig 模型、system_prompt schema；清理 agent_tools.py 中引用不存在 SystemPrompt 模型的死代码；新建 Alembic 迁移删除 system_config 表。`DEFAULT_PROMPTS` 字典保留（被 review_utils.py 等文件引用）。
 
 **Tech Stack:** FastAPI、SQLAlchemy/Alembic、React、TypeScript、Zustand
 
@@ -18,6 +18,7 @@
 | `backend/app/api/system_prompts.py` | Prompt 管理 API 路由 |
 | `backend/app/services/prompt_loader.py` | Prompt 加载/缓存服务（无人调用） |
 | `backend/app/models/system_config.py` | SystemConfig ORM 模型 |
+| `backend/app/schemas/system_prompt.py` | Prompt 管理 Pydantic schemas |
 | `frontend/src/components/settings/AgentPromptPanel.tsx` | Prompt 编辑面板组件 |
 
 ### 修改
@@ -25,7 +26,9 @@
 |------|------|
 | `backend/app/main.py` | 移除路由注册 |
 | `backend/app/models/__init__.py` | 移除模型导出 |
+| `backend/app/schemas/__init__.py` | 移除 schema 导出 |
 | `backend/app/agents/prompts.py` | 移除兼容别名 |
+| `backend/app/agents/agent_tools.py` | 移除 SystemPrompt 死代码 |
 | `frontend/src/pages/Settings.tsx` | 移除 agents tab |
 | `frontend/src/components/settings/hooks/useSettings.ts` | 移除 prompt 状态/方法 |
 | `frontend/src/lib/api.ts` | 移除 systemPromptsApi |
@@ -42,21 +45,24 @@
 
 ---
 
-### Task 1: 删除后端 Prompt 管理文件
+### Task 1: 删除后端 Prompt 管理文件和导出
 
 **Files:**
 - Delete: `backend/app/api/system_prompts.py`
 - Delete: `backend/app/services/prompt_loader.py`
 - Delete: `backend/app/models/system_config.py`
+- Delete: `backend/app/schemas/system_prompt.py`
 - Modify: `backend/app/main.py:23,139-143`
 - Modify: `backend/app/models/__init__.py:10,34`
+- Modify: `backend/app/schemas/__init__.py:29-36,90-95`
 
-- [ ] **Step 1: 删除三个后端文件**
+- [ ] **Step 1: 删除四个后端文件**
 
 ```bash
 rm backend/app/api/system_prompts.py
 rm backend/app/services/prompt_loader.py
 rm backend/app/models/system_config.py
+rm backend/app/schemas/system_prompt.py
 ```
 
 - [ ] **Step 2: 修改 main.py — 移除 import 和路由注册**
@@ -77,30 +83,56 @@ app.include_router(
 
 - [ ] **Step 3: 修改 models/__init__.py — 移除 SystemConfig 导出**
 
-移除 import 行：
+移除 import 行（第 10 行）：
 ```python
 # 删除此行
 from app.models.system_config import SystemConfig
 ```
 
-移除 `__all__` 列表中的：
+移除 `__all__` 列表中的（第 34 行）：
 ```python
 # 删除此行
     "SystemConfig",
 ```
 
-- [ ] **Step 4: 验证后端可以正常导入**
+- [ ] **Step 4: 修改 schemas/__init__.py — 移除 system_prompt schema 导出**
+
+移除 import 块（第 29-36 行）：
+```python
+# 删除以下全部
+from app.schemas.system_prompt import (
+    AGENT_TYPES,
+    AgentTypeKey,
+    AgentTypeMeta,
+    SystemPromptResponse,
+    SystemPromptListResponse,
+    SystemPromptUpdate,
+)
+```
+
+移除 `__all__` 列表中的（第 90-95 行）：
+```python
+# 删除以下全部
+    "AGENT_TYPES",
+    "AgentTypeKey",
+    "AgentTypeMeta",
+    "SystemPromptResponse",
+    "SystemPromptListResponse",
+    "SystemPromptUpdate",
+```
+
+- [ ] **Step 5: 验证后端可以正常导入**
 
 ```bash
-cd backend && python -c "from app.models import *; from app.main import app; print('OK')"
+cd backend && python -c "from app.models import *; from app.schemas import *; from app.main import app; print('OK')"
 ```
 Expected: `OK`，无 ImportError
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add -A
-git commit -m "refactor(api): remove dead prompt management API and SystemConfig model"
+git commit -m "refactor(api): remove dead prompt management API, SystemConfig model, and system_prompt schema"
 ```
 
 ---
@@ -134,7 +166,60 @@ git commit -m "refactor(workflow): remove AGENT_INSPIRATION_SYSTEM_PROMPT compat
 
 ---
 
-### Task 3: 新建数据库迁移 — 删除 system_config 表
+### Task 3: 清理 agent_tools.py 中的 SystemPrompt 死代码
+
+**Files:**
+- Modify: `backend/app/agents/agent_tools.py:1365-1380`
+
+- [ ] **Step 1: 替换 SystemPrompt 查询死代码为直接加载 DEFAULT_PROMPTS**
+
+将第 1365-1380 行的整个"Load custom prompts from DB"块：
+
+```python
+    # Load custom prompts from DB
+    _prompts = {}
+    try:
+        db2 = SessionLocal()
+        try:
+            from app.models.system_prompt import SystemPrompt
+            prompts = db2.query(SystemPrompt).all()
+            for p in prompts:
+                _prompts[p.node_name] = {"system": p.system_prompt, "user": p.user_prompt}
+        finally:
+            db2.close()
+    except Exception:
+        pass
+
+    if not _prompts:
+        from app.agents.prompts import DEFAULT_PROMPTS
+        _prompts = DEFAULT_PROMPTS
+```
+
+替换为：
+
+```python
+    # 加载 prompt 模板
+    from app.agents.prompts import DEFAULT_PROMPTS
+    _prompts = DEFAULT_PROMPTS
+```
+
+- [ ] **Step 2: 验证无其他地方引用 app.models.system_prompt**
+
+```bash
+rg "models.system_prompt" backend/
+```
+Expected: 无结果
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add backend/app/agents/agent_tools.py
+git commit -m "refactor(workflow): remove dead SystemPrompt DB query from agent_context"
+```
+
+---
+
+### Task 4: 新建数据库迁移 — 删除 system_config 表
 
 **Files:**
 - Create: `backend/alembic/versions/20260608_drop_system_config.py`
@@ -160,6 +245,7 @@ Create Date: 2026-06-08
 """
 
 from alembic import op
+import sqlalchemy as sa
 
 # revision identifiers
 revision = "20260608_drop_system_config"
@@ -173,7 +259,6 @@ def upgrade():
 
 
 def downgrade():
-    # 重建 system_config 表（仅结构，不含初始数据）
     op.create_table(
         "system_config",
         sa.Column("key", sa.String(), nullable=False),
@@ -182,8 +267,6 @@ def downgrade():
         sa.PrimaryKeyConstraint("key"),
     )
 ```
-
-注意：downgrade 中需要 `import sqlalchemy as sa`。如果 Alembic 环境自动渲染，按模板调整。
 
 - [ ] **Step 3: 验证迁移可正常生成**
 
@@ -201,7 +284,7 @@ git commit -m "db(migration): drop system_config table"
 
 ---
 
-### Task 4: 前端 — 移除类型和 API
+### Task 5: 前端 — 移除类型和 API
 
 **Files:**
 - Modify: `frontend/src/types/index.ts:343-360`
@@ -276,7 +359,7 @@ export const systemPromptsApi = {
 ```bash
 cd frontend && npx tsc --noEmit 2>&1 | head -30
 ```
-Expected: 无类型错误（如果 useSettings.ts 还在引用，会有错误，等 Task 5 修复）
+Expected: 可能有 useSettings.ts 的类型错误（等 Task 6 修复）
 
 - [ ] **Step 4: Commit**
 
@@ -287,7 +370,7 @@ git commit -m "refactor(frontend): remove SystemPrompt types and systemPromptsAp
 
 ---
 
-### Task 5: 前端 — 移除 useSettings hook 中的 prompt 状态
+### Task 6: 前端 — 移除 useSettings hook 中的 prompt 状态
 
 **Files:**
 - Modify: `frontend/src/components/settings/hooks/useSettings.ts`
@@ -424,7 +507,7 @@ export { AGENT_TABS }
 ```bash
 cd frontend && npx tsc --noEmit 2>&1 | head -30
 ```
-Expected: 可能有 Settings.tsx 的错误（等 Task 6 修复）
+Expected: 可能有 Settings.tsx 的错误（等 Task 7 修复）
 
 - [ ] **Step 12: Commit**
 
@@ -435,7 +518,7 @@ git commit -m "refactor(frontend): remove prompt management state from useSettin
 
 ---
 
-### Task 6: 前端 — 移除 Settings 页面的 agents tab
+### Task 7: 前端 — 移除 Settings 页面的 agents tab
 
 **Files:**
 - Delete: `frontend/src/components/settings/AgentPromptPanel.tsx`
@@ -576,7 +659,7 @@ git commit -m "refactor(frontend): remove Prompt management tab from Settings pa
 
 ---
 
-### Task 7: 前端 — 更新测试文件
+### Task 8: 前端 — 更新测试文件
 
 **Files:**
 - Modify: `frontend/src/components/settings/hooks/__tests__/useSettings.test.ts`
@@ -650,7 +733,7 @@ git commit -m "test(frontend): remove systemPromptsApi mocks from test files"
 
 ---
 
-### Task 8: 端到端验证
+### Task 9: 端到端验证
 
 - [ ] **Step 1: 前端 TypeScript 编译检查**
 
@@ -669,14 +752,14 @@ Expected: 全部通过
 - [ ] **Step 3: 后端导入检查**
 
 ```bash
-cd backend && python -c "from app.main import app; from app.models import *; print('OK')"
+cd backend && python -c "from app.main import app; from app.models import *; from app.schemas import *; print('OK')"
 ```
 Expected: `OK`
 
 - [ ] **Step 4: 全局搜索确认无残留引用**
 
 ```bash
-rg "systemPromptsApi|SystemPrompt|system_prompts|prompt_loader|SystemConfig" frontend/src/ backend/app/ --type py --type ts --type tsx
+rg "systemPromptsApi|SystemPrompt|system_prompts|prompt_loader|SystemConfig|AGENT_TYPES|AgentTypeKey" frontend/src/ backend/app/ --type py --type ts --type tsx
 ```
 Expected: 无结果（`DEFAULT_PROMPTS` 在 prompts.py 中的定义除外）
 
