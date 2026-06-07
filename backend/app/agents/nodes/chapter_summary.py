@@ -68,7 +68,7 @@ async def chapter_summary_node(state: NovelState) -> dict:
 
     target_chapter_num = _get_target_chapter_num(written_chapters, current_chapter)
     if target_chapter_num is None:
-        return {**state, "chapter_summaries": []}
+        return {"chapter_summaries": []}
 
     # 找到目标章节的 content
     target_chapter = None
@@ -79,34 +79,32 @@ async def chapter_summary_node(state: NovelState) -> dict:
 
     if not target_chapter or not target_chapter.get("content"):
         logger.warning(f"chapter_summary_node: no content for chapter {target_chapter_num}")
-        return {**state, "chapter_summaries": []}
+        return {"chapter_summaries": []}
 
     # 单次 DB 操作：检查已有摘要 + 持久化新摘要
     project_id = state.get("project_id")
     if project_id:
-        from app.database import SessionLocal
         from app.models.outline import ChapterOutline
+        from app.agents.services.knowledge_base import KnowledgeBaseService
 
-        db = SessionLocal()
+        kb = KnowledgeBaseService(project_id)
         try:
-            co = db.query(ChapterOutline).filter(
-                ChapterOutline.project_id == project_id,
-                ChapterOutline.chapter_number == target_chapter_num,
-            ).first()
+            with kb.session(readonly=True) as db:
+                co = db.query(ChapterOutline).filter(
+                    ChapterOutline.project_id == project_id,
+                    ChapterOutline.chapter_number == target_chapter_num,
+                ).first()
 
-            # 已有摘要则直接返回，避免重复 LLM 调用
-            if co and co.chapter and co.chapter.summary:
-                logger.info(f"chapter_summary_node: summary already exists for chapter {target_chapter_num}, skipping")
-                return {
-                    **state,
-                    "chapter_summaries": [
-                        {"chapter_number": target_chapter_num, "summary": co.chapter.summary}
-                    ],
-                }
+                # 已有摘要则直接返回，避免重复 LLM 调用
+                if co and co.chapter and co.chapter.summary:
+                    logger.info(f"chapter_summary_node: summary already exists for chapter {target_chapter_num}, skipping")
+                    return {
+                        "chapter_summaries": [
+                            {"chapter_number": target_chapter_num, "summary": co.chapter.summary}
+                        ],
+                    }
         except Exception as e:
             logger.warning(f"chapter_summary_node: DB check failed: {e}")
-        finally:
-            db.close()
 
     # 获取 LLM
     llm = await get_llm_from_state_async(state)
@@ -125,31 +123,27 @@ async def chapter_summary_node(state: NovelState) -> dict:
 
     if not summary:
         logger.warning(f"chapter_summary_node: empty summary for chapter {target_chapter_num}")
-        return {**state, "chapter_summaries": []}
+        return {"chapter_summaries": []}
 
-    # 持久化摘要到 DB（复用同一逻辑）
+    # 持久化摘要到 DB
     if project_id:
-        from app.database import SessionLocal
         from app.models.outline import ChapterOutline
+        from app.agents.services.knowledge_base import KnowledgeBaseService
 
-        save_db = SessionLocal()
+        kb = KnowledgeBaseService(project_id)
         try:
-            co = save_db.query(ChapterOutline).filter(
-                ChapterOutline.project_id == project_id,
-                ChapterOutline.chapter_number == target_chapter_num,
-            ).first()
-            if co and co.chapter:
-                co.chapter.summary = summary
-                save_db.commit()
-                logger.info(f"chapter_summary_node: persisted summary for chapter {target_chapter_num}")
+            with kb.session() as db:
+                co = db.query(ChapterOutline).filter(
+                    ChapterOutline.project_id == project_id,
+                    ChapterOutline.chapter_number == target_chapter_num,
+                ).first()
+                if co and co.chapter:
+                    co.chapter.summary = summary
+                    logger.info(f"chapter_summary_node: persisted summary for chapter {target_chapter_num}")
         except Exception as e:
-            save_db.rollback()
             logger.error(f"chapter_summary_node: persist failed: {e}")
-        finally:
-            save_db.close()
 
     return {
-        **state,
         "chapter_summaries": [
             {"chapter_number": target_chapter_num, "summary": summary}
         ],

@@ -265,6 +265,10 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
         """
         列出所有检查点。
 
+        注意：使用 eager loading（.all()）而非 yield + lazy session，
+        确保在生成器返回前所有数据已从 DB 加载，避免 session 提前关闭
+        导致的 DetachedInstanceError。
+
         Args:
             config: 配置
 
@@ -286,10 +290,13 @@ class PostgresCheckpointSaver(BaseCheckpointSaver):
                 .all()
             )
 
-            for record in records:
-                yield self._record_to_tuple(record, config)
+            # Eagerly convert all records to tuples before closing session
+            tuples = [self._record_to_tuple(record, config) for record in records]
         finally:
             self._close_db(db)
+
+        for t in tuples:
+            yield t
 
     def delete(self, config: dict, checkpoint_id: str) -> None:
         """

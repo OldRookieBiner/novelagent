@@ -1,3 +1,4 @@
+# Deprecated: 旧版工作流路径，将通过 Agent 替代。请勿新增功能。
 """Chapters API routes"""
 
 import json
@@ -29,11 +30,7 @@ from app.utils.project import get_project_for_user
 from app.utils.workflow import get_or_create_workflow_state
 from app.utils.error import format_sse_error
 from app.agents.sse_events import format_chunk, format_done, format_sse_error, format_heartbeat, format_node_start, format_node_done
-from app.agents.state import (
-    NovelState,
-    STAGE_CHAPTER_OUTLINES,
-    STAGE_WRITING
-)
+from app.agents.state import NovelState, Phase
 from app.agents.nodes.chapter_generation import (
     generate_chapter_outlines_stream,
     generate_chapter_content_stream,
@@ -197,7 +194,7 @@ async def _stream_chapter_outlines_sse(
 
                     # 更新 WorkflowState
                     wf = get_or_create_workflow_state(save_db, project_id)
-                    wf.stage = STAGE_CHAPTER_OUTLINES
+                    wf.stage = Phase.STRUCTURE.value
                     wf.waiting_for_confirmation = True
                     wf.confirmation_type = "chapter_outlines"
                     save_db.commit()
@@ -206,7 +203,7 @@ async def _stream_chapter_outlines_sse(
 
                 done_payload = {
                     "total": created_count,
-                    "stage": STAGE_CHAPTER_OUTLINES
+                    "stage": Phase.STRUCTURE.value
                 }
                 yield format_done(extra=done_payload)
 
@@ -261,7 +258,7 @@ async def create_chapter_outlines(
 
     # 更新工作流状态
     workflow_state = get_or_create_workflow_state(db, project_id)
-    workflow_state.stage = STAGE_CHAPTER_OUTLINES
+    workflow_state.stage = Phase.STRUCTURE.value
     db.commit()
 
     # 构建初始状态（LLM 配置从 workflow_state DB 自动读取）
@@ -422,7 +419,7 @@ async def confirm_chapter_outline(
     # If all confirmed, update workflow state to chapter writing
     if total_outlines > 0 and confirmed_outlines == total_outlines:
         workflow_state = get_or_create_workflow_state(db, project_id)
-        workflow_state.stage = STAGE_WRITING
+        workflow_state.stage = Phase.WRITING.value
 
     db.commit()
     db.refresh(chapter_outline)
@@ -754,7 +751,7 @@ async def generate_chapter(
 
             # 更新工作流状态
             wf = get_or_create_workflow_state(save_db, project_id)
-            wf.stage = STAGE_WRITING
+            wf.stage = Phase.WRITING.value
             save_db.commit()
             save_db.refresh(chapter)
 

@@ -23,6 +23,5 @@ async def chapter_count_estimate_node(state: NovelState) -> NovelState:
     chapter_count = max(chapter_count, block_count)
 
     return {
-        **state,
         "chapter_count": chapter_count,
     }

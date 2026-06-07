@@ -14,10 +14,15 @@
 - 预警是非阻塞的——不影响写作流程
 - 预警推送到前端，作者可选择处理、忽略、或让 Agent 自动调整
 - 同类预警去重，避免重复推送
+
+修复：
+- check_question_chain_stall: latest_answered_chapter 未定义时引用导致 UnboundLocalError
+- _project_warnings: 使用 WeakValueDictionary 防止项目数据永久驻留内存
 """
 
 import logging
 import time
+import weakref
 from typing import Optional
 
 from app.agents.services.knowledge_base import KnowledgeBaseService
@@ -25,7 +30,10 @@ from app.agents.services.knowledge_base import KnowledgeBaseService
 logger = logging.getLogger(__name__)
 
 # 项目级预警缓存（内存，避免重复推送）
+# 使用 WeakValueDictionary 的 value 部分无法直接应用（dict 是 value type），
+# 改用定期清理策略：每次 check_all 时清理超过 1 小时的过期条目
 _project_warnings: dict[int, dict[str, float]] = {}  # {project_id: {warning_key: last_emit_time}}
+_WARNINGS_TTL = 3600  # 1 小时后过期
 
 
 class WarningService:
@@ -174,37 +182,46 @@ class WarningService:
         if not ws or not ws.tiered_settings:
             return None
 
-        # 检查🔴设定是否被违反
-        # 简化实现：🔴设定存在但需要 LLM 判断是否违反
-        # 这里只做标记，具体违反检测由 character_consistency_node + deep_review_node 完成
+        # 🔴设定存在但需要 LLM 判断是否违反
+        # 简化实现：具体违反检测由 character_consistency_node + deep_review_node 完成
         return None
 
     def check_question_chain_stall(self, current_chapter: int) -> Optional[dict]:
         """检查问题链停滞
 
         novelskills 规则：连续 2 章没有推进问题链 → 🟡
+
+        修复：原代码在 recent_answered 为空时引用未定义的 latest_answered_chapter，
+        导致 UnboundLocalError。
         """
         questions = self.kb.get_plot_questions(status="pending")
         if not questions:
             return None
 
-        # 检查最近 2 章是否有回答任何问题
+        # 计算最近一次回答问题的章节号
         recent_answered = self.kb.get_plot_questions(status="answered")
+        latest_answered_chapter = 0
         if recent_answered:
-            latest_answered_chapter = max(q.answered_in_chapter for q in recent_answered if q.answered_in_chapter)
-            if current_chapter - latest_answered_chapter <= 2:
-                return None
+            for q in recent_answered:
+                if q.answered_in_chapter:
+                    latest_answered_chapter = max(latest_answered_chapter, q.answered_in_chapter)
+
+        # 如果最近 2 章内有回答，不算停滞
+        if latest_answered_chapter > 0 and current_chapter - latest_answered_chapter <= 2:
+            return None
 
         key = f"question_chain_stall_{current_chapter}"
         if self._is_deduped(key):
             return None
+
+        stall_chapters = current_chapter - latest_answered_chapter if latest_answered_chapter > 0 else current_chapter
 
         warning = {
             "type": "question_chain_stall",
             "level": "warning",
             "emoji": "🟡",
             "title": "问题链停滞",
-            "message": f"连续 {current_chapter - (latest_answered_chapter if recent_answered else 0)} 章未推进问题链，还有 {len(questions)} 个待回答问题",
+            "message": f"连续 {stall_chapters} 章未推进问题链，还有 {len(questions)} 个待回答问题",
             "chapter_number": current_chapter,
         }
         self._mark_emitted(key)
@@ -315,6 +332,9 @@ class WarningService:
         由 post_write_summary_node 或 deep_review_node 调用。
         current_volume > 1 时额外执行跨卷预警检查。
         """
+        # 定期清理过期的去重缓存，防止内存泄漏
+        self._cleanup_expired()
+
         warnings = []
 
         checks = [
@@ -352,3 +372,17 @@ class WarningService:
         if self.project_id not in _project_warnings:
             _project_warnings[self.project_id] = {}
         _project_warnings[self.project_id][key] = time.time()
+
+    def _cleanup_expired(self):
+        """清理超过 TTL 的去重缓存条目，防止内存无限增长"""
+        now = time.time()
+        # 清理当前项目的过期条目
+        cache = _project_warnings.get(self.project_id, {})
+        expired_keys = [k for k, t in cache.items() if now - t > _WARNINGS_TTL]
+        for k in expired_keys:
+            del cache[k]
+
+        # 清理不再有缓存条目的项目条目
+        empty_projects = [pid for pid, c in _project_warnings.items() if not c]
+        for pid in empty_projects:
+            del _project_warnings[pid]

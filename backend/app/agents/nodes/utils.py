@@ -10,6 +10,9 @@ def safe_format(template: str, **kwargs) -> str:
 
     LLM 输出和用户输入可能包含 { 或 }，直接传给 str.format() 会引发 KeyError。
     此函数先将参数中的花括号替换为临时占位符，格式化后再恢复。
+
+    失败时：记录缺失的 key，并将未替换占位符清空为空字符串，
+    避免下游 LLM 看到模板语法。
     """
     # 未提供参数时直接返回模板
     if not kwargs:
@@ -28,9 +31,17 @@ def safe_format(template: str, **kwargs) -> str:
     try:
         result = template.format(**escaped)
     except (KeyError, ValueError, IndexError) as e:
-        # 如果模板本身有问题，返回未格式化的模板
-        logger.warning(f"safe_format failed for template (first 80 chars): {template[:80]!r}, error: {e}")
-        return template
+        # 记录缺失的 key
+        import re as _re
+        placeholders = _re.findall(r"\{(\w+)\}", template)
+        missing = [p for p in placeholders if p not in kwargs]
+        logger.warning(
+            f"safe_format failed for template (first 80 chars): {template[:80]!r}, "
+            f"error: {e}, missing keys: {missing}"
+        )
+        # 清除未替换的占位符，避免 LLM 看到模板语法
+        cleaned = _re.sub(r"\{\w+\}", "", template)
+        return cleaned
 
     # 恢复花括号
     return result.replace(SAFE_LBRACE, "{").replace(SAFE_RBRACE, "}")
@@ -306,3 +317,90 @@ def find_chapter_outline_by_number(chapter_outlines: list[dict], current_chapter
 
     return None
 
+
+
+def parse_world_setting_response(response: str) -> dict:
+    """解析 WORLD_SETTING_PROMPT 的 LLM 输出
+
+    输出格式：
+    ### 核心理念
+    [文本]
+
+    ### 分级设定
+    🔴 不可违反：
+    1. ...
+    🟡 可突破有代价：
+    1. ...
+    🟢 装饰性：
+    1. ...
+
+    ### 关键地点
+    1. [地点名]：[描述]
+
+    Returns:
+        dict with keys: core_concept, tiered_settings, key_locations
+    """
+    import re as _re
+
+    tiered_settings = {"red": [], "yellow": [], "green": []}
+    key_locations = []
+
+    # 提取核心理念
+    core_concept = ""
+    m = _re.search(
+        r'(?:###\s*核心理念|###\s*核心概念|##\s*核心理念)(.*?)(?=\n#{1,3}\s|\Z)',
+        response,
+        _re.DOTALL,
+    )
+    if m:
+        core_concept = m.group(1).strip()
+
+    # 如果没找到核心理念，整段文本作为 core_concept
+    if not core_concept:
+        core_concept = response.strip()
+
+    # 提取分级设定 - 🔴 不可违反
+    red_section = _re.search(
+        r'(?:🔴|红色?|不可违反)[^\n]*\n(.*?)(?=(?:🟡|黄色?|可突破)|\n#{1,3}\s|\Z)',
+        response,
+        _re.DOTALL,
+    )
+    if red_section:
+        items = _re.findall(r'^\s*\d+\.\s*(.+?)$', red_section.group(1), _re.MULTILINE)
+        tiered_settings["red"] = [item.strip() for item in items if item.strip()]
+
+    # 提取分级设定 - 🟡 可突破有代价
+    yellow_section = _re.search(
+        r'(?:🟡|黄色?|可突破|有代价)[^\n]*\n(.*?)(?=(?:🟢|绿色?|装饰)|\n#{1,3}\s|\Z)',
+        response,
+        _re.DOTALL,
+    )
+    if yellow_section:
+        items = _re.findall(r'^\s*\d+\.\s*(.+?)$', yellow_section.group(1), _re.MULTILINE)
+        tiered_settings["yellow"] = [item.strip() for item in items if item.strip()]
+
+    # 提取分级设定 - 🟢 装饰性
+    green_section = _re.search(
+        r'(?:🟢|绿色?|装饰)[^\n]*\n(.*?)(?=\n#{1,3}\s|\Z)',
+        response,
+        _re.DOTALL,
+    )
+    if green_section:
+        items = _re.findall(r'^\s*\d+\.\s*(.+?)$', green_section.group(1), _re.MULTILINE)
+        tiered_settings["green"] = [item.strip() for item in items if item.strip()]
+
+    # 提取关键地点
+    location_section = _re.search(
+        r'(?:###\s*关键地点|##\s*关键地点)[^\n]*\n(.*?)(?=\n#{1,3}\s|\Z)',
+        response,
+        _re.DOTALL,
+    )
+    if location_section:
+        loc_items = _re.findall(r'^\s*\d+\.\s*(.+?)$', location_section.group(1), _re.MULTILINE)
+        key_locations = [loc.strip() for loc in loc_items[:10] if loc.strip()]
+
+    return {
+        "core_concept": core_concept,
+        "tiered_settings": tiered_settings,
+        "key_locations": key_locations,
+    }

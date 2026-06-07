@@ -87,7 +87,7 @@ async def relation_generation_node(state: NovelState) -> NovelState:
     characters = kb.get_characters()
     if not characters:
         logger.warning("relation_generation_node: No characters found, skipping")
-        return {**state, "phase": Phase.INCUBATION.value}
+        return {"phase": Phase.INCUBATION.value}
 
     # 构建角色信息和 name→id 映射
     chars_text = "\n".join([
@@ -120,41 +120,25 @@ async def relation_generation_node(state: NovelState) -> NovelState:
     parsed_relations = parse_relations_response(response, name_to_id)
     logger.info(f"relation_generation_node: Parsed {len(parsed_relations)} relations")
 
-    # 持久化到 DB（Relation 模型通过 session 直接创建，因为 KB service 没有 create_relation）
-    from app.database import SessionLocal
+    # 持久化到 DB（使用 KB session 管理器）
     from app.models.character import Relation
 
-    for rel_data in parsed_relations:
-        db = SessionLocal()
-        committed = False
-        try:
-            # 只取 Relation 模型支持的字段
-            relation = Relation(
-                project_id=project_id,
-                character_a_id=rel_data["character_a_id"],
-                character_b_id=rel_data["character_b_id"],
-                relation_type=rel_data["relation_type"],
-                trust_level=rel_data["trust_level"],
-                current_status=rel_data["current_status"],
-            )
-            db.add(relation)
-            db.commit()
-            committed = True
-        except Exception as e:
-            logger.warning(f"relation_generation_node: Failed to persist relation: {e}")
-        finally:
-            if not committed:
-                try:
-                    db.rollback()
-                except Exception:
-                    pass
+    with kb.session() as db:
+        for rel_data in parsed_relations:
             try:
-                db.close()
-            except Exception:
-                pass
+                relation = Relation(
+                    project_id=project_id,
+                    character_a_id=rel_data["character_a_id"],
+                    character_b_id=rel_data["character_b_id"],
+                    relation_type=rel_data["relation_type"],
+                    trust_level=rel_data["trust_level"],
+                    current_status=rel_data["current_status"],
+                )
+                db.add(relation)
+            except Exception as e:
+                logger.warning(f"relation_generation_node: Failed to persist relation: {e}")
 
     return {
-        **state,
         "phase": Phase.INCUBATION.value,
     }
 
@@ -176,12 +160,14 @@ def write_relations_to_db(project_id: int, relations: list[dict], db=None) -> li
     Returns:
         写入后的关系列表（带 id）
     """
-    from app.database import SessionLocal
     from app.models.character import Relation
+    from app.agents.services.knowledge_base import KnowledgeBaseService
 
     should_close = False
     if db is None:
-        db = SessionLocal()
+        kb = KnowledgeBaseService(project_id)
+        db_ctx = kb.session()
+        db = db_ctx.__enter__()
         should_close = True
 
     committed = False

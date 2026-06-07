@@ -28,34 +28,95 @@ def _map_role(outline_role: str) -> str:
     return "配角"
 
 
-# 预编译正则：解析管道分隔的人物格式
-# 格式：- 角色定位 | 姓名 | 性格 | 核心动机 | 成长弧线
-_RE_CHARACTER_LINE = re.compile(
-    r"[-•]\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)(?:\n|$)"
-)
-
-
 def parse_character_generation_response(response: str) -> list[dict]:
-    """解析 LLM 返回的管道分隔角色格式
+    """解析 LLM 返回的角色格式
 
-    格式：- 角色定位 | 姓名 | 性格 | 核心动机 | 成长弧线
+    支持 Markdown 格式（CHARACTER_GENERATION_PROMPT 默认输出）：
+    ## 角色名
+    - **角色定位**：主角
+    - **核心动机**：xxx
+    - **人物弧**：从xxx到xxx
+    - **说话风格**：xxx
     """
     characters = []
-    for line in response.splitlines():
-        m = _RE_CHARACTER_LINE.search(line)
-        if not m:
-            continue
-        role_label, name, personality, motivation, arc = m.groups()
-        name = (name or "").strip()
+    
+    # 移除 ** 粗体标记（避免干扰正则）
+    response = re.sub(r'\*\*([^*]+)\*\*', r'\1', response)
+
+    # 匹配从 ## 或 ### 开始到下一个 ## 或 ### 或文档结尾
+    section_pattern = r'(?:^|\n)(#{1,3})\s*([^\n#]+?)(?:\n)(.*?)(?=(?:^#{1,3})|\Z)'
+    
+    for match in re.finditer(section_pattern, response, re.DOTALL | re.MULTILINE):
+        name = match.group(2).strip()
         if not name:
             continue
+        
+        section = match.group(3)
+        
+        # 提取角色定位
+        role = "配角"
+        role_match = re.search(r'角色定位[：:]\s*([^\n]+)', section)
+        if role_match:
+            role = _map_role(role_match.group(1))
+        
+        # 提取核心动机
+        motivation = ""
+        mot_match = re.search(r'核心动机[：:]\s*([^\n]+)', section)
+        if mot_match:
+            motivation = mot_match.group(1).strip()[:500]
+        
+        # 提取人物弧
+        arc = ""
+        arc_match = re.search(r'人物弧[：:]\s*([^\n]+)', section)
+        if arc_match:
+            arc = arc_match.group(1).strip()[:500]
+        
+        # 提取核心冲突（如果没有动机，用冲突替代）
+        conflict = ""
+        conflict_match = re.search(r'核心冲突[：:]\s*([^\n]+)', section)
+        if conflict_match:
+            conflict = conflict_match.group(1).strip()[:500]
+        
+        # 提取说话风格作为性格
+        personality = ""
+        pers_match = re.search(r'(?:说话风格|性格)[：:]\s*([^\n]+)', section)
+        if pers_match:
+            personality = pers_match.group(1).strip()[:500]
+        
+        # 如果没有找到动机但有冲突，将其作为动机
+        if not motivation and conflict:
+            motivation = conflict
+        
         characters.append({
             "name": name,
-            "role": _map_role(role_label),
-            "personality": (personality or "").strip()[:500],
-            "core_motivation": (motivation or "").strip()[:500],
-            "growth_arc": (arc or "").strip()[:500],
+            "role": role,
+            "personality": personality,
+            "core_motivation": motivation,
+            "growth_arc": arc,
         })
+
+    # 如果 Markdown 解析失败，���试管道分隔格式
+    if not characters:
+        pipe_pattern = re.compile(
+            r"[-•]\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)(?:\n|$)"
+        )
+        for line in response.splitlines():
+            m = pipe_pattern.search(line)
+            if not m:
+                continue
+            role_label, name, personality, motivation, arc = m.groups()
+            name = (name or "").strip()
+            if not name:
+                continue
+            characters.append({
+                "name": name,
+                "role": _map_role(role_label),
+                "personality": (personality or "").strip()[:500],
+                "core_motivation": (motivation or "").strip()[:500],
+                "growth_arc": (arc or "").strip()[:500],
+            })
+
+    logger.info(f"character_generation_node: Parsed {len(characters)} characters from response")
     return characters
 
 
@@ -109,7 +170,6 @@ async def character_generation_node(state: NovelState) -> NovelState:
         kb.create_character(char_data)
 
     return {
-        **state,
         "phase": Phase.INCUBATION.value,
     }
 
@@ -125,53 +185,41 @@ def extract_characters_from_outline(state: dict) -> list[dict]:
 
     将 outline_characters 中的简略格式转为带 ID 的完整格式。
     """
-    from app.database import SessionLocal
     from app.models.character import Character
+    from app.agents.services.knowledge_base import KnowledgeBaseService
 
     project_id = state.get("project_id")
     if not project_id:
         return []
 
-    db = SessionLocal()
-    committed = False
+    kb = KnowledgeBaseService(project_id)
     try:
-        db.query(Character).filter(Character.project_id == project_id).delete()
-        db.flush()
-
-        outline_characters = state.get("outline_characters", [])
-        characters = []
-        for i, c in enumerate(outline_characters):
-            name = c.get("name", f"角色{i+1}")
-            char = Character(
-                project_id=project_id,
-                name=name,
-                role=c.get("role", "配角"),
-                personality=c.get("personality", ""),
-                core_motivation=c.get("motivation", ""),
-                growth_arc=c.get("arc", ""),
-            )
-            db.add(char)
+        with kb.session() as db:
+            db.query(Character).filter(Character.project_id == project_id).delete()
             db.flush()
-            characters.append({
-                "id": char.id,
-                "name": name,
-                "role": c.get("role", "配角"),
-                "personality": c.get("personality", ""),
-                "core_motivation": c.get("motivation", ""),
-                "growth_arc": c.get("arc", ""),
-            })
-        db.commit()
-        committed = True
-        return characters
+
+            outline_characters = state.get("outline_characters", [])
+            characters = []
+            for i, c in enumerate(outline_characters):
+                name = c.get("name", f"角色{i+1}")
+                char = Character(
+                    project_id=project_id,
+                    name=name,
+                    role=c.get("role", "配角"),
+                    personality=c.get("personality", ""),
+                    core_motivation=c.get("motivation", ""),
+                    growth_arc=c.get("arc", ""),
+                )
+                db.add(char)
+                db.flush()
+                characters.append({
+                    "id": char.id,
+                    "name": name,
+                    "role": c.get("role", "配角"),
+                    "personality": c.get("personality", ""),
+                    "core_motivation": c.get("motivation", ""),
+                    "growth_arc": c.get("arc", ""),
+                })
+            return characters
     except Exception:
-        if not committed:
-            try:
-                db.rollback()
-            except Exception:
-                pass
         return []
-    finally:
-        try:
-            db.close()
-        except Exception:
-            pass

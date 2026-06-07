@@ -48,12 +48,23 @@ NODE_TEMPERATURES = {
     "relation_generation": 0.5,
     "chapter_outline_generation": 0.6,
     "chapter_content_draft": 0.8,
+    "chapter_writing": 0.55,  # 写作温度降低，提升指令遵循度
+    "chapter_planning": 0.7,  # 规划保持较高温度
     "chapter_content_self_check": 0.3,
     "chapter_content_refine": 0.5,
     "review": 0.2,
     "rewrite": 0.5,
     "volume_arc_generation": 0.6,
     "arc_outline_generation": 0.6,
+}
+
+# Agent 自由操作温度按阶段映射
+# 孵化阶段高温度保证创意发散，写作/修订阶段低温度保证果断执行工具调用
+AGENT_TEMPERATURES = {
+    "incubation": 0.7,
+    "structure": 0.6,
+    "writing": 0.5,
+    "revision": 0.4,
 }
 
 # 正面风格示例库（按场景类型分类）

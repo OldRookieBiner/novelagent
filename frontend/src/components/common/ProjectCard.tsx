@@ -1,5 +1,6 @@
 // frontend/src/components/common/ProjectCard.tsx
 import { Loader2, CheckCircle, Circle, PenLine, FileText, Sparkles, BookOpen, FileText as ChapterIcon } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import type { ProjectDetail } from '@/types'
@@ -72,14 +73,11 @@ export default function ProjectCard({ project, onDelete }: ProjectCardProps)
 
       {/* 操作按钮 */}
       <div className="flex gap-2">
-        <a
-          href={`/project/${project.id}/workbench`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background bg-primary text-primary-foreground hover:bg-primary/90 h-8 px-3 flex-1"
-        >
-          {stage === 'complete' ? '查看' : '继续'}
-        </a>
+        <Button asChild size="sm" className="flex-1">
+          <Link to={`/project/${project.id}/workbench`}>
+            {stage === 'complete' ? '查看' : '继续'}
+          </Link>
+        </Button>
         <Button
           variant="outline"
           size="sm"

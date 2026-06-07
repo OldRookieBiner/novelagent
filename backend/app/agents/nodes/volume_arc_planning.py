@@ -3,7 +3,7 @@
 import logging
 import re
 
-from app.agents.state import NovelState, STAGE_VOLUME_ARC
+from app.agents.state import NovelState, Phase
 from app.agents.constants import NODE_TEMPERATURES
 
 logger = logging.getLogger(__name__)
@@ -145,10 +145,9 @@ async def volume_arc_planning_node(state: NovelState) -> dict:
     if not arcs:
         logger.error("volume_arc_planning_node: failed to parse arcs from LLM output")
         return {
-            **state,
             "volumes": [],
             "arcs": [],
-            "stage": STAGE_VOLUME_ARC,
+            "stage": Phase.STRUCTURE.value,
             "waiting_for_confirmation": False,
         }
 
@@ -159,7 +158,7 @@ async def volume_arc_planning_node(state: NovelState) -> dict:
         "volumes": volumes,
         "arcs": arcs,
         "chapter_count": new_chapter_count,
-        "stage": STAGE_VOLUME_ARC,
+        "stage": Phase.STRUCTURE.value,
         "waiting_for_confirmation": True,
         "confirmation_type": "volume_arc",
     }

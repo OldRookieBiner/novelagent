@@ -59,6 +59,7 @@ WARNING_TOOLS = {"foreshadowing_check", "style_analysis", "rhythm_analysis"}
 class AgentChatRequest(BaseModel):
     message: str
     model_config_id: Optional[int] = None
+    model_name: Optional[str] = None
     active_tab: Optional[str] = None
     active_menu_item: Optional[str] = None
     current_chapter_number: Optional[int] = None
@@ -91,6 +92,7 @@ def _acquire_busy_lock(db: Session, project_id: int, owner: str = "agent") -> bo
 
 def _release_busy_lock(project_id: int):
     db = SessionLocal()
+    committed = False
     try:
         project = db.query(Project).filter(Project.id == project_id).first()
         if project and project.busy_by == "agent":
@@ -98,11 +100,19 @@ def _release_busy_lock(project_id: int):
             project.busy_since = None
             project.busy_by = None
             db.commit()
+            committed = True
     except Exception as e:
         logger.error(f"Failed to release busy lock: {e}")
-        db.rollback()
     finally:
-        db.close()
+        if not committed:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+        try:
+            db.close()
+        except Exception:
+            pass
 
 
 def _get_or_create_conversation(db: Session, project_id: int) -> AgentConversation:
@@ -119,6 +129,7 @@ def _get_or_create_conversation(db: Session, project_id: int) -> AgentConversati
 
 def _save_user_message(project_id: int, message: str):
     db = SessionLocal()
+    committed = False
     try:
         conv = _get_or_create_conversation(db, project_id)
         msg = AgentMessage(
@@ -132,15 +143,24 @@ def _save_user_message(project_id: int, message: str):
             conv.title = message[:50]
         conv.updated_at = datetime.utcnow()
         db.commit()
+        committed = True
     except Exception as e:
         logger.error(f"Failed to save user message: {e}")
-        db.rollback()
     finally:
-        db.close()
+        if not committed:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+        try:
+            db.close()
+        except Exception:
+            pass
 
 
 def _save_assistant_message(project_id: int, content: str, segments: list, actions: list):
     db = SessionLocal()
+    committed = False
     try:
         conv = _get_or_create_conversation(db, project_id)
         msg = AgentMessage(
@@ -154,11 +174,19 @@ def _save_assistant_message(project_id: int, content: str, segments: list, actio
         conv.message_count = (conv.message_count or 0) + 1
         conv.updated_at = datetime.utcnow()
         db.commit()
+        committed = True
     except Exception as e:
         logger.error(f"Failed to save assistant message: {e}")
-        db.rollback()
     finally:
-        db.close()
+        if not committed:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+        try:
+            db.close()
+        except Exception:
+            pass
 
 
 def _build_truncated_history(history: list[dict], history_budget: int) -> list[dict]:
@@ -327,13 +355,13 @@ async def agent_chat(
     ).first()
     phase = workflow_state.stage if workflow_state else Phase.INCUBATION.value
 
-    # Get model context window
+    # Get model context window（优先使用子模型的 context_window）
     model_config = None
     if req.model_config_id:
         model_config = db.query(ModelConfig).filter(
             ModelConfig.id == req.model_config_id
         ).first()
-    context_window = get_context_window(model_config)
+    context_window = get_context_window(model_config, req.model_name)
 
     # Build phase-aware project context
     context = build_agent_context(
@@ -356,6 +384,23 @@ async def agent_chat(
     # Calculate history budget and truncate
     system_used = estimate_tokens(system_content)
     history_budget = int(context_window * 0.7) - system_used
+    if history_budget <= 0:
+        # 系统消息占用过多 —— 压缩上下文为精简版
+        slim_context = {
+            k: v for k, v in context.items()
+            if k in ("outline", "style_constraints", "current_plot_block",
+                      "pending_foreshadowings", "overdue_foreshadowings")
+        }
+        slim_block = json.dumps(slim_context, ensure_ascii=False, default=str)
+        system_content = AGENT_SYSTEM_PROMPT.format(
+            phase_label=phase_label,
+            project_name=project.name,
+            context_block=slim_block,
+        )
+        system_used = estimate_tokens(system_content)
+        # 至少保留当前消息 4 倍的预算给历史
+        min_history = estimate_tokens(req.message) * 4
+        history_budget = max(min_history, int(context_window * 0.3) - system_used)
     truncated_history = _build_truncated_history(
         req.history or [],
         max(history_budget, 0),
@@ -371,6 +416,7 @@ async def agent_chat(
             model_config_id=req.model_config_id,
             user_id=current_user.id,
             phase=phase,
+            model_name=req.model_name,
         )
     except ValueError as e:
         _release_busy_lock(project_id)

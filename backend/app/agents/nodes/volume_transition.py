@@ -43,7 +43,7 @@ async def volume_transition_node(state: NovelState) -> NovelState:
     volume = kb.get_volume(current_volume)
     if not volume:
         logger.error(f"Volume {current_volume} not found for project {project_id}")
-        return {**state}
+        return {}
 
     # 2. 收集未回收伏笔
     unreclaimed = kb.get_foreshadowings(status="active") + kb.get_foreshadowings(status="pending_reclaim")
@@ -168,7 +168,6 @@ async def volume_transition_node(state: NovelState) -> NovelState:
 
     # 9. 更新 state
     return {
-        **state,
         "current_volume": new_volume_number,
         "revision_context": RevisionContext.PER_VOLUME.value,
         "post_write_summary": transition_summary,

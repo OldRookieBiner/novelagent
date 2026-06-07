@@ -57,6 +57,8 @@ async def get_settings(
         has_api_key=bool(settings.api_key_encrypted),
         review_enabled=settings.review_enabled,
         review_strictness=settings.review_strictness,
+        agent_model_config_id=settings.agent_model_config_id,
+        agent_model_name=settings.agent_model_name,
     )
 
 
@@ -98,6 +100,12 @@ async def update_settings(
     if request.review_strictness is not None:
         settings.review_strictness = request.review_strictness
 
+    # Agent 模型选择持久化
+    if request.agent_model_config_id is not None:
+        settings.agent_model_config_id = request.agent_model_config_id
+    if request.agent_model_name is not None:
+        settings.agent_model_name = request.agent_model_name
+
     db.commit()
     db.refresh(settings)
 
@@ -107,4 +115,6 @@ async def update_settings(
         has_api_key=bool(settings.api_key_encrypted),
         review_enabled=settings.review_enabled,
         review_strictness=settings.review_strictness,
+        agent_model_config_id=settings.agent_model_config_id,
+        agent_model_name=settings.agent_model_name,
     )

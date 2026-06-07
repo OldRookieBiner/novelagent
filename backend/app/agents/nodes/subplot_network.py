@@ -94,4 +94,4 @@ async def subplot_network_node(state: NovelState) -> NovelState:
     for sp_data in parsed:
         kb.create_subplot(sp_data)
 
-    return {**state}
+    return {}

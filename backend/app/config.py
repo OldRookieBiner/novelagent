@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     default_username: str = ""
     default_password: str = ""
     session_expire_seconds: int = 86400 * 7  # 7 days
+    cookie_secure: bool = False  # Set to True in production (HTTPS)
 
     # Model defaults
     default_model_provider: str = "deepseek"

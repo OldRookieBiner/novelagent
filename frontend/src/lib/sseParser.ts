@@ -205,16 +205,16 @@ export async function createSSEStream(
         const parsedData = parseSSEData(event.data)
         onEvent(event.type, parsedData)
 
-        // 收到 done 事件后立即退出循环，避免连接关闭时的网络错误
+        // 收到 done 事件后标记，但不立即退出
+        // 继续处理 buffer 中剩余的事件
         if (event.type === 'done')
         {
           receivedDone = true
-          break
         }
       }
 
-      // 已收到 done 事件，退出外层循环
-      if (receivedDone)
+      // 已收到 done 事件且 buffer 已清空，退出外层循环
+      if (receivedDone && !buffer)
       {
         break
       }

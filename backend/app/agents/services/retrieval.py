@@ -28,27 +28,35 @@ logger = logging.getLogger(__name__)
 
 # ========== 懒加载依赖 ==========
 
+import threading
+
 _sentence_transformers_available = False
 _model = None
+_model_lock = threading.Lock()
+
 
 def _get_model():
-    """懒加载 sentence-transformers 模型（bge-m3）"""
+    """懒加载 sentence-transformers 模型（bge-m3），线程安全"""
     global _sentence_transformers_available, _model
     if _model is not None:
         return _model
-    try:
-        from sentence_transformers import SentenceTransformer
-        _model = SentenceTransformer("BAAI/bge-m3")
-        _sentence_transformers_available = True
-        return _model
-    except ImportError:
-        logger.warning("sentence-transformers 未安装，语义检索不可用")
-        _sentence_transformers_available = False
-        return None
-    except Exception as e:
-        logger.error(f"模型加载失败: {e}")
-        _sentence_transformers_available = False
-        return None
+    with _model_lock:
+        # Double-check after acquiring lock
+        if _model is not None:
+            return _model
+        try:
+            from sentence_transformers import SentenceTransformer
+            _model = SentenceTransformer("BAAI/bge-m3")
+            _sentence_transformers_available = True
+            return _model
+        except ImportError:
+            logger.warning("sentence-transformers 未安装，语义检索不可用")
+            _sentence_transformers_available = False
+            return None
+        except Exception as e:
+            logger.error(f"模型加载失败: {e}")
+            _sentence_transformers_available = False
+            return None
 
 
 _jieba_available = False
@@ -117,9 +125,13 @@ def _collect_documents_from_db(project_id: int) -> tuple[list[str], list[dict]]:
     """从 DB 收集所有知识库文本，返回 (docs, meta)
 
     数据来源：世界观、角色、关系、风格约束、情节块、伏笔、时间线（最近50条）、场景清单
+
+    性能优化：使用 batch_read_for_index 单次 DB 会话加载所有数据，
+    避免为每个数据类型创建独立会话（原实现 6+ 次独立 DB 连接）。
     """
     from app.agents.services.knowledge_base import KnowledgeBaseService
     kb = KnowledgeBaseService(project_id)
+    data = kb.batch_read_for_index()
 
     docs = []
     meta = []
@@ -133,7 +145,7 @@ def _collect_documents_from_db(project_id: int) -> tuple[list[str], list[dict]]:
             meta.append({"source": source, "chunk": i})
 
     # 1. 世界观
-    ws = kb.get_world_setting()
+    ws = data["world_setting"]
     if ws:
         parts = []
         if ws.core_concept:
@@ -145,7 +157,7 @@ def _collect_documents_from_db(project_id: int) -> tuple[list[str], list[dict]]:
         _add("\n".join(parts), "world_setting")
 
     # 2. 角色
-    characters = kb.get_characters()
+    characters = data["characters"]
     for char in characters:
         parts = [f"角色：{char.name}"]
         if hasattr(char, 'role') and char.role:
@@ -165,7 +177,7 @@ def _collect_documents_from_db(project_id: int) -> tuple[list[str], list[dict]]:
         _add("\n".join(parts), f"character/{char.name}")
 
     # 3. 关系
-    relations = kb.get_relations()
+    relations = data["relations"]
     if relations:
         rel_parts = []
         for r in relations:
@@ -173,7 +185,7 @@ def _collect_documents_from_db(project_id: int) -> tuple[list[str], list[dict]]:
         _add("\n".join(rel_parts), "relations")
 
     # 4. 风格约束
-    style = kb.get_style_constraints()
+    style = data["style_constraints"]
     if style:
         parts = []
         if style.taboo_words:
@@ -187,7 +199,7 @@ def _collect_documents_from_db(project_id: int) -> tuple[list[str], list[dict]]:
         _add("\n".join(parts), "style_constraints")
 
     # 5. 情节块
-    blocks = kb.get_plot_blocks()
+    blocks = data["plot_blocks"]
     for block in blocks:
         parts = [f"情节块：{block.title}"]
         if block.must_happen:
@@ -199,7 +211,7 @@ def _collect_documents_from_db(project_id: int) -> tuple[list[str], list[dict]]:
         _add("\n".join(parts), f"plot_block/{block.title}")
 
     # 6. 伏笔
-    foreshadowings = kb.get_foreshadowings()
+    foreshadowings = data["foreshadowings"]
     for f in foreshadowings:
         parts = [f"伏笔：{f.content}"]
         parts.append(f"等级：{f.level}，状态：{f.status}")
@@ -210,7 +222,7 @@ def _collect_documents_from_db(project_id: int) -> tuple[list[str], list[dict]]:
         _add("\n".join(parts), f"foreshadowing/{f.id}")
 
     # 7. 时间线（最近50条）
-    timeline = kb.get_timeline()
+    timeline = data["timeline"]
     recent = timeline[-50:] if len(timeline) > 50 else timeline
     for t in recent:
         parts = [f"第{t.chapter_number}章"]
@@ -223,7 +235,7 @@ def _collect_documents_from_db(project_id: int) -> tuple[list[str], list[dict]]:
         _add(" | ".join(parts), f"timeline/{t.chapter_number}")
 
     # 8. 场景清单
-    scenes = kb.get_scene_entries()
+    scenes = data["scene_entries"]
     if scenes:
         scene_parts = []
         for s in scenes:
@@ -289,9 +301,12 @@ def _collect_volume_documents_from_db(project_id: int, volume_number: int) -> tu
     """从 DB 收集指定卷的知识库文本，返回 (docs, meta)
 
     卷级数据来源：该卷范围内的时间线、伏笔、场景清单、章节内容
+
+    性能优化：使用 batch_read_volume_for_index 单次 DB 会话。
     """
     from app.agents.services.knowledge_base import KnowledgeBaseService
     kb = KnowledgeBaseService(project_id)
+    vdata = kb.batch_read_volume_for_index(volume_number)
 
     docs = []
     meta = []
@@ -305,13 +320,13 @@ def _collect_volume_documents_from_db(project_id: int, volume_number: int) -> tu
             meta.append({"source": source, "chunk": i})
 
     # 获取卷信息
-    volume = kb.get_volume(volume_number)
+    volume = vdata["volume"]
     if not volume:
         return docs, meta
 
     chapter_start = volume.chapter_offset + 1
     # 计算卷的章节范围（到下一卷的 chapter_offset 为止）
-    volumes = kb.get_volumes()
+    volumes_all = kb.get_volumes()
     next_volume = None
     for v in volumes:
         if v.volume_number == volume_number + 1:
@@ -471,9 +486,12 @@ def _collect_global_documents_from_db(project_id: int) -> tuple[list[str], list[
     """从 DB 收集全局知识库文本（不含卷级数据），返回 (docs, meta)
 
     全局数据来源：世界观、角色、关系、风格约束、情节块、跨卷追踪
+
+    性能优化：使用 batch_read_for_index 单次 DB 会话。
     """
     from app.agents.services.knowledge_base import KnowledgeBaseService
     kb = KnowledgeBaseService(project_id)
+    data = kb.batch_read_for_index()
 
     docs = []
     meta = []
@@ -487,7 +505,7 @@ def _collect_global_documents_from_db(project_id: int) -> tuple[list[str], list[
             meta.append({"source": source, "chunk": i})
 
     # 1. 世界观
-    ws = kb.get_world_setting()
+    ws = data["world_setting"]
     if ws:
         parts = []
         if ws.core_concept:
@@ -499,7 +517,7 @@ def _collect_global_documents_from_db(project_id: int) -> tuple[list[str], list[
         _add("\n".join(parts), "world_setting")
 
     # 2. 角色
-    characters = kb.get_characters()
+    characters = data["characters"]
     for char in characters:
         parts = [f"角色：{char.name}"]
         if hasattr(char, 'role') and char.role:
@@ -517,7 +535,7 @@ def _collect_global_documents_from_db(project_id: int) -> tuple[list[str], list[
         _add("\n".join(parts), f"character/{char.name}")
 
     # 3. 关系
-    relations = kb.get_relations()
+    relations = data["relations"]
     if relations:
         rel_parts = []
         for r in relations:
@@ -525,7 +543,7 @@ def _collect_global_documents_from_db(project_id: int) -> tuple[list[str], list[
         _add("\n".join(rel_parts), "relations")
 
     # 4. 风格约束
-    style = kb.get_style_constraints()
+    style = data["style_constraints"]
     if style:
         parts = []
         if style.taboo_words:
@@ -539,7 +557,7 @@ def _collect_global_documents_from_db(project_id: int) -> tuple[list[str], list[
         _add("\n".join(parts), "style_constraints")
 
     # 5. 情节块
-    blocks = kb.get_plot_blocks()
+    blocks = data["plot_blocks"]
     for block in blocks:
         parts = [f"情节块：{block.title}"]
         if block.must_happen:
@@ -840,6 +858,60 @@ class RetrievalService:
         """重建指定卷的索引"""
         return build_volume_index(self.project_id, volume_number)
 
+    async def add_document_async(self, text: str, metadata: dict) -> bool:
+        """增量添加文档到索引（异步）
+        
+        用于章节写作完成后即时更新索引，无需等待全量重建。
+        
+        Args:
+            text: 待索引的文本内容
+            metadata: 元��据，包含 chapter_number, volume_number 等
+        """
+        try:
+            from app.agents.services.retrieval import add_chunk_to_index
+            # 使用异步方式添加
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None, 
+                add_chunk_to_index, 
+                self.project_id, 
+                text, 
+                metadata
+            )
+            logger.info(f"增量索引添加成功：第{metadata.get('chapter_number', '?')}章")
+            return True
+        except Exception as e:
+            logger.warning(f"增量索引添加失败: {e}")
+            # 标记索引需要重建
+            return False
+
+    def add_document(self, text: str, metadata: dict) -> bool:
+        """增量添加文档到索引（同步）"""
+        try:
+            from app.agents.services.retrieval import add_chunk_to_index
+            add_chunk_to_index(self.project_id, text, metadata)
+            return True
+        except Exception as e:
+            logger.warning(f"增量索引添加失败: {e}")
+            return False
+
+    def mark_index_stale(self) -> None:
+        """标记索引需要重建"""
+        index_path = _index_dir(self.project_id)
+        stale_path = os.path.join(index_path, ".stale")
+        try:
+            os.makedirs(index_path, exist_ok=True)
+            with open(stale_path, 'w') as f:
+                f.write(str(time.time()))
+        except Exception as e:
+            logger.warning(f"标记索引 stale 失败: {e}")
+
+    def is_index_stale(self) -> bool:
+        """检查索引是否需要重建"""
+        index_path = _index_dir(self.project_id)
+        stale_path = os.path.join(index_path, ".stale")
+        return os.path.exists(stale_path)
+
     def search(self, query: str, top_k: int = 5, volume_number: Optional[int] = None) -> list[dict]:
         """语义检索（支持双层级）
 
@@ -863,3 +935,77 @@ class RetrievalService:
             or (os.path.exists(os.path.join(global_path, "meta.json"))
                 and os.path.exists(os.path.join(global_path, "index.faiss")))
         )
+
+def add_chunk_to_index(project_id: int, text: str, metadata: dict) -> bool:
+    """增量添加单个 chunk 到 FAISS 索引
+    
+    用于章节写作完成后即时更新索引，无需全量重建。
+    
+    Args:
+        project_id: 项目 ID
+        text: 待索引的文本 chunk
+        metadata: 元数据 dict，包含 chapter_number, volume_number, source 等
+    """
+    try:
+        import faiss
+        import numpy as np
+        from app.agents.services.retrieval import _get_model, _index_dir
+        
+        # 获取模型和维度
+        model = _get_model()
+        
+        # 生成 embedding
+        embedding = model.encode(text, normalize_embeddings=True)
+        emb_array = np.array([embedding]).astype("float32")
+        
+        # 确定目标索引路径
+        volume_number = metadata.get("volume_number", 1)
+        index_path = _index_dir(project_id)
+        volume_path = os.path.join(index_path, f"volume_{volume_number}")
+        
+        # 尝试加载现有索引，或创建新的
+        faiss_path = os.path.join(volume_path, "index.faiss")
+        meta_path = os.path.join(volume_path, "meta.json")
+        
+        os.makedirs(volume_path, exist_ok=True)
+        
+        # 加载现有索引
+        index = None
+        metadata_list = []
+        
+        if os.path.exists(faiss_path):
+            try:
+                index = faiss.read_index(faiss_path)
+                if os.path.exists(meta_path):
+                    with open(meta_path, 'r', encoding='utf-8') as f:
+                        metadata_list = json.load(f)
+            except Exception:
+                index = None
+        
+        # 如果索引不存在，创建新的
+        if index is None:
+            dim = emb_array.shape[1]
+            index = faiss.IndexFlatIP(dim)
+        
+        # 添加新向量
+        index.add(emb_array)
+        
+        # 保存索引
+        faiss.write_index(index, faiss_path)
+        
+        # 更新元数据
+        metadata_list.append({
+            "text": text[:200],  # 截取保存
+            "source": metadata.get("source", f"chapter_{metadata.get('chapter_number', '?')}"),
+            "chapter_number": metadata.get("chapter_number"),
+            "volume_number": volume_number,
+        })
+        
+        with open(meta_path, 'w', encoding='utf-8') as f:
+            json.dump(metadata_list, f, ensure_ascii=False)
+        
+        return True
+        
+    except Exception as e:
+        logging.warning(f"增量索引添加失败: {e}")
+        return False

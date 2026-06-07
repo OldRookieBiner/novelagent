@@ -27,4 +27,4 @@ async def rhythm_curve_node(state: NovelState) -> NovelState:
     async for chunk in llm.chat_stream([{"role": "user", "content": prompt_text}], temperature=0.5):
         response += chunk
 
-    return {**state}
+    return {}

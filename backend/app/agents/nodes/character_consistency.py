@@ -20,6 +20,44 @@ from app.agents.nodes.utils import get_prompts_from_state, safe_format, find_cha
 logger = logging.getLogger(__name__)
 
 
+# ========== POV 漂移检测：非 POV 角色的内心动词列表 ==========
+POV_VIOLATION_VERBS = [
+    "心想", "想到", "觉得", "感到", "意识到", "明白", "了解", "知道",
+    "猜测", "怀疑", "估计", "推测", "判断", "认为", "确信", "确定",
+    "回忆", "想起", "记得", "怀念", "怀念起", "思索", "思考", "考虑",
+    "担忧", "忧虑", "害怕", "恐惧", "希望", "渴望", "期盼", "期待",
+    "后悔", "自责", "感激", "感动", "温暖", "幸福", "悲伤", "难过",
+]
+
+
+def _check_pov_drift(content: str, pov_character: str) -> list[dict]:
+    """��测 POV 漂移：非 POV 角色出现内心独白"""
+    import re
+    
+    if not pov_character or pov_character == "（无明确 POV）":
+        return []
+    
+    violations = []
+    lines = content.split(chr(10))
+    
+    for line_num, line in enumerate(lines, 1):
+        for verb in POV_VIOLATION_VERBS:
+            if verb in line:
+                match = re.search(r'([^，。,.]+?)\s*' + re.escape(verb), line)
+                if match:
+                    subject = match.group(1).strip()
+                    if subject != pov_character and subject not in [pov_character]:
+                        violations.append({
+                            "type": "pov_drift",
+                            "character": subject,
+                            "verb": verb,
+                            "line": line_num,
+                            "detail": f"第 {line_num} 行：{subject}{verb}，但本章 POV 为 {pov_character}"
+                        })
+    
+    return violations
+
+
 async def character_consistency_node(state: NovelState) -> NovelState:
     """角色一致性自查 + 知识边界检测
 
@@ -44,6 +82,16 @@ async def character_consistency_node(state: NovelState) -> NovelState:
     written_chapter_num = chapter.get("chapter_number", current_chapter - 1)
     if not content:
         return {**state}
+
+    # ========== POV 漂移检测（新增）==========
+    pov_character = state.get("pov_character", "")
+    pov_violations = []
+    if pov_character and pov_character != "（无明确 POV）":
+        pov_violations = _check_pov_drift(content, pov_character)
+        if pov_violations:
+            logger.warning(f"项目 {project_id} 第 {written_chapter_num} 章 POV 漂移：{len(pov_violations)} 处")
+            for v in pov_violations[:3]:
+                logger.warning(f"  - {v.get('detail', '')}")
 
     # 加载角色设定（含知识边界）
     characters = kb.get_characters()

@@ -2,7 +2,8 @@
 
 from typing import Dict, Any
 
-from app.agents.state import NovelState, STAGE_WRITING
+from app.agents.state import NovelState, Phase
+from app.agents.services.knowledge_base import KnowledgeBaseService
 from app.agents.constants import NODE_TEMPERATURES
 from app.services.llm import LLMService
 from app.utils.llm import get_llm_from_state_async
@@ -216,23 +217,25 @@ async def rewrite_node(state: NovelState) -> NovelState:
     )
 
     # 创建重写后的章节
+    chapter_num = current_chapter - 1 if current_chapter > 1 else current_chapter
     rewritten_chapter = {
-        "chapter_number": current_chapter - 1
-        if current_chapter > 1
-        else current_chapter,
+        "chapter_number": chapter_num,
         "title": chapter_outline.get("title", ""),
         "content": rewritten_content,
         "word_count": len(rewritten_content),
     }
 
+    # 保存重写内容到 DB
+    kb = KnowledgeBaseService(state["project_id"])
+    kb.save_chapter_content(chapter_num, rewritten_content, len(rewritten_content))
+
     # 更新状态
     new_state: NovelState = {
-        **state,
         "written_chapters": [
             rewritten_chapter
         ],  # 使用 Annotated[List, add] 会自动追加/替换
         "rewrite_count": rewrite_count + 1,
-        "stage": STAGE_WRITING,
+        "stage": Phase.WRITING.value,
     }
 
     return new_state

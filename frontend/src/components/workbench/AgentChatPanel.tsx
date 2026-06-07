@@ -1,12 +1,13 @@
 // AgentChatPanel.tsx — Right panel: AI creation agent chat
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { PanelRightClose, PanelRightOpen, Send, AlertTriangle, ShieldCheck, ChevronDown } from 'lucide-react'
+import { PanelRightClose, PanelRightOpen, Send, AlertTriangle, ShieldCheck, ChevronDown, ChevronRight, Loader2, CheckCircle2, GripVertical, Square } from 'lucide-react'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
-import { sendAgentMessage } from '@/lib/agentApi'
-import { modelConfigsApi } from '@/lib/api'
-import type { AiMessage, ImpactReport, AgentWarning } from '@/stores/workbenchStore'
-import type { ModelConfig } from '@/types'
+import { sendAgentMessage, fetchConversation } from '@/lib/agentApi'
+import { modelConfigsApi, settingsApi } from '@/lib/api'
+import type { AiMessage, AiMessageSegment, ImpactReport, AgentWarning } from '@/stores/workbenchStore'
+import type { ModelConfig, ModelItem } from '@/types'
+import ReactMarkdown from 'react-markdown'
 
 const PHASE_LABELS: Record<string, string> = {
   incubation: '创意孵化',
@@ -22,10 +23,153 @@ const PHASE_EMPTY_HINTS: Record<string, string> = {
   revision: '和智能体讨论修订方向',
 }
 
-interface ModelOption {
-  id: number
-  name: string
-  isDefault: boolean
+/** 工具名到人类可读标签的映射 */
+const TOOL_LABELS: Record<string, string> = {
+  // Perception
+  knowledge_search: '搜索知识库',
+  foreshadowing_check: '检查伏笔状态',
+  consistency_check: '一致性检查',
+  style_analysis: '风格分析',
+  progress_report: '生成进度报告',
+  rhythm_analysis: '节奏分析',
+  // Generation (new!)
+  generate_outline: '生成大纲',
+  generate_chapter_content: '写章节',
+  generate_story_seed: '生成故事种子',
+  generate_world_setting_complete: '生成完整世界观',
+  // Modification
+  propose_setting_change: '评估设定变更影响',
+  propose_outline_adjustment: '评估结构调整影响',
+  propose_chapter_rewrite: '评估重写影响',
+  // Creation assist
+  writer_block_assist: '卡文辅助',
+  suggest_foreshadowing: '建议伏笔',
+  suggest_plot_twist: '建议情节转折',
+  expand_world_setting: '扩展世界观',
+  // Creation
+  create_world_setting: '创建世界观',
+  create_character: '创建角色',
+  create_style_constraints: '创建风格约束',
+  create_foreshadowing: '创建伏笔',
+  create_plot_block: '创建情节块',
+}
+
+/** 判断 segments 中是否包含 agent_text 段（用于区分新/旧格式） */
+function hasTextSegments(segments: AiMessageSegment[]): boolean
+{
+  return segments.some(s => s.type === 'agent_text')
+}
+
+/**
+ * 按顺序渲染 assistant 消息内容
+ * 新格式：segments 中有 agent_text 段，按 segments 顺序渲染
+ * 旧格式：segments 中只有 tool 段，content 字段包含全部文本
+ */
+function AssistantMessageContent({
+  msg,
+  isLastAssistant,
+  isAgentSending,
+}: {
+  msg: AiMessage
+  isLastAssistant: boolean
+  isAgentSending: boolean
+})
+{
+  const showThinking = isLastAssistant && isAgentSending
+  const useNewFormat = hasTextSegments(msg.segments)
+
+  // 旧格式兼容：没有 agent_text segment 时，先渲染 content 再渲染 tool 段
+  if (!useNewFormat)
+  {
+    return (
+      <>
+        {msg.content
+          ? <div className="agent-markdown"><ReactMarkdown>{msg.content}</ReactMarkdown></div>
+          : showThinking ? null : null}
+        {msg.segments.filter(s => s.type === 'tool_result').map((s, i) => (
+          <div key={`tool-${i}`} className="mt-1.5 text-[10px] text-muted-foreground flex items-center gap-1 border-t border-gray-100 pt-1">
+            <CheckCircle2 className="h-3 w-3 shrink-0 text-green-500" />
+            <span>{s.content}</span>
+          </div>
+        ))}
+        {showThinking && <ThinkingIndicator />}
+      </>
+    )
+  }
+
+  // 新格式：按 segments 顺序渲染
+  // 合并相邻的 agent_text 段，减少 Markdown 渲染碎片
+  const mergedParts: Array<{ type: 'text'; content: string } | AiMessageSegment> = []
+  let textBuffer = ''
+
+  for (const seg of msg.segments)
+  {
+    if (seg.type === 'agent_text')
+    {
+      textBuffer += seg.content
+    }
+    else
+    {
+      if (textBuffer)
+      {
+        mergedParts.push({ type: 'text', content: textBuffer })
+        textBuffer = ''
+      }
+      mergedParts.push(seg)
+    }
+  }
+  if (textBuffer)
+  {
+    mergedParts.push({ type: 'text', content: textBuffer })
+  }
+
+  return (
+    <>
+      {mergedParts.map((part, i) => {
+        if (part.type === 'text')
+        {
+          return (
+            <div key={`text-${i}`} className="agent-markdown">
+              <ReactMarkdown>{part.content}</ReactMarkdown>
+            </div>
+          )
+        }
+        // AiMessageSegment
+        const seg = part as AiMessageSegment
+        if (seg.type === 'tool_start')
+        {
+          return (
+            <div key={`ts-${i}`} className="mt-1.5 text-[10px] text-muted-foreground flex items-center gap-1">
+              <Loader2 className="h-3 w-3 shrink-0 animate-spin text-blue-400" />
+              <span>{seg.content}</span>
+            </div>
+          )
+        }
+        if (seg.type === 'tool_result')
+        {
+          return (
+            <div key={`tr-${i}`} className="mt-1 text-[10px] text-muted-foreground flex items-center gap-1">
+              <CheckCircle2 className="h-3 w-3 shrink-0 text-green-500" />
+              <span>{seg.content}</span>
+            </div>
+          )
+        }
+        return null
+      })}
+      {showThinking && <ThinkingIndicator />}
+    </>
+  )
+}
+
+/** 思考中指示器 */
+function ThinkingIndicator()
+{
+  return (
+    <div className="flex items-center gap-1.5 mt-1.5 text-[10px] text-muted-foreground">
+      <Loader2 className="h-3 w-3 animate-spin text-blue-400" />
+      <span>思考中...</span>
+    </div>
+  )
 }
 
 export function AgentChatPanel() {
@@ -35,6 +179,8 @@ export function AgentChatPanel() {
     toggleAiSidebar,
     aiMessages,
     addAiMessage,
+    updateAiMessage,
+    setAiMessages,
     pendingImpacts,
     addPendingImpact,
     removePendingImpact,
@@ -42,18 +188,80 @@ export function AgentChatPanel() {
     addAgentWarning,
     isAgentSending,
     setIsAgentSending,
+    incrementKnowledgeVersion,
   } = useWorkbenchStore()
 
   const phase = useWorkbenchStore((s) => s.phase)
 
+  // 面板宽度状态
+  const [panelWidth, setPanelWidth] = useState(400)
+  const [isDragging, setIsDragging] = useState(false)
+  const dragStartX = useRef(0)
+  const dragStartWidth = useRef(0)
+
+  // 输入框行数（用于自动增高）
+  const [inputRows, setInputRows] = useState(1)
+
   const [input, setInput] = useState('')
-  const [modelOptions, setModelOptions] = useState<ModelOption[]>([])
-  const [selectedModelId, setSelectedModelId] = useState<number | null>(null)
+  // 模型配置列表（平台级）
+  const [modelConfigs, setModelConfigs] = useState<ModelConfig[]>([])
+  // 当前选中的平台 ID
+  const [selectedConfigId, setSelectedConfigId] = useState<number | null>(null)
+  // 当前选中的子模型名（ModelItem.id）
+  const [selectedModelName, setSelectedModelName] = useState<string | null>(null)
+  // 展开的平台 ID（用于显示子模型列表）
+  const [expandedConfigId, setExpandedConfigId] = useState<number | null>(null)
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false)
   const [modelsLoaded, setModelsLoaded] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const modelSelectorRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // 计算最小/最大宽度
+  const minWidth = 400
+  const maxWidth = Math.floor(window.innerWidth / 3)
+
+  // 找到最后一条 assistant 消息的 id
+  const lastAssistantId = aiMessages.reduce<string | null>((acc, m) =>
+    m.role === 'assistant' ? m.id : acc, null)
+
+  // 鼠标事件处理器
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsDragging(true)
+    dragStartX.current = e.clientX
+    dragStartWidth.current = panelWidth
+  }, [panelWidth])
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!isDragging) return
+    const deltaX = dragStartX.current - e.clientX
+    const newWidth = dragStartWidth.current + deltaX
+    // 限制在最小和最大宽度之间
+    const clampedWidth = Math.max(minWidth, Math.min(maxWidth, newWidth))
+    setPanelWidth(clampedWidth)
+  }, [isDragging, maxWidth])
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false)
+  }, [])
+
+  // 拖拽事件监听
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener('mousemove', handleMouseMove)
+      window.addEventListener('mouseup', handleMouseUp)
+      document.body.style.cursor = 'col-resize'
+      document.body.style.userSelect = 'none'
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [isDragging, handleMouseMove, handleMouseUp])
 
   // 自动滚动到底部
   useEffect(() => {
@@ -62,21 +270,89 @@ export function AgentChatPanel() {
     }
   }, [aiMessages, pendingImpacts])
 
-  // 加载模型配置列表（仅一次）
+  // 根据输入内容自动调整 textarea 行数
+  useEffect(() => {
+    const lines = input.split('\n').length
+    // 限制行数：最少1行，最多根据窗口高度计算（约 50vh / 20px 每行 ≈ 27 行）
+    const maxRows = Math.floor((window.innerHeight * 0.5) / 20)
+    const newRows = Math.min(Math.max(lines, 1), maxRows)
+    setInputRows(newRows)
+  }, [input])
+  // ESC 键监听：连续按两次终止生成
+  useEffect(() => {
+    let escPressCount = 0
+    let escTimer: ReturnType<typeof setTimeout> | null = null
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') {
+        escPressCount = 0
+        return
+      }
+
+      escPressCount++
+      
+      // 清除之前的计时器
+      if (escTimer) clearTimeout(escTimer)
+
+      if (escPressCount === 1) {
+        // 第一次按 ESC，1秒内按第二次才终止
+        escTimer = setTimeout(() => {
+          escPressCount = 0
+        }, 1000)
+      } else if (escPressCount >= 2) {
+        // 连续按两次 ESC，终止生成
+        escPressCount = 0
+        if (isAgentSending && abortRef.current) {
+          abortRef.current.abort()
+          setIsAgentSending(false)
+        }
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      if (escTimer) clearTimeout(escTimer)
+    }
+  }, [isAgentSending])
+  // 加载模型配置列表（仅一次），并恢复后端保存的模型选择
   useEffect(() => {
     if (modelsLoaded) return
-    modelConfigsApi.list().then((res) => {
-      const enabled = res.models
-        .filter((m: ModelConfig) => m.is_enabled)
-        .map((m: ModelConfig) => ({
-          id: m.id,
-          name: m.name,
-          isDefault: m.is_default,
-        }))
-      setModelOptions(enabled)
-      const defaultModel = enabled.find((m: ModelOption) => m.isDefault)
-      if (defaultModel) {
-        setSelectedModelId(defaultModel.id)
+    Promise.all([
+      modelConfigsApi.list(),
+      settingsApi.get().catch(() => null),
+    ]).then(([res, settings]) => {
+      const enabled = res.models.filter((m: ModelConfig) => m.is_enabled)
+      setModelConfigs(enabled)
+
+      // 优先恢复后端保存的模型选择
+      if (settings?.agent_model_config_id) {
+        const savedConfig = enabled.find((m: ModelConfig) => m.id === settings.agent_model_config_id)
+        if (savedConfig) {
+          setSelectedConfigId(savedConfig.id)
+          if (settings.agent_model_name) {
+            setSelectedModelName(settings.agent_model_name)
+          } else if (savedConfig.model_name) {
+            setSelectedModelName(savedConfig.model_name)
+          }
+          setModelsLoaded(true)
+          return
+        }
+      }
+
+      // 查找默认配置，无则取第一个启用的
+      const defaultConfig = enabled.find((m: ModelConfig) => m.is_default) || enabled[0]
+      if (defaultConfig) {
+        setSelectedConfigId(defaultConfig.id)
+        const hasModels = (defaultConfig.models?.filter((mi: ModelItem) => mi.is_enabled) ?? []).length > 0
+        if (hasModels) {
+          const firstEnabled = defaultConfig.models!.find((mi: ModelItem) => mi.is_enabled)
+          if (firstEnabled) {
+            setSelectedModelName(firstEnabled.id)
+          }
+        } else if (defaultConfig.model_name) {
+          setSelectedModelName(defaultConfig.model_name)
+        }
       }
       setModelsLoaded(true)
     }).catch(() => {
@@ -84,17 +360,96 @@ export function AgentChatPanel() {
     })
   }, [modelsLoaded])
 
+  // 加载后端保存的聊天记录（项目切换时重新加载）
+  useEffect(() => {
+    if (!currentProjectId) return
+    fetchConversation(currentProjectId).then((res) => {
+      const loaded: AiMessage[] = res.messages.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        segments: (m.segments || []).map((s) => ({
+          type: (s.type as any) || "agent_text",
+          content: s.content || "",
+          data: s.data,
+        })),
+        timestamp: m.timestamp,
+      }))
+      setAiMessages(loaded)
+    }).catch(() => {
+      // 会话可能尚未创建，保持空数组
+    })
+  }, [currentProjectId, setAiMessages])
+
+
   // 模型选择器 click-outside 关闭
   useEffect(() => {
     if (!modelSelectorOpen) return
     const handleClickOutside = (e: MouseEvent) => {
       if (modelSelectorRef.current && !modelSelectorRef.current.contains(e.target as Node)) {
         setModelSelectorOpen(false)
+        setExpandedConfigId(null)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [modelSelectorOpen])
+
+  // 选择平台（有子模型则展开，否则直接确定）
+  const handleSelectConfig = (config: ModelConfig) => {
+    setSelectedConfigId(config.id)
+    const hasModels = (config.models?.filter((mi: ModelItem) => mi.is_enabled) ?? []).length > 0
+    if (hasModels) {
+      // 有子模型：展开列表
+      setExpandedConfigId(expandedConfigId === config.id ? null : config.id)
+      const firstEnabled = config.models!.find((mi: ModelItem) => mi.is_enabled)
+      if (firstEnabled) {
+        setSelectedModelName(firstEnabled.id)
+        persistModelSelection(config.id, firstEnabled.id)
+      } else {
+        setSelectedModelName(null)
+      }
+    } else {
+      // 无子模型：直接用配置的 model_name
+      setSelectedModelName(config.model_name || null)
+      persistModelSelection(config.id, config.model_name || null)
+      setModelSelectorOpen(false)
+      setExpandedConfigId(null)
+    }
+  }
+
+  // 选择子模型
+  const handleSelectSubModel = (configId: number, modelItem: ModelItem) => {
+    setSelectedConfigId(configId)
+    setSelectedModelName(modelItem.id)
+    persistModelSelection(configId, modelItem.id)
+    setModelSelectorOpen(false)
+    setExpandedConfigId(null)
+  }
+
+  // 获取当前显示的模型名称
+  const getDisplayModelName = (): string => {
+    if (!selectedConfigId) return '未选择模型'
+    const config = modelConfigs.find((c) => c.id === selectedConfigId)
+    if (!config) return '未选择模型'
+    const hasModels = (config.models?.filter((mi: ModelItem) => mi.is_enabled) ?? []).length > 0
+    if (hasModels && selectedModelName) {
+      const sub = config.models?.find((mi: ModelItem) => mi.id === selectedModelName)
+      if (sub) return sub.name
+    }
+    if (config.model_name) return config.model_name
+    return config.name
+  }
+
+  // 持久化模型选择到后端
+  const persistModelSelection = (configId: number, modelName: string | null) => {
+    settingsApi.update({
+      agent_model_config_id: configId,
+      agent_model_name: modelName,
+    }).catch(() => {
+      // 持久化失败不影响使用
+    })
+  }
 
   // SSE chat handler — 使用 agentApi
   const handleSend = useCallback(async () => {
@@ -110,6 +465,7 @@ export function AgentChatPanel() {
     addAiMessage(userMsg)
     const messageText = input.trim()
     setInput('')
+    setInputRows(1)
     setIsAgentSending(true)
 
     const assistantMsg: AiMessage = {
@@ -129,22 +485,37 @@ export function AgentChatPanel() {
         currentProjectId,
         messageText,
         {
+          // 文本片段：同时追加到 content（兼容存储）和 segments（保持顺序）
           onAgentText: (content) => {
-            assistantMsg.content += content
+            updateAiMessage(assistantMsg.id, (m) => ({
+              ...m,
+              content: m.content + content,
+              segments: [...m.segments, {
+                type: 'agent_text' as const,
+                content,
+                data: undefined,
+              }],
+            }))
           },
           onToolStart: (tool, args) => {
-            assistantMsg.segments.push({
-              type: 'tool_start' as any,
-              content: `调用 ${tool}...`,
-              data: { tool, args },
-            })
+            updateAiMessage(assistantMsg.id, (m) => ({
+              ...m,
+              segments: [...m.segments, {
+                type: 'tool_start' as const,
+                content: `${TOOL_LABELS[tool] || tool}...`,
+                data: { tool, args },
+              }],
+            }))
           },
           onToolResult: (tool, result) => {
-            assistantMsg.segments.push({
-              type: 'tool_result' as any,
-              content: `${tool} 完成`,
-              data: { tool, result },
-            })
+            updateAiMessage(assistantMsg.id, (m) => ({
+              ...m,
+              segments: [...m.segments, {
+                type: 'tool_result' as const,
+                content: `${TOOL_LABELS[tool] || tool} 完成`,
+                data: { tool, result },
+              }],
+            }))
           },
           onImpactAssessment: (data) => {
             addPendingImpact(data as unknown as ImpactReport)
@@ -152,25 +523,44 @@ export function AgentChatPanel() {
           onWarning: (data) => {
             addAgentWarning(data as unknown as AgentWarning)
           },
-          onAgentDone: () => {},
+          onAgentDone: () => {
+            incrementKnowledgeVersion()
+          },
           onError: (error) => {
-            assistantMsg.content = assistantMsg.content || `错误：${error}`
+            updateAiMessage(assistantMsg.id, (m) => ({
+              ...m,
+              content: m.content || `错误：${error}`,
+              segments: m.content ? m.segments : [...m.segments, {
+                type: 'agent_text' as const,
+                content: `错误：${error}`,
+                data: undefined,
+              }],
+            }))
           },
         },
         {
-          modelConfigId: selectedModelId ?? undefined,
+          modelConfigId: selectedConfigId ?? undefined,
+          modelName: selectedModelName ?? undefined,
           signal: controller.signal,
         }
       )
     } catch (err: any) {
       if (err.name !== 'AbortError') {
-        assistantMsg.content = assistantMsg.content || `连接错误：${err.message}`
+        updateAiMessage(assistantMsg.id, (m) => ({
+          ...m,
+          content: m.content || `连接错误：${err.message}`,
+          segments: m.content ? m.segments : [...m.segments, {
+            type: 'agent_text' as const,
+            content: `连接错误：${err.message}`,
+            data: undefined,
+          }],
+        }))
       }
     } finally {
       setIsAgentSending(false)
       abortRef.current = null
     }
-  }, [input, currentProjectId, isAgentSending, selectedModelId, addAiMessage, addPendingImpact, addAgentWarning, setIsAgentSending])
+  }, [input, currentProjectId, isAgentSending, selectedConfigId, selectedModelName, addAiMessage, updateAiMessage, addPendingImpact, addAgentWarning, setIsAgentSending])
 
   const handleImpactDecision = async (changeId: number, decision: string) => {
     if (!currentProjectId) return
@@ -187,6 +577,14 @@ export function AgentChatPanel() {
       }
     } catch {
       // 静默失败
+    }
+  }
+
+  // 输入框键盘事件处理
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSend()
     }
   }
 
@@ -214,166 +612,212 @@ export function AgentChatPanel() {
     )
   }
 
-  const selectedModelName = selectedModelId
-    ? modelOptions.find(m => m.id === selectedModelId)?.name
-    : '默认模型'
-
   return (
-    <div className="w-[300px] bg-white border-l border-gray-200 flex flex-col flex-shrink-0">
-      {/* Header */}
-      <div className="px-3 py-2.5 border-b border-gray-100 flex items-center gap-2">
-        <span className="font-semibold text-sm">✦ 智能体</span>
-        <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-          {PHASE_LABELS[phase] || '未知'}
-        </span>
-        <div className={`w-1.5 h-1.5 rounded-full ml-auto ${isAgentSending ? 'bg-amber-500 animate-pulse' : 'bg-green-500'}`} />
-        <button
-          onClick={toggleAiSidebar}
-          className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
-        >
-          <PanelRightClose className="h-3.5 w-3.5" />
-        </button>
-      </div>
-
-      {/* 模型选择器 */}
-      <div className="px-3 py-1.5 border-b border-gray-50" ref={modelSelectorRef}>
-        <div className="relative">
-          <button
-            onClick={() => setModelSelectorOpen(!modelSelectorOpen)}
-            className="w-full flex items-center justify-between gap-1 rounded border border-gray-200 px-2 py-1 text-[10px] text-foreground hover:border-gray-300 transition-colors"
-          >
-            <span className="truncate">{selectedModelName}</span>
-            <ChevronDown className="h-3 w-3 shrink-0 text-gray-400" />
-          </button>
-          {modelSelectorOpen && (
-            <div className="absolute left-0 right-0 top-full mt-0.5 bg-white border border-gray-200 rounded shadow-sm z-10 max-h-40 overflow-y-auto">
-              <button
-                onClick={() => { setSelectedModelId(null); setModelSelectorOpen(false) }}
-                className={cn(
-                  'w-full text-left px-2 py-1.5 text-[10px] hover:bg-muted/50',
-                  !selectedModelId && 'text-primary font-medium'
-                )}
-              >
-                默认模型
-              </button>
-              {modelOptions.map(m => (
-                <button
-                  key={m.id}
-                  onClick={() => { setSelectedModelId(m.id); setModelSelectorOpen(false) }}
-                  className={cn(
-                    'w-full text-left px-2 py-1.5 text-[10px] hover:bg-muted/50',
-                    selectedModelId === m.id && 'text-primary font-medium'
-                  )}
-                >
-                  {m.name}
-                  {m.isDefault && <span className="ml-1 text-muted-foreground">(默认)</span>}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Warnings */}
-      {agentWarnings.length > 0 && (
-        <div className="px-3 py-1.5 bg-amber-50 border-b border-amber-100">
-          {agentWarnings.slice(-2).map((w, i) => (
-            <div key={i} className="flex items-start gap-1.5 text-[10px] text-amber-700 mb-1">
-              <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
-              <span>{w.message}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
-        {aiMessages.length === 0 && (
-          <div className="text-center text-muted-foreground text-xs py-8">
-            {PHASE_EMPTY_HINTS[phase] || '和智能体讨论你的创作想法'}
-          </div>
+    <div className="flex">
+      {/* 拖拽手柄 */}
+      <div
+        className={cn(
+          'w-1 cursor-col-resize flex-shrink-0 bg-transparent hover:bg-primary/30 transition-colors flex items-center justify-center',
+          isDragging && 'bg-primary/50'
         )}
-        {aiMessages.map((msg) => (
-          <div
-            key={msg.id}
-            className={cn(
-              'rounded-lg px-3 py-2 text-[11px] leading-relaxed',
-              msg.role === 'assistant'
-                ? 'bg-primary/5 text-foreground'
-                : 'bg-primary text-primary-foreground ml-10'
-            )}
+        onMouseDown={handleMouseDown}
+      >
+        <GripVertical className={cn('h-4 text-gray-300', isDragging && 'text-primary')} />
+      </div>
+
+      {/* 主面板 */}
+      <div
+        className="bg-white border-l border-gray-200 flex flex-col flex-shrink-0"
+        style={{ width: panelWidth }}
+      >
+        {/* Header */}
+        <div className="px-3 py-2.5 border-b border-gray-100 flex items-center gap-2">
+          <span className="font-semibold text-sm">✦ 智能体</span>
+          <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+            {PHASE_LABELS[phase] || '未知'}
+          </span>
+          <div className={`w-1.5 h-1.5 rounded-full ml-auto ${isAgentSending ? 'bg-amber-500 animate-pulse' : 'bg-green-500'}`} />
+          <button
+            onClick={toggleAiSidebar}
+            className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
           >
-            {msg.content || (msg.role === 'assistant' && isAgentSending ? '...' : '')}
-            {msg.segments.filter(s => s.type === 'tool_result').map((s, i) => (
-              <div key={i} className="mt-1 text-[10px] text-muted-foreground border-t border-gray-100 pt-1">
-                {s.content}
+            <PanelRightClose className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        {/* 模型选择器（两级：平台 → 子模型） */}
+        <div className="px-3 py-1.5 border-b border-gray-50" ref={modelSelectorRef}>
+          <div className="relative">
+            <button
+              onClick={() => setModelSelectorOpen(!modelSelectorOpen)}
+              className="w-full flex items-center justify-between gap-1 rounded border border-gray-200 px-2 py-1 text-[10px] text-foreground hover:border-gray-300 transition-colors"
+            >
+              <span className="truncate">{getDisplayModelName()}</span>
+              <ChevronDown className="h-3 w-3 shrink-0 text-gray-400" />
+            </button>
+            {modelSelectorOpen && (
+              <div className="absolute left-0 right-0 top-full mt-0.5 bg-white border border-gray-200 rounded shadow-sm z-10 max-h-56 overflow-y-auto">
+
+                {/* 平台列表 + 子模型 */}
+                {modelConfigs.map((config) => {
+                  const isSelected = selectedConfigId === config.id
+                  const isExpanded = expandedConfigId === config.id
+                  const hasSubModels = (config.models?.filter((mi) => mi.is_enabled) ?? []).length > 0
+                  const isSingleSelected = isSelected && !hasSubModels
+
+                  return (
+                    <div key={config.id}>
+                      {/* 平台行 */}
+                      <button
+                        onClick={() => handleSelectConfig(config)}
+                        className={cn(
+                          'w-full text-left px-2 py-1.5 text-[10px] hover:bg-muted/50 flex items-center gap-1',
+                          isSingleSelected && 'text-primary font-medium'
+                        )}
+                      >
+                        {hasSubModels && (
+                          <ChevronRight
+                            className={cn('h-3 w-3 shrink-0 transition-transform', isExpanded && 'rotate-90')}
+                          />
+                        )}
+                        <span className="truncate">{config.name}</span>
+                        {config.is_default && <span className="ml-auto text-muted-foreground">(默认)</span>}
+                      </button>
+                      {/* 子模型列表 */}
+                      {hasSubModels && isExpanded && config.models!.filter((mi) => mi.is_enabled).map((mi) => (
+                        <button
+                          key={mi.id}
+                          onClick={(e) => { e.stopPropagation(); handleSelectSubModel(config.id, mi) }}
+                          className={cn(
+                            'w-full text-left pl-7 pr-2 py-1 text-[10px] hover:bg-muted/50 flex items-center gap-1',
+                            selectedConfigId === config.id && selectedModelName === mi.id && 'text-primary font-medium'
+                          )}
+                        >
+                          <span className="truncate">{mi.name}</span>
+                          {mi.health_status === 'healthy' && (
+                            <span className="ml-auto w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
+                          )}
+                          {mi.health_status && mi.health_status !== 'healthy' && (
+                            <span className="ml-auto w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Warnings */}
+        {agentWarnings.length > 0 && (
+          <div className="px-3 py-1.5 bg-amber-50 border-b border-amber-100">
+            {agentWarnings.slice(-2).map((w, i) => (
+              <div key={i} className="flex items-start gap-1.5 text-[10px] text-amber-700 mb-1">
+                <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
+                <span>{w.message}</span>
               </div>
             ))}
           </div>
-        ))}
-      </div>
+        )}
 
-      {/* Impact Assessment Cards */}
-      {pendingImpacts.length > 0 && (
-        <div className="px-3 py-2 border-t border-gray-100 space-y-2">
-          {pendingImpacts.map((report) => (
-            <div key={report.change_id} className="bg-gray-50 rounded-lg p-2 text-[10px]">
-              <div className="flex items-center gap-1.5 mb-1">
-                <ShieldCheck className="h-3 w-3 text-gray-500" />
-                <span className="font-medium">影响评估</span>
-                <span className={cn(
-                  'px-1.5 py-0.5 rounded text-[9px] font-medium',
-                  report.impact_level === 'severe' ? 'bg-red-100 text-red-700' :
-                  report.impact_level === 'moderate' ? 'bg-orange-100 text-orange-700' :
-                  report.impact_level === 'minor' ? 'bg-yellow-100 text-yellow-700' :
-                  'bg-green-100 text-green-700'
-                )}>
-                  {report.impact_label}
-                </span>
-              </div>
-              <div className="text-muted-foreground mb-1.5">
-                影响 {report.affected_chapters} 章 / {report.affected_paragraphs} 段
-              </div>
-              {report.detail && (
-                <div className="text-muted-foreground mb-1.5 text-[9px]">{report.detail}</div>
+        {/* Messages */}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
+          {aiMessages.length === 0 && (
+            <div className="text-center text-muted-foreground text-xs py-8">
+              {PHASE_EMPTY_HINTS[phase] || '和智能体讨论你的创作想法'}
+            </div>
+          )}
+          {aiMessages.map((msg) => (
+            <div
+              key={msg.id}
+              className={cn(
+                'rounded-lg px-3 py-2 text-[11px] leading-relaxed',
+                msg.role === 'assistant'
+                  ? 'bg-primary/5 text-foreground'
+                  : 'bg-primary text-primary-foreground ml-10'
               )}
-              <div className="flex gap-1.5">
-                <button
-                  onClick={() => handleImpactDecision(report.change_id, 'proceed')}
-                  className="px-2 py-1 bg-primary text-primary-foreground rounded text-[9px]"
-                >
-                  按原方案修改
-                </button>
-                <button
-                  onClick={() => handleImpactDecision(report.change_id, 'abandon')}
-                  className="px-2 py-1 bg-gray-200 text-gray-700 rounded text-[9px]"
-                >
-                  放弃
-                </button>
-              </div>
+            >
+              {msg.role === 'assistant'
+                ? <AssistantMessageContent
+                    msg={msg}
+                    isLastAssistant={msg.id === lastAssistantId}
+                    isAgentSending={isAgentSending}
+                  />
+                : msg.content}
             </div>
           ))}
         </div>
-      )}
 
-      {/* Input */}
-      <div className="px-3 py-2 border-t border-gray-100">
-        <div className="flex gap-1.5">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
-            className="flex-1 border border-gray-200 rounded-md px-2.5 py-1.5 text-[11px] outline-none focus:border-primary"
-            placeholder={isAgentSending ? '思考中...' : '输入消息...'}
-            disabled={isAgentSending}
-          />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || isAgentSending}
-            className="bg-primary text-primary-foreground border-none px-2.5 py-1.5 rounded-md text-[11px] disabled:opacity-50"
-          >
-            <Send className="h-3 w-3" />
-          </button>
+        {/* Impact Assessment Cards */}
+        {pendingImpacts.length > 0 && (
+          <div className="px-3 py-2 border-t border-gray-100 space-y-2">
+            {pendingImpacts.map((report) => (
+              <div key={report.change_id} className="bg-gray-50 rounded-lg p-2 text-[10px]">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <ShieldCheck className="h-3 w-3 text-gray-500" />
+                  <span className="font-medium">影响评估</span>
+                  <span className={cn(
+                    'px-1.5 py-0.5 rounded text-[9px] font-medium',
+                    report.impact_level === 'severe' ? 'bg-red-100 text-red-700' :
+                    report.impact_level === 'moderate' ? 'bg-orange-100 text-orange-700' :
+                    report.impact_level === 'minor' ? 'bg-yellow-100 text-yellow-700' :
+                    'bg-green-100 text-green-700'
+                  )}>
+                    {report.impact_label}
+                  </span>
+                </div>
+                <div className="text-muted-foreground mb-1.5">
+                  影响 {report.affected_chapters} 章 / {report.affected_paragraphs} 段
+                </div>
+                {report.detail && (
+                  <div className="text-muted-foreground mb-1.5 text-[9px]">{report.detail}</div>
+                )}
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => handleImpactDecision(report.change_id, 'proceed')}
+                    className="px-2 py-1 bg-primary text-primary-foreground rounded text-[9px]"
+                  >
+                    按原方案修改
+                  </button>
+                  <button
+                    onClick={() => handleImpactDecision(report.change_id, 'abandon')}
+                    className="px-2 py-1 bg-gray-200 text-gray-700 rounded text-[9px]"
+                  >
+                    放弃
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Input */}
+        <div className="px-3 py-2 border-t border-gray-100">
+          <div className="flex gap-1.5">
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleInputKeyDown}
+              rows={inputRows}
+              className="flex-1 border border-gray-200 rounded-md px-2.5 py-1.5 text-[11px] outline-none focus:border-primary resize-none"
+              placeholder={isAgentSending ? '思考中...（按 Esc x2 终止）' : '输入消息...（Shift+Enter 换行）'}
+              style={{ maxHeight: '50vh', minHeight: '36px' }}
+            />
+            <button
+              onClick={() => isAgentSending ? abortRef.current?.abort() : handleSend()}
+              disabled={!input.trim() && !isAgentSending}
+              className={cn(
+                'border-none px-2.5 py-1.5 rounded-md text-[11px] self-end transition-colors',
+                isAgentSending ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-primary text-primary-foreground disabled:opacity-50'
+              )}
+              title={isAgentSending ? '停止生成 (Esc x2)' : '发送'}
+            >
+              {isAgentSending ? <Square className="h-3 w-3" /> : <Send className="h-3 w-3" />}
+            </button>
+          </div>
         </div>
       </div>
     </div>

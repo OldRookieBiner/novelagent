@@ -1,7 +1,7 @@
 """Project model"""
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -20,6 +20,9 @@ class Project(Base):
     novel_length = Column(Integer, default=100000)  # 小说目标字数
     target_words = Column(Integer, default=100000)  # 保留向后兼容
     total_words = Column(Integer, default=0)
+
+    # 故事种子（创意孵化阶段生成）
+    story_seed = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -94,6 +97,11 @@ class Project(Base):
     )
     character_change_logs = relationship(
         "CharacterChangeLog", back_populates="project", cascade="all, delete-orphan"
+    )
+
+    # Relationships — Agent 对话
+    agent_conversation = relationship(
+        "AgentConversation", back_populates="project", uselist=False, cascade="all, delete-orphan"
     )
 
     def __repr__(self):

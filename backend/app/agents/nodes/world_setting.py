@@ -4,7 +4,7 @@ from app.agents.state import NovelState, ConfirmationType
 from app.agents.services.knowledge_base import KnowledgeBaseService
 from app.agents.prompts import WORLD_SETTING_PROMPT
 from app.utils.llm import get_llm_from_state_async
-from app.agents.nodes.utils import get_prompts_from_state, safe_format
+from app.agents.nodes.utils import get_prompts_from_state, safe_format, parse_world_setting_response
 
 
 async def world_setting_node(state: NovelState) -> NovelState:
@@ -29,16 +29,15 @@ async def world_setting_node(state: NovelState) -> NovelState:
     async for chunk in llm.chat_stream([{"role": "user", "content": prompt_text}], temperature=0.7):
         response += chunk
 
-    # 解析 LLM 输出，提取分级设定
-    # 简化实现：将整段文本存入 core_concept，分级设定留空让用户补充
+    # 从 LLM 输出中解析分级设定和关键地点
+    parsed = parse_world_setting_response(response)
     world_setting = kb.create_world_setting({
-        "core_concept": response,
-        "tiered_settings": {"red": [], "yellow": [], "green": []},
-        "key_locations": [],
+        "core_concept": parsed["core_concept"],
+        "tiered_settings": parsed["tiered_settings"],
+        "key_locations": parsed["key_locations"],
     })
 
     return {
-        **state,
         "world_setting_id": world_setting.id,
         "waiting_for_confirmation": True,
         "confirmation_type": ConfirmationType.WORLD_SETTING.value,

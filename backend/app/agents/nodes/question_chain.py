@@ -83,7 +83,6 @@ async def question_chain_design_node(state: NovelState) -> NovelState:
         kb.create_plot_question(q_data)
 
     return {
-        **state,
         "phase": Phase.STRUCTURE.value,
         "waiting_for_confirmation": True,
         "confirmation_type": ConfirmationType.STRUCTURE.value,

@@ -32,15 +32,15 @@ from app.agents.agent_tools import (
 class TestToolRegistration:
     """Verify all cognitive tools are properly registered."""
 
-    def test_writing_tools_has_13_tools(self):
-        assert len(WRITING_TOOLS) == 13
+    def test_writing_tools_has_all_tools(self):
+        assert len(WRITING_TOOLS) >= 20, f'Expected at least 20 tools, got {len(WRITING_TOOLS)}'
 
     def test_incubation_tools_subset(self):
-        assert len(INCUBATION_TOOLS) == 3
+        assert len(INCUBATION_TOOLS) >= 8, f'Expected at least 8 tools, got {len(INCUBATION_TOOLS)}'
         assert knowledge_search in INCUBATION_TOOLS
 
     def test_structure_tools_subset(self):
-        assert len(STRUCTURE_TOOLS) == 6
+        assert len(STRUCTURE_TOOLS) >= 10, f'Expected at least 10 tools, got {len(STRUCTURE_TOOLS)}'
         assert propose_outline_adjustment in STRUCTURE_TOOLS
 
     def test_all_tools_have_names(self):

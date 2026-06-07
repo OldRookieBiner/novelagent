@@ -125,4 +125,4 @@ async def structural_review_node(state: NovelState) -> NovelState:
     async for chunk in llm.chat_stream([{"role": "user", "content": prompt_text}], temperature=0.2):
         response += chunk
 
-    return {**state, "phase": Phase.REVISION.value}
+    return {"phase": Phase.REVISION.value}

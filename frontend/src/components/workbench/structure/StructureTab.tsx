@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { GitBranch, BoxSelect, Network, Activity, Hash } from 'lucide-react'
 import { knowledgeApi } from '@/lib/api'
+import { useWorkbenchStore } from '@/stores/workbenchStore'
 import { cn } from '@/lib/utils'
 
 interface StructureTabProps {
@@ -36,9 +37,11 @@ export function StructureTab({ projectId }: StructureTabProps) {
     }
   }, [projectId])
 
+  const knowledgeVersion = useWorkbenchStore((s) => s.knowledgeVersion)
+
   useEffect(() => {
     loadStructure()
-  }, [loadStructure])
+  }, [loadStructure, knowledgeVersion])
 
   const renderContent = () => {
     switch (activeSection) {

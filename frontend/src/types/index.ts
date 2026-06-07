@@ -62,6 +62,11 @@ export interface ProjectListResponse {
   total: number
 }
 
+export interface ProjectInitializeRequest {
+  concept: string
+  target_words?: number
+}
+
 export interface ProjectCreate {
   name: string
   target_words?: number
@@ -118,8 +123,18 @@ export interface OutlineCharacter {
   arc?: string;
 }
 
-// v0.6.1: 世界观设定结构
+// 世界观设定结构（与后端 WorldSettingResponse 对齐）
 export interface WorldSetting {
+  id?: number;
+  project_id?: number;
+  core_concept?: string;
+  tiered_settings?: {
+    red?: string[];
+    yellow?: string[];
+    green?: string[];
+  };
+  key_locations?: string[];
+  // 旧格式字段（Outline.world_setting），兼容显示
   era?: string;
   core_rules?: string;
   power_system?: string;
@@ -291,6 +306,9 @@ export interface UserSettings {
   has_api_key: boolean;
   review_enabled: boolean;
   review_strictness: string;
+  // Agent 模型选择持久化
+  agent_model_config_id?: number | null;
+  agent_model_name?: string | null;
 }
 
 export interface SettingsUpdate {
@@ -300,6 +318,9 @@ export interface SettingsUpdate {
   clear_api_key?: boolean;
   review_enabled?: boolean;
   review_strictness?: string;
+  // Agent 模型选择持久化
+  agent_model_config_id?: number | null;
+  agent_model_name?: string | null;
 }
 
 // ==================== Chat Types ====================

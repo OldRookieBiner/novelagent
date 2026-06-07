@@ -5,6 +5,7 @@
 """
 
 from app.agents.state import NovelState, ConfirmationType
+from app.agents.constants import NODE_TEMPERATURES
 from app.agents.services.knowledge_base import KnowledgeBaseService
 from app.agents.prompts import CHAPTER_PLANNING_PROMPT
 from app.utils.llm import get_llm_from_state_async
@@ -69,14 +70,97 @@ async def chapter_planning_node(state: NovelState) -> NovelState:
         )
 
     response = ""
+    planning_temperature = NODE_TEMPERATURES.get("chapter_planning", 0.7)
     async for chunk in llm.chat_stream(
-        [{"role": "user", "content": prompt_text}], temperature=0.6
+        [{"role": "user", "content": prompt_text}], temperature=planning_temperature
     ):
         response += chunk
 
+    # ========== 解析场景导演信息 ==========
+    scene_directions = _parse_scene_directions(response)
+    pov_character = _extract_pov_from_plan(response, scene_directions)
+
     return {
-        **state,
         "chapter_plan": response,
+        "scene_directions": scene_directions,
+        "pov_character": pov_character,
         "waiting_for_confirmation": True,
         "confirmation_type": ConfirmationType.CHAPTER_NODE.value,
     }
+
+
+def _parse_scene_directions(plan_text: str) -> list[dict]:
+    """从章节点文本中解析场景导演信息"""
+    import re
+    
+    scenes = []
+    # 匹配 "场景N：" 或 "- 场景N：" 开头的段落
+    scene_pattern = re.compile(
+        r'(?:场景[一二三四五六七八九十0-9]+[：:]\s*)?'
+        r'([^\n]+?)\n'  # 场景标题行
+        r'(?:\s*-\s*POV[：:]\s*([^\n]+))?\n?'
+        r'(?:\s*-\s*镜头类型[：:]\s*([^\n]+))?\n?'
+        r'(?:\s*-\s*信息层级[：:]\s*([^\n]+))?\n?'
+        r'(?:\s*-\s*情绪节拍[：:]\s*([^\n]+))?\n?'
+        r'(?:\s*-\s*感官通道[：:]\s*([^\n]+))?\n?'
+        r'(?:\s*-\s*切入动作[：:]\s*([^\n]+))?\n?'
+        r'(?:\s*-\s*切出动作[：:]\s*([^\n]+))?\n?',
+        re.MULTILINE
+    )
+    
+    # 简单的解析：按 "场景" 关键词分割
+    lines = plan_text.split('\n')
+    current_scene = None
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+            
+        # 检测新场景开始
+        if '场景' in line and ('：' in line or ':' in line or line.startswith('-')):
+            if current_scene:
+                scenes.append(current_scene)
+            current_scene = {"location": line, "pov": "", "scene_type": "", "info_level": "", "rhythm_beat": "", "sense_channels": "", "entry_point": "", "exit_point": ""}
+        # 解析场景属性
+        elif current_scene:
+            if 'POV' in line:
+                current_scene["pov"] = line.split('：')[-1].split(':')[-1].strip()
+            elif '镜头类型' in line:
+                current_scene["scene_type"] = line.split('：')[-1].split(':')[-1].strip()
+            elif '信息层级' in line:
+                current_scene["info_level"] = line.split('：')[-1].split(':')[-1].strip()
+            elif '情绪节拍' in line:
+                current_scene["rhythm_beat"] = line.split('：')[-1].split(':')[-1].strip()
+            elif '感官通道' in line:
+                current_scene["sense_channels"] = line.split('：')[-1].split(':')[-1].strip()
+            elif '切入动作' in line:
+                current_scene["entry_point"] = line.split('：')[-1].split(':')[-1].strip()
+            elif '切出动作' in line:
+                current_scene["exit_point"] = line.split('：')[-1].split(':')[-1].strip()
+    
+    if current_scene:
+        scenes.append(current_scene)
+    
+    return scenes if scenes else None
+
+
+def _extract_pov_from_plan(plan_text: str, scene_directions: list[dict]) -> str:
+    """从章节点或场景导演中提取 POV 角色"""
+    import re
+    
+    # 优先从场景导演提取
+    if scene_directions and scene_directions[0].get("pov"):
+        return scene_directions[0]["pov"]
+    
+    # 从文本中搜索 "POV：" 或 "视角：" 关键词
+    pov_match = re.search(r'(?:POV|视角)[:：]\s*([^\n,，]+)', plan_text)
+    if pov_match:
+        return pov_match.group(1).strip()
+    
+    # 从"涉及角色"字段提取第一个角色
+    char_match = re.search(r'涉及角色[：:][^\n]*?([^\n]+)', plan_text)
+    if char_match:
+        return char_match.group(1).strip()
+    
+    return ""

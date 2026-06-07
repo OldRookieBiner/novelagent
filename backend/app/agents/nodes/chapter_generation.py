@@ -5,7 +5,7 @@ import logging
 import re
 from typing import AsyncIterator
 
-from app.agents.state import NovelState, STAGE_CHAPTER_OUTLINES, STAGE_WRITING
+from app.agents.state import NovelState, Phase
 from app.agents.constants import NODE_TEMPERATURES
 from app.services.llm import LLMService
 from app.utils.llm import get_llm_from_state_async
@@ -348,7 +348,7 @@ async def generate_chapter_outlines_node(state: NovelState, llm: LLMService) -> 
 
     chapter_count = state.get("chapter_count", 10)
     if chapter_count <= 0:
-        return {**state, "chapter_outlines": [], "stage": STAGE_CHAPTER_OUTLINES}
+        return {"chapter_outlines": [], "stage": Phase.STRUCTURE.value}
 
     generated_chapters = []
 
@@ -362,9 +362,8 @@ async def generate_chapter_outlines_node(state: NovelState, llm: LLMService) -> 
         generated_chapters.append(chapter_outline)
 
     new_state: NovelState = {
-        **state,
         "chapter_outlines": generated_chapters,
-        "stage": STAGE_CHAPTER_OUTLINES,
+        "stage": Phase.STRUCTURE.value,
     }
 
     return new_state
@@ -714,7 +713,7 @@ async def generate_chapter_content_node(state: NovelState) -> NovelState:
     # 初稿为空 → 不创建空章节，直接返回原状态
     if not draft_content:
         logger.error(f"Chapter {current_chapter} draft is empty, skipping")
-        return {**state, "stage": STAGE_WRITING}
+        return {"stage": Phase.WRITING.value}
 
     # ===== Phase 2 & 3: SelfCheck + Refine =====
     if refinement_enabled:
@@ -768,10 +767,9 @@ async def generate_chapter_content_node(state: NovelState) -> NovelState:
 
     # 更新状态
     new_state: NovelState = {
-        **state,
         "written_chapters": [new_chapter],  # 使用 Annotated[List, add] 会自动追加
         "current_chapter": current_chapter + 1,
-        "stage": STAGE_WRITING,
+        "stage": Phase.WRITING.value,
     }
 
     return new_state

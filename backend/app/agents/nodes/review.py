@@ -4,7 +4,7 @@ import json
 import re
 from typing import Dict, Any
 
-from app.agents.state import NovelState, STAGE_REVIEW
+from app.agents.state import NovelState, Phase
 from app.agents.constants import NODE_TEMPERATURES
 from app.services.llm import LLMService
 from app.utils.llm import get_llm_from_state_async
@@ -325,9 +325,8 @@ async def review_node(state: NovelState) -> NovelState:
 
     # 更新状态
     new_state: NovelState = {
-        **state,
         "review_result": review_result,
-        "stage": STAGE_REVIEW,
+        "stage": Phase.WRITING.value,
     }
 
     return new_state

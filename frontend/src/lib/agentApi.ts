@@ -20,6 +20,7 @@ export interface AgentChatCallbacks {
 /** Agent 聊天请求选项 */
 export interface AgentChatOptions {
   modelConfigId?: number
+  modelName?: string
   activeTab?: string
   activeMenuItem?: string
   currentChapterNumber?: number
@@ -43,6 +44,7 @@ export async function sendAgentMessage(
       body: {
         message,
         model_config_id: options?.modelConfigId,
+        model_name: options?.modelName,
         active_tab: options?.activeTab,
         active_menu_item: options?.activeMenuItem,
         current_chapter_number: options?.currentChapterNumber,

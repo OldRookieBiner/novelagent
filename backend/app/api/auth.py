@@ -41,7 +41,7 @@ async def login(
         key="session_token",
         value=session_token,
         httponly=True,
-        secure=False,  # 开发环境设为 True
+        secure=settings.cookie_secure,  # 根据环境变量动态配置
         samesite="lax",
         max_age=settings.session_expire_seconds,
         path="/",

@@ -61,7 +61,9 @@ interface WorkbenchState {
   toggleAiSidebar: () => void
   aiMessages: AiMessage[]
   addAiMessage: (message: AiMessage) => void
+  updateAiMessage: (id: string, updater: (msg: AiMessage) => AiMessage) => void
   clearAiMessages: () => void
+  setAiMessages: (messages: AiMessage[]) => void
 
   // Impact assessment
   pendingImpacts: ImpactReport[]
@@ -84,6 +86,10 @@ interface WorkbenchState {
   // Model selection
   selectedModelKey: string
   setSelectedModelKey: (key: string) => void
+
+  // Knowledge refresh trigger
+  knowledgeVersion: number
+  incrementKnowledgeVersion: () => void
 
   // Project isolation
   currentProjectId: number | null
@@ -109,7 +115,12 @@ export const useWorkbenchStore = create<WorkbenchState>((set) => ({
   aiMessages: [],
   addAiMessage: (message) =>
     set((s) => ({ aiMessages: [...s.aiMessages, message] })),
+  updateAiMessage: (id, updater) =>
+    set((s) => ({
+      aiMessages: s.aiMessages.map((m) => (m.id === id ? updater(m) : m)),
+    })),
   clearAiMessages: () => set({ aiMessages: [] }),
+  setAiMessages: (messages) => set({ aiMessages: messages }),
 
   // Impact assessment
   pendingImpacts: [],
@@ -136,7 +147,11 @@ export const useWorkbenchStore = create<WorkbenchState>((set) => ({
   selectedModelKey: '',
   setSelectedModelKey: (key) => set({ selectedModelKey: key }),
 
+  // Knowledge refresh trigger (incremented on agent_done to trigger tab refreshes)
+  knowledgeVersion: 0,
+  incrementKnowledgeVersion: () => set((s: { knowledgeVersion: number }) => ({ knowledgeVersion: s.knowledgeVersion + 1 })),
+
   // Project
   currentProjectId: null,
-  setCurrentProjectId: (id) => set({ currentProjectId: id }),
+  setCurrentProjectId: (id) => set({ currentProjectId: id, aiMessages: [], pendingImpacts: [], agentWarnings: [], knowledgeVersion: 0 }),
 }))

@@ -11,7 +11,7 @@ from app.models.user import User
 from app.models.outline import Outline
 from app.models.project import Project
 from app.models.workflow_state import WorkflowState
-from app.agents.state import NovelState, STAGE_OUTLINE
+from app.agents.state import NovelState, Phase
 from app.agents.graph import create_novel_graph_with_checkpointer
 from app.services.workflow_orchestrator import WorkflowOrchestrator
 from app.utils.project import get_project_and_outline
@@ -78,7 +78,7 @@ class OutlineService:
 
         # 更新工作流状态
         workflow_state = get_or_create_workflow_state(self.db, self.project_id)
-        workflow_state.stage = STAGE_OUTLINE
+        workflow_state.stage = Phase.INCUBATION.value
         self.db.commit()
 
         # 构建初始状态（预加载角色/关系数据）
@@ -113,7 +113,7 @@ class OutlineService:
             outline.world_setting = state.get("outline_world_setting")
             outline.emotional_curve = state.get("outline_emotional_curve")
             db.commit()
-            return {"outline_title": outline.title, "stage": STAGE_OUTLINE}
+            return {"outline_title": outline.title, "stage": Phase.INCUBATION.value}
 
         # 执行
         orchestrator = WorkflowOrchestrator(self.db, self.project_id)

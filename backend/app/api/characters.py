@@ -143,6 +143,47 @@ async def create_character(
     return CharacterResponse.model_validate(character)
 
 
+@router.post("/{project_id}/characters/batch", status_code=status.HTTP_201_CREATED)
+async def create_characters_batch(
+    project_id: int,
+    characters: list[CharacterCreate],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """批量创建人物
+
+    在单次事务中创建多个角色，部分失败则整体回滚。
+    """
+    get_project_for_user(project_id, current_user.id, db)
+
+    created = []
+    try:
+        for req in characters:
+            character = Character(
+                project_id=project_id,
+                name=req.name,
+                role=req.role,
+                personality=req.personality,
+                catchphrase=req.catchphrase,
+                habit_action=req.habit_action,
+                deep_fear=req.deep_fear,
+                core_motivation=req.core_motivation,
+                growth_arc=req.growth_arc,
+                appearance=req.appearance,
+                backstory=req.backstory,
+                signature_item=req.signature_item,
+            )
+            db.add(character)
+            db.flush()
+            created.append({"id": character.id, "name": character.name, "role": character.role})
+
+        db.commit()
+        return {"created": len(created), "characters": created}
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="批量创建角色失败，已回滚")
+
+
 @router.get("/{project_id}/characters/{character_id}", response_model=CharacterResponse)
 async def get_character(
     project_id: int,

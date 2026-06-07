@@ -154,11 +154,16 @@ async def get_llm_from_state_async(state: dict, db: Optional["Session"] = None, 
     return await loop.run_in_executor(_db_executor, get_llm_from_state, state)
 
 
-def resolve_llm_service(model_config_id: int | None = None, user_id: int | None = None):
+def resolve_llm_service(model_config_id: int | None = None, user_id: int | None = None, model_name: str | None = None):
     """统一的 LLM 服务解析入口
 
     优先级：model_config_id > user_settings > error
     所有 Agent 相关代码统一使用此函数获取 LLMService。
+
+    Args:
+        model_config_id: 模型配置 ID
+        user_id: 用户 ID
+        model_name: 具体模型名称（用于 coding_plan 类型配置中选择子模型）
     """
     from app.database import SessionLocal
     from app.models.model_config import ModelConfig
@@ -170,7 +175,7 @@ def resolve_llm_service(model_config_id: int | None = None, user_id: int | None 
         try:
             config = db.query(ModelConfig).filter(ModelConfig.id == model_config_id).first()
             if config:
-                return get_llm_service_from_config(config, user_id)
+                return get_llm_service_from_config(config, user_id, model_override=model_name)
         finally:
             db.close()
 

@@ -23,6 +23,9 @@ class UserSettings(Base):
     review_strictness = Column(
         String(20), default="standard"
     )  # loose, standard, strict
+    # Agent 模型选择持久化
+    agent_model_config_id = Column(Integer, nullable=True)
+    agent_model_name = Column(String(100), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

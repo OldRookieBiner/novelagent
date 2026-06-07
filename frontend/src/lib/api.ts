@@ -231,6 +231,58 @@ export const projectsApi = {
   async delete(projectId: number): Promise<void> {
     return request(`/api/projects/${projectId}`, { method: "DELETE" });
   },
+
+  /**
+   * 初始化项目（SSE 流式）
+   * @param concept - 项目概念描述
+   * @param callbacks - SSE 回调函数
+   * @param targetWords - 目标字数
+   * @param modelConfigId - 可选的模型配置 ID
+   * @param modelId - 可选的模型 ID（子模型）
+   */
+  async initialize(
+    concept: string,
+    callbacks: {
+      onEvent: (type: string, data: Record<string, unknown>) => void
+    },
+    targetWords: number,
+    modelConfigId?: number,
+    modelId?: string,
+    signal?: AbortSignal
+  ): Promise<{ project_id: number | null; cancelled?: boolean }> {
+    const { createSSEStream } = await import('./sseParser')
+    let projectId: number | null = null
+
+    await createSSEStream(
+      {
+        url: '/api/projects/initialize',
+        method: 'POST',
+        body: {
+          concept,
+          target_words: targetWords,
+          model_config_id: modelConfigId,
+          model_id: modelId,
+        },
+        signal,
+      },
+      (type: string, data: Record<string, unknown>) => {
+        if (type === 'init:done') {
+          projectId = (data as any).project_id
+        }
+        callbacks.onEvent(type, data)
+      },
+      (error: string) => {
+        console.error('Initialize error:', error)
+      }
+    )
+
+    // AbortSignal 被触发时 projectId 为 null，返回 cancelled 状态
+    if (!projectId) {
+      return { project_id: null, cancelled: true }
+    }
+
+    return { project_id: projectId }
+  },
 };
 
 // ==================== Outline API ====================
@@ -656,7 +708,38 @@ export const volumesApi = {
 }
 // ==================== Knowledge API ====================
 
+// 扩展知识库 API 类型
+declare module '@/lib/api' {
+  interface KnowledgeApi {
+    getTimeline(projectId: number, chapterStart?: number, chapterEnd?: number): Promise<any[]>;
+  }
+}
+
 export const knowledgeApi = {
+  /**
+   * 获取故事种子
+   */
+  async getStorySeed(projectId: number): Promise<{ story_seed: string }> {
+    return request<{ story_seed: string }>(`/api/projects/${projectId}/story-seed`)
+  },
+
+  /**
+   * 更新故事种子
+   */
+  async updateStorySeed(projectId: number, storySeed: string): Promise<{ story_seed: string }> {
+    return request<{ story_seed: string }>(`/api/projects/${projectId}/story-seed`, {
+      method: 'PUT',
+      body: { story_seed: storySeed },
+    })
+  },
+
+  /**
+   * 获取大纲摘要
+   */
+  async getOutlineSummary(projectId: number): Promise<{ outline: Record<string, unknown> }> {
+    return request<{ outline: Record<string, unknown> }>(`/api/projects/${projectId}/outline-summary`)
+  },
+
   /**
    * 获取世界观
    */
@@ -668,7 +751,7 @@ export const knowledgeApi = {
   /**
    * 更新世界观
    */
-  async updateWorldSetting(projectId: number, data: any): Promise<any>
+  async updateWorldSetting(projectId: number, data: Record<string, unknown>): Promise<Record<string, unknown>>
   {
     return request<any>(`/api/projects/${projectId}/world-setting`, {
       method: 'PUT',
@@ -685,9 +768,23 @@ export const knowledgeApi = {
   },
 
   /**
+   * 获取项目角色列表
+   */
+  async getCharacters(projectId: number): Promise<any[]> {
+    return request<any[]>(`/api/projects/${projectId}/characters`)
+  },
+
+  /**
+   * 获取项目角色关系列表
+   */
+  async getRelations(projectId: number): Promise<any[]> {
+    return request<any[]>(`/api/projects/${projectId}/relations`)
+  },
+
+  /**
    * 更新风格约束
    */
-  async updateStyleConstraints(projectId: number, data: any): Promise<any>
+  async updateStyleConstraints(projectId: number, data: Record<string, unknown>): Promise<Record<string, unknown>>
   {
     return request<any>(`/api/projects/${projectId}/style-constraints`, {
       method: 'PUT',

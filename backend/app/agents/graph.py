@@ -43,6 +43,8 @@ from app.agents.nodes.tracking_update import tracking_update_node
 from app.agents.nodes.style_check import style_check_node
 from app.agents.nodes.scene_update import scene_update_node
 from app.agents.nodes.post_write_summary import post_write_summary_node
+from app.agents.nodes.feedback_router import feedback_router_node
+from app.agents.nodes.rewrite import rewrite_node
 from app.agents.nodes.deep_review import deep_review_node
 from app.agents.nodes.structural_review import structural_review_node
 from app.agents.nodes.character_arc_review import character_arc_review_node
@@ -68,15 +70,18 @@ def _should_transition_volume(state: NovelState) -> bool:
     1. 用户显式触发：confirmation_type == VOLUME_TRANSITION
     2. 情节块自然结束：当前情节块是最后一个且已有 completion_summary
     3. 容量预警：第一卷超120章 / 后续卷超前卷1.5倍章数
+
+    性能优化：KB 实例化仅在需要时延迟创建（条件1无需 DB 查询）。
     """
     project_id = state["project_id"]
     current_chapter = state.get("current_chapter", 1)
     current_volume = state.get("current_volume", 1)
 
-    # 1. 用户显式触发
+    # 1. 用户显式触发（无需 DB 查询）
     if state.get("confirmation_type") == ConfirmationType.VOLUME_TRANSITION.value:
         return True
 
+    # 延迟创建 KB 实例（仅条件2和3需要）
     from app.agents.services.knowledge_base import KnowledgeBaseService
     kb = KnowledgeBaseService(project_id)
 
@@ -96,7 +101,6 @@ def _should_transition_volume(state: NovelState) -> bool:
         if current_volume > 1:
             prev_volume = kb.get_volume(current_volume - 1)
             if prev_volume:
-                # 前卷章数 = 前卷下一卷的offset - 前卷的offset
                 prev_chapters = volume.chapter_offset - prev_volume.chapter_offset
                 if prev_chapters > 0 and volume_chapters > prev_chapters * _VOLUME_CAPACITY_MULTIPLIER:
                     return True
@@ -134,15 +138,21 @@ def route_after_chapter_node(state: NovelState) -> Literal["chapter_writing"]:
 
 def route_after_post_write(
     state: NovelState,
-) -> Literal["deep_review", "volume_transition", "context_assembly", "structural_review"]:
-    """写后自检后的路由
+) -> Literal["rewrite", "deep_review", "volume_transition", "context_assembly", "structural_review"]:
+    """写后自检后的路由（含 feedback_router 结果）
 
     优先级：
+    0. feedback_router 触发重写（严重问题）→ rewrite
     1. 每5章触发深度审查
     2. 卷过渡触发（情节块自然结束 / 容量预警 / 用户显式触发）
     3. 全部章节完成→全书修订
-    4. 继续写下一章
+    4. 继续写下一章（包含 writing_constraints）
     """
+    # 检查是否触发重写
+    if state.get("rewrite_triggered"):
+        return "rewrite"
+    
+    # 检查是否触发深度审查
     current_chapter = state.get("current_chapter", 1)
     chapter_count = state.get("chapter_count", 0)
     last_review = state.get("last_review_chapter", 0)
@@ -256,6 +266,8 @@ def create_novel_graph(checkpointer=None):
     graph.add_node("style_check_node", style_check_node)
     graph.add_node("scene_update_node", scene_update_node)
     graph.add_node("post_write_summary_node", post_write_summary_node)
+    graph.add_node("feedback_router_node", feedback_router_node)
+    graph.add_node("rewrite_node", rewrite_node)
 
     # 深度审查
     graph.add_node("deep_review_node", deep_review_node)
@@ -315,10 +327,11 @@ def create_novel_graph(checkpointer=None):
     graph.add_edge("tracking_update_node", "style_check_node")
     graph.add_edge("style_check_node", "scene_update_node")
     graph.add_edge("scene_update_node", "post_write_summary_node")
+    graph.add_edge("post_write_summary_node", "feedback_router_node")
 
-    # 写后路由（含卷过渡）
+    # 写后路由（含重写/约束/卷过渡）
     graph.add_conditional_edges(
-        "post_write_summary_node",
+        "feedback_router_node",
         route_after_post_write,
         {
             "deep_review": "deep_review_node",
@@ -327,6 +340,9 @@ def create_novel_graph(checkpointer=None):
             "structural_review": "structural_review_node",
         },
     )
+
+    # rewrite 节点边（重写完成后回到写后自检）
+    graph.add_edge("rewrite_node", "post_write_summary_node")
 
     # 深度审查后路由（含卷过渡）
     graph.add_conditional_edges(
@@ -377,6 +393,7 @@ __all__ = [
     "route_after_knowledge",
     "route_after_structure",
     "route_after_chapter_node",
+    "route_after_feedback_router",
     "route_after_post_write",
     "route_after_deep_review",
     "route_after_volume_transition",

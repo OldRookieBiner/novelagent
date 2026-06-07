@@ -1,3 +1,4 @@
+# Deprecated: 旧版工作流路径，将通过 Agent 替代。请勿新增功能。
 """Outline API routes"""
 
 import json
@@ -24,8 +25,7 @@ from app.utils.workflow import get_or_create_workflow_state
 from app.utils.error import format_sse_error
 from app.agents.sse_events import format_done
 from app.agents.state import (
-    STAGE_OUTLINE,
-    STAGE_CHAPTER_OUTLINES
+    Phase
 )
 from app.agents.nodes.outline_generation import (
     DEFAULT_CHAPTER_COUNT,
@@ -68,7 +68,7 @@ async def generate_outline(
 
     # 更新工作流状态
     workflow_state = get_or_create_workflow_state(db, project_id)
-    workflow_state.stage = STAGE_OUTLINE
+    workflow_state.stage = Phase.INCUBATION.value
     db.commit()
 
     # 导入完整 graph 和共享 SSE 流生成器
@@ -115,7 +115,7 @@ async def generate_outline(
 
                 # 更新工作流状态
                 workflow_state = get_or_create_workflow_state(db, project_id)
-                workflow_state.stage = STAGE_OUTLINE
+                workflow_state.stage = Phase.INCUBATION.value
 
                 db.commit()
                 db.refresh(outline)
@@ -132,7 +132,7 @@ async def generate_outline(
                         "confirmed": False,
                         "chapter_count_suggested": outline.chapter_count_suggested,
                     },
-                    "stage": STAGE_OUTLINE,
+                    "stage": Phase.INCUBATION.value,
                 }
                 yield f"event: done\ndata: {json.dumps(completion_data)}\n\n"
             else:
@@ -225,7 +225,7 @@ async def confirm_outline(
     outline.confirmed = True
     # Skip chapter count stage, go directly to chapter outlines generating
     workflow_state = get_or_create_workflow_state(db, project_id)
-    workflow_state.stage = STAGE_CHAPTER_OUTLINES
+    workflow_state.stage = Phase.STRUCTURE.value
 
     db.commit()
     db.refresh(outline)
@@ -263,7 +263,7 @@ async def set_chapter_count(
 
     # 更新工作流状态
     workflow_state = get_or_create_workflow_state(db, project_id)
-    workflow_state.stage = STAGE_CHAPTER_OUTLINES
+    workflow_state.stage = Phase.STRUCTURE.value
 
     db.commit()
     db.refresh(outline)
@@ -331,7 +331,7 @@ async def update_collected_info(
     )
     if has_genre and has_world and has_protagonist:
         workflow_state = get_or_create_workflow_state(db, project_id)
-        workflow_state.stage = STAGE_OUTLINE
+        workflow_state.stage = Phase.INCUBATION.value
 
     db.commit()
     db.refresh(outline)

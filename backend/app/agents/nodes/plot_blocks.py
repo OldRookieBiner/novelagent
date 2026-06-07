@@ -97,4 +97,4 @@ async def plot_blocks_node(state: NovelState) -> NovelState:
     for block_data in parsed:
         kb.create_plot_block(block_data)
 
-    return {**state}
+    return {}

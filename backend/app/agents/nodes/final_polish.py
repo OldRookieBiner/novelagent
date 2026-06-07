@@ -102,7 +102,7 @@ async def final_polish_node(state: NovelState) -> NovelState:
         "revision_context": None,
     }
 
-    return {**state, **updates}
+    return {**updates}
 
 
 def _generate_encyclopedia_summary(kb: KnowledgeBaseService) -> str:

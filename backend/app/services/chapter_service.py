@@ -11,7 +11,7 @@ from app.models.user import User
 from app.models.outline import Outline
 from app.models.project import Project
 from app.models.workflow_state import WorkflowState
-from app.agents.state import NovelState, STAGE_CHAPTER_OUTLINES
+from app.agents.state import NovelState, Phase
 from app.agents.graph import create_novel_graph_with_checkpointer
 from app.services.workflow_orchestrator import WorkflowOrchestrator
 from app.utils.project import get_project_and_outline
@@ -73,7 +73,7 @@ class ChapterService:
 
         # 更新工作流状态
         workflow_state = get_or_create_workflow_state(self.db, self.project_id)
-        workflow_state.stage = STAGE_CHAPTER_OUTLINES
+        workflow_state.stage = Phase.STRUCTURE.value
         self.db.commit()
 
         # 构建初始状态（预加载角色/关系数据）
@@ -104,7 +104,7 @@ class ChapterService:
             """在 chapter_outlines_node 完成后持久化章节大纲数据"""
             # TODO: 实现 ChapterOutline 写入逻辑
             db.commit()
-            return {"stage": STAGE_CHAPTER_OUTLINES}
+            return {"stage": Phase.STRUCTURE.value}
 
         # 执行
         orchestrator = WorkflowOrchestrator(self.db, self.project_id)

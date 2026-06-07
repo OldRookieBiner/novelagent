@@ -33,7 +33,7 @@ class AgentConversation(Base):
         cascade='all, delete-orphan',
         order_by='AgentMessage.created_at',
     )
-    project = relationship('Project', backref='agent_conversation', uselist=False)
+    project = relationship('Project', back_populates="agent_conversation", uselist=False)
 
 
 class AgentMessage(Base):

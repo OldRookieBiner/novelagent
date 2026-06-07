@@ -96,7 +96,6 @@ async def foreshadowing_plan_node(state: NovelState) -> NovelState:
         kb.create_foreshadowing(fs_data)
 
     return {
-        **state,
         "waiting_for_confirmation": True,
         "confirmation_type": ConfirmationType.FORESHADOWING_PLAN.value,
     }

@@ -18,13 +18,13 @@ async def scene_update_node(state: NovelState) -> NovelState:
     # 找到刚写完的章节
     chapter = find_chapter_by_number(written_chapters, current_chapter)
     if not chapter:
-        return {**state}
+        return {}
 
     content = chapter.get("content", "")
     written_chapter_num = chapter.get("chapter_number", current_chapter - 1)
 
     if not content:
-        return {**state}
+        return {}
 
     # 更新场景清单（整章作为一个场景条目）
     kb.create_scene_entry({
@@ -37,4 +37,4 @@ async def scene_update_node(state: NovelState) -> NovelState:
         "key_events": [],
     })
 
-    return {**state}
+    return {}

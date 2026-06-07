@@ -1,4 +1,4 @@
-"""上下文组装节点（感知）—— 按需检索版
+"""上下文组装节点（感知）—— 按需检索版 + 前章收束画面
 
 写作循环的第一步：按需加载当前章节所需的所有上下文。
 使用 RetrievalService 语义检索替代全文加载：
@@ -6,22 +6,31 @@
 - 语义检索：涉及角色 + 涉及设定（由章节点中的关键词触发）
 - 直接检查：待回收伏笔 + 问题链
 - 前文上下文：通过 context_strategy 加载
+- 前章收束画面：提取上章最后 300 字原文，确保下章开头精准衔接
 
 组装结果写入 state["assembled_context"]，供下游 chapter_planning_node 使用。
 """
+
+import logging
 
 from app.agents.state import NovelState, Phase
 from app.agents.services.knowledge_base import KnowledgeBaseService
 from app.agents.services.retrieval import RetrievalService
 
+logger = logging.getLogger(__name__)
+
+# 前章收束画面截取长度（字符数）
+_PREVIOUS_CHAPTER_CLOSING_LENGTH = 300
+
 
 async def context_assembly_node(state: NovelState) -> NovelState:
-    """组装当前章节的上下文（按需检索）
+    """组装当前章节的上下文（按需检��）
 
     替代旧版全文加载，改为：
     1. 始终加载：当前情节块 + 风格约束（这两项始终需要且体积小）
     2. 语义检索：涉及角色/设定/伏笔（按需，不是全文）
     3. 直接检查：待回收伏笔 + 待回答问题（精确查询，不走检索）
+    4. 前章收束画面：提取上章最后 300 字原文
     """
     project_id = state["project_id"]
     current_chapter = state.get("current_chapter", 1)
@@ -30,6 +39,23 @@ async def context_assembly_node(state: NovelState) -> NovelState:
     retrieval = RetrievalService(project_id)
 
     context_parts = []
+
+    # ========== 0. 前章收束画面（新增）==========
+    last_chapter_closing_scene = ""
+    if current_chapter > 1:
+        # 读取上章完整内容
+        previous_chapter = kb.get_chapter_by_number(current_chapter - 1)
+        if previous_chapter and previous_chapter.content:
+            content = previous_chapter.content
+            # 提取最后 300 字
+            last_chapter_closing_scene = content[-_PREVIOUS_CHAPTER_CLOSING_LENGTH:] if len(content) > _PREVIOUS_CHAPTER_CLOSING_LENGTH else content
+            # 清理首尾空白
+            last_chapter_closing_scene = last_chapter_closing_scene.strip()
+            
+            if last_chapter_closing_scene:
+                closing_info = f"【上章收束画面】\n{last_chapter_closing_scene}"
+                context_parts.append(closing_info)
+                logger.debug(f"已提取第 {current_chapter - 1} 章收束画面，长度: {len(last_chapter_closing_scene)} 字")
 
     # ========== 1. 始终加载 ==========
 
@@ -124,12 +150,35 @@ async def context_assembly_node(state: NovelState) -> NovelState:
             timeline_info += f"第{t.chapter_number}章：{t.summary[:100]}\n"
         context_parts.append(timeline_info.rstrip())
 
+    # ========== 5. 写作约束（来自 feedback_router）==========
+    writing_constraints = state.get("writing_constraints")
+    if writing_constraints:
+        constraints_info = "【本章写作约束】\n" + "\n".join(f"- {c}" for c in writing_constraints)
+        context_parts.append(constraints_info)
+
     # ========== 组装 ==========
 
     assembled_context = "\n\n".join(context_parts) if context_parts else "（无额外上下文）"
 
-    return {
-        **state,
+    # 初始化新字段的默认值
+    result = {
         "phase": Phase.WRITING.value,
         "assembled_context": assembled_context,
+        "last_chapter_closing_scene": last_chapter_closing_scene,
     }
+
+    # 首次运行时初始化新字段
+    if "scene_directions" not in state:
+        result["scene_directions"] = None
+    if "pov_character" not in state:
+        result["pov_character"] = None
+    if "rewrite_count" not in state:
+        result["rewrite_count"] = 0
+    if "issue_accumulator" not in state:
+        result["issue_accumulator"] = {}
+    if "volume_plans" not in state:
+        result["volume_plans"] = None
+    if "index_stale" not in state:
+        result["index_stale"] = False
+
+    return result

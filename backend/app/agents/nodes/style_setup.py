@@ -46,7 +46,6 @@ async def style_setup_node(state: NovelState) -> NovelState:
     })
 
     return {
-        **state,
         "style_constraints_id": constraints.id,
         "waiting_for_confirmation": True,
         "confirmation_type": ConfirmationType.STYLE.value,

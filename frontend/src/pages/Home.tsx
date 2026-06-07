@@ -146,7 +146,7 @@ export default function Home()
       <CreateProjectDialog
         open={showCreateDialog}
         onOpenChange={setShowCreateDialog}
-        onCreated={fetchProjects}
+        
       />
 
       {/* Delete Confirmation Dialog */}

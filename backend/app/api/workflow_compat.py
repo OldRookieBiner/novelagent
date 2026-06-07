@@ -1,3 +1,4 @@
+# Deprecated: 旧版工作流兼容层，将被移除。请勿新增功能。
 """Legacy workflow compatibility layer
 
 Provides the old build_initial_state function for legacy API endpoints

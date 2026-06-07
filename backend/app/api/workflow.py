@@ -30,6 +30,7 @@ from app.agents.sse_events import (
     format_done,
     format_waiting,
     format_sse_error,
+    format_heartbeat,
 )
 from app.agents.graph import create_novel_graph_with_checkpointer
 from app.agents.state import NovelState, Phase, ConfirmationType
@@ -63,7 +64,17 @@ async def stream_workflow_events(
         else:
             yield format_node_start("workflow_resume", "Resuming creation agent")
 
+        import asyncio
+        _last_heartbeat = asyncio.get_event_loop().time()
+        _HEARTBEAT_INTERVAL = 15  # 15秒发送一次心跳，防止代理/负载均衡器断开连接
+
         async for event in graph.astream_events(initial_state, config, version="v2"):
+            # 心跳检测：如果距离上次事件超过 HEARTBEAT_INTERVAL，发送心跳
+            now = asyncio.get_event_loop().time()
+            if now - _last_heartbeat > _HEARTBEAT_INTERVAL:
+                yield format_heartbeat()
+                _last_heartbeat = now
+
             event_type = event.get("event")
             event_name = event.get("name", "")
             event_data = event.get("data", {})
@@ -176,7 +187,6 @@ def build_initial_state(
         "phase": Phase.INCUBATION.value,
 
         # 创意孵化
-        "story_seed": None,
         "inspiration_messages": [],
 
         # 知识库 ID 引用
@@ -409,50 +419,43 @@ async def confirm_workflow(
             detail="Workflow is not waiting for confirmation",
         )
 
-    # 清除等待确认标志
-    checkpoint_state["waiting_for_confirmation"] = False
-
-    # 如果是创意对话确认，追加用户消息
-    confirmation_type = checkpoint_state.get("confirmation_type")
-    if request and request.user_message:
-        messages = checkpoint_state.get("inspiration_messages", [])
-        messages.append({"role": "user", "content": request.user_message})
-        checkpoint_state["inspiration_messages"] = messages
-
-    # 如果是故事种子确认，保存用户修改的种子
-    if request and request.story_seed:
-        checkpoint_state["story_seed"] = request.story_seed
-
-    # 清除确认类型
-    checkpoint_state["confirmation_type"] = None
-
-    # 同步更新检查点到 DB
-    record = db.query(WorkflowCheckpoint).filter(
-        WorkflowCheckpoint.project_id == project_id,
-        WorkflowCheckpoint.thread_id == "default"
-    ).order_by(WorkflowCheckpoint.updated_at.desc()).first()
-
-    if record:
-        checkpoint_data = record.checkpoint.copy()
-        checkpoint_data["channel_values"] = checkpoint_state
-        record.checkpoint = checkpoint_data
-        from sqlalchemy.orm.attributes import flag_modified
-        flag_modified(record, "checkpoint")
-
-    # 同步更新 WorkflowState
+    # 同步更新 WorkflowState（确认状态 + 确认数据）
     workflow_state = db.query(WorkflowState).filter(
         WorkflowState.project_id == project_id,
         WorkflowState.thread_id == "main"
     ).first()
 
-    if workflow_state:
-        workflow_state.waiting_for_confirmation = False
-        workflow_state.confirmation_type = None
-        # 同步阶段
-        phase_value = checkpoint_state.get("phase", "incubation")
-        workflow_state.stage = phase_value
+    if not workflow_state:
+        workflow_state = WorkflowState(project_id=project_id)
+        db.add(workflow_state)
+        db.commit()
+        db.refresh(workflow_state)
 
-    db.commit()
+    workflow_state.waiting_for_confirmation = False
+    workflow_state.confirmation_type = None
+
+    # 保存确认数据到 WorkflowState（供节点恢复时读取）
+    confirmation_type = checkpoint_state.get("confirmation_type")
+    if request and request.user_message:
+        # 追加用户消息到检查点的 inspiration_messages
+        messages = checkpoint_state.get("inspiration_messages", [])
+        messages.append({"role": "user", "content": request.user_message})
+        checkpoint_state["inspiration_messages"] = messages
+
+    if request and request.story_seed:
+        # 同步更新 DB，确保知识库可查询
+        from app.agents.services.knowledge_base import KnowledgeBaseService
+        kb = KnowledgeBaseService(project_id)
+        kb.update_story_seed(request.story_seed)
+
+    # 清除确认标志（通过检查点更新）
+    checkpoint_state["waiting_for_confirmation"] = False
+    checkpoint_state["confirmation_type"] = None
+
+    # 同步阶段
+    phase_value = checkpoint_state.get("phase", "incubation")
+    workflow_state.stage = phase_value
+
 
     # 通过 LangGraph 恢复执行
     graph = create_novel_graph_with_checkpointer(project_id, "default")

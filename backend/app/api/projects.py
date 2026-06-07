@@ -2,10 +2,10 @@
 
 import logging
 from typing import Optional
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Request
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import get_db, SessionLocal
 from app.models.user import User
 from app.models.project import Project
 from app.models.outline import Outline, ChapterOutline
@@ -223,3 +223,111 @@ async def delete_project(
     db.commit()
 
     return {"success": True, "message": "Project deleted"}
+
+
+# ============================================================
+# 项目初始化端点 - 通过 body 接收参数避免路由解析问题
+# ============================================================
+
+
+# ============================================================
+# 项目初始化端点
+# ============================================================
+@router.post("/initialize")
+async def initialize_project(
+    body: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """初始化项目：创建项目 + 生成基础知识库（SSE 流）"""
+    from fastapi.responses import StreamingResponse
+    
+    concept = body.get("concept", "").strip() if body.get("concept") else ""
+    target_words = body.get("target_words", 100000)
+    model_config_id = body.get("model_config_id")
+    model_id = body.get("model_id")
+    
+    if not concept:
+        raise HTTPException(status_code=400, detail="概念描述不能为空")
+
+    import time
+    try:
+        temp_name = f"新建项目-{int(time.time())}"
+        project = Project(
+            user_id=current_user.id,
+            name=temp_name,
+            target_words=target_words,
+        )
+        db.add(project)
+        db.flush()
+
+        outline = Outline(project_id=project.id)
+        db.add(outline)
+
+        workflow_state = WorkflowState(project_id=project.id)
+        db.add(workflow_state)
+
+        db.commit()
+        db.refresh(project)
+
+        project_id = project.id
+        user_id = current_user.id
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"创建项目失败: {str(e)}")
+
+    from app.agents.nodes.initialization import stream_initialization
+
+    async def event_generator():
+        completed = False
+        try:
+            async for event in stream_initialization(
+                concept=concept,
+                target_words=target_words,
+                project_id=project_id,
+                user_id=user_id,
+                model_config_id=model_config_id,
+                model_id=model_id,
+                request=request,
+            ):
+                yield event
+                # 检查是否完成（收到 complete 事件）
+                if '"status": "complete"' in event:
+                    completed = True
+            # 如果循环正常结束但没有 complete 事件，也检查
+            if not completed:
+                # 检查是否收到 cancelled/timeout（这些也需要清理项目）
+                pass
+        except Exception as e:
+            import logging
+            logging.error(f"初始化流程异常: {str(e)}")
+            err_msg = str(e).replace('"', '\\"').replace("'", "\\'")
+            yield f'event: init:error\\ndata: {{"error": "{err_msg}"}}\\n\\n'
+            yield f'event: init:done\\ndata: {{"project_id": {project_id}, "status": "partial"}}\\n\\n'
+        finally:
+            # 如果项目未完成（取消/超时/异常），删除项目及关联数据
+            if not completed:
+                try:
+                    cleanup_db = SessionLocal()
+                    try:
+                        project = cleanup_db.query(Project).filter(Project.id == project_id).first()
+                        if project:
+                            cleanup_db.delete(project)
+                            cleanup_db.commit()
+                            logging.getLogger(__name__).info(f"已清理未完成的项目 {project_id}")
+                    finally:
+                        cleanup_db.close()
+                except Exception as cleanup_err:
+                    logging.getLogger(__name__).error(f"清理项目失败: {cleanup_err}")
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

@@ -26,7 +26,6 @@ async def inspiration_dialogue_node(state: NovelState) -> NovelState:
     # 首次进入，设置等待用户输入
     if not messages and phase != Phase.INCUBATION.value:
         return {
-            **state,
             "phase": Phase.INCUBATION.value,
             "waiting_for_confirmation": True,
             "confirmation_type": ConfirmationType.INSPIRATION_DIALOGUE.value,
@@ -63,7 +62,6 @@ async def inspiration_dialogue_node(state: NovelState) -> NovelState:
     new_messages = list(messages) + [{"role": "assistant", "content": response}]
 
     return {
-        **state,
         "phase": Phase.INCUBATION.value,
         "inspiration_messages": new_messages,
         "waiting_for_confirmation": True,

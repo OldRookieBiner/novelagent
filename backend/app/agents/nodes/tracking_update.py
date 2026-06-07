@@ -35,7 +35,7 @@ async def tracking_update_node(state: NovelState) -> NovelState:
     # 找到刚写完的章节
     chapter = find_chapter_by_number(written_chapters, current_chapter)
     if not chapter:
-        return {**state}
+        return {}
 
     written_chapter_num = chapter.get("chapter_number", current_chapter - 1)
     content = chapter.get("content", "")
@@ -123,36 +123,82 @@ async def tracking_update_node(state: NovelState) -> NovelState:
             "answered_in_chapter": written_chapter_num,
         })
 
-    return {**state}
+    return {}
 
 
 def _is_foreshadowing_mentioned(foreshadowing_content: str, chapter_content: str) -> bool:
     """检查伏笔是否在本章被提及
 
-    使用关键词匹配：取伏笔内容的前 10 个字符作为关键词。
-    后续 Phase 3+ 可升级为语义匹配。
+    使用多关键词匹配：从伏笔内容中提取多个关键词片段，
+    任一匹配即视为提及。比单一前缀匹配更鲁棒。
+
+    关键词提取策略：
+    1. 前缀匹配（10字）
+    2. 按标点分词后的各段
+    3. 滑动窗口提取 4-6 字片段（处理无标点的短伏笔）
     """
     if not foreshadowing_content or not chapter_content:
         return False
-    # 取前 10 字符作为关键词
-    keyword = foreshadowing_content[:10]
-    if len(keyword) < 2:
-        return False
-    return keyword in chapter_content
+
+    keywords = []
+    # 1. 前缀（最直接的引用方式）
+    prefix = foreshadowing_content[:10]
+    if len(prefix) >= 2:
+        keywords.append(prefix)
+
+    # 2. 按标点/空格分词，取每个词的前6字
+    import re as _re
+    segments = _re.split(r"[，。、：；！？\s]", foreshadowing_content)
+    for seg in segments[:4]:
+        seg = seg.strip()
+        if len(seg) >= 2:
+            keywords.append(seg[:6])
+
+    # 3. 滑动窗口：提取 4-6 字的片段（处理无标点的伏笔内容）
+    # 从位置 0 开始，步长 4，提取 len=4 的窗口
+    for start in range(0, max(len(foreshadowing_content) - 3, 1), 4):
+        window = foreshadowing_content[start:start + 4]
+        if len(window) >= 2 and window not in keywords:
+            keywords.append(window)
+
+    # 任一关键词匹配即视为提及
+    return any(kw in chapter_content for kw in keywords)
 
 
 def _is_foreshadowing_resolved(foreshadowing_content: str, chapter_content: str) -> bool:
     """检查伏笔是否在本章被回收
 
     回收 = 伏笔的核心信息在本章被揭示/解释/回应。
-    使用更宽松的匹配：关键词 + 上下文。
+    使用多关键词 + 频率阈值：至少 2 个不同关键词出现，或
+    单个核心关键词出现 2+ 次。
 
     注意：这是一个简化实现。理想的实现应该用 LLM 判断伏笔是否被回收。
     """
     if not foreshadowing_content or not chapter_content:
         return False
-    # 简化：取伏笔关键词的前 6 字符，匹配频率 >1
-    keyword = foreshadowing_content[:6]
-    if len(keyword) < 2:
+
+    import re
+    # 从伏笔内容中提取核心片段
+    keywords = []
+    prefix = foreshadowing_content[:6]
+    if len(prefix) >= 2:
+        keywords.append(prefix)
+
+    # 按标点分词提取更多关键词
+    segments = re.split(r"[，。、：；！？\s]", foreshadowing_content)
+    for seg in segments[:3]:
+        seg = seg.strip()
+        if len(seg) >= 2:
+            keywords.append(seg[:6])
+
+    if not keywords:
         return False
-    return chapter_content.count(keyword) >= 2
+
+    # 至少 2 个不同关键词出现，或核心关键词出现 2+ 次
+    match_count = sum(1 for kw in keywords if kw in chapter_content)
+    if match_count >= 2:
+        return True
+
+    # 核心关键词出现 2+ 次
+    core_kw = keywords[0]
+    return chapter_content.count(core_kw) >= 2

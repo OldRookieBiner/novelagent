@@ -120,6 +120,5 @@ async def deep_review_node(state: NovelState) -> NovelState:
 
     # 更新 last_review_chapter
     return {
-        **state,
         "last_review_chapter": written_chapter_num,
     }

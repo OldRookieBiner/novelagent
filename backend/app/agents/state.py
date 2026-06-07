@@ -89,7 +89,7 @@ class NovelState(TypedDict):
     phase: str  # Phase enum value
 
     # ========== 创意孵化 ==========
-    story_seed: Optional[str]
+    # 故事种子已持久化到 Project.story_seed，通过 KB 读取
     # 创意对话消息（临时，孵化完成后不保留到检查点）
     inspiration_messages: list[dict]
 
@@ -125,6 +125,39 @@ class NovelState(TypedDict):
     # 修订范围控制：per_volume = 逐卷修订, full_book = 全书修订
     # 修订节点读取此字段决定审查范围
     revision_context: Optional[str]  # RevisionContext enum value
+    # ========== 生文质量提升 v1.0 ==========
+    # 前章结尾冻结画面（上下文连贯性）
+    last_chapter_closing_scene: Optional[str]
+    # 场景导演指令（场景精细化）
+    scene_directions: Optional[list[dict]]
+    # POV 视角角色
+    pov_character: Optional[str]
+    # 写作约束（中等问题自动修复）
+    writing_constraints: Optional[list[str]]
+    # 重写计数（防止无限循环）
+    rewrite_count: int
+    # 轻微问题累积器（3次同类升级为中等）
+    issue_accumulator: dict[str, int]
+    # 多卷规划结果
+    volume_plans: Optional[list[dict]]
+    # 索引是否需要重建
+    index_stale: bool
+
+    # ========== 旧版兼容字段（deprecated，新节点通过 KB 读取）==========
+    # 以下字段由旧版 API 路径写入，旧版节点读取。
+    # 新版工作流节点不应依赖这些字段，应通过 KnowledgeBaseService 从 DB 读取。
+    collected_info: Optional[dict]          # 灵感采集信息（旧版）
+    outline_characters: Optional[list]      # 大纲角色（旧版，由 outline_generation 写入）
+    characters: Optional[list]              # 详细人物设定（旧版，由 character_generation 写入）
+    relations: Optional[list]               # 人物关系（旧版，由 relation_generation 写入）
+    chapter_outlines: Optional[list]        # 章节大纲列表（旧版）
+    outline_title: Optional[str]            # 大纲标题（旧版）
+    outline_summary: Optional[str]          # 大纲概述（旧版）
+    outline_plot_points: Optional[list]     # 大纲情节节点（旧版）
+    outline_emotional_curve: Optional[str]  # 大纲情感曲线（旧版）
+    outline_world_setting: Optional[dict]   # 大纲世界观（旧版）
+    evolution_records: Optional[list]       # 关系演变记录（旧版）
+    evolution_plans: Optional[list]         # 关系演变规划（旧版）
 
     # ========== 工作流控制 ==========
     waiting_for_confirmation: bool
@@ -140,14 +173,4 @@ class NovelState(TypedDict):
     _context_window: int
 
 
-# ========== 兼容旧代码的阶段常量（迁移期使用）==========
-STAGE_INSPIRATION = Phase.INCUBATION.value
-STAGE_OUTLINE = Phase.INCUBATION.value
-STAGE_CHARACTERS = Phase.INCUBATION.value
-STAGE_RELATIONS = Phase.INCUBATION.value
-STAGE_VOLUME_ARC = Phase.STRUCTURE.value
-STAGE_ARC_OUTLINES = Phase.STRUCTURE.value
-STAGE_CHAPTER_OUTLINES = Phase.STRUCTURE.value
-STAGE_WRITING = Phase.WRITING.value
-STAGE_REVIEW = Phase.WRITING.value
-STAGE_COMPLETE = Phase.REVISION.value
+

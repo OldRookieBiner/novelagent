@@ -14,6 +14,7 @@
 """
 
 import logging
+from contextlib import contextmanager
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -47,12 +48,44 @@ class KnowledgeBaseService:
 
     # ========== Session 管理 ==========
 
+    @contextmanager
+    def session(self, readonly=False):
+        """上下文管理器：创建独立 DB session，操作完成后自动关闭
+
+        Args:
+            readonly: 只读模式，不执行 commit/rollback
+
+        使用方式：
+            with kb.session() as db:
+                result = db.query(...)
+            # 读操作：自动 close
+            # 写操作：无异常时 commit + close，异常时 rollback + close
+        """
+        db = SessionLocal()
+        try:
+            yield db
+            if not readonly:
+                db.commit()
+        except Exception:
+            if not readonly:
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+            raise
+        finally:
+            try:
+                db.close()
+            except Exception:
+                pass
+
     def _get_db(self) -> Session:
+        """已废弃：使用 session() 上下文管理器替代"""
         return SessionLocal()
 
     @staticmethod
     def _close_db_read(db: Session):
-        """只读操作的 session 关闭：直接 close，无需 rollback"""
+        """已废弃：使用 session() 上下文管理器替代"""
         try:
             db.close()
         except Exception:
@@ -60,13 +93,7 @@ class KnowledgeBaseService:
 
     @staticmethod
     def _close_db_write(db: Session, committed: bool):
-        """写操作的 session 关闭
-
-        Args:
-            committed: 是否已成功 commit。
-                       True → 直接 close（数据已持久化）
-                       False → 先 rollback 再 close（回滚未提交的变更）
-        """
+        """已废弃：使用 session() 上下文管理器替代"""
         if not committed:
             try:
                 db.rollback()
@@ -699,8 +726,7 @@ class KnowledgeBaseService:
         """Get chapter content by chapter number."""
         from app.models.outline import ChapterOutline
         from app.models.chapter import Chapter
-        db = self._get_db()
-        try:
+        with self.session(readonly=True) as db:
             co = db.query(ChapterOutline).filter(
                 ChapterOutline.project_id == self.project_id,
                 ChapterOutline.chapter_number == chapter_number,
@@ -710,8 +736,38 @@ class KnowledgeBaseService:
             return db.query(Chapter).filter(
                 Chapter.chapter_outline_id == co.id,
             ).first()
-        finally:
-            self._close_db_read(db)
+
+    def save_chapter_content(self, chapter_number: int, content: str, word_count: int = 0) -> None:
+        """将章节正文保存到 DB（检查点瘦身：正文不入 state）
+
+        如果章节已存在则更新内容，否则创建新章节记录。
+        需要对应的 ChapterOutline 已存在。
+        """
+        from app.models.outline import ChapterOutline
+        from app.models.chapter import Chapter
+        with self.session() as db:
+            co = db.query(ChapterOutline).filter(
+                ChapterOutline.project_id == self.project_id,
+                ChapterOutline.chapter_number == chapter_number,
+            ).first()
+            if not co:
+                logger.warning(f"ChapterOutline not found for chapter {chapter_number}, skip saving content")
+                return
+
+            chapter = db.query(Chapter).filter(
+                Chapter.chapter_outline_id == co.id,
+            ).first()
+
+            if chapter:
+                chapter.content = content
+                chapter.word_count = word_count
+            else:
+                chapter = Chapter(
+                    chapter_outline_id=co.id,
+                    content=content,
+                    word_count=word_count,
+                )
+                db.add(chapter)
 
     def update_character_direct(self, character_id: int, data: dict) -> Character:
         """Update character fields directly. Used by _apply_change in agent API."""

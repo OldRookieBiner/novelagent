@@ -15,6 +15,18 @@ RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 MAX_RETRIES = 3
 BASE_DELAY = 1.0  # 秒
 
+# 流式空闲超时：单个 chunk 等待超过此时间则判定连接异常
+STREAM_IDLE_TIMEOUT = 60  # 秒
+
+
+class LLMStreamTimeoutError(Exception):
+    """LLM 流式响应空闲超时异常
+    
+    当 LLM 流式输出在 STREAM_IDLE_TIMEOUT 秒内无任何数据返回时抛出。
+    该异常会被 LLMService 的重试机制捕获并处理。
+    """
+    pass
+
 
 def _is_model_not_found_error(error: APIError) -> bool:
     """判断是否为模型不存在错误（404 且包含 model not found 语义）"""
@@ -91,10 +103,15 @@ class LLMService:
             timeout=httpx.Timeout(300.0, connect=30.0),  # 5分钟总超时，30秒连接超时
         )
 
-    def _should_retry(self, error: APIError, attempt: int) -> bool:
+    def _should_retry(self, error: Exception, attempt: int) -> bool:
         """判断是否应该重试同一模型"""
         if attempt >= MAX_RETRIES:
             return False
+        
+        # 流式空闲超时错误应该重试
+        if isinstance(error, LLMStreamTimeoutError):
+            logger.warning(f"LLM stream idle timeout, retrying (attempt {attempt + 1})")
+            return True
         # 模型不存在错误不重试同一模型（交给 fallback 机制处理）
         if _is_model_not_found_error(error):
             return False
@@ -193,7 +210,23 @@ class LLMService:
                         kwargs["reasoning_effort"] = effort
                     stream = await self.client.chat.completions.create(**kwargs)
 
-                    async for chunk in stream:
+                    # 逐 chunk 读取 + 空闲超时检测
+                    # 如果 60s 内没有收到任何数据，判定连接异常
+                    stream_iter = stream.__aiter__()
+                    while True:
+                        try:
+                            chunk = await asyncio.wait_for(
+                                stream_iter.__anext__(), timeout=STREAM_IDLE_TIMEOUT
+                            )
+                        except StopAsyncIteration:
+                            break
+                        except asyncio.TimeoutError:
+                            # 使用自定义超时异常，避免 APIError 构造问题
+                            # 该异常会被 _should_retry 捕获并处理
+                            raise LLMStreamTimeoutError(
+                                f"LLM stream idle timeout: {STREAM_IDLE_TIMEOUT}s 内无数据返回"
+                            )
+
                         delta = chunk.choices[0].delta if chunk.choices else None
                         if delta and delta.content:
                             yield delta.content
