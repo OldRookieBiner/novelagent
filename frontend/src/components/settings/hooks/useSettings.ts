@@ -1,23 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { settingsApi, systemPromptsApi, modelConfigsApi } from '@/lib/api'
+import { settingsApi, modelConfigsApi } from '@/lib/api'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { toast } from 'sonner'
-import type { SettingsUpdate, SystemPrompt, ModelConfig, ModelConfigCreate, ModelConfigUpdate } from '@/types'
+import type { SettingsUpdate, ModelConfig, ModelConfigCreate, ModelConfigUpdate } from '@/types'
 
-const AGENT_TABS = [
-  { id: 'outline_generation', label: '大纲生成' },
-  { id: 'chapter_outline_generation', label: '章节大纲' },
-  { id: 'chapter_content_generation', label: '正文生成' },
-  { id: 'character_generation', label: '人物生成' },
-  { id: 'relation_generation', label: '关系生成' },
-  { id: 'review', label: '审核' },
-  { id: 'rewrite', label: '重写' },
-] as const
-
-type AgentTab = typeof AGENT_TABS[number]['id']
-
-export type { AgentTab, AGENT_TABS as AGENT_TABS_CONST }
-export { AGENT_TABS }
 
 export function useSettings()
 {
@@ -39,12 +25,6 @@ export function useSettings()
   const setSettings = useSettingsStore((state) => state.setSettings)
 
   // 系统提示词状态
-  const [prompts, setPrompts] = useState<SystemPrompt[]>([])
-  const [promptsLoading, setPromptsLoading] = useState(false)
-  const [selectedAgent, setSelectedAgent] = useState<AgentTab>('outline_generation')
-  const [editContent, setEditContent] = useState('')
-  const [savingPrompt, setSavingPrompt] = useState(false)
-  const [resettingPrompt, setResettingPrompt] = useState(false)
 
   // 加载设置
   useEffect(() =>
@@ -112,84 +92,14 @@ export function useSettings()
   }, [])
 
   // 加载系统提示词
-  const loadPrompts = useCallback(async () =>
-  {
-    setPromptsLoading(true)
-    try
-    {
-      const data = await systemPromptsApi.list()
-      setPrompts(data.prompts)
-    }
-    catch (err)
-    {
-      console.error('Failed to load system prompts:', err)
-      toast.error('加载提示词失败')
-    }
-    finally
-    {
-      setPromptsLoading(false)
-    }
-  }, [])
 
   // 当 prompts 加载后，更新编辑内容
-  useEffect(() =>
-  {
-    const currentPrompt = prompts.find((p) => p.agent_type === selectedAgent)
-    if (currentPrompt)
-    {
-      setEditContent(currentPrompt.prompt_content)
-    }
-  }, [prompts, selectedAgent])
 
   // 当前选中的提示词
-  const currentPrompt = prompts.find((p) => p.agent_type === selectedAgent)
 
   // 保存提示词
-  const handleSavePrompt = useCallback(async () =>
-  {
-    if (!currentPrompt) return
-    setSavingPrompt(true)
-    try
-    {
-      const updated = await systemPromptsApi.update(selectedAgent, { prompt_content: editContent })
-      setPrompts((prev) =>
-        prev.map((p) => (p.agent_type === selectedAgent ? updated : p))
-      )
-    }
-    catch (err)
-    {
-      console.error('Failed to save prompt:', err)
-      toast.error('保存提示词失败')
-    }
-    finally
-    {
-      setSavingPrompt(false)
-    }
-  }, [currentPrompt, selectedAgent, editContent])
 
   // 重置提示词
-  const handleResetPrompt = useCallback(async () =>
-  {
-    if (!confirm('确定要重置为默认值吗？您的修改将丢失。')) return
-    setResettingPrompt(true)
-    try
-    {
-      const updated = await systemPromptsApi.reset(selectedAgent)
-      setPrompts((prev) =>
-        prev.map((p) => (p.agent_type === selectedAgent ? updated : p))
-      )
-      setEditContent(updated.prompt_content)
-    }
-    catch (err)
-    {
-      console.error('Failed to reset prompt:', err)
-      toast.error('重置提示词失败')
-    }
-    finally
-    {
-      setResettingPrompt(false)
-    }
-  }, [selectedAgent])
 
   // 保存审核设置
   const handleSaveReviewSettings = useCallback(async () =>
@@ -367,18 +277,5 @@ export function useSettings()
     saving,
     saved,
     handleSaveReviewSettings,
-    // 系统提示词
-    prompts,
-    promptsLoading,
-    loadPrompts,
-    selectedAgent,
-    setSelectedAgent,
-    editContent,
-    setEditContent,
-    currentPrompt,
-    savingPrompt,
-    resettingPrompt,
-    handleSavePrompt,
-    handleResetPrompt,
   }
 }
