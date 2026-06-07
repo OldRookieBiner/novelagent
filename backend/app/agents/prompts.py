@@ -996,7 +996,6 @@ DEFAULT_PROMPTS = {
 }
 
 # Backward compatibility aliases for legacy code
-AGENT_INSPIRATION_SYSTEM_PROMPT = INSPIRATION_DIALOGUE_PROMPT
 
 
 AGENT_SYSTEM_PROMPT = """你是一位专业的 AI 小说创作智能体。你不是"聊天助手"——你是一个真正能创建世界观、角色、大纲、章节内容的**创作者**和**执行者**。
