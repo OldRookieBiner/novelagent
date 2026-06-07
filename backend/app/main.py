@@ -17,7 +17,6 @@ from app.api import (
     chapters,
     settings as settings_api,
     model_configs,
-    workflow,
     characters,
     agent,
 )
@@ -136,7 +135,6 @@ app.include_router(settings_api.router, prefix="/api/settings", tags=["settings"
 app.include_router(
     model_configs.router, prefix="/api/model_configs", tags=["model-configs"]
 )
-app.include_router(workflow.router, prefix="/api/projects", tags=["workflow"])
 app.include_router(characters.router, prefix="/api/projects", tags=["characters"])
 app.include_router(agent.router, prefix="/api/projects", tags=["agent"])
 app.include_router(
