@@ -14,9 +14,6 @@ vi.mock('@/lib/api', () => ({
   modelConfigsApi: {
     list: vi.fn().mockResolvedValue({ models: [] }),
   },
-  systemPromptsApi: {
-    list: vi.fn().mockResolvedValue({ prompts: [] }),
-  },
 }))
 
 vi.mock('@/stores/settingsStore', () => ({

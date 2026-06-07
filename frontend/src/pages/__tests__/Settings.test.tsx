@@ -26,17 +26,6 @@ const mockUseSettings = vi.fn(() => ({
   saving: false,
   saved: false,
   handleSaveReviewSettings: vi.fn(),
-  prompts: [],
-  promptsLoading: false,
-  loadPrompts: vi.fn(),
-  selectedAgent: 'outline_generation',
-  setSelectedAgent: vi.fn(),
-  editContent: '',
-  setEditContent: vi.fn(),
-  savingPrompt: false,
-  resettingPrompt: false,
-  handleSavePrompt: vi.fn(),
-  handleResetPrompt: vi.fn(),
 }))
 
 vi.mock('@/components/settings/hooks/useSettings', () => ({
@@ -46,7 +35,6 @@ vi.mock('@/components/settings/hooks/useSettings', () => ({
 vi.mock('@/lib/api', () => ({
   settingsApi: { get: vi.fn(), update: vi.fn() },
   modelConfigsApi: { list: vi.fn() },
-  systemPromptsApi: { list: vi.fn() },
   projectsApi: {},
   authApi: {},
   outlineApi: {},
@@ -62,8 +50,7 @@ describe('Settings', () => {
     // 侧边栏导航项和面板标题可能重名，使用 getAllByText 确认存在
     expect(screen.getAllByText('模型配置').length).toBeGreaterThan(0)
     expect(screen.getAllByText('审核设置').length).toBeGreaterThan(0)
-    expect(screen.getByText('Prompt 管理')).toBeInTheDocument()
-  })
+    })
 
   it('renders back button', () => {
     render(<Settings />)
