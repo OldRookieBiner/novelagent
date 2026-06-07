@@ -1363,23 +1363,9 @@ def _build_state_for_review(project_id: int, chapter_number: int) -> dict:
         collected_info["stylePreference"] = getattr(style, "style_preference", "") or ""
     collected_info["targetWords"] = target_words
 
-    # Load custom prompts from DB
-    _prompts = {}
-    try:
-        db2 = SessionLocal()
-        try:
-            from app.models.system_prompt import SystemPrompt
-            prompts = db2.query(SystemPrompt).all()
-            for p in prompts:
-                _prompts[p.node_name] = {"system": p.system_prompt, "user": p.user_prompt}
-        finally:
-            db2.close()
-    except Exception:
-        pass
-
-    if not _prompts:
-        from app.agents.prompts import DEFAULT_PROMPTS
-        _prompts = DEFAULT_PROMPTS
+    # 加载 prompt 模板
+    from app.agents.prompts import DEFAULT_PROMPTS
+    _prompts = DEFAULT_PROMPTS
 
     return {
         "project_id": project_id,
