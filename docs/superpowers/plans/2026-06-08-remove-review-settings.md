@@ -20,9 +20,10 @@
 | `frontend/src/components/settings/ReviewModeSelect.tsx` | 删除 |
 | `frontend/src/pages/Settings.tsx` | 修改：移除审核 tab 内容，保留 tab 导航 |
 | `frontend/src/components/settings/hooks/useSettings.ts` | 修改：移除审核状态和函数 |
-| `frontend/src/types/index.ts` | 修改：移除 settings 相关审核类型，保留 Chapter 中的审核字段 |
+| `frontend/src/types/index.ts` | 修改：移除 UserSettings/SettingsUpdate 中的审核字段，保留 ReviewResponse |
 | `frontend/src/stores/settingsStore.ts` | 修改：移除审核字段 |
-| `frontend/src/components/workbench/creation/AIAssistantPanel.tsx` | 检查清理 |
+| `frontend/src/stores/settingsStore.test.ts` | 修改：移除审核字段引用 |
+| `frontend/src/components/settings/hooks/__tests__/useSettings.test.ts` | 修改：移除审核字段 mock |
 | `frontend/src/pages/__tests__/Settings.test.tsx` | 修改：移除审核断言 |
 
 ### 后端（仅 settings 相关）
@@ -33,9 +34,6 @@
 | `backend/app/schemas/settings.py` | 修改：移除对应字段 |
 | `backend/app/api/settings.py` | 修改：API 移除审核字段 |
 | `backend/app/utils/auth.py` | 修改：移除注册默认值 |
-| `backend/app/models/chapter.py` | **不修改** |
-| `backend/app/schemas/chapter.py` | **不修改** |
-| `backend/app/api/chapters.py` | **不修改** |
 | `backend/alembic/versions/` | 新增：只删除 user_settings 两列的 migration |
 
 ---
@@ -71,7 +69,6 @@ git commit -m "refactor(frontend): remove review config components"
 
 **Files:**
 - Modify: `frontend/src/pages/Settings.tsx`
-- Test: `frontend/src/pages/__tests__/Settings.test.tsx`
 
 - [ ] **Step 1: 读取当前 Settings.tsx**
 
@@ -87,13 +84,7 @@ cat /Users/biner/Dev/novelagent/frontend/src/pages/Settings.tsx
 3. 移除 `activeTab === 'review'` 条件分支中的 `<ReviewConfigPanel>` 渲染
 4. 保留 `SettingsTab` 类型定义（为将来扩展）
 
-- [ ] **Step 3: 运行测试确认无报错**
-
-```bash
-cd /Users/biner/Dev/novelagent/frontend && npm run test:run -- --testPathPattern="Settings"
-```
-
-- [ ] **Step 4: 提交**
+- [ ] **Step 3: 提交**
 
 ```bash
 git add frontend/src/pages/Settings.tsx
@@ -122,13 +113,7 @@ cat /Users/biner/Dev/novelagent/frontend/src/components/settings/hooks/useSettin
 - `useEffect` 中读取 `review_enabled` 的逻辑
 - 返回值中的审核相关字段
 
-- [ ] **Step 3: 运行测试确认无报错**
-
-```bash
-cd /Users/biner/Dev/novelagent/frontend && npm run test:run
-```
-
-- [ ] **Step 4: 提交**
+- [ ] **Step 3: 提交**
 
 ```bash
 git add frontend/src/components/settings/hooks/useSettings.ts
@@ -142,21 +127,23 @@ git commit -m "refactor(frontend): remove review settings from useSettings hook"
 **Files:**
 - Modify: `frontend/src/types/index.ts`
 
-- [ ] **Step 1: 读取当前 types/index.ts 查找审核相关定义**
+- [ ] **Step 1: 读取当前 types/index.ts**
 
 ```bash
-rg "review" /Users/biner/Dev/novelagent/frontend/src/types/index.ts --no-heading -n
+cat /Users/biner/Dev/novelagent/frontend/src/types/index.ts
 ```
 
-- [ ] **Step 2: 移除 settings 相关审核类型，保留 Chapter 中的审核字段**
+- [ ] **Step 2: 修改类型定义**
 
-需要移除的内容：
-- `ReviewResponse` 类型定义（仅与 settings 相关）
-- `mapReviewResult` 函数（仅与 settings 相关）
-- `SettingsUpdate` / `SettingsResponse` 中的 `review_enabled` / `review_strictness`
+**移除（settings 相关）：**
+- `UserSettings` 接口中移除 `review_enabled` / `review_strictness`
+- `SettingsUpdate` 接口中移除 `review_enabled` / `review_strictness`
 
-**保留不变**：
-- `Chapter` 类型中的 `review_passed` / `review_feedback` / `review_result`（后端仍有消费者）
+**保留（chapters 相关，不是死代码）：**
+- `ReviewResponse` 接口
+- `mapReviewResult` 函数
+- `ReviewIssue` 接口
+- `Chapter` 中的 `review_passed` / `review_feedback` / `review_result`
 
 - [ ] **Step 3: 运行 TypeScript 类型检查**
 
@@ -168,7 +155,7 @@ cd /Users/biner/Dev/novelagent/frontend && npx tsc --noEmit
 
 ```bash
 git add frontend/src/types/index.ts
-git commit -m "refactor(frontend): remove review types from index.ts"
+git commit -m "refactor(frontend): remove review settings fields from types"
 ```
 
 ---
@@ -188,13 +175,7 @@ cat /Users/biner/Dev/novelagent/frontend/src/stores/settingsStore.ts
 
 从 state 中移除 `review_enabled` / `review_strictness`
 
-- [ ] **Step 3: 运行测试确认无报错**
-
-```bash
-cd /Users/biner/Dev/novelagent/frontend && npm run test:run -- --testPathPattern="settingsStore"
-```
-
-- [ ] **Step 4: 提交**
+- [ ] **Step 3: 提交**
 
 ```bash
 git add frontend/src/stores/settingsStore.ts
@@ -203,24 +184,36 @@ git commit -m "refactor(frontend): remove review fields from settingsStore"
 
 ---
 
-## 任务 6：前端清理 — AIAssistantPanel.tsx
+## 任务 6：前端清理 — 测试文件
 
 **Files:**
-- Modify: `frontend/src/components/workbench/creation/AIAssistantPanel.tsx`
+- Modify: `frontend/src/stores/settingsStore.test.ts`
+- Modify: `frontend/src/components/settings/hooks/__tests__/useSettings.test.ts`
+- Modify: `frontend/src/pages/__tests__/Settings.test.tsx`
 
-- [ ] **Step 1: 检查是否有审核相关引用**
+- [ ] **Step 1: settingsStore.test.ts**
+
+移除 mock ��据中的 `review_enabled` / `review_strictness`
+
+- [ ] **Step 2: useSettings.test.ts**
+
+移除 mock 返回值中的 `review_enabled` / `review_strictness`
+
+- [ ] **Step 3: Settings.test.tsx**
+
+移除审核 tab 相关断言
+
+- [ ] **Step 4: 运行测试确认无报错**
 
 ```bash
-rg "review" /Users/biner/Dev/novelagent/frontend/src/components/workbench/creation/AIAssistantPanel.tsx --no-heading -n
+cd /Users/biner/Dev/novelagent/frontend && npm run test:run
 ```
 
-- [ ] **Step 2: 如有引用则清理，无则跳过**
-
-- [ ] **Step 3: 提交**
+- [ ] **Step 5: 提交**
 
 ```bash
-git add frontend/src/components/workbench/creation/AIAssistantPanel.tsx
-git commit -m "refactor(frontend): clean up review references in AIAssistantPanel"
+git add frontend/src/stores/settingsStore.test.ts frontend/src/components/settings/hooks/__tests__/useSettings.test.ts frontend/src/pages/__tests__/Settings.test.tsx
+git commit -m "test(frontend): remove review settings from test files"
 ```
 
 ---
@@ -367,12 +360,18 @@ cd /Users/biner/Dev/novelagent/frontend && npm run build
 docker exec novelagent-backend-1 pytest -v
 ```
 
-- [ ] **Step 3: 功能验证**
+- [ ] **Step 3: 类型检查**
+
+```bash
+cd /Users/biner/Dev/novelagent/frontend && npx tsc --noEmit
+```
+
+- [ ] **Step 4: 功能验证**
 
 - 项目详情 API 返回的 `completed_chapters` 仍正常（依赖 chapters.review_passed）
 - 自由 Agent 的 `review_chapter` 工具仍正常工作
 
-- [ ] **Step 4: 整体提交**
+- [ ] **Step 5: 整体提交**
 
 ```bash
 git status
@@ -384,8 +383,10 @@ git commit -m "refactor: remove dead review settings code (frontend + backend + 
 
 ## 自检清单
 
-- [ ] Spec 覆盖：前端删除 2 文件 + 修改 5 文件，后端删除 user_settings 两列 + migration
+- [ ] Spec 覆盖：前端删除 2 文件 + 修改 8 文件，后端删除 user_settings 两列 + migration
 - [ ] Placeholder：无 TBD/TODO，所有步骤含实际代码
-- [ ] 类型一致性：仅清理 settings 相关字段，chapters 表字段保留不变
-- [ ] 无遗漏：ReviewConfigPanel.tsx, ReviewModeSelect.tsx, Settings.tsx, useSettings.ts, types/index.ts, settingsStore.ts, AIAssistantPanel.tsx, Settings.test.tsx, models/settings.py, schemas/settings.py, api/settings.py, utils/auth.py, migration
+- [ ] 类型一致性：仅清理 settings 相关字段，chapters 表字段和 ReviewResponse 类型保留不变
+- [ ] 无遗漏：ReviewConfigPanel.tsx, ReviewModeSelect.tsx, Settings.tsx, useSettings.ts, types/index.ts, settingsStore.ts, settingsStore.test.ts, useSettings.test.ts, Settings.test.tsx, models/settings.py, schemas/settings.py, api/settings.py, utils/auth.py, migration
 - [ ] 活跃功能保护：项目进度计算（api/projects.py）、自由 Agent 审核工具（agent_tools.py）使用的 chapters 表字段未被触及
+- [ ] ReviewResponse 保留：types/index.ts 中的 ReviewResponse / mapReviewResult / ReviewIssue 保留（用于章节审核结果）
+- [ ] 测试覆盖：所有测试文件中移除对已删除字段的引用

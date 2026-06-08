@@ -8,6 +8,8 @@
 - `chapters` 表的 `review_passed` / `review_feedback` / `review_result` 仍有活跃使用（项目进度计算、自由 Agent 审核工具），**不是死代码**
 - `user_settings` 表的 `review_enabled` / `review_strictness` 无任何消费者，是真正的死代码
 
+注意：`types/index.ts` 中的 `ReviewResponse` 和 `mapReviewResult` 用于章节审核结果（与 Chapter 类型配合），不是用户设置，**不应删除**。
+
 ## 方案
 
 只清理 settings 相关字段（用户审核开关），保留 chapters 表的审核字段。
@@ -32,18 +34,18 @@
 - 移除加载时读取 `review_enabled` 的逻辑
 
 **`types/index.ts`**
-- `SettingsUpdate` / `SettingsResponse` 移除 `review_enabled` / `review_strictness`
-- 保留 `Chapter` 类型中的 `review_passed` / `review_feedback` / `review_result`（仍有消费者）
-- 删除 `ReviewResponse` 类型和 `mapReviewResult` 函数（仅与 settings 相关）
+- `UserSettings` 移除 `review_enabled` / `review_strictness`
+- `SettingsUpdate` 移除 `review_enabled` / `review_strictness`
+- **保留** `ReviewResponse` / `mapReviewResult` / `ReviewIssue`（用于章节审核结果）
+- **保留** `Chapter` 中的 `review_passed` / `review_feedback` / `review_result`
 
 **`stores/settingsStore.ts`**
 - settings 状态移除 `review_enabled` / `review_strictness`
 
-**`components/workbench/creation/AIAssistantPanel.tsx`**
-- 检查清理审核相关类型引用（如有）
-
-**`pages/__tests__/Settings.test.tsx`**
-- 移除审核 tab 相关断言
+**测试文件**
+- `stores/settingsStore.test.ts` — 移除 `review_enabled` / `review_strictness` 引用
+- `components/settings/hooks/__tests__/useSettings.test.ts` — 移除审核字段 mock
+- `pages/__tests__/Settings.test.tsx` — 移除审核 tab 相关断言
 
 ## 后端清理
 
@@ -52,26 +54,16 @@
 **`models/settings.py`**
 - 移除列：`review_enabled`、`review_strictness`
 
-**`models/chapter.py`**
-- **不修改** — 保留 `review_passed`、`review_feedback`、`review_result`
-
 ### Schema
 
 **`schemas/settings.py`**
 - `SettingsBase`、`SettingsUpdate`、`SettingsResponse` 移除 `review_enabled` / `review_strictness`
-
-**`schemas/chapter.py`**
-- **不修改** — 保留审核相关字段
 
 ### API
 
 **`api/settings.py`**
 - GET 响应不再返回 `review_enabled` / `review_strictness`
 - PUT 不再接受和写入这两个字段
-- 默认创建（新用户注册）不再设置这两个字段
-
-**`api/chapters.py`**
-- **不修改** — 保留 CRUD 中 `review_passed` / `review_feedback` / `review_result` 的返回
 
 **`utils/auth.py`**
 - 移除注册默认值 `review_enabled=True` / `review_strictness="standard"`
@@ -90,3 +82,4 @@
 - Docker：重建后端镜像，`/api/settings` GET/PUT 不再返回审核字段
 - Migration：`alembic upgrade head` 无报错
 - 功能验证：项目进度计算、自由 Agent 审核工具仍正常工作
+- 类型检查：`npx tsc --noEmit` 无报错（ReviewResponse 等类型保留）
