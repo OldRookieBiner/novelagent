@@ -3,11 +3,10 @@
 from langchain_core.tools import tool
 
 from app.agents.tool_context import get_project_id, get_model_config_id, get_user_id
-from app.agents.services.knowledge_base import KnowledgeBaseService
 from app.utils.llm import resolve_llm_service
 from app.agents.constants import NODE_TEMPERATURES
 from app.agents.review_utils import _build_review_messages, parse_review_result, check_review_passed
-from app.agents.tools.utils import _build_state_for_review
+from app.agents.tools.utils import _kb, _build_state_for_review
 
 
 @tool
@@ -33,13 +32,13 @@ async def review_chapter(chapter_number: int) -> dict:
     except ValueError as e:
         return {"error": f"Cannot resolve LLM config: {e}"}
 
-    # Read chapter from DB
-    kb = KnowledgeBaseService(project_id)
+    # 通过 _kb() 读取章节数据（统一走 tool_context）
+    kb = _kb()
     chapter = kb.get_chapter_by_number(chapter_number)
     if not chapter or not chapter.content:
         return {"error": f"Chapter {chapter_number} not found or has no content"}
 
-    # Get chapter outline
+    # 获取章节大纲
     from app.database import SessionLocal
     from app.models.outline import ChapterOutline
     db = SessionLocal()

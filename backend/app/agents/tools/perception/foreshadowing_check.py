@@ -1,6 +1,7 @@
 """伏笔状态检查工具
 
 B2 增强：新增健康度评分 + 回收建议。
+健康评分考虑小说规模（总章数越多，待回收伏笔容忍度越高）。
 """
 
 from langchain_core.tools import tool
@@ -51,13 +52,27 @@ async def foreshadowing_check(current_chapter: int | None = None) -> dict:
         ],
     }
 
-    # B2 增强：健康度评分
+    # B2 增强：健康度评分（规模感知）
+    # 根据小说规模调整待回收伏笔容忍度
+    outline = kb.get_outline()
+    total_chapters = 0
+    if outline:
+        total_chapters = outline.chapter_count_confirmed or outline.chapter_count_suggested or 0
+
+    # 长篇小说（30+章）容忍更多待回收伏笔
+    pending_tolerance = 3
+    if total_chapters >= 30:
+        pending_tolerance = 5
+    elif total_chapters >= 50:
+        pending_tolerance = 8
+
     health_score = 100
     overdue_deduction = min(len(overdue) * 15, 60)
-    pending_deduction = min(max(len(pending) - 3, 0) * 5, 20)
+    pending_deduction = min(max(len(pending) - pending_tolerance, 0) * 5, 20)
     health_score = max(health_score - overdue_deduction - pending_deduction, 0)
 
     result["health_score"] = health_score
+    result["pending_tolerance"] = pending_tolerance
     if health_score >= 80:
         result["health_label"] = "🟢 健康"
     elif health_score >= 50:

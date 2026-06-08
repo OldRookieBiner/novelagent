@@ -1,7 +1,6 @@
 """共享工具函数
 
 从 agent_tools.py 提取的公共函数，供所有工具使用。
-以原始 agent_tools.py 中的实现为准，逐字复制。
 """
 
 from app.agents.services.knowledge_base import KnowledgeBaseService
@@ -80,7 +79,7 @@ def _extract_keywords(old_value: dict, new_value: dict, description: str) -> lis
                     for word in val.split():
                         if len(word) >= 2:
                             keywords.append(word)
-    return keywords[:10]
+    return keywords[:20]
 
 
 def _grade_impact(
@@ -223,7 +222,7 @@ def _build_state_for_review(project_id: int, chapter_number: int) -> dict:
 
 
 # ========================================================================
-# 方案 B 增强所需的辅助函数（占位符）
+# 方案 B 增强所需的辅助函数
 # ========================================================================
 
 
@@ -258,11 +257,38 @@ def _compare_with_anchor(content: str, anchor: str) -> dict:
     }
 
 
-def _extract_names(text: str) -> list[str]:
-    """从文本提取角色名"""
+def _extract_names(text: str, kb: KnowledgeBaseService | None = None) -> list[str]:
+    """从文本提取角色名
+
+    优先使用知识库角色名精确匹配，无 KB 时降级为中文人名模式匹配。
+    """
+    found = []
+
+    # 优先路径：从知识库获取角色名，在文本中查找
+    if kb is not None:
+        try:
+            chars = kb.get_characters()
+            char_names = [c.name for c in chars if c.name]
+            # 按名字长度降序排列，避免短名误匹配（如"李"匹配"李白"）
+            char_names.sort(key=len, reverse=True)
+            for name in char_names:
+                if name in text:
+                    found.append(name)
+            return found
+        except Exception:
+            pass  # KB 查询失败，降级
+
+    # 降级路径：中文人名模式匹配（2-3字常见人名）
     import re
-    # 匹配中文名字模式（2-4个汉字）
-    return re.findall(r"[一-龥]{2,4}", text)
+    # 排除常见非人名双字组合
+    stopwords = {"但是", "因为", "所以", "如果", "虽然", "已经", "可以", "这个",
+                 "那个", "什么", "怎么", "这样", "那样", "他们", "我们", "她们",
+                 "自己", "不是", "没有", "知道", "看到", "一个", "就是", "还是"}
+    candidates = re.findall(r"[一-龥]{2,3}", text)
+    for c in candidates:
+        if c not in stopwords and c not in found:
+            found.append(c)
+    return found
 
 
 def _extract_times(text: str) -> list[str]:

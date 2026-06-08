@@ -68,7 +68,7 @@ async def generate_chapter_content(
     committed = False
 
     try:
-        # 1. Find or create ChapterOutline (required foreign key for Chapter)
+        # 1. 找到或创建 ChapterOutline（Chapter 的必需外键）
         chapter_outline = db.query(ChapterOutline).filter(
             ChapterOutline.project_id == project_id,
             ChapterOutline.chapter_number == chapter_number
@@ -83,7 +83,7 @@ async def generate_chapter_content(
             db.add(chapter_outline)
             db.flush()
 
-        # 2. Create or update the Chapter
+        # 2. 创建或更新 Chapter
         existing_chapter = db.query(Chapter).filter(
             Chapter.chapter_outline_id == chapter_outline.id
         ).first()
@@ -103,7 +103,7 @@ async def generate_chapter_content(
             )
             db.add(chapter)
 
-        # 3. Create timeline entry (via KnowledgeBaseService for consistency)
+        # 3. 创建时间线条目
         if timeline_summary:
             timeline = TimelineEntry(
                 project_id=project_id,
@@ -117,35 +117,10 @@ async def generate_chapter_content(
             )
             db.add(timeline)
 
-        # 4. Create new foreshadowings via KB service (handles its own session)
-        created_fs = []
-        for fs_data in new_fs:
-            f = kb.create_foreshadowing({
-                "content": fs_data.get("content", ""),
-                "level": fs_data.get("level", "hint"),
-                "planted_chapter": chapter_number,
-                "expected_resolve_chapter": fs_data.get("expected_resolve_chapter"),
-                "related_characters": fs_data.get("related_characters", []),
-            })
-            created_fs.append({"id": f.id, "content": f.content[:60]})
-
-        # 5. Reclaim foreshadowings via KB service
-        for fs_id in reclaimed_ids:
-            kb.update_foreshadowing(fs_id, {"status": "reclaimed"})
-
+        # 先提交核心数据（Chapter + Timeline），确保主记录持久化
         db.commit()
         committed = True
 
-        return {
-            "action": "created" if not existing_chapter else "updated",
-            "chapter_number": chapter_number,
-            "title": chapter_title,
-            "word_count": word_count or len(content),
-            "timeline_entry": bool(timeline_summary),
-            "new_foreshadowings": len(created_fs),
-            "reclaimed_foreshadowings": len(reclaimed_ids),
-            "message": f"第{chapter_number}章「{chapter_title}」已写入（{word_count or len(content)}字）",
-        }
     except Exception as e:
         return {"error": str(e)}
     finally:
@@ -158,3 +133,36 @@ async def generate_chapter_content(
             db.close()
         except Exception:
             pass
+
+    # 4. 通过 KB service 创建新伏笔（独立 session，在主记录持久化之后执行）
+    created_fs = []
+    for fs_data in new_fs:
+        try:
+            f = kb.create_foreshadowing({
+                "content": fs_data.get("content", ""),
+                "level": fs_data.get("level", "hint"),
+                "planted_chapter": chapter_number,
+                "expected_resolve_chapter": fs_data.get("expected_resolve_chapter"),
+                "related_characters": fs_data.get("related_characters", []),
+            })
+            created_fs.append({"id": f.id, "content": f.content[:60]})
+        except Exception:
+            pass  # 伏笔创建失败不影响章节主体
+
+    # 5. 回收伏笔
+    for fs_id in reclaimed_ids:
+        try:
+            kb.update_foreshadowing(fs_id, {"status": "reclaimed"})
+        except Exception:
+            pass
+
+    return {
+        "action": "created" if not existing_chapter else "updated",
+        "chapter_number": chapter_number,
+        "title": chapter_title,
+        "word_count": word_count or len(content),
+        "timeline_entry": bool(timeline_summary),
+        "new_foreshadowings": len(created_fs),
+        "reclaimed_foreshadowings": len(reclaimed_ids),
+        "message": f"第{chapter_number}章「{chapter_title}」已写入（{word_count or len(content)}字）",
+    }

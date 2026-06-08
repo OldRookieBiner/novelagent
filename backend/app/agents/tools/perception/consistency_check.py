@@ -53,9 +53,9 @@ async def consistency_check(chapter_a: int, chapter_b: int, aspect: str = "all")
             content_a = chapter_a_obj.content
             content_b = chapter_b_obj.content
 
-            # 提取角色名
-            names_a = set(_extract_names(content_a))
-            names_b = set(_extract_names(content_b))
+            # 提取角色名（传入 kb 使用知识库精确匹配）
+            names_a = set(_extract_names(content_a, kb))
+            names_b = set(_extract_names(content_b, kb))
             common_names = names_a & names_b
 
             # 提取时间表达
@@ -74,7 +74,6 @@ async def consistency_check(chapter_a: int, chapter_b: int, aspect: str = "all")
                 "common_times": list(common_times)[:10],
             }
 
-            # 只在 character 或 timeline 方面有交叉时才标记
             if common_names and aspect in ("all", "character"):
                 cross_analysis["character_overlap_note"] = (
                     f"两章共同出现 {len(common_names)} 个角色名，请检查行为是否一致"

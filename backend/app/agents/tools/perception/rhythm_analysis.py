@@ -25,18 +25,18 @@ async def rhythm_analysis(last_n_chapters: int = 10) -> dict:
     if not recent:
         return {"has_data": False, "message": "尚无时间线数据，需要先写几章后才能分析节奏"}
 
-    # Detect monotone sections: 3+ consecutive chapters with same emotion_tag
+    # 检测单调段：3+ 章连续相同情绪标签
     monotone_sections = []
     consecutive_same = 0
     last_tag = None
     start_chapter = None
-    last_tag_chapter = None
 
-    for entry in reversed(recent):  # timeline is ordered desc
+    for entry in reversed(recent):  # timeline 按章号降序
         tag = entry.emotion_tag
-        if tag == last_tag and tag:
+        if tag and tag == last_tag:
             consecutive_same += 1
-            if consecutive_same >= 3:
+            # consecutive_same 从 0 开始计数，=2 时表示已有 3 章连续相同
+            if consecutive_same >= 2:
                 monotone_sections.append({
                     "start_chapter": start_chapter,
                     "end_chapter": entry.chapter_number,
@@ -47,7 +47,6 @@ async def rhythm_analysis(last_n_chapters: int = 10) -> dict:
             consecutive_same = 0
             start_chapter = entry.chapter_number
         last_tag = tag
-        last_tag_chapter = entry.chapter_number
 
     # B4 增强：高潮/低谷分布
     peaks = []

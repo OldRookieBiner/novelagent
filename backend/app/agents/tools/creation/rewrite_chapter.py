@@ -3,11 +3,10 @@
 from langchain_core.tools import tool
 
 from app.agents.tool_context import get_project_id, get_model_config_id, get_user_id
-from app.agents.services.knowledge_base import KnowledgeBaseService
 from app.utils.llm import resolve_llm_service
 from app.agents.constants import NODE_TEMPERATURES
 from app.agents.rewrite_utils import _build_rewrite_messages, clean_chapter_content
-from app.agents.tools.utils import _build_state_for_review
+from app.agents.tools.utils import _kb, _build_state_for_review
 
 
 @tool
@@ -33,7 +32,7 @@ async def rewrite_chapter(chapter_number: int) -> dict:
     except ValueError as e:
         return {"error": f"Cannot resolve LLM config: {e}"}
 
-    # Read chapter from DB
+    # 通过 _kb() 读取章节数据（统一走 tool_context）
     from app.database import SessionLocal
     from app.models.outline import ChapterOutline
     from app.models.chapter import Chapter

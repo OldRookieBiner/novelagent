@@ -1,6 +1,7 @@
 """进度报告工具
 
 B6 增强：完稿时间预估 + 里程碑提醒。
+完稿预估附带置信度标注，提醒用户这是粗略估算。
 """
 
 from langchain_core.tools import tool
@@ -48,27 +49,32 @@ async def progress_report() -> dict:
         result["title"] = outline.title or "未命名"
         result["summary"] = (outline.summary or "")[:200]
 
-    # B6 增强：完稿时间预估
+    # B6 增强：完稿时间预估（附带置信度标注）
     if timeline and len(timeline) >= 2 and total_chapters > 0:
-        # 取最近 3 个时间线条目计算写作速度
         recent_entries = timeline[:min(3, len(timeline))]
         if len(recent_entries) >= 2:
             dates = [t.created_at for t in recent_entries if t.created_at]
             if len(dates) >= 2:
-                # 按时间排序（最近的在前）
                 dates.sort(reverse=True)
-                # 计算跨度天数
                 span_days = (dates[0] - dates[-1]).days + 1
                 chapters_in_span = len(recent_entries)
                 if span_days > 0 and chapters_in_span > 0:
-                    speed = chapters_in_span / span_days  # 章/天
+                    speed = chapters_in_span / span_days
                     remaining = total_chapters - written_chapters
                     if remaining > 0 and speed > 0:
                         estimated_days = round(remaining / speed, 1)
+                        # 根据样本量和跨度确定置信度
+                        confidence = "低"
+                        if span_days >= 7 and chapters_in_span >= 3:
+                            confidence = "中"
+                        if span_days >= 14 and chapters_in_span >= 5:
+                            confidence = "高"
                         result["completion_estimate"] = {
                             "speed_chapters_per_day": round(speed, 2),
                             "remaining_chapters": remaining,
                             "estimated_days": estimated_days,
+                            "confidence": confidence,
+                            "note": f"基于最近 {chapters_in_span} 章、{span_days} 天写作节奏的粗略估算，置信度：{confidence}",
                         }
 
     # B6 增强：里程碑提醒

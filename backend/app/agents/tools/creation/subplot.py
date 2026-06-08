@@ -9,7 +9,7 @@ from app.agents.tools.utils import _kb
 async def create_subplot(
     name: str,
     characters: str = "[]",
-    current_status: str = "hint",
+    current_status: str = "developing",
     raised_in_chapter: int | None = None,
     planned_intersection_chapter: int | None = None,
     expected_resolution_chapter: int | None = None,
