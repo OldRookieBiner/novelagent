@@ -1,8 +1,13 @@
-"""一致性检查工具"""
+"""一致性检查工具
+
+A3 增强：在原有知识库约束返回基础上，新增章节内容交叉分析。
+读取两章实际内容，提取角色名和时间表达，找出交叉数据。
+不调用 LLM，由 Agent 判断矛盾。
+"""
 
 from langchain_core.tools import tool
 
-from app.agents.tools.utils import _kb, _serialize
+from app.agents.tools.utils import _kb, _serialize, _extract_names, _extract_times
 
 
 @tool
@@ -38,6 +43,52 @@ async def consistency_check(chapter_a: int, chapter_b: int, aspect: str = "all")
         ws = kb.get_world_setting()
         if ws:
             result["world_setting_red"] = ws.tiered_settings.get("red", []) if ws.tiered_settings else []
+
+    # A3 增强：章节内容交叉分析
+    if aspect in ("all", "character", "timeline"):
+        chapter_a_obj = kb.get_chapter_by_number(chapter_a)
+        chapter_b_obj = kb.get_chapter_by_number(chapter_b)
+
+        if chapter_a_obj and chapter_a_obj.content and chapter_b_obj and chapter_b_obj.content:
+            content_a = chapter_a_obj.content
+            content_b = chapter_b_obj.content
+
+            # 提取角色名
+            names_a = set(_extract_names(content_a))
+            names_b = set(_extract_names(content_b))
+            common_names = names_a & names_b
+
+            # 提取时间表达
+            times_a = set(_extract_times(content_a))
+            times_b = set(_extract_times(content_b))
+            common_times = times_a & times_b
+
+            cross_analysis = {
+                "chapter_a_length": len(content_a),
+                "chapter_b_length": len(content_b),
+                "names_in_a": len(names_a),
+                "names_in_b": len(names_b),
+                "common_names": list(common_names)[:20],
+                "times_in_a": len(times_a),
+                "times_in_b": len(times_b),
+                "common_times": list(common_times)[:10],
+            }
+
+            # 只在 character 或 timeline 方面有交叉时才标记
+            if common_names and aspect in ("all", "character"):
+                cross_analysis["character_overlap_note"] = (
+                    f"两章共同出现 {len(common_names)} 个角色名，请检查行为是否一致"
+                )
+            if common_times and aspect in ("all", "timeline"):
+                cross_analysis["timeline_overlap_note"] = (
+                    f"两章共同出现 {len(common_times)} 个时间表达，请检查时间线是否一致"
+                )
+
+            result["cross_analysis"] = cross_analysis
+        else:
+            result["cross_analysis"] = {
+                "note": "一章或两章内容不存在，无法进行内容交叉分析"
+            }
 
     if not result["issues"]:
         result["message"] = "未发现明显的逻辑矛盾。请提供具体的矛盾描述，我可以帮你进一步分析。"
