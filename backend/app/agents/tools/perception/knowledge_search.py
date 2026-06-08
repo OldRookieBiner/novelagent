@@ -1,6 +1,7 @@
 """知识库语义检索工具
 
 支持 FAISS + BM25 混合检索，索引不存在时降级为关键词匹配。
+A4 增强：DB fallback 路径新增子情节、关系、风格快照搜索。
 """
 
 from langchain_core.tools import tool
@@ -68,6 +69,45 @@ async def knowledge_search(query: str, target: str = "all") -> dict:
         snapshots = kb.get_style_snapshots(last_n=5)
         results["style_constraints"] = _serialize(style) if style else {}
         results["recent_style_snapshots"] = _serialize(snapshots)
+
+    # A4 增强：DB fallback 路径中新增子情节、关系、风格快照的关键词搜索
+    query_lower = query.lower()
+    query_words = [w for w in query_lower.split() if len(w) >= 2]
+
+    # 子情节搜索：匹配 s.name 和 s.current_status（Subplot 模型无 description 字段）
+    if target in ("all", "plot") and query_words:
+        subplots = kb.get_subplots()
+        for s in subplots:
+            subplot_text = f"{s.name} {s.current_status or ''}"
+            if any(kw in subplot_text for kw in query_words):
+                results.setdefault("subplot_matches", []).append({
+                    "id": s.id,
+                    "name": s.name,
+                    "current_status": s.current_status,
+                })
+
+    # 关系搜索：只访问 Column 属性，不访问 lazy-loaded relationship
+    if target in ("all", "characters") and query_words:
+        relations = kb.get_relations()
+        # 构建 ID→name 映射，避免访问 r.character_a.name（DetachedInstanceError）
+        chars_for_map = kb.get_characters()
+        char_name_map = {c.id: c.name for c in chars_for_map}
+        for r in relations:
+            rel_text = f"{char_name_map.get(r.character_a_id, '')} {char_name_map.get(r.character_b_id, '')} {r.relation_type or ''} {r.current_status or ''}"
+            if any(kw in rel_text for kw in query_words):
+                results.setdefault("relation_matches", []).append({
+                    "id": r.id,
+                    "character_a": char_name_map.get(r.character_a_id, ""),
+                    "character_b": char_name_map.get(r.character_b_id, ""),
+                    "relation_type": r.relation_type,
+                    "current_status": r.current_status,
+                })
+
+    # 风格快照搜索：按章节号匹配
+    if target in ("all", "style") and query_words:
+        if "recent_style_snapshots" not in results:
+            snapshots = kb.get_style_snapshots(last_n=10)
+            results["style_snapshots"] = _serialize(snapshots)
 
     filtered = {k: v for k, v in results.items() if v}
     if not filtered:
