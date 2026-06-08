@@ -18,14 +18,6 @@ const mockUseSettings = vi.fn(() => ({
   handleDeleteModel: vi.fn(),
   handleCheckHealth: vi.fn(),
   handleCloseConfigDialog: vi.fn(),
-  reviewMode: 'manual',
-  setReviewMode: vi.fn(),
-  maxRewriteCount: 3,
-  setMaxRewriteCount: vi.fn(),
-  workflowMode: 'hybrid',
-  saving: false,
-  saved: false,
-  handleSaveReviewSettings: vi.fn(),
 }))
 
 vi.mock('@/components/settings/hooks/useSettings', () => ({
@@ -49,8 +41,7 @@ describe('Settings', () => {
     expect(screen.getByText('系统设置')).toBeInTheDocument()
     // 侧边栏导航项和面板标题可能重名，使用 getAllByText 确认存在
     expect(screen.getAllByText('模型配置').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('审核设置').length).toBeGreaterThan(0)
-    })
+  })
 
   it('renders back button', () => {
     render(<Settings />)

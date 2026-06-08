@@ -22,8 +22,6 @@ describe('SettingsStore', () =>
         model_provider: 'openai',
         model_name: 'gpt-4',
         has_api_key: true,
-        review_enabled: true,
-        review_strictness: 'standard',
       })
 
       expect(useSettingsStore.getState().settings?.model_provider).toBe('openai')

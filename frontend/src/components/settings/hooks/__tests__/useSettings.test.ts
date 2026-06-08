@@ -7,8 +7,6 @@ vi.mock('@/lib/api', () => ({
       model_provider: 'openai',
       model_name: 'gpt-4',
       has_api_key: true,
-      review_enabled: true,
-      review_strictness: 'standard',
     }),
   },
   modelConfigsApi: {
