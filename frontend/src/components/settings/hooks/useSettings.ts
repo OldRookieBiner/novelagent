@@ -2,14 +2,12 @@ import { useState, useEffect, useCallback } from 'react'
 import { settingsApi, modelConfigsApi } from '@/lib/api'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { toast } from 'sonner'
-import type { SettingsUpdate, ModelConfig, ModelConfigCreate, ModelConfigUpdate } from '@/types'
+import type { ModelConfig, ModelConfigCreate, ModelConfigUpdate } from '@/types'
 
 
 export function useSettings()
 {
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
 
   // 模型配置状态
   const [modelConfigs, setModelConfigs] = useState<ModelConfig[]>([])
@@ -17,14 +15,8 @@ export function useSettings()
   const [savingConfig, setSavingConfig] = useState(false)
   const [selectedConfigId, setSelectedConfigId] = useState<number | null>(null)
 
-  // 审核设置状态
-  const [reviewMode, setReviewMode] = useState<'off' | 'manual' | 'auto'>('manual')
-  const [maxRewriteCount, setMaxRewriteCount] = useState(3)
-
   // 工作流模式状态
   const setSettings = useSettingsStore((state) => state.setSettings)
-
-  // 系统提示词状态
 
   // 加载设置
   useEffect(() =>
@@ -34,14 +26,6 @@ export function useSettings()
       try
       {
         const data = await settingsApi.get()
-        if (!data.review_enabled)
-        {
-          setReviewMode('off')
-        }
-        else
-        {
-          setReviewMode('manual')
-        }
         setSettings(data)
       }
       catch (err)
@@ -90,41 +74,6 @@ export function useSettings()
       console.error('Failed to refresh model configs:', err)
     }
   }, [])
-
-  // 加载系统提示词
-
-  // 当 prompts 加载后，更新编辑内容
-
-  // 当前选中的提示词
-
-  // 保存提示词
-
-  // 重置提示词
-
-  // 保存审核设置
-  const handleSaveReviewSettings = useCallback(async () =>
-  {
-    setSaving(true)
-    try
-    {
-      const update: SettingsUpdate = {
-        review_enabled: reviewMode !== 'off',
-        review_strictness: 'standard',
-      }
-      const updated = await settingsApi.update(update)
-      setSettings(updated)
-      setSaved(true)
-    }
-    catch (err)
-    {
-      console.error('Failed to save settings:', err)
-      toast.error('保存审核设置失败')
-    }
-    finally
-    {
-      setSaving(false)
-    }
-  }, [reviewMode])
 
   // 创建模型配置
   const handleCreateModel = useCallback(async (data: ModelConfigCreate) =>
@@ -269,13 +218,5 @@ export function useSettings()
     handleCheckHealth,
     handleToggleEnabled,
     handleSelectConfig,
-    // 审核设置
-    reviewMode,
-    setReviewMode,
-    maxRewriteCount,
-    setMaxRewriteCount,
-    saving,
-    saved,
-    handleSaveReviewSettings,
   }
 }
