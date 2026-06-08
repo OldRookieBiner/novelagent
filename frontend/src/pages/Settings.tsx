@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Monitor, Shield, ArrowLeft } from 'lucide-react'
+import { Monitor, ArrowLeft } from 'lucide-react'
 import { useSettings } from '@/components/settings/hooks/useSettings'
 import Header from '@/components/layout/Header'
 import ModelConfigPanel from '@/components/settings/ModelConfigPanel'
-import ReviewConfigPanel from '@/components/settings/ReviewConfigPanel'
 import LoadingSpinner from '@/components/ui/LoadingSpinner'
 import { cn } from '@/lib/utils'
 
@@ -13,12 +12,11 @@ const SETTINGS_NAV = [
     group: '配置',
     items: [
       { id: 'model' as const, label: '模型配置', icon: Monitor },
-      { id: 'review' as const, label: '审核设置', icon: Shield },
     ],
   },
 ]
 
-type SettingsTab = 'model' | 'review'
+type SettingsTab = 'model'
 
 export default function Settings()
 {
@@ -39,14 +37,6 @@ export default function Settings()
     handleCheckHealth,
     handleToggleEnabled,
     handleSelectConfig,
-    // 审核设置
-    reviewMode,
-    setReviewMode,
-    maxRewriteCount,
-    setMaxRewriteCount,
-    saving,
-    saved,
-    handleSaveReviewSettings,
   } = useSettings()
 
   // 切换到模型配置 tab 时加载
@@ -132,19 +122,6 @@ export default function Settings()
               onSelectConfig={handleSelectConfig}
             />
           )}
-
-          {activeTab === 'review' && (
-            <ReviewConfigPanel
-              reviewMode={reviewMode}
-              maxRewriteCount={maxRewriteCount}
-              onReviewModeChange={setReviewMode}
-              onMaxRewriteCountChange={setMaxRewriteCount}
-              saving={saving}
-              saved={saved}
-              onSave={handleSaveReviewSettings}
-            />
-          )}
-
         </main>
       </div>
     </div>
