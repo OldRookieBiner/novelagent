@@ -1,7 +1,7 @@
 """User settings model"""
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -19,10 +19,6 @@ class UserSettings(Base):
     model_provider = Column(String(50), default="deepseek")
     model_name = Column(String(100), default="deepseek-chat")
     api_key_encrypted = Column(Text, nullable=True)
-    review_enabled = Column(Boolean, default=True)
-    review_strictness = Column(
-        String(20), default="standard"
-    )  # loose, standard, strict
     # Agent 模型选择持久化
     agent_model_config_id = Column(Integer, nullable=True)
     agent_model_name = Column(String(100), nullable=True)
