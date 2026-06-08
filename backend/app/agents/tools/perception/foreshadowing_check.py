@@ -59,12 +59,12 @@ async def foreshadowing_check(current_chapter: int | None = None) -> dict:
     if outline:
         total_chapters = outline.chapter_count_confirmed or outline.chapter_count_suggested or 0
 
-    # 长篇小说（30+章）容忍更多待回收伏笔
+    # 长篇小说容忍更多待回收伏笔（先检查大值）
     pending_tolerance = 3
-    if total_chapters >= 30:
-        pending_tolerance = 5
-    elif total_chapters >= 50:
+    if total_chapters >= 50:
         pending_tolerance = 8
+    elif total_chapters >= 30:
+        pending_tolerance = 5
 
     health_score = 100
     overdue_deduction = min(len(overdue) * 15, 60)
