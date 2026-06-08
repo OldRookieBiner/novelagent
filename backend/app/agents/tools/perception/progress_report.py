@@ -1,4 +1,7 @@
-"""进度报告工具"""
+"""进度报告工具
+
+B6 增强：完稿时间预估 + 里程碑提醒。
+"""
 
 from langchain_core.tools import tool
 
@@ -28,10 +31,12 @@ async def progress_report() -> dict:
     active_foreshadowings = [f for f in foreshadowings if f.status in ("active", "pending_reclaim")]
     reclaimed = [f for f in foreshadowings if f.status == "reclaimed"]
 
+    progress_percent = round(written_chapters / total_chapters * 100, 1) if total_chapters else 0
+
     result = {
         "total_planned_chapters": total_chapters,
         "chapters_written": written_chapters,
-        "progress_percent": round(written_chapters / total_chapters * 100, 1) if total_chapters else 0,
+        "progress_percent": progress_percent,
         "characters_count": len(chars),
         "foreshadowings_active": len(active_foreshadowings),
         "foreshadowings_reclaimed": len(reclaimed),
@@ -42,5 +47,39 @@ async def progress_report() -> dict:
     if outline:
         result["title"] = outline.title or "未命名"
         result["summary"] = (outline.summary or "")[:200]
+
+    # B6 增强：完稿时间预估
+    if timeline and len(timeline) >= 2 and total_chapters > 0:
+        # 取最近 3 个时间线条目计算写作速度
+        recent_entries = timeline[:min(3, len(timeline))]
+        if len(recent_entries) >= 2:
+            dates = [t.created_at for t in recent_entries if t.created_at]
+            if len(dates) >= 2:
+                # 按时间排序（最近的在前）
+                dates.sort(reverse=True)
+                # 计算跨度天数
+                span_days = (dates[0] - dates[-1]).days + 1
+                chapters_in_span = len(recent_entries)
+                if span_days > 0 and chapters_in_span > 0:
+                    speed = chapters_in_span / span_days  # 章/天
+                    remaining = total_chapters - written_chapters
+                    if remaining > 0 and speed > 0:
+                        estimated_days = round(remaining / speed, 1)
+                        result["completion_estimate"] = {
+                            "speed_chapters_per_day": round(speed, 2),
+                            "remaining_chapters": remaining,
+                            "estimated_days": estimated_days,
+                        }
+
+    # B6 增强：里程碑提醒
+    milestones = []
+    milestone_thresholds = [10, 50, 90]
+    for threshold in milestone_thresholds:
+        if progress_percent >= threshold:
+            milestones.append({"percent": threshold, "status": "reached"})
+        elif progress_percent >= threshold - 5:
+            milestones.append({"percent": threshold, "status": "approaching", "remaining_percent": round(threshold - progress_percent, 1)})
+    if milestones:
+        result["milestones"] = milestones
 
     return result
