@@ -49,9 +49,6 @@ class Project(Base):
     relations = relationship(
         "Relation", back_populates="project", cascade="all, delete-orphan"
     )
-    checkpoints = relationship(
-        "WorkflowCheckpoint", back_populates="project", cascade="all, delete-orphan"
-    )
     volumes = relationship(
         "Volume", back_populates="project", cascade="all, delete-orphan"
     )

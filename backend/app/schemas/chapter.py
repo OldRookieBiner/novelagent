@@ -65,24 +65,3 @@ class ChapterResponse(BaseModel):
     class Config:
         from_attributes = True
 
-
-class ChapterGenerateRequest(BaseModel):
-    """章节正文生成请求"""
-    llm_config_id: Optional[int] = None
-
-
-class ReviewRequest(BaseModel):
-    strictness: Optional[str] = "standard"  # loose, standard, strict
-    llm_config_id: Optional[int] = None
-
-
-class ReviewResponse(BaseModel):
-    passed: bool
-    feedback: str
-    issues: list[dict] = []  # ReviewIssue 对象列表
-    scores: dict = {}         # 评分详情
-
-
-class RewriteRequest(BaseModel):
-    """章节重写请求"""
-    llm_config_id: Optional[int] = None

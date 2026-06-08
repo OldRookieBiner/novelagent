@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Monitor, Shield, Bot, ArrowLeft } from 'lucide-react'
+import { Monitor, ArrowLeft } from 'lucide-react'
 import { useSettings } from '@/components/settings/hooks/useSettings'
 import Header from '@/components/layout/Header'
 import ModelConfigPanel from '@/components/settings/ModelConfigPanel'
-import ReviewConfigPanel from '@/components/settings/ReviewConfigPanel'
-import AgentPromptPanel from '@/components/settings/AgentPromptPanel'
 import LoadingSpinner from '@/components/ui/LoadingSpinner'
 import { cn } from '@/lib/utils'
 
@@ -14,18 +12,11 @@ const SETTINGS_NAV = [
     group: '配置',
     items: [
       { id: 'model' as const, label: '模型配置', icon: Monitor },
-      { id: 'review' as const, label: '审核设置', icon: Shield },
-    ],
-  },
-  {
-    group: '智能体',
-    items: [
-      { id: 'agents' as const, label: 'Prompt 管理', icon: Bot },
     ],
   },
 ]
 
-type SettingsTab = 'model' | 'review' | 'agents'
+type SettingsTab = 'model'
 
 export default function Settings()
 {
@@ -46,28 +37,6 @@ export default function Settings()
     handleCheckHealth,
     handleToggleEnabled,
     handleSelectConfig,
-    // 审核设置
-    reviewMode,
-    setReviewMode,
-    maxRewriteCount,
-    setMaxRewriteCount,
-    workflowMode,
-    setWorkflowMode,
-    saving,
-    saved,
-    handleSaveReviewSettings,
-    // 系统提示词
-    prompts,
-    promptsLoading,
-    loadPrompts,
-    selectedAgent,
-    setSelectedAgent,
-    editContent,
-    setEditContent,
-    savingPrompt,
-    resettingPrompt,
-    handleSavePrompt,
-    handleResetPrompt,
   } = useSettings()
 
   // 切换到模型配置 tab 时加载
@@ -79,14 +48,6 @@ export default function Settings()
     }
   }, [activeTab, loadModelConfigs])
 
-  // 切换到智能体管理 tab 时加载
-  useEffect(() =>
-  {
-    if (activeTab === 'agents')
-    {
-      loadPrompts()
-    }
-  }, [activeTab, loadPrompts])
 
   if (loading)
   {
@@ -159,35 +120,6 @@ export default function Settings()
               onCheckHealth={handleCheckHealth}
               onToggleEnabled={handleToggleEnabled}
               onSelectConfig={handleSelectConfig}
-            />
-          )}
-
-          {activeTab === 'review' && (
-            <ReviewConfigPanel
-              reviewMode={reviewMode}
-              maxRewriteCount={maxRewriteCount}
-              onReviewModeChange={setReviewMode}
-              onMaxRewriteCountChange={setMaxRewriteCount}
-              workflowMode={workflowMode}
-              onWorkflowModeChange={setWorkflowMode}
-              saving={saving}
-              saved={saved}
-              onSave={handleSaveReviewSettings}
-            />
-          )}
-
-          {activeTab === 'agents' && (
-            <AgentPromptPanel
-              prompts={prompts}
-              promptsLoading={promptsLoading}
-              selectedAgent={selectedAgent}
-              editContent={editContent}
-              savingPrompt={savingPrompt}
-              resettingPrompt={resettingPrompt}
-              onAgentChange={setSelectedAgent}
-              onContentChange={setEditContent}
-              onSave={handleSavePrompt}
-              onReset={handleResetPrompt}
             />
           )}
         </main>

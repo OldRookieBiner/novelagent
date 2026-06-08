@@ -40,6 +40,7 @@ async def test_chat_stream_empty_choices_no_crash():
         service.client.chat.completions.create = AsyncMock(return_value=mock_stream())
         service.model = "test-model"
         service.temperature = 0.7
+        service.fallback_models = []
         service.reasoning_effort = None
 
         # 收集所有 yielded 内容
@@ -71,6 +72,7 @@ async def test_chat_stream_all_empty_choices_no_crash():
         service.client.chat.completions.create = AsyncMock(return_value=mock_stream())
         service.model = "test-model"
         service.temperature = 0.7
+        service.fallback_models = []
         service.reasoning_effort = None
 
         chunks = []
@@ -96,6 +98,7 @@ async def test_chat_empty_choices_no_crash():
         service.client.chat.completions.create = AsyncMock(return_value=mock_response)
         service.model = "test-model"
         service.temperature = 0.7
+        service.fallback_models = []
         service.reasoning_effort = None
 
         # 不应抛 IndexError，而应有更明确的错误信息
@@ -123,6 +126,7 @@ async def test_chat_normal_response_works():
         service.client.chat.completions.create = AsyncMock(return_value=mock_response)
         service.model = "test-model"
         service.temperature = 0.7
+        service.fallback_models = []
         service.reasoning_effort = None
 
         result = await service.chat([{"role": "user", "content": "test"}])

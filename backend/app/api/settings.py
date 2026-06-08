@@ -30,8 +30,6 @@ def get_or_create_settings(db: Session, user_id: int) -> UserSettings:
             user_id=user_id,
             model_provider="deepseek",
             model_name="deepseek-chat",
-            review_enabled=True,
-            review_strictness="standard",
         )
         db.add(settings)
         db.commit()
@@ -46,7 +44,7 @@ async def get_settings(
 ):
     """Get user settings.
 
-    Returns model_provider, model_name, has_api_key (boolean), review_enabled, review_strictness.
+    Returns model_provider, model_name, has_api_key (boolean).
     Creates default settings if user doesn't have any.
     """
     settings = get_or_create_settings(db, current_user.id)
@@ -55,8 +53,6 @@ async def get_settings(
         model_provider=settings.model_provider,
         model_name=settings.model_name,
         has_api_key=bool(settings.api_key_encrypted),
-        review_enabled=settings.review_enabled,
-        review_strictness=settings.review_strictness,
         agent_model_config_id=settings.agent_model_config_id,
         agent_model_name=settings.agent_model_name,
     )
@@ -70,7 +66,7 @@ async def update_settings(
 ):
     """Update user settings.
 
-    Updates model_provider, model_name, review_enabled, review_strictness.
+    Updates model_provider, model_name.
     If api_key is provided, encrypts it before saving.
     Returns updated settings.
     """
@@ -93,13 +89,6 @@ async def update_settings(
     elif request.clear_api_key is True:
         settings.api_key_encrypted = None
 
-    # Update review settings if provided
-    if request.review_enabled is not None:
-        settings.review_enabled = request.review_enabled
-
-    if request.review_strictness is not None:
-        settings.review_strictness = request.review_strictness
-
     # Agent 模型选择持久化
     if request.agent_model_config_id is not None:
         settings.agent_model_config_id = request.agent_model_config_id
@@ -113,8 +102,6 @@ async def update_settings(
         model_provider=settings.model_provider,
         model_name=settings.model_name,
         has_api_key=bool(settings.api_key_encrypted),
-        review_enabled=settings.review_enabled,
-        review_strictness=settings.review_strictness,
         agent_model_config_id=settings.agent_model_config_id,
         agent_model_name=settings.agent_model_name,
     )

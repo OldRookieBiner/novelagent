@@ -9,7 +9,7 @@ from langchain_openai import ChatOpenAI
 
 from app.agents.agent_tools import INCUBATION_TOOLS, STRUCTURE_TOOLS, WRITING_TOOLS
 from app.agents.constants import AGENT_TEMPERATURES
-from app.agents.state import Phase
+from app.agents.constants import Phase
 from app.utils.llm import resolve_llm_service
 
 

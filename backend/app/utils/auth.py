@@ -71,8 +71,6 @@ def create_default_user():
                 model_provider=settings.default_model_provider,
                 model_name="deepseek-chat",
                 api_key_encrypted=None,
-                review_enabled=True,
-                review_strictness="standard",
             )
             db.add(user_settings)
             db.commit()

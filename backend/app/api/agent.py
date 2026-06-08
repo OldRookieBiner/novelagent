@@ -21,7 +21,7 @@ from app.models.model_config import ModelConfig
 from app.agents.agent_graph import create_agent_graph
 from app.agents.prompts import AGENT_SYSTEM_PROMPT
 from app.models.workflow_state import WorkflowState
-from app.agents.state import Phase
+from app.agents.constants import Phase
 from app.agents.agent_context import build_agent_context, get_context_window, estimate_tokens
 from app.agents.tool_context import set_tool_context, reset_tool_context
 from app.agents.services.knowledge_base import KnowledgeBaseService

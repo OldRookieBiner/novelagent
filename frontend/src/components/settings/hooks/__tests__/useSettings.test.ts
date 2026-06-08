@@ -7,23 +7,16 @@ vi.mock('@/lib/api', () => ({
       model_provider: 'openai',
       model_name: 'gpt-4',
       has_api_key: true,
-      review_enabled: true,
-      review_strictness: 'standard',
     }),
   },
   modelConfigsApi: {
     list: vi.fn().mockResolvedValue({ models: [] }),
-  },
-  systemPromptsApi: {
-    list: vi.fn().mockResolvedValue({ prompts: [] }),
   },
 }))
 
 vi.mock('@/stores/settingsStore', () => ({
   useSettingsStore: vi.fn(() => ({
     setSettings: vi.fn(),
-    workflowMode: 'hybrid',
-    setWorkflowMode: vi.fn(),
   })),
 }))
 

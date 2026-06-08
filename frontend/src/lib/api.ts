@@ -2,7 +2,6 @@
  * API client for NovelAgent frontend
  */
 
-import { createSSEStream } from './sseParser'
 import type {
   User,
   LoginRequest,
@@ -24,9 +23,6 @@ import type {
   ChatMessage,
   ChatResponse,
   ApiError,
-  SystemPrompt,
-  SystemPromptListResponse,
-  SystemPromptUpdate,
   ModelConfig,
   ModelConfigListResponse,
   ModelConfigCreate,
@@ -287,23 +283,6 @@ export const projectsApi = {
 
 // ==================== Outline API ====================
 
-// Streaming callback types
-export interface OutlineStreamResult {
-  outline: Partial<Outline>;
-  stage: string;
-}
-
-export interface OutlineStreamCallbacks {
-  onChunk: (chunk: string) => void;
-  onDone: (result: OutlineStreamResult) => void;
-  onError: (error: string) => void;
-}
-
-// 流式请求选项
-export interface StreamOptions {
-  signal?: AbortSignal;  // 用于取消请求
-}
-
 export const outlineApi = {
   async get(projectId: number): Promise<Outline> {
     return request<Outline>(`/api/projects/${projectId}/outline`);
@@ -314,39 +293,6 @@ export const outlineApi = {
       method: "POST",
     });
   },
-
-  /**
-   * Generate outline with streaming - uses unified SSE handler
-   * @param projectId - 项目 ID
-   * @param callbacks - 回调函数
-   * @param options - 流式请求选项（包括 AbortSignal 用于取消）
-   * @param llmConfigId - 可选的模型配置 ID
-   */
-  async createStream(
-    projectId: number,
-    callbacks: OutlineStreamCallbacks,
-    options?: StreamOptions,
-    llmConfigId?: number
-  ): Promise<void> {
-    await createSSEStream(
-      {
-        url: `/api/projects/${projectId}/outline`,
-        method: 'POST',
-        body: llmConfigId ? { llm_config_id: llmConfigId } : {},
-        signal: options?.signal,
-      },
-      (type, data) => {
-        if (type === 'done') {
-          callbacks.onDone(data as unknown as OutlineStreamResult)
-        } else if (type !== 'error') {
-          // chunk 事件
-          callbacks.onChunk(typeof data === 'string' ? data : String(data))
-        }
-      },
-      callbacks.onError
-    )
-  },
-
   async update(projectId: number, data: OutlineUpdate): Promise<Outline> {
     return request<Outline>(`/api/projects/${projectId}/outline`, {
       method: "PUT",
@@ -373,53 +319,10 @@ export const outlineApi = {
 
 // ==================== Chapter Outlines API ====================
 
-// Streaming callback types for chapter outlines
-export interface ChapterOutlineStreamCallbacks {
-  onProgress: (chapterNumber: number, total: number, chapter: { chapter_number: number; title: string; scene: string; characters: string; plot: string; conflict: string; ending: string; target_words: number }) => void;
-  onDone: (total: number, stage: string) => void;
-  onError: (error: string) => void;
-}
 
 export const chapterOutlinesApi = {
   async list(projectId: number): Promise<ChapterOutline[]> {
     return request<ChapterOutline[]>(`/api/projects/${projectId}/chapter-outlines`);
-  },
-
-  /**
-   * Generate chapter outlines with SSE streaming - uses unified SSE handler
-   * @param projectId - 项目 ID
-   * @param callbacks - 回调函数
-   * @param options - 流式请求选项（包括 AbortSignal 用于取消）
-   * @param llmConfigId - 可选的模型配置 ID
-   */
-  async createStream(
-    projectId: number,
-    callbacks: ChapterOutlineStreamCallbacks,
-    options?: StreamOptions,
-    llmConfigId?: number
-  ): Promise<void> {
-    await createSSEStream(
-      {
-        url: `/api/projects/${projectId}/chapter-outlines`,
-        method: 'POST',
-        body: llmConfigId ? { llm_config_id: llmConfigId } : {},
-        signal: options?.signal,
-      },
-      (type, data) => {
-        if (type === 'progress') {
-          const progress = data as { chapter_number: number; total: number; chapter: { chapter_number: number; title: string; scene: string; characters: string; plot: string; conflict: string; ending: string; target_words: number } }
-          callbacks.onProgress(progress.chapter_number, progress.total, progress.chapter)
-        } else if (type === 'done') {
-          const done = data as { total: number; stage: string }
-          callbacks.onDone(done.total, done.stage)
-        } else if (type === 'error') {
-          // 处理后端返回的错误事件，避免前端卡在"生成中"状态
-          const errorData = data as { error: string }
-          callbacks.onError(errorData.error || '生成失败')
-        }
-      },
-      callbacks.onError
-    )
   },
 
   async update(
@@ -531,30 +434,6 @@ export const collectedInfoApi = {
   },
 };
 
-// ==================== System Prompts API ====================
-
-export const systemPromptsApi = {
-  async list(): Promise<SystemPromptListResponse> {
-    return request<SystemPromptListResponse>("/api/system/prompts/");
-  },
-
-  async update(
-    agentType: string,
-    data: SystemPromptUpdate
-  ): Promise<SystemPrompt> {
-    return request<SystemPrompt>(`/api/system/prompts/${agentType}/`, {
-      method: "PUT",
-      body: data,
-    });
-  },
-
-  async reset(agentType: string): Promise<SystemPrompt> {
-    return request<SystemPrompt>(`/api/system/prompts/${agentType}/reset/`, {
-      method: "POST",
-    });
-  },
-};
-
 // ==================== Model Configs API ====================
 
 export const modelConfigsApi = {
@@ -632,24 +511,6 @@ export const modelConfigsApi = {
     });
   },
 };
-
-// ==================== Workflow API ====================
-
-// 重新导出 workflowApi（定义在 workflowApi.ts）
-export { workflowApi } from './workflowApi'
-export type { WorkflowStreamCallbacks } from './workflowApi'
-
-// ==================== Workflow Cleanup API ====================
-
-export const workflowCleanupApi = {
-  async cleanup(projectId: number): Promise<{ message: string; deleted: number }>
-  {
-    return request<{ message: string; deleted: number }>(
-      `/api/projects/${projectId}/workflow/cleanup`,
-      { method: 'POST' }
-    )
-  },
-}
 
 // ==================== Volumes/Arcs API ====================
 

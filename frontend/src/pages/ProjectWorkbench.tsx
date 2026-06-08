@@ -16,7 +16,7 @@ export default function ProjectWorkbench() {
   const { id } = useParams<{ id: string }>()
   const projectId = id ? parseInt(id) : null
   const { activeTab, setCurrentProjectId, phase, setPhase } = useWorkbenchStore()
-  const { project, loading, workflowState, refreshProject } = useProjectData(projectId)
+  const { project, loading, refreshProject } = useProjectData(projectId)
 
   // 情节块数据（从知识库 API 加载）
   const [plotBlocks, setPlotBlocks] = useState<PlotBlockGroup[]>([])
@@ -28,27 +28,15 @@ export default function ProjectWorkbench() {
     }
   }, [projectId, setCurrentProjectId])
 
-  // 同步后端工作流阶段到前端
+  // 同步后端工作流阶段到前端（phase 已在 useProjectData 中同步）
   useEffect(() => {
-    if (workflowState?.stage) {
-      const stageMap: Record<string, 'incubation' | 'structure' | 'writing' | 'revision'> = {
-        'incubation': 'incubation',
-        'structure': 'structure',
-        'writing': 'writing',
-        'revision': 'revision',
-        // 兼容旧阶段名
-        'outline': 'incubation',
-        'characters': 'incubation',
-        'chapter_outlines': 'structure',
-        'writing_chapters': 'writing',
-        'review': 'revision',
-      }
-      const mapped = stageMap[workflowState.stage]
-      if (mapped && mapped !== phase) {
-        setPhase(mapped)
+    if (project?.workflow_state?.stage) {
+      const stage = project.workflow_state.stage
+      if (stage !== phase) {
+        setPhase(stage as any)
       }
     }
-  }, [workflowState?.stage, phase, setPhase])
+  }, [project?.workflow_state?.stage, phase, setPhase])
 
   // 加载情节块数据
   const loadPlotBlocks = useCallback(async () => {
@@ -57,12 +45,11 @@ export default function ProjectWorkbench() {
       const blocks = await knowledgeApi.getPlotBlocks(projectId)
       const grouped: PlotBlockGroup[] = blocks.map((block: any) => ({
         title: block.title,
-        isActive: false, // 将在写作阶段根据 current_chapter 判断
-        chapters: [], // 将从章节大纲填充
+        isActive: false,
+        chapters: [],
       }))
       setPlotBlocks(grouped)
     } catch {
-      // 知识库可能尚未创建，使用空数组
       setPlotBlocks([])
     }
   }, [projectId])
@@ -102,7 +89,6 @@ export default function ProjectWorkbench() {
   return (
     <WorkbenchLayout
       projectName={project.name}
-
       onNameChange={handleNameChange}
       progress={project.progress_percentage || 0}
       plotBlocks={plotBlocks}

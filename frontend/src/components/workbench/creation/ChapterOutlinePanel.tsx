@@ -2,13 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { chapterOutlinesApi } from '@/lib/api'
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { toast } from 'sonner'
-import { useWorkbenchStore } from '@/stores/workbenchStore'
-import { ChapterOutlineFlatList, type ChapterOutlineProgress } from './ChapterOutlineFlatList'
 import { ChapterOutlineEditor } from './ChapterOutlineEditor'
 import { ChapterDetailPanel } from './ChapterDetailPanel'
-import { useChapterOutlineGeneration } from './useChapterOutlineGeneration'
 import type { ChapterOutline } from '@/types'
 
 interface ChapterOutlinePanelProps
@@ -26,26 +22,7 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
   const [editingPlot, setEditingPlot] = useState('')
   const [editingTargetWords, setEditingTargetWords] = useState(3000)
   const [saving, setSaving] = useState(false)
-  const [showReplanDialog, setShowReplanDialog] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
-
-  const { selectedModelKey } = useWorkbenchStore()
-
-  // 生成相关逻辑（批量生成、重新规划、取消）
-  const {
-    generating,
-    replaning,
-    progress,
-    handleGenerateAll,
-    handleCancelGenerate,
-    handleReplan,
-    clearResidualState,
-  } = useChapterOutlineGeneration({
-    projectId,
-    selectedModelKey,
-    setChapters,
-    setSelectedChapter,
-  })
 
   // ==================== 数据获取 ====================
 
@@ -69,8 +46,7 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
       }
     }
     fetchChapters()
-    clearResidualState()
-  }, [projectId, clearResidualState])
+  }, [projectId])
 
   // 选中章节变更时同步编辑字段
   useEffect(() =>
@@ -129,27 +105,6 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
     }
   }
 
-  const handleConfirmAll = async () =>
-  {
-    const unconfirmed = chapters.filter(c => !c.confirmed)
-    if (unconfirmed.length === 0) { toast.info('所有章节已确认'); return }
-
-    let successCount = 0
-    for (const chapter of unconfirmed)
-    {
-      try
-      {
-        await chapterOutlinesApi.confirm(projectId, chapter.chapter_number)
-        setChapters(prev => prev.map(c => c.id === chapter.id ? { ...c, confirmed: true } : c))
-        successCount++
-      }
-      catch (err)
-      {
-        console.error(`Failed to confirm chapter ${chapter.chapter_number}:`, err)
-      }
-    }
-    if (successCount > 0) toast.success(`已确认 ${successCount} 个章节`)
-  }
 
   // Ctrl+S 快捷键
   useEffect(() =>
@@ -165,7 +120,6 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
   // ==================== 计算属性 ====================
 
   const confirmedCount = chapters.filter(c => c.confirmed).length
-  const unconfirmedCount = chapters.filter(c => !c.confirmed).length
   const hasContentCount = chapters.filter(c => c.has_content).length
   const totalTargetWords = chapters.reduce((sum, c) => sum + (c.target_words || 3000), 0)
 
@@ -178,21 +132,6 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
 
   return (
     <div className="flex h-full">
-      {/* 左侧章节列表 */}
-      <ChapterOutlineFlatList
-        chapters={chapters}
-        selectedChapterId={selectedChapter?.id ?? null}
-        onSelectChapter={setSelectedChapter}
-        generating={generating}
-        replaning={replaning}
-        progress={progress as ChapterOutlineProgress | null}
-        onGenerate={handleGenerateAll}
-        onCancelGenerate={handleCancelGenerate}
-        onReplan={() => setShowReplanDialog(true)}
-        unconfirmedCount={unconfirmedCount}
-        onConfirmAll={handleConfirmAll}
-      />
-
       {/* 中间编辑区 */}
       <ChapterOutlineEditor
         selectedChapter={selectedChapter}
@@ -202,14 +141,14 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
         editingTargetWords={editingTargetWords}
         saving={saving}
         chaptersLength={chapters.length}
-        generating={generating}
+        generating={false}
         onTitleChange={setEditingTitle}
         onSceneChange={setEditingScene}
         onPlotChange={setEditingPlot}
         onTargetWordsChange={setEditingTargetWords}
         onConfirm={handleConfirm}
         onSave={handleSave}
-        onGenerate={handleGenerateAll}
+        onGenerate={() => toast.info('通过右侧 Agent 对话生成章节大纲')}
       />
 
       {/* 右侧详情面板 */}
@@ -222,24 +161,6 @@ export function ChapterOutlinePanel({ projectId }: ChapterOutlinePanelProps)
         totalChapters={chapters.length}
         totalTargetWords={totalTargetWords}
       />
-
-      {/* 重新生成确认对话框 */}
-      <AlertDialog open={showReplanDialog} onOpenChange={setShowReplanDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>重新生成章节大纲</AlertDialogTitle>
-            <AlertDialogDescription>
-              重新生成将清除所有章节大纲和已写正文，基于当前大纲重新规划章节结构。此操作不可撤销。
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={handleReplan}>
-              确认重新生成
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   )
 }
