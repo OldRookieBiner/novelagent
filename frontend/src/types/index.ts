@@ -304,8 +304,6 @@ export interface UserSettings {
   model_provider: string;
   model_name: string;
   has_api_key: boolean;
-  review_enabled: boolean;
-  review_strictness: string;
   // Agent 模型选择持久化
   agent_model_config_id?: number | null;
   agent_model_name?: string | null;
@@ -316,8 +314,6 @@ export interface SettingsUpdate {
   model_name?: string;
   api_key?: string;
   clear_api_key?: boolean;
-  review_enabled?: boolean;
-  review_strictness?: string;
   // Agent 模型选择持久化
   agent_model_config_id?: number | null;
   agent_model_name?: string | null;
