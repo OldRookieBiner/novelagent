@@ -111,3 +111,26 @@ class TestToolContext:
         from app.agents.tools import _kb
         with pytest.raises(ValueError, match="project_id not set"):
             _kb()
+
+
+class TestPhaseSubsetRelation:
+    """验证阶段工具集合满足递进子集关系。"""
+
+    def test_incubation_subset_of_structure(self):
+        """孵化阶段的所有工具在结构阶段也应可用。"""
+        inc_names = {t.name for t in INCUBATION_TOOLS}
+        str_names = {t.name for t in STRUCTURE_TOOLS}
+        assert inc_names.issubset(str_names), f"孵化工具不在结构阶段中: {inc_names - str_names}"
+
+    def test_structure_subset_of_writing(self):
+        """结构阶段的所有工具在写作阶段也应可用。"""
+        str_names = {t.name for t in STRUCTURE_TOOLS}
+        wrt_names = {t.name for t in WRITING_TOOLS}
+        assert str_names.issubset(wrt_names), f"结构工具不在写作阶段中: {str_names - wrt_names}"
+
+    def test_no_duplicate_tool_names(self):
+        """每个阶段内不应有重复工具。"""
+        for name, tools in [("INCUBATION", INCUBATION_TOOLS), ("STRUCTURE", STRUCTURE_TOOLS), ("WRITING", WRITING_TOOLS)]:
+            names = [t.name for t in tools]
+            dupes = [n for n in names if names.count(n) > 1]
+            assert not dupes, f"{name} 有重复工具: {dupes}"
