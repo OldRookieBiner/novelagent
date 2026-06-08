@@ -6,7 +6,7 @@ Tests tool registration, helper functions, and impact grading.
 import pytest
 from unittest.mock import patch, MagicMock
 
-from app.agents.agent_tools import (
+from app.agents.tools import (
     knowledge_search,
     foreshadowing_check,
     consistency_check,
@@ -108,6 +108,6 @@ class TestToolContext:
         assert get_project_id() is None
 
     def test_kb_raises_without_project_id(self):
-        from app.agents.agent_tools import _kb
+        from app.agents.tools import _kb
         with pytest.raises(ValueError, match="project_id not set"):
             _kb()
