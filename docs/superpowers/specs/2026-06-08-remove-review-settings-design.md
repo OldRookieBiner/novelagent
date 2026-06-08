@@ -2,11 +2,15 @@
 
 ## 背景
 
-旧版 WorkflowOrchestrator 通过用户设置中的审核开关控制章节生成后的审核流程。新版 LangGraph 工作流已将审核逻辑内嵌到 `style_check`、`character_consistency` 等写后自检节点，不再依赖用户设置中的 `review_enabled` / `review_strictness`。章节模型上的 `review_passed` / `review_feedback` / `review_result` 同样无消费者。
+旧版 WorkflowOrchestrator 通过用户设置中的审核开关控制章节生成后的审核流程。新版 LangGraph 工作流已将审核逻辑内嵌到 `style_check`、`character_consistency` 等写后自检节点，不再依赖用户设置中的 `review_enabled` / `review_strictness`。
+
+经过进一步分析发现：
+- `chapters` 表的 `review_passed` / `review_feedback` / `review_result` 仍有活跃使用（项目进度计算、自由 Agent 审核工具），**不是死代码**
+- `user_settings` 表的 `review_enabled` / `review_strictness` 无任何消费者，是真正的死代码
 
 ## 方案
 
-一次性全清：一个 PR，一条 Alembic migration，删除所有死字段及相关前端组件。
+只清理 settings 相关字段（用户审核开关），保留 chapters 表的审核字段。
 
 ## 前端清理
 
@@ -29,14 +33,14 @@
 
 **`types/index.ts`**
 - `SettingsUpdate` / `SettingsResponse` 移除 `review_enabled` / `review_strictness`
-- `Chapter` 类型移除 `review_passed` / `review_feedback` / `review_result`
-- 删除 `ReviewResponse` 类型和 `mapReviewResult` 函数
+- 保留 `Chapter` 类型中的 `review_passed` / `review_feedback` / `review_result`（仍有消费者）
+- 删除 `ReviewResponse` 类型和 `mapReviewResult` 函数（仅与 settings 相关）
 
 **`stores/settingsStore.ts`**
 - settings 状态移除 `review_enabled` / `review_strictness`
 
 **`components/workbench/creation/AIAssistantPanel.tsx`**
-- 清理审核相关类型/逻辑引用
+- 检查清理审核相关类型引用（如有）
 
 **`pages/__tests__/Settings.test.tsx`**
 - 移除审核 tab 相关断言
@@ -49,7 +53,7 @@
 - 移除列：`review_enabled`、`review_strictness`
 
 **`models/chapter.py`**
-- 移除列：`review_passed`、`review_feedback`、`review_result`
+- **不修改** — 保留 `review_passed`、`review_feedback`、`review_result`
 
 ### Schema
 
@@ -57,7 +61,7 @@
 - `SettingsBase`、`SettingsUpdate`、`SettingsResponse` 移除 `review_enabled` / `review_strictness`
 
 **`schemas/chapter.py`**
-- 移除 `review_passed` / `review_feedback` / `review_result` 相关字段
+- **不修改** — 保留审核相关字段
 
 ### API
 
@@ -67,20 +71,17 @@
 - 默认创建（新用户注册）不再设置这两个字段
 
 **`api/chapters.py`**
-- CRUD 序列化移除 `review_passed` / `review_feedback` / `review_result`
+- **不修改** — 保留 CRUD 中 `review_passed` / `review_feedback` / `review_result` 的返回
 
 **`utils/auth.py`**
 - 移除注册默认值 `review_enabled=True` / `review_strictness="standard"`
 
 ### Migration
 
-一条 Alembic migration：
+一条 Alembic migration，仅删除 user_settings 表的两列：
 - `op.drop_column('user_settings', 'review_enabled')`
 - `op.drop_column('user_settings', 'review_strictness')`
-- `op.drop_column('chapters', 'review_passed')`
-- `op.drop_column('chapters', 'review_feedback')`
-- `op.drop_column('chapters', 'review_result')`
-- downgrade：添加回空列（不回填数据，这些字段无消费者）
+- downgrade：添加回空列
 
 ## 验证
 
@@ -88,3 +89,4 @@
 - 后端：`pytest` 全量通过
 - Docker：重建后端镜像，`/api/settings` GET/PUT 不再返回审核字段
 - Migration：`alembic upgrade head` 无报错
+- 功能验证：项目进度计算、自由 Agent 审核工具仍正常工作
