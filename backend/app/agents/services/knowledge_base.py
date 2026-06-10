@@ -399,6 +399,27 @@ class KnowledgeBaseService:
         finally:
             self._close_db_write(db, committed)
 
+
+    def delete_plot_block(self, block_id: int) -> None:
+        """删除情节块
+
+        注意：关联的 PlotQuestion.plot_block_id 会被 SET NULL（数据库 ondelete）
+        """
+        db = self._get_db()
+        committed = False
+        try:
+            block = db.query(PlotBlock).filter(
+                PlotBlock.id == block_id,
+                PlotBlock.project_id == self.project_id,
+            ).first()
+            if not block:
+                raise ValueError(f"PlotBlock {block_id} not found")
+            db.delete(block)
+            db.commit()
+            committed = True
+        finally:
+            self._close_db_write(db, committed)
+
     def get_current_plot_block(self, chapter_number: int) -> Optional[PlotBlock]:
         """根据章节号查找当前所属的情节块"""
         db = self._get_db()
@@ -511,8 +532,39 @@ class KnowledgeBaseService:
         finally:
             self._close_db_write(db, committed)
 
+
+    def delete_subplot(self, subplot_id: int) -> None:
+        """删除支线"""
+        db = self._get_db()
+        committed = False
+        try:
+            s = db.query(Subplot).filter(
+                Subplot.id == subplot_id,
+                Subplot.project_id == self.project_id,
+            ).first()
+            if not s:
+                raise ValueError(f"Subplot {subplot_id} not found")
+            db.delete(s)
+            db.commit()
+            committed = True
+        finally:
+            self._close_db_write(db, committed)
+
     # ========== 伏笔 ==========
 
+
+    def get_foreshadowing(self, foreshadowing_id: int) -> Optional[Foreshadowing]:
+        """获取单条伏笔"""
+        db = self._get_db()
+        try:
+            return db.query(Foreshadowing).filter(
+                Foreshadowing.id == foreshadowing_id,
+                Foreshadowing.project_id == self.project_id,
+            ).first()
+        finally:
+            self._close_db_read(db)
+
+    # ========== 伏笔查询 ==========
     def get_foreshadowings(self, status: Optional[str] = None) -> list[Foreshadowing]:
         db = self._get_db()
         try:
@@ -1177,6 +1229,39 @@ class KnowledgeBaseService:
             self._close_db_write(db, committed)
 
     # ========== 关系演变检测与记录 ==========
+
+    def create_evolution_plan(
+        self,
+        relation_id: int,
+        trigger_chapter: int,
+        event_description: str,
+        status_before: str | None = None,
+        status_after: str | None = None,
+        trust_before: int | None = None,
+        trust_after: int | None = None,
+    ):
+        """创建关系演变规划"""
+        from app.models.character import EvolutionPlan
+
+        db = self._get_db()
+        committed = False
+        try:
+            plan = EvolutionPlan(
+                relation_id=relation_id,
+                trigger_chapter=trigger_chapter,
+                event_description=event_description,
+                status_before=status_before,
+                status_after=status_after,
+                trust_before=trust_before,
+                trust_after=trust_after,
+            )
+            db.add(plan)
+            db.commit()
+            committed = True
+            db.refresh(plan)
+            return plan
+        finally:
+            self._close_db_write(db, committed)
 
     def create_evolution_record(
         self,

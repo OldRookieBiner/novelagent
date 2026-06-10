@@ -229,25 +229,27 @@ export const projectsApi = {
   },
 
   /**
-   * 初始化项目（SSE 流式）
-   * @param concept - 项目概念描述
-   * @param callbacks - SSE 回调函数
-   * @param targetWords - 目标字数
-   * @param modelConfigId - 可选的模型配置 ID
-   * @param modelId - 可选的模型 ID（子模型）
+   * 初始化项目（SSE 流式请求）
+   * 后端返回 SSE 事件流，前端实时展示初始化进度
    */
   async initialize(
     concept: string,
-    callbacks: {
-      onEvent: (type: string, data: Record<string, unknown>) => void
+    options: {
+      onEvent: (type: string, data: Record<string, unknown>) => void;
+      onError?: (error: string) => void;
     },
-    targetWords: number,
+    targetWords: number = 100000,
     modelConfigId?: number,
     modelId?: string,
-    signal?: AbortSignal
-  ): Promise<{ project_id: number | null; cancelled?: boolean }> {
-    const { createSSEStream } = await import('./sseParser')
-    let projectId: number | null = null
+    signal?: AbortSignal,
+  ): Promise<{ project_id: number; name: string; status: string; cancelled?: boolean }> {
+    const { createSSEStream } = await import('./sseParser');
+
+    let result: { project_id: number; name: string; status: string; cancelled?: boolean } = {
+      project_id: 0,
+      name: '',
+      status: '',
+    };
 
     await createSSEStream(
       {
@@ -261,23 +263,36 @@ export const projectsApi = {
         },
         signal,
       },
-      (type: string, data: Record<string, unknown>) => {
-        if (type === 'init:done') {
-          projectId = (data as any).project_id
+      (type, data) => {
+        // 解析 init:done 事件中的 project_id
+        if (type === 'init:done' && data && typeof data === 'object') {
+          const d = data as Record<string, unknown>;
+          if (d.project_id) {
+            result.project_id = d.project_id as number;
+          }
+          if (d.status) {
+            result.status = d.status as string;
+          }
         }
-        callbacks.onEvent(type, data)
+        if (type === 'init:cancelled') {
+          result.cancelled = true;
+        }
+        if (type === 'init:complete' && data && typeof data === 'object') {
+          const d = data as Record<string, unknown>;
+          if (d.project_id) {
+            result.project_id = d.project_id as number;
+          }
+          if (d.name) {
+            result.name = d.name as string;
+          }
+        }
+        // 传递给上层回调
+        options.onEvent(type, data as Record<string, unknown>);
       },
-      (error: string) => {
-        console.error('Initialize error:', error)
-      }
-    )
+      (error) => options.onError?.(error),
+    );
 
-    // AbortSignal 被触发时 projectId 为 null，返回 cancelled 状态
-    if (!projectId) {
-      return { project_id: null, cancelled: true }
-    }
-
-    return { project_id: projectId }
+    return result;
   },
 };
 
@@ -662,6 +677,14 @@ export const knowledgeApi = {
   },
 
   /**
+   * 获取支线列表
+   */
+  async getSubplots(projectId: number): Promise<any[]>
+  {
+    return request<any[]>(`/api/projects/${projectId}/subplots`)
+  },
+
+  /**
    * 获取伏笔列表
    */
   async getForeshadowings(projectId: number, status?: string): Promise<any[]>
@@ -685,5 +708,75 @@ export const knowledgeApi = {
   {
     const query = lastN ? `?last_n=${lastN}` : ''
     return request<any[]>(`/api/projects/${projectId}/style-snapshots${query}`)
+  },
+
+  // ========== 情节块 CRUD ==========
+
+  /**
+   * 更新情节块
+   */
+  async updatePlotBlock(projectId: number, blockId: number, data: Record<string, unknown>): Promise<any>
+  {
+    return request<any>(`/api/projects/${projectId}/plot-blocks/${blockId}`, {
+      method: 'PUT',
+      body: data,
+    })
+  },
+
+  /**
+   * 删除情节块
+   */
+  async deletePlotBlock(projectId: number, blockId: number): Promise<void>
+  {
+    return request<void>(`/api/projects/${projectId}/plot-blocks/${blockId}`, {
+      method: 'DELETE',
+    })
+  },
+
+  // ========== 支线 CRUD ==========
+
+  /**
+   * 创建支线
+   */
+  async createSubplot(projectId: number, data: Record<string, unknown>): Promise<any>
+  {
+    return request<any>(`/api/projects/${projectId}/subplots`, {
+      method: 'POST',
+      body: data,
+    })
+  },
+
+  /**
+   * 更新支线
+   */
+  async updateSubplot(projectId: number, subplotId: number, data: Record<string, unknown>): Promise<any>
+  {
+    return request<any>(`/api/projects/${projectId}/subplots/${subplotId}`, {
+      method: 'PUT',
+      body: data,
+    })
+  },
+
+  /**
+   * 删除支线
+   */
+  async deleteSubplot(projectId: number, subplotId: number): Promise<void>
+  {
+    return request<void>(`/api/projects/${projectId}/subplots/${subplotId}`, {
+      method: 'DELETE',
+    })
+  },
+
+  // ========== 伏笔 CRUD ==========
+
+  /**
+   * 更新伏笔（内容+状态流转）
+   */
+  async updateForeshadowing(projectId: number, foreshadowingId: number, data: Record<string, unknown>): Promise<any>
+  {
+    return request<any>(`/api/projects/${projectId}/foreshadowings/${foreshadowingId}`, {
+      method: 'PUT',
+      body: data,
+    })
   },
 }

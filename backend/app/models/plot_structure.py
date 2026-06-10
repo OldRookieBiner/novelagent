@@ -47,7 +47,9 @@ class PlotBlock(Base):
     # Relationships
     project = relationship("Project", back_populates="plot_blocks")
     plot_questions = relationship(
-        "PlotQuestion", back_populates="plot_block", cascade="all, delete-orphan"
+        "PlotQuestion", back_populates="plot_block",
+        # 不使用 ORM cascade：数据库 ondelete='SET NULL' 会将 plot_block_id 置空
+        # 删除情节块时问题链保留，只是脱离情节块关联
     )
 
     def __repr__(self):

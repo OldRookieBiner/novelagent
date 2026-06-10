@@ -41,8 +41,8 @@ class RelationDirection(str, Enum):
     """关系方向枚举"""
 
     BIDIRECTIONAL = "双向"
-    A_TO_B = "单向A->B"
-    B_TO_A = "单向B->A"
+    A_TO_B = "单向A→B"
+    B_TO_A = "单向B→A"
 
 
 # ==================== Character Schemas ====================
@@ -119,7 +119,7 @@ class RelationBase(BaseModel):
         ..., description="关系类型：信任/敌对/感情/合作/利用/陌生"
     )
     direction: RelationDirection = Field(
-        RelationDirection.BIDIRECTIONAL, description="方向：双向/单向A->B/单向B->A"
+        RelationDirection.BIDIRECTIONAL, description="方向：双向/单向A→B/单向B→A"
     )
     current_status: Optional[str] = Field(None, description="当前状态描述")
     trust_level: int = Field(50, ge=0, le=100, description="信任度 0-100")

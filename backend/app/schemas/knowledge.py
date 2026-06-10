@@ -139,3 +139,44 @@ class SceneEntryResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ========== Update/Create Schemas ==========
+
+class PlotBlockUpdate(BaseModel):
+    title: Optional[str] = None
+    questions_to_answer: Optional[list] = None
+    questions_to_raise: Optional[list] = None
+    must_happen: Optional[list] = None
+    expected_mood: Optional[str] = None
+    chapter_start: Optional[int] = None
+    chapter_end: Optional[int] = None
+    completion_summary: Optional[str] = None
+
+
+class SubplotCreate(BaseModel):
+    name: str
+    characters: list = []
+    current_status: Optional[str] = "hint"
+    raised_in_chapter: Optional[int] = None
+    planned_intersection_chapter: Optional[int] = None
+    expected_resolution_chapter: Optional[int] = None
+
+
+class SubplotUpdate(BaseModel):
+    name: Optional[str] = None
+    characters: Optional[list] = None
+    current_status: Optional[str] = None
+    raised_in_chapter: Optional[int] = None
+    planned_intersection_chapter: Optional[int] = None
+    expected_resolution_chapter: Optional[int] = None
+
+
+class ForeshadowingUpdate(BaseModel):
+    content: Optional[str] = None
+    level: Optional[str] = None
+    status: Optional[str] = None  # 状态流转：仅允许 active→pending_reclaim→reclaimed
+    planted_chapter: Optional[int] = None
+    expected_resolve_chapter: Optional[int] = None
+    resolved_chapter: Optional[int] = None
+    related_characters: Optional[list] = None

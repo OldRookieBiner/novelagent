@@ -40,6 +40,16 @@ from app.utils.project import get_project_for_user
 router = APIRouter()
 
 
+def _check_busy(project) -> None:
+    """检查项目 busy 状态，防止并发写入"""
+    if project.is_busy:
+        holder = project.busy_by or "未知"
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"项目正在被{holder}使用，请稍后再试"
+        )
+
+
 # ==================== Character CRUD ====================
 
 @router.get("/{project_id}/characters", response_model=CharacterListResponse)
@@ -116,7 +126,8 @@ async def create_character(
         创建的人物信息
     """
     # 验证项目权限
-    get_project_for_user(project_id, current_user.id, db)
+    project = get_project_for_user(project_id, current_user.id, db)
+    _check_busy(project)
 
     # 创建人物
     character = Character(
@@ -152,7 +163,8 @@ async def create_characters_batch(
 
     在单次事务中创建多个角色，部分失败则整体回滚。
     """
-    get_project_for_user(project_id, current_user.id, db)
+    project = get_project_for_user(project_id, current_user.id, db)
+    _check_busy(project)
 
     created = []
     try:
@@ -239,7 +251,8 @@ async def update_character(
         更新后的人物信息
     """
     # 验证项目权限
-    get_project_for_user(project_id, current_user.id, db)
+    project = get_project_for_user(project_id, current_user.id, db)
+    _check_busy(project)
 
     # 查询人物
     character = db.query(Character).filter(
@@ -280,7 +293,8 @@ async def delete_character(
         current_user: 当前用户
     """
     # 验证项目权限
-    get_project_for_user(project_id, current_user.id, db)
+    project = get_project_for_user(project_id, current_user.id, db)
+    _check_busy(project)
 
     # 查询人物
     character = db.query(Character).filter(
@@ -368,7 +382,8 @@ async def create_relation(
         创建的关系信息
     """
     # 验证项目权限
-    get_project_for_user(project_id, current_user.id, db)
+    project = get_project_for_user(project_id, current_user.id, db)
+    _check_busy(project)
 
     # 验证人物存在且属于该项目
     char_a = db.query(Character).filter(
@@ -479,7 +494,8 @@ async def update_relation(
         更新后的关系信息
     """
     # 验证项目权限
-    get_project_for_user(project_id, current_user.id, db)
+    project = get_project_for_user(project_id, current_user.id, db)
+    _check_busy(project)
 
     # 查询关系
     relation = db.query(Relation).filter(
@@ -540,7 +556,8 @@ async def delete_relation(
         current_user: 当前用户
     """
     # 验证项目权限
-    get_project_for_user(project_id, current_user.id, db)
+    project = get_project_for_user(project_id, current_user.id, db)
+    _check_busy(project)
 
     # 查询关系
     relation = db.query(Relation).filter(
@@ -626,7 +643,8 @@ async def create_evolution_plan(
         创建的演变规划信息
     """
     # 验证项目权限
-    get_project_for_user(project_id, current_user.id, db)
+    project = get_project_for_user(project_id, current_user.id, db)
+    _check_busy(project)
 
     # 验证关系存在
     relation = db.query(Relation).filter(
@@ -721,7 +739,8 @@ async def update_evolution_plan(
         更新后的演变规划信息
     """
     # 验证项目权限
-    get_project_for_user(project_id, current_user.id, db)
+    project = get_project_for_user(project_id, current_user.id, db)
+    _check_busy(project)
 
     # 查询演变规划
     plan = db.query(EvolutionPlan).join(Relation).filter(
@@ -765,7 +784,8 @@ async def delete_evolution_plan(
         current_user: 当前用户
     """
     # 验证项目权限
-    get_project_for_user(project_id, current_user.id, db)
+    project = get_project_for_user(project_id, current_user.id, db)
+    _check_busy(project)
 
     # 查询演变规划
     plan = db.query(EvolutionPlan).join(Relation).filter(
