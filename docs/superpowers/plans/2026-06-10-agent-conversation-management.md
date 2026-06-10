@@ -111,7 +111,7 @@ git commit -m "db(agent): remove unique constraint on project_id, add is_active 
 
 **Files:**
 - Modify: `backend/app/api/agent.py`
-- Modify: `backend/app/agents/checkpointer.py`（如需新增 checkpoint 清理函数）
+- (无改动) | 无需修改 checkpointer.py，因为 LangGraph 未配置 checkpointer
 
 - [ ] **Step 1: 重写 `_get_or_create_conversation` 为 `_get_active_conversation`**
 
