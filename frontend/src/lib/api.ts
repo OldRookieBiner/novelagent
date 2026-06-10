@@ -770,6 +770,17 @@ export const knowledgeApi = {
   // ========== 伏笔 CRUD ==========
 
   /**
+   * 创建伏笔（通过 batch 端点创建单条）
+   */
+  async createForeshadowing(projectId: number, data: Record<string, unknown>): Promise<any>
+  {
+    return request<any>(`/api/projects/${projectId}/foreshadowings/batch`, {
+      method: 'POST',
+      body: { foreshadowings: [data] },
+    })
+  },
+
+  /**
    * 更新伏笔（内容+状态流转）
    */
   async updateForeshadowing(projectId: number, foreshadowingId: number, data: Record<string, unknown>): Promise<any>

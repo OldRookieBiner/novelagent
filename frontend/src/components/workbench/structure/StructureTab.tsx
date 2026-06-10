@@ -6,6 +6,8 @@ import { knowledgeApi } from '@/lib/api'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
 import { TagEditor } from '@/components/common/TagEditor'
 import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
+import type { PlotBlock } from '@/types/knowledge'
 
 interface StructureTabProps {
   projectId: number
@@ -51,7 +53,7 @@ const STATUS_LABELS: Record<string, { text: string; color: string }> = {
 
 export function StructureTab({ projectId }: StructureTabProps) {
   const [activeSection, setActiveSection] = useState<StructureSection>('plot_blocks')
-  const [plotBlocks, setPlotBlocks] = useState<any[]>([])
+  const [plotBlocks, setPlotBlocks] = useState<PlotBlock[]>([])
   const [subplots, setSubplots] = useState<SubplotItem[]>([])
   const [timeline, setTimeline] = useState<TimelineItem[]>([])
   const [loading, setLoading] = useState(false)
@@ -138,7 +140,7 @@ export function StructureTab({ projectId }: StructureTabProps) {
 }
 
 // ========== 情节块视图 ==========
-function PlotBlocksView({ data, loading, projectId, onUpdate }: { data: any[]; loading: boolean; projectId: number; onUpdate: () => void }) {
+function PlotBlocksView({ data, loading, projectId, onUpdate }: { data: PlotBlock[]; loading: boolean; projectId: number; onUpdate: () => void }) {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editTitle, setEditTitle] = useState('')
   const [editMood, setEditMood] = useState('')
@@ -147,7 +149,7 @@ function PlotBlocksView({ data, loading, projectId, onUpdate }: { data: any[]; l
   const [editMustHappen, setEditMustHappen] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
 
-  const startEdit = (block: any) => {
+  const startEdit = (block: PlotBlock) => {
     setEditingId(block.id)
     setEditTitle(block.title || '')
     setEditMood(block.expected_mood || '')
@@ -169,24 +171,26 @@ function PlotBlocksView({ data, loading, projectId, onUpdate }: { data: any[]; l
         questions_to_raise: editQRaise,
         must_happen: editMustHappen,
       })
+      toast.success('情节块已更新')
       setEditingId(null)
       useWorkbenchStore.getState().incrementKnowledgeVersion()
       onUpdate()
     } catch (err) {
-      console.error('Failed to update plot block:', err)
+      toast.error('情节块更新失败：' + (err instanceof Error ? err.message : '未知错误'))
     } finally {
       setSaving(false)
     }
   }
 
-  const handleDelete = async (block: any) => {
+  const handleDelete = async (block: PlotBlock) => {
     if (!confirm('确认删除该情节块？关联的问题链条目将失去情节块关联。')) return
     try {
       await knowledgeApi.deletePlotBlock(projectId, block.id)
+      toast.success('情节块已删除')
       useWorkbenchStore.getState().incrementKnowledgeVersion()
       onUpdate()
     } catch (err) {
-      console.error('Failed to delete plot block:', err)
+      toast.error('情节块删除失败：' + (err instanceof Error ? err.message : '未知错误'))
     }
   }
 
@@ -307,7 +311,7 @@ function PlotBlocksView({ data, loading, projectId, onUpdate }: { data: any[]; l
 }
 
 // ========== 问题链视图 ==========
-function QuestionsView({ data, loading }: { data: any[]; loading: boolean }) {
+function QuestionsView({ data, loading }: { data: PlotBlock[]; loading: boolean }) {
   if (loading) return <LoadingSkeleton />
   if (!data?.length) return <EmptyState label="问题链将随情节块一起生成" />
 
@@ -387,11 +391,12 @@ function SubplotsView({ data, loading, projectId, onUpdate }: { data: SubplotIte
       } else {
         await knowledgeApi.createSubplot(projectId, payload)
       }
+      toast.success(editingId ? '支线已更新' : '支线已创建')
       cancelForm()
       useWorkbenchStore.getState().incrementKnowledgeVersion()
       onUpdate()
     } catch (err) {
-      console.error('Failed to save subplot:', err)
+      toast.error('支线保存失败：' + (err instanceof Error ? err.message : '未知错误'))
     } finally {
       setSaving(false)
     }
@@ -401,10 +406,11 @@ function SubplotsView({ data, loading, projectId, onUpdate }: { data: SubplotIte
     if (!confirm('确认删除该支线？')) return
     try {
       await knowledgeApi.deleteSubplot(projectId, s.id)
+      toast.success('支线已删除')
       useWorkbenchStore.getState().incrementKnowledgeVersion()
       onUpdate()
     } catch (err) {
-      console.error('Failed to delete subplot:', err)
+      toast.error('支线删除失败：' + (err instanceof Error ? err.message : '未知错误'))
     }
   }
 
@@ -501,7 +507,7 @@ function SubplotsView({ data, loading, projectId, onUpdate }: { data: SubplotIte
 }
 
 // ========== 节奏曲线视图 ==========
-function RhythmView({ blocks, timeline, loading }: { blocks: any[]; timeline: TimelineItem[]; loading: boolean }) {
+function RhythmView({ blocks, timeline, loading }: { blocks: PlotBlock[]; timeline: TimelineItem[]; loading: boolean }) {
   if (loading) return <LoadingSkeleton />
 
   const hasTimeline = timeline.length > 0
