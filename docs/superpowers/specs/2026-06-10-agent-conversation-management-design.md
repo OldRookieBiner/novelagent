@@ -33,6 +33,8 @@
 
 ### Project 模型 relationship 变更
 
+- 保持 `agent_conversation` 名称不变（不改名），仅将 `uselist` 改为 `True`。原因：AgentConversation 中的 `back_populates="agent_conversation"` 必须与 Project 侧 relationship 名字匹配
+
 - `agent_conversation`（单数）重命名为 `agent_conversations`（复数），`uselist` 改为 `True`
 
 ### Alembic 迁移
@@ -59,7 +61,7 @@
 | `/{project_id}/agent/conversations` | POST | 新建会话。当前活跃会话 is_active 置 false，新会话置 true。需获取项目 busy lock 防止并发。超过 20 条返回 400 |
 | `/{project_id}/agent/conversations/{conversation_id}` | PUT | 重命名会话，更新 title 字段。title 最长 50 字，Pydantic 校验 |
 | `/{project_id}/agent/conversations/{conversation_id}/activate` | POST | 切换会话。需获取项目 busy lock。当前活跃会话 is_active 置 false，目标会话置 true。同一事务中原子执行 |
-| `/{project_id}/agent/conversations/{conversation_id}` | DELETE | 删除指定会话及其消息（cascade）。不可删除当前激活会话。同时清理 LangGraph checkpoint |
+| `/{project_id}/agent/conversations/{conversation_id}` | DELETE | 删除指定会话及其消息（cascade）。不可删除当前激活会话。需获取项目 busy lock 防止并发 |
 
 ### 内部函数改动
 
@@ -70,7 +72,7 @@
 ## LangGraph Checkpoint 管理
 
 - **thread_id 格式**：`agent-{project_id}-{conversation_id}`，按会话隔离
-- **删除会话时清理 checkpoint**：在 DELETE 端点中，删除 DB 记录后调用 checkpointer 删除对应 thread_id 的 checkpoint 数据
+- **删除会话时清理 checkpoint**：当前 LangGraph Agent 未配置 checkpointer（create_react_agent 未传入），因此删除会话时无法清理 checkpoint。如后续添加 checkpointer，需在 DELETE 端点中补充清理逻辑
 - **新建会话**：无需特殊处理，LangGraph 会在首次 astream_events 时自动创建 checkpoint
 
 ## 并发安全
@@ -112,6 +114,7 @@
 - `renameConversation(projectId, conversationId, title)` — PUT 重命名
 - `deleteConversation(projectId, conversationId)` — DELETE 删除（路径参数 `/{conversation_id}`）
 - `fetchConversation` 修改：新增可选 `conversationId` 参数，传时加 `?conversation_id=X`
+- `sendAgentMessage` 无需修改：后端 `POST /chat` 通过 `_get_active_conversation` 自动获取当前激活会话，前端无需显式传 conversation_id
 
 ## 错误处理与边界情况
 

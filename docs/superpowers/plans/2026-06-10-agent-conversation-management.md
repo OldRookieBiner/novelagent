@@ -52,15 +52,15 @@ is_active = Column(Boolean, default=False, server_default=text('false'))
 
 - [ ] **Step 2: 修改 Project 模型的 relationship**
 
-在 `backend/app/models/project.py` 中，将 `agent_conversation` 重命名为 `agent_conversations`，`uselist` 改为 `True`：
+在 `backend/app/models/project.py` 中，保持 relationship 名称为 `agent_conversation`，仅将 `uselist` 改为 `True`：
 
 ```python
-agent_conversations = relationship(
+agent_conversation = relationship(
     "AgentConversation", back_populates="project", uselist=True, cascade="all, delete-orphan"
 )
 ```
 
-注意：需全局搜索 `project.agent_conversation` 的所有引用并更新为 `project.agent_conversations`。当前代码中无直接引用（已确认），但需再验证。
+注意：不改名是因为 AgentConversation 中的 `back_populates="agent_conversation"` 必须与这个 relationship 的名字匹配。
 
 - [ ] **Step 3: 生成 Alembic 迁移脚本**
 
@@ -410,7 +410,13 @@ async def delete_conversation(
     current_user: User = Depends(get_current_user),
 ):
     """删除指定会话"""
-    get_project_for_user(project_id, current_user.id, db)
+    project = get_project_for_user(project_id, current_user.id, db)
+    
+    # 获取 busy lock 防止并发和 Agent 正在生成时删除
+    if not _acquire_busy_lock(db, project_id, "conversation"):
+        raise HTTPException(status_code=409, detail="项目正在被使用，请稍后再试")
+    
+    try:
     conv = db.query(AgentConversation).filter(
         AgentConversation.id == conversation_id,
         AgentConversation.project_id == project_id,
@@ -424,20 +430,19 @@ async def delete_conversation(
     db.delete(conv)
     db.commit()
 
-    # 清理 LangGraph checkpoint
-    try:
-        from app.agents.checkpointer import get_checkpointer
-        checkpointer = get_checkpointer()
-        if checkpointer:
-            thread_id = f"agent-{project_id}-{conversation_id}"
-            checkpointer.delete_thread(thread_id)
+    # 清理 LangGraph checkpoint（不可行，LangGraph 未配置 checkpointer）
+    # TODO: 如果后续为 Agent 添加 checkpointer，需要在此处清理对应 thread_id 的 checkpoint
+    # 当前 create_react_agent 没有传 checkpointer 参数，此逻辑留作占位
+
+        return {"detail": "会话已删除"}
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.warning(f"Failed to cleanup checkpoint for conversation {conversation_id}: {e}")
-
-    return {"detail": "会话已删除"}
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        _release_busy_lock(project_id)
 ```
-
-注意：`checkpointer.delete_thread()` 需要根据项目中实际使用的 checkpointer 实现来确认。如果 LangGraph 的 checkpointer 不支持直接删除，可以记录 warning 并跳过，不影响核心功能。
 
 - [ ] **Step 10: 修改 `POST /{project_id}/agent/chat` 端点 — thread_id 隔离**
 
