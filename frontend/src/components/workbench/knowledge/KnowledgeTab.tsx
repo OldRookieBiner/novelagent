@@ -10,6 +10,7 @@ import ReactMarkdown from 'react-markdown'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
 import { TagEditor } from '@/components/common/TagEditor'
 import type { Outline, OutlineCharacter, PlotPoint } from '@/types'
+import { toast } from 'sonner'
 import type { StyleConstraints, WorldSetting as WorldSettingType } from '@/types/knowledge'
 import { WorldSettingView } from './WorldSettingView'
 import { CharactersListView } from './CharactersListView'
@@ -153,7 +154,7 @@ function StorySeedView({ data, loading, projectId, onUpdate }: { data: string; l
       setEditing(false)
       onUpdate()
     } catch (err) {
-      console.error('Failed to update story seed:', err)
+      toast.error('故事种子保存失败：' + (err instanceof Error ? err.message : '未知错误'))
     } finally {
       setSaving(false)
     }
@@ -255,9 +256,9 @@ function OutlineView({ data, loading, projectId, onUpdate }: { data: Outline; lo
       onUpdate()
     } catch (err: any) {
       if (err?.response?.status === 400) {
-        console.error('大纲已确认，无法编辑')
+        toast.error('大纲已确认，无法编辑')
       } else {
-        console.error('Failed to update outline:', err)
+        toast.error('大纲保存失败：' + (err instanceof Error ? err.message : '未知错误'))
       }
     } finally {
       setSaving(false)
@@ -422,7 +423,7 @@ function StyleConstraintsView({ data, loading, projectId, onUpdate }: { data: St
       useWorkbenchStore.getState().incrementKnowledgeVersion()
       onUpdate()
     } catch (err) {
-      console.error('Failed to update style constraints:', err)
+      toast.error('风格约束保存失败：' + (err instanceof Error ? err.message : '未知错误'))
     } finally {
       setSaving(false)
     }

@@ -60,7 +60,7 @@ export function WorldSettingView({ data, loading, projectId, onUpdate }: WorldSe
     setEditRed([...(ts.red || [])])
     setEditYellow([...(ts.yellow || [])])
     setEditGreen([...(ts.green || [])])
-    setEditLocations((data.key_locations || []).map((l: any) => typeof l === 'string' ? l : l.name || ''))
+    setEditLocations([...(data.key_locations || [])])
     setEditing(true)
   }
 
@@ -176,9 +176,9 @@ export function WorldSettingView({ data, loading, projectId, onUpdate }: WorldSe
             <TagEditor items={editLocations} setItems={setEditLocations} placeholder="输入地点后回车" />
           ) : (
             <div className="flex flex-wrap gap-1.5">
-              {data.key_locations.map((loc: any, i: number) => (
+              {data.key_locations.map((loc, i: number) => (
                 <span key={i} className="bg-blue-50 text-blue-700 text-[10px] px-2 py-1 rounded">
-                  {typeof loc === 'string' ? loc : loc.name || JSON.stringify(loc)}
+                  {loc}
                 </span>
               ))}
             </div>
