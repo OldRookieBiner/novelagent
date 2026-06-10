@@ -98,7 +98,7 @@ class Project(Base):
 
     # Relationships — Agent 对话
     agent_conversation = relationship(
-        "AgentConversation", back_populates="project", uselist=False, cascade="all, delete-orphan"
+        "AgentConversation", back_populates="project", uselist=True, cascade="all, delete-orphan"
     )
 
     def __repr__(self):
