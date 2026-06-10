@@ -511,6 +511,11 @@ function RhythmView({ blocks, timeline, loading }: { blocks: any[]; timeline: Ti
     return <EmptyState label="节奏曲线需要情节块或已写章节的时间线数据" />
   }
 
+  // 轻量张力折线数据（按章节排序）
+  const sortedTimeline = hasTimeline
+    ? [...timeline].sort((a, b) => a.chapter_number - b.chapter_number)
+    : []
+
   return (
     <div className="space-y-6">
       {/* 预期节奏（来自情节块的 expected_mood） */}
@@ -546,74 +551,43 @@ function RhythmView({ blocks, timeline, loading }: { blocks: any[]; timeline: Ti
         </div>
       )}
 
-      {/* 实际节奏（来自时间线的评分数据） */}
+      {/* 轻量实际张力折线预览 */}
       {hasTimeline && (
         <div>
-          <h3 className="text-sm font-semibold mb-3">实际节奏</h3>
-          <RhythmChart data={timeline} />
+          <h3 className="text-sm font-semibold mb-3">实际张力</h3>
+          <div className="border rounded-lg p-3 bg-muted/5">
+            <svg
+              width="100%"
+              height="48"
+              viewBox={`0 0 ${sortedTimeline.length * 30} 48`}
+              preserveAspectRatio="none"
+              className="text-primary"
+            >
+              <polyline
+                points={sortedTimeline
+                  .map((entry, i) => `${i * 30 + 15},${48 - (entry.tension_score / 5) * 42}`)
+                  .join(' ')}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <div className="flex justify-between text-[9px] text-muted-foreground mt-1 px-1">
+              <span>第{sortedTimeline[0]?.chapter_number}章</span>
+              <span>第{sortedTimeline[sortedTimeline.length - 1]?.chapter_number}章</span>
+            </div>
+          </div>
         </div>
       )}
-    </div>
-  )
-}
 
-// 节奏曲线简易柱状图
-function RhythmChart({ data }: { data: TimelineItem[] }) {
-  // 按 chapter_number 升序
-  const sorted = [...data].sort((a, b) => a.chapter_number - b.chapter_number)
-  const maxScore = 5
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-end gap-1 h-32">
-        {sorted.map((entry) => (
-          <div key={entry.id} className="flex-1 flex flex-col items-center gap-0.5 min-w-[24px]">
-            {/* 张力柱 */}
-            <div className="w-full flex flex-col items-center justify-end" style={{ height: '100px' }}>
-              <div
-                className="w-3 rounded-t"
-                style={{
-                  height: `${(entry.tension_score / maxScore) * 100}%`,
-                  backgroundColor: tensionColor(entry.tension_score),
-                }}
-              />
-            </div>
-            <span className="text-[9px] text-muted-foreground">
-              {entry.chapter_number}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      {/* 图例 */}
-      <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-2 rounded bg-emerald-400" />
-          <span>低张力</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-2 rounded bg-amber-400" />
-          <span>中张力</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-2 rounded bg-red-400" />
-          <span>高张力</span>
-        </div>
-      </div>
-
-      {/* 逐章情绪标签 */}
-      <div className="flex flex-wrap gap-1 mt-2">
-        {sorted.map((entry) => (
-          entry.emotion_tag && (
-            <span
-              key={entry.id}
-              className="text-[9px] px-1.5 py-0.5 rounded bg-muted"
-            >
-              {entry.chapter_number}章: {entry.emotion_tag}
-            </span>
-          )
-        ))}
-      </div>
+      {/* 跳转追踪标签页查看详细对比 */}
+      <button
+        onClick={() => useWorkbenchStore.getState().setActiveTab('tracking')}
+        className="text-xs text-primary hover:underline flex items-center gap-1"
+      >
+        查看详细对比 →
+      </button>
     </div>
   )
 }
@@ -638,12 +612,7 @@ function MoodTag({ mood }: { mood: string }) {
   )
 }
 
-// 张力值 → 颜色
-function tensionColor(score: number): string {
-  if (score <= 2) return '#34d399' // emerald-400
-  if (score <= 3) return '#fbbf24' // amber-400
-  return '#f87171' // red-400
-}
+
 
 // ========== 通用组件 ==========
 function EmptyState({ label }: { label: string }) {
