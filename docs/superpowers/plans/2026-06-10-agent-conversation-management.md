@@ -417,22 +417,18 @@ async def delete_conversation(
         raise HTTPException(status_code=409, detail="项目正在被使用，请稍后再试")
     
     try:
-    conv = db.query(AgentConversation).filter(
-        AgentConversation.id == conversation_id,
-        AgentConversation.project_id == project_id,
-    ).first()
-    if not conv:
-        raise HTTPException(status_code=404, detail="会话不存在")
-    if conv.is_active:
-        raise HTTPException(status_code=400, detail="无法删除当前激活的会话")
+        conv = db.query(AgentConversation).filter(
+            AgentConversation.id == conversation_id,
+            AgentConversation.project_id == project_id,
+        ).first()
+        if not conv:
+            raise HTTPException(status_code=404, detail="会话不存在")
+        if conv.is_active:
+            raise HTTPException(status_code=400, detail="无法删除当前激活的会话")
 
-    # 删除 DB 记录（cascade 会删除关联消息）
-    db.delete(conv)
-    db.commit()
-
-    # 清理 LangGraph checkpoint（不可行，LangGraph 未配置 checkpointer）
-    # TODO: 如果后续为 Agent 添加 checkpointer，需要在此处清理对应 thread_id 的 checkpoint
-    # 当前 create_react_agent 没有传 checkpointer 参数，此逻辑留作占位
+        # 删除 DB 记录（cascade 会删除关联消息）
+        db.delete(conv)
+        db.commit()
 
         return {"detail": "会话已删除"}
     except HTTPException:
@@ -499,7 +495,7 @@ async def stream_agent_events(
 - [ ] **Step 13: 提交**
 
 ```bash
-git add backend/app/api/agent.py backend/app/agents/checkpointer.py
+git add backend/app/api/agent.py
 git commit -m "api(agent): add multi-conversation CRUD, busy lock, thread_id isolation"
 ```
 

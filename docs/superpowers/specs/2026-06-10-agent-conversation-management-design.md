@@ -35,8 +35,6 @@
 
 - 保持 `agent_conversation` 名称不变（不改名），仅将 `uselist` 改为 `True`。原因：AgentConversation 中的 `back_populates="agent_conversation"` 必须与 Project 侧 relationship 名字匹配
 
-- `agent_conversation`（单数）重命名为 `agent_conversations`（复数），`uselist` 改为 `True`
-
 ### Alembic 迁移
 
 - 移除 `agent_conversations_project_id_key` unique constraint
@@ -126,4 +124,4 @@
 6. **切换到不存在/已删除的会话** — 后端返回 404，前端回退到上一个活跃会话
 7. **并发切换/新建** — 通过 busy lock 保证同一项目同一时间只有一个会话管理操作
 8. **项目首次使用** — 无会话时发送第一条消息自动创建（保持现有行为）
-9. **删除会话的 checkpoint 清理** — 在 DELETE 端点中同步清理 LangGraph checkpoint
+9. **删除会话的 checkpoint 清理** — 当前 LangGraph 未配置 checkpointer，无法清理。如后续添加，需在 DELETE 端点中补充
