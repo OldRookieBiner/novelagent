@@ -9,6 +9,8 @@ import { cn } from '@/lib/utils'
 import ReactMarkdown from 'react-markdown'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
 import { TagEditor } from '@/components/common/TagEditor'
+import type { Outline, OutlineCharacter, PlotPoint } from '@/types'
+import type { StyleConstraints } from '@/types/knowledge'
 import { WorldSettingView } from './WorldSettingView'
 import { CharactersListView } from './CharactersListView'
 import { RelationsView } from './RelationsView'
@@ -223,10 +225,10 @@ function StorySeedView({ data, loading, projectId, onUpdate }: { data: string; l
 }
 
 // ========== 大纲视图 ==========
-function OutlineView({ data, loading, projectId, onUpdate }: { data: any; loading: boolean; projectId: number; onUpdate: () => void }) {
+function OutlineView({ data, loading, projectId, onUpdate }: { data: Outline; loading: boolean; projectId: number; onUpdate: () => void }) {
   const [editing, setEditing] = useState(false)
   const [editSummary, setEditSummary] = useState('')
-  const [editPlotPoints, setEditPlotPoints] = useState<any[]>([])
+  const [editPlotPoints, setEditPlotPoints] = useState<PlotPoint[]>([])
   const [saving, setSaving] = useState(false)
 
   if (loading) return <LoadingSkeleton />
@@ -234,7 +236,7 @@ function OutlineView({ data, loading, projectId, onUpdate }: { data: any; loadin
 
   const startEdit = () => {
     setEditSummary(data.summary || '')
-    setEditPlotPoints(data.plot_points?.map((p: any) => ({...p})) || [])
+    setEditPlotPoints(data.plot_points?.map((p: PlotPoint) => ({...p})) || [])
     setEditing(true)
   }
 
@@ -293,17 +295,17 @@ function OutlineView({ data, loading, projectId, onUpdate }: { data: any; loadin
           <div>
             <div className="text-[10px] text-muted-foreground mb-1">情节节点</div>
             <div className="space-y-2">
-              {editPlotPoints.map((point: any, i: number) => (
+              {editPlotPoints.map((point, i: number) => (
                 <div key={i} className="border rounded-lg p-2 text-xs space-y-1">
                   <div className="flex gap-1">
                     <input value={point.event || ''} onChange={(e) => { const pts = [...editPlotPoints]; pts[i] = {...pts[i], event: e.target.value}; setEditPlotPoints(pts) }} placeholder="事件" className="flex-1 text-xs border rounded px-2 py-1" />
                     <input value={point.conflict || ''} onChange={(e) => { const pts = [...editPlotPoints]; pts[i] = {...pts[i], conflict: e.target.value}; setEditPlotPoints(pts) }} placeholder="冲突" className="flex-1 text-xs border rounded px-2 py-1" />
                     <input value={point.hook || ''} onChange={(e) => { const pts = [...editPlotPoints]; pts[i] = {...pts[i], hook: e.target.value}; setEditPlotPoints(pts) }} placeholder="钩子" className="flex-1 text-xs border rounded px-2 py-1" />
-                    <button onClick={() => setEditPlotPoints(editPlotPoints.filter((_: any, idx: number) => idx !== i))} className="text-muted-foreground hover:text-red-500 px-1">×</button>
+                    <button onClick={() => setEditPlotPoints(editPlotPoints.filter((_, idx: number) => idx !== i))} className="text-muted-foreground hover:text-red-500 px-1">×</button>
                   </div>
                 </div>
               ))}
-              <button onClick={() => setEditPlotPoints([...editPlotPoints, {event: '', conflict: '', hook: ''}])} className="text-[10px] text-muted-foreground hover:text-foreground">+ 添加情节节点</button>
+              <button onClick={() => setEditPlotPoints([...editPlotPoints, {order: editPlotPoints.length, event: '', conflict: '', hook: ''}])} className="text-[10px] text-muted-foreground hover:text-foreground">+ 添加情节节点</button>
             </div>
           </div>
           <div className="flex gap-2">
@@ -341,14 +343,13 @@ function OutlineView({ data, loading, projectId, onUpdate }: { data: any; loadin
         <div>
           <div className="text-[10px] text-muted-foreground mb-1">情节节点</div>
           <div className="space-y-1.5">
-            {data.plot_points.map((point: any, i: number) => (
+            {data.plot_points.map((point, i: number) => (
               <div key={i} className="border rounded-lg p-3 text-xs space-y-1">
                 {typeof point === 'string' ? point : (
                   <>
-                    <div className="font-medium">{point.event || point.description || point.title || JSON.stringify(point)}</div>
+                    <div className="font-medium">{point.event || JSON.stringify(point)}</div>
                     {point.conflict && <div className="text-muted-foreground">冲突：{point.conflict}</div>}
                     {point.hook && <div className="text-muted-foreground">钩子：{point.hook}</div>}
-                    {point.foreshadowing && <div className="text-blue-600">伏笔：{point.foreshadowing}</div>}
                   </>
                 )}
               </div>
@@ -372,7 +373,7 @@ function OutlineView({ data, loading, projectId, onUpdate }: { data: any; loadin
         <div>
           <div className="text-[10px] text-muted-foreground mb-1">角色设定（大纲中）</div>
           <div className="space-y-1">
-            {data.characters.map((char: any, i: number) => (
+            {data.characters.map((char: OutlineCharacter, i: number) => (
               <div key={i} className="text-xs bg-blue-50 text-blue-800 px-2 py-1 rounded">
                 {typeof char === 'string' ? char : char.name || JSON.stringify(char)}
               </div>
@@ -387,7 +388,7 @@ function OutlineView({ data, loading, projectId, onUpdate }: { data: any; loadin
 }
 
 // ========== 风格约束视图 ==========
-function StyleConstraintsView({ data, loading, projectId, onUpdate }: { data: any; loading: boolean; projectId: number; onUpdate: () => void }) {
+function StyleConstraintsView({ data, loading, projectId, onUpdate }: { data: StyleConstraints; loading: boolean; projectId: number; onUpdate: () => void }) {
   const [editing, setEditing] = useState(false)
   const [editAnchor, setEditAnchor] = useState('')
   const [editTaboo, setEditTaboo] = useState<string[]>([])
