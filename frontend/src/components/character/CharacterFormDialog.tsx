@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import type { CharacterCreate } from '@/types'
+import type { CharacterCreate, CharacterUpdate, Character } from '@/types'
 
 // 角色类型选项
 const ROLE_OPTIONS = ['主角', '核心反派', '重要配角', '配角']
@@ -15,7 +15,8 @@ interface CharacterFormDialogProps
     open: boolean
     saving: boolean
     onClose: () => void
-    onSubmit: (data: CharacterCreate) => void
+    onSubmit: (data: CharacterCreate | CharacterUpdate) => void
+    character?: Character
 }
 
 export default function CharacterFormDialog({
@@ -23,25 +24,37 @@ export default function CharacterFormDialog({
     saving,
     onClose,
     onSubmit,
+    character,
 }: CharacterFormDialogProps)
 {
     if (!open) return null
 
     // 表单状态由容器管理，通过内部 state 管理
     // 这里使用独立状态管理表单数据
-    return <CharacterFormDialogInner saving={saving} onClose={onClose} onSubmit={onSubmit} />
+    return <CharacterFormDialogInner saving={saving} onClose={onClose} onSubmit={onSubmit} character={character} />
 }
 
 function CharacterFormDialogInner({
     saving,
     onClose,
     onSubmit,
+    character,
 }: Omit<CharacterFormDialogProps, 'open'>)
 {
-    const [form, setForm] = useState<CharacterCreate>({
-        name: '',
-        role: '配角',
-    })
+    const isEditing = !!character
+    const [form, setForm] = useState<CharacterCreate | CharacterUpdate>(
+        character ? {
+            name: character.name,
+            role: character.role,
+            personality: character.personality || '',
+            backstory: character.backstory || '',
+            appearance: character.appearance || '',
+            core_motivation: character.core_motivation || '',
+        } : {
+            name: '',
+            role: '配角',
+        }
+    )
 
     const handleSubmit = () =>
     {
@@ -52,7 +65,7 @@ function CharacterFormDialogInner({
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <Card className="w-[400px]">
                 <CardHeader>
-                    <CardTitle>新增人物</CardTitle>
+                    <CardTitle>{isEditing ? '编辑人物' : '新增人物'}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div>
@@ -95,7 +108,7 @@ function CharacterFormDialogInner({
                             取消
                         </Button>
                         <Button onClick={handleSubmit} disabled={saving} className="flex-1">
-                            {saving ? '创建中...' : '创建'}
+                            {saving ? (isEditing ? '保存中...' : '创建中...') : (isEditing ? '保存' : '创建')}
                         </Button>
                     </div>
                 </CardContent>

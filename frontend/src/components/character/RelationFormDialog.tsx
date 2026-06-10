@@ -4,13 +4,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import type { Character, RelationCreate } from '@/types'
+import type { Character, RelationCreate, RelationUpdate, RelationWithCharacters } from '@/types'
 
 // 关系类型选项
 const RELATION_TYPES = ['信任', '敌对', '感情', '合作', '利用', '陌生']
 
 // 关系方向选项
-const DIRECTION_OPTIONS = ['双向', '单向A->B', '单向B->A']
+const DIRECTION_OPTIONS = ['双向', '单向A→B', '单向B→A']
 
 interface RelationFormDialogProps
 {
@@ -18,7 +18,8 @@ interface RelationFormDialogProps
     saving: boolean
     characters: Character[]
     onClose: () => void
-    onSubmit: (data: RelationCreate) => void
+    onSubmit: (data: RelationCreate | RelationUpdate) => void
+    relation?: RelationWithCharacters
 }
 
 export default function RelationFormDialog({
@@ -27,6 +28,7 @@ export default function RelationFormDialog({
     characters,
     onClose,
     onSubmit,
+    relation,
 }: RelationFormDialogProps)
 {
     if (!open) return null
@@ -37,6 +39,7 @@ export default function RelationFormDialog({
             characters={characters}
             onClose={onClose}
             onSubmit={onSubmit}
+            relation={relation}
         />
     )
 }
@@ -46,15 +49,23 @@ function RelationFormDialogInner({
     characters,
     onClose,
     onSubmit,
+    relation,
 }: Omit<RelationFormDialogProps, 'open'>)
 {
-    const [form, setForm] = useState<RelationCreate>({
-        character_a_id: 0,
-        character_b_id: 0,
-        relation_type: '陌生',
-        direction: '双向',
-        trust_level: 50,
-    })
+    const isEditing = !!relation
+    const [form, setForm] = useState<RelationCreate | RelationUpdate>(
+        relation ? {
+            relation_type: relation.relation_type,
+            direction: relation.direction,
+            trust_level: relation.trust_level,
+        } : {
+            character_a_id: 0,
+            character_b_id: 0,
+            relation_type: '陌生',
+            direction: '双向',
+            trust_level: 50,
+        }
+    )
 
     const handleSubmit = () =>
     {
@@ -65,7 +76,7 @@ function RelationFormDialogInner({
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <Card className="w-[400px]">
                 <CardHeader>
-                    <CardTitle>新增关系</CardTitle>
+                    <CardTitle>{isEditing ? '编辑关系' : '新增关系'}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div>
@@ -148,7 +159,7 @@ function RelationFormDialogInner({
                             取消
                         </Button>
                         <Button onClick={handleSubmit} disabled={saving} className="flex-1">
-                            {saving ? '创建中...' : '创建'}
+                            {saving ? (isEditing ? '保存中...' : '创建中...') : (isEditing ? '保存' : '创建')}
                         </Button>
                     </div>
                 </CardContent>

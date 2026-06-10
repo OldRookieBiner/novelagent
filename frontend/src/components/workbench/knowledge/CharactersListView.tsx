@@ -1,12 +1,19 @@
 // CharactersListView.tsx — 角色设定标签页
 
+import { useState } from 'react'
 import type { Character } from '@/types/character'
+import type { CharacterCreate, CharacterUpdate } from '@/types'
 import { cn } from '@/lib/utils'
+import { characterApi } from '@/lib/characterApi'
+import CharacterFormDialog from '@/components/character/CharacterFormDialog'
+import { useWorkbenchStore } from '@/stores/workbenchStore'
 
 interface CharactersListViewProps
 {
     data: Character[]
     loading: boolean
+    projectId: number
+    onUpdate: () => void
 }
 
 const roleConfig: Record<string, { label: string; color: string; bg: string }> = {
@@ -16,10 +23,53 @@ const roleConfig: Record<string, { label: string; color: string; bg: string }> =
     '配角': { label: '配角', color: 'text-gray-600', bg: 'bg-gray-50' },
 }
 
-export function CharactersListView({ data, loading }: CharactersListViewProps)
+export function CharactersListView({ data, loading, projectId, onUpdate }: CharactersListViewProps)
 {
+    const [dialogOpen, setDialogOpen] = useState(false)
+    const [editingChar, setEditingChar] = useState<Character | undefined>(undefined)
+    const [saving, setSaving] = useState(false)
+
+    const handleCreate = () => {
+        setEditingChar(undefined)
+        setDialogOpen(true)
+    }
+
+    const handleEdit = (char: Character) => {
+        setEditingChar(char)
+        setDialogOpen(true)
+    }
+
+    const handleDelete = async (char: Character) => {
+        if (!confirm('确认删除该角色？该角色的所有关联关系将一并删除。')) return
+        try {
+            await characterApi.delete(projectId, char.id)
+            useWorkbenchStore.getState().incrementKnowledgeVersion()
+            onUpdate()
+        } catch (err) {
+            console.error('Failed to delete character:', err)
+        }
+    }
+
+    const handleSubmit = async (formData: CharacterCreate | CharacterUpdate) => {
+        setSaving(true)
+        try {
+            if (editingChar) {
+                await characterApi.update(projectId, editingChar.id, formData as CharacterUpdate)
+            } else {
+                await characterApi.create(projectId, formData as CharacterCreate)
+            }
+            setDialogOpen(false)
+            setEditingChar(undefined)
+            useWorkbenchStore.getState().incrementKnowledgeVersion()
+            onUpdate()
+        } catch (err) {
+            console.error('Failed to save character:', err)
+        } finally {
+            setSaving(false)
+        }
+    }
+
     if (loading) return <LoadingSkeleton />
-    if (!data?.length) return <EmptyState label="角色将在创意孵化阶段生成" />
 
     // 按角色类型分组
     const grouped = data.reduce<Record<string, Character[]>>((acc, char) =>
@@ -32,7 +82,17 @@ export function CharactersListView({ data, loading }: CharactersListViewProps)
 
     return (
         <div className="space-y-4">
-            <h3 className="text-sm font-semibold">角色设定</h3>
+            <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold">角色设定</h3>
+                <button onClick={handleCreate} className="text-[10px] text-muted-foreground hover:text-foreground">+ 新增角色</button>
+            </div>
+            <CharacterFormDialog
+                open={dialogOpen}
+                saving={saving}
+                onClose={() => { setDialogOpen(false); setEditingChar(undefined) }}
+                onSubmit={handleSubmit}
+                character={editingChar}
+            />
             {Object.entries(grouped).map(([role, chars]) =>
             {
                 const config = roleConfig[role] || roleConfig['配角']
@@ -47,6 +107,10 @@ export function CharactersListView({ data, loading }: CharactersListViewProps)
                                 <div key={char.id} className="border rounded-lg p-3 space-y-1.5">
                                     <div className="flex items-center gap-2">
                                         <span className="text-sm font-medium">{char.name}</span>
+                                        <div className="ml-auto flex gap-1">
+                                            <button onClick={() => handleEdit(char)} className="text-[10px] text-muted-foreground hover:text-foreground">编辑</button>
+                                            <button onClick={() => handleDelete(char)} className="text-[10px] text-muted-foreground hover:text-red-500">删除</button>
+                                        </div>
                                     </div>
                                     {char.personality && (
                                         <div className="text-xs text-muted-foreground">
@@ -69,15 +133,6 @@ export function CharactersListView({ data, loading }: CharactersListViewProps)
                     </div>
                 )
             })}
-        </div>
-    )
-}
-
-function EmptyState({ label }: { label: string })
-{
-    return (
-        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground text-xs">
-            <p>{label}</p>
         </div>
     )
 }

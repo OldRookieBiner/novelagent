@@ -1,8 +1,10 @@
 // WorldSettingView.tsx — 世界观展示与编辑
 
 import { useState } from 'react'
-import { Globe, Edit3, Check, X } from 'lucide-react'
+import { Globe, Edit3 } from 'lucide-react'
 import { knowledgeApi } from '@/lib/api'
+import { TagEditor } from '@/components/common/TagEditor'
+import { useWorkbenchStore } from '@/stores/workbenchStore'
 import ReactMarkdown from 'react-markdown'
 
 interface WorldSettingViewProps {
@@ -21,6 +23,10 @@ const TIER_CONFIG: Record<string, { label: string; color: string; desc: string }
 export function WorldSettingView({ data, loading, projectId, onUpdate }: WorldSettingViewProps) {
   const [editing, setEditing] = useState(false)
   const [coreConcept, setCoreConcept] = useState('')
+  const [editRed, setEditRed] = useState<string[]>([])
+  const [editYellow, setEditYellow] = useState<string[]>([])
+  const [editGreen, setEditGreen] = useState<string[]>([])
+  const [editLocations, setEditLocations] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
 
   if (loading) {
@@ -48,6 +54,11 @@ export function WorldSettingView({ data, loading, projectId, onUpdate }: WorldSe
 
   const startEdit = () => {
     setCoreConcept(data.core_concept || '')
+    const ts = data.tiered_settings || {}
+    setEditRed([...(ts.red || [])])
+    setEditYellow([...(ts.yellow || [])])
+    setEditGreen([...(ts.green || [])])
+    setEditLocations((data.key_locations || []).map((l: any) => typeof l === 'string' ? l : l.name || ''))
     setEditing(true)
   }
 
@@ -59,8 +70,13 @@ export function WorldSettingView({ data, loading, projectId, onUpdate }: WorldSe
   const saveEdit = async () => {
     setSaving(true)
     try {
-      await knowledgeApi.updateWorldSetting(projectId, { core_concept: coreConcept })
+      await knowledgeApi.updateWorldSetting(projectId, {
+        core_concept: coreConcept,
+        tiered_settings: { red: editRed, yellow: editYellow, green: editGreen },
+        key_locations: editLocations,
+      })
       setEditing(false)
+      useWorkbenchStore.getState().incrementKnowledgeVersion()
       onUpdate()
     } catch (err) {
       console.error('Failed to save world setting:', err)
@@ -87,22 +103,12 @@ export function WorldSettingView({ data, loading, projectId, onUpdate }: WorldSe
       <div>
         <div className="text-[10px] text-muted-foreground mb-1">核心概念</div>
         {editing ? (
-          <div className="flex gap-2">
-            <textarea
-              value={coreConcept}
-              onChange={(e) => setCoreConcept(e.target.value)}
-              className="flex-1 border rounded-md px-3 py-2 text-xs outline-none focus:border-primary resize-none"
-              rows={3}
-            />
-            <div className="flex flex-col gap-1">
-              <button onClick={saveEdit} disabled={saving} className="p-1.5 text-green-600 hover:bg-green-50 rounded">
-                <Check className="h-3.5 w-3.5" />
-              </button>
-              <button onClick={cancelEdit} className="p-1.5 text-red-500 hover:bg-red-50 rounded">
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
+          <textarea
+            value={coreConcept}
+            onChange={(e) => setCoreConcept(e.target.value)}
+            className="w-full border rounded-md px-3 py-2 text-xs outline-none focus:border-primary resize-none"
+            rows={3}
+          />
         ) : data.core_concept ? (
           <div className="text-sm bg-muted/50 rounded-lg p-3 leading-relaxed">
             <div className="markdown-content text-sm leading-relaxed">
@@ -128,7 +134,7 @@ export function WorldSettingView({ data, loading, projectId, onUpdate }: WorldSe
       </div>
 
       {/* 分级设定 */}
-      {Object.entries(TIER_CONFIG).map(([tier, config]) => {
+      {!editing && Object.entries(TIER_CONFIG).map(([tier, config]) => {
         const items = tieredSettings[tier] || []
         if (items.length === 0) return null
 
@@ -161,16 +167,47 @@ export function WorldSettingView({ data, loading, projectId, onUpdate }: WorldSe
       })}
 
       {/* 关键地点 */}
-      {data.key_locations?.length > 0 && (
+      {(editing || (!editing && data.key_locations?.length > 0)) && (
         <div>
           <div className="text-[10px] text-muted-foreground mb-1">关键地点</div>
-          <div className="flex flex-wrap gap-1.5">
-            {data.key_locations.map((loc: any, i: number) => (
-              <span key={i} className="bg-blue-50 text-blue-700 text-[10px] px-2 py-1 rounded">
-                {typeof loc === 'string' ? loc : loc.name || JSON.stringify(loc)}
+          {editing ? (
+            <TagEditor items={editLocations} setItems={setEditLocations} placeholder="输入地点后回车" />
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {data.key_locations.map((loc: any, i: number) => (
+                <span key={i} className="bg-blue-50 text-blue-700 text-[10px] px-2 py-1 rounded">
+                  {typeof loc === 'string' ? loc : loc.name || JSON.stringify(loc)}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 编辑模式下的分级设定编辑 */}
+      {editing && Object.entries(TIER_CONFIG).map(([tier, config]) => {
+        const items = tier === 'red' ? editRed : tier === 'yellow' ? editYellow : editGreen
+        const setItems = tier === 'red' ? setEditRed : tier === 'yellow' ? setEditYellow : setEditGreen
+        return (
+          <div key={tier}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className={`text-[10px] px-1.5 py-0.5 rounded border ${config.color}`}>
+                {config.label}
               </span>
-            ))}
+              <span className="text-[10px] text-muted-foreground">{config.desc}</span>
+            </div>
+            <TagEditor items={items} setItems={setItems} placeholder={`输入${config.label}后回车`} />
           </div>
+        )
+      })}
+
+      {/* 编辑模式下的保存/取消按钮 */}
+      {editing && (
+        <div className="flex gap-2 pt-2">
+          <button onClick={saveEdit} disabled={saving} className="text-xs px-3 py-1.5 bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50">
+            {saving ? '保存中...' : '保存'}
+          </button>
+          <button onClick={cancelEdit} className="text-xs px-3 py-1.5 border rounded hover:bg-muted/50">取消</button>
         </div>
       )}
     </div>

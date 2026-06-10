@@ -1,7 +1,7 @@
 // RelationsView.tsx — 关系网络标签页
 
 import { useState } from 'react'
-import type { Character, RelationWithCharacters, RelationCreate } from '@/types/character'
+import type { Character, RelationWithCharacters, RelationCreate, RelationUpdate } from '@/types/character'
 import { relationApi } from '@/lib/characterApi'
 import { cn } from '@/lib/utils'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
@@ -29,21 +29,30 @@ export function RelationsView({ relations, characters, loading, projectId }: Rel
 {
     const [showRelationForm, setShowRelationForm] = useState(false)
     const [savingRelation, setSavingRelation] = useState(false)
+    const [editingRelation, setEditingRelation] = useState<RelationWithCharacters | undefined>(undefined)
 
     if (loading) return <LoadingSkeleton />
 
-    const handleCreateRelation = async (formData: RelationCreate) =>
+    const handleCreateRelation = async (formData: RelationCreate | RelationUpdate) =>
     {
         setSavingRelation(true)
         try
         {
-            await relationApi.create(projectId, formData)
+            if (editingRelation)
+            {
+                await relationApi.update(projectId, editingRelation.id, formData as RelationUpdate)
+            }
+            else
+            {
+                await relationApi.create(projectId, formData as RelationCreate)
+            }
             setShowRelationForm(false)
+            setEditingRelation(undefined)
             useWorkbenchStore.getState().incrementKnowledgeVersion()
         }
         catch (err)
         {
-            console.error('Failed to create relation:', err)
+            console.error('Failed to save relation:', err)
         }
         finally
         {
@@ -85,6 +94,7 @@ export function RelationsView({ relations, characters, loading, projectId }: Rel
                                 nameB={nameB}
                                 typeConfig={tc}
                                 projectId={projectId}
+                                onEdit={() => { setEditingRelation(rel); setShowRelationForm(true) }}
                             />
                         )
                     })}
@@ -100,8 +110,9 @@ export function RelationsView({ relations, characters, loading, projectId }: Rel
                     open={showRelationForm}
                     saving={savingRelation}
                     characters={characters}
-                    onClose={() => setShowRelationForm(false)}
+                    onClose={() => { setShowRelationForm(false); setEditingRelation(undefined) }}
                     onSubmit={handleCreateRelation}
+                    relation={editingRelation}
                 />
             )}
         </div>
@@ -115,12 +126,14 @@ function RelationCard({
     nameB,
     typeConfig,
     projectId,
+    onEdit,
 }: {
     rel: RelationWithCharacters
     nameA: string
     nameB: string
     typeConfig: { color: string; bg: string }
     projectId: number
+    onEdit: () => void
 })
 {
     const [deleting, setDeleting] = useState(false)
@@ -153,6 +166,7 @@ function RelationCard({
                         {rel.relation_type}
                     </span>
                     <span className="text-xs font-medium">{nameB}</span>
+                    <button onClick={onEdit} className="text-[10px] text-muted-foreground hover:text-foreground ml-1">编辑</button>
                 </div>
                 <button
                     onClick={handleDelete}

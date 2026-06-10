@@ -1,13 +1,14 @@
 // KnowledgeTab.tsx — 知识库标签页
 
 import { useState, useEffect, useCallback } from 'react'
-import { BookOpen, Globe, Palette, Users, GitBranch, Map, Sparkles, FileText } from 'lucide-react'
+import { BookOpen, Globe, Palette, Users, Sparkles, FileText } from 'lucide-react'
 import { knowledgeApi } from '@/lib/api'
 import { characterApi, relationApi } from '@/lib/characterApi'
 import type { Character, RelationWithCharacters } from '@/types/character'
 import { cn } from '@/lib/utils'
 import ReactMarkdown from 'react-markdown'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
+import { TagEditor } from '@/components/common/TagEditor'
 import { WorldSettingView } from './WorldSettingView'
 import { CharactersListView } from './CharactersListView'
 import { RelationsView } from './RelationsView'
@@ -17,7 +18,7 @@ interface KnowledgeTabProps {
   projectId: number
 }
 
-type KnowledgeSection = 'story_seed' | 'outline' | 'world' | 'style' | 'characters' | 'foreshadowing' | 'timeline'
+type KnowledgeSection = 'story_seed' | 'outline' | 'world' | 'style' | 'characters'
 
 const SECTIONS: { key: KnowledgeSection; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: 'story_seed', label: '故事种子', icon: Sparkles },
@@ -25,8 +26,6 @@ const SECTIONS: { key: KnowledgeSection; label: string; icon: React.ComponentTyp
   { key: 'world', label: '世界观', icon: Globe },
   { key: 'style', label: '风格约束', icon: Palette },
   { key: 'characters', label: '角色', icon: Users },
-  { key: 'foreshadowing', label: '伏笔地图', icon: Map },
-  { key: 'timeline', label: '时间线', icon: GitBranch },
 ]
 
 export function KnowledgeTab({ projectId }: KnowledgeTabProps) {
@@ -35,8 +34,7 @@ export function KnowledgeTab({ projectId }: KnowledgeTabProps) {
   const [outlineData, setOutlineData] = useState<any>(null)
   const [worldSetting, setWorldSetting] = useState<any>(null)
   const [styleConstraints, setStyleConstraints] = useState<any>(null)
-  const [foreshadowings, setForeshadowings] = useState<any[]>([])
-  const [timeline, setTimeline] = useState<any[]>([])
+
   const [characters, setCharacters] = useState<Character[]>([])
   const [relations, setRelations] = useState<RelationWithCharacters[]>([])
   const [loading, setLoading] = useState(false)
@@ -44,13 +42,11 @@ export function KnowledgeTab({ projectId }: KnowledgeTabProps) {
   const loadKnowledge = useCallback(async () => {
     setLoading(true)
     try {
-      const [ss, os, ws, sc, fs, tl, chars, rels] = await Promise.allSettled([
+      const [ss, os, ws, sc, chars, rels] = await Promise.allSettled([
         knowledgeApi.getStorySeed(projectId),
         knowledgeApi.getOutlineSummary(projectId),
         knowledgeApi.getWorldSetting(projectId),
         knowledgeApi.getStyleConstraints(projectId),
-        knowledgeApi.getForeshadowings(projectId),
-        knowledgeApi.getTimeline(projectId),
         characterApi.list(projectId),
         relationApi.list(projectId),
       ])
@@ -58,8 +54,7 @@ export function KnowledgeTab({ projectId }: KnowledgeTabProps) {
       if (os.status === 'fulfilled') setOutlineData(os.value?.outline || null)
       if (ws.status === 'fulfilled') setWorldSetting(ws.value)
       if (sc.status === 'fulfilled') setStyleConstraints(sc.value)
-      if (fs.status === 'fulfilled') setForeshadowings(fs.value)
-      if (tl.status === 'fulfilled') setTimeline(tl.value)
+
       if (chars.status === 'fulfilled') setCharacters(chars.value?.characters || [])
       if (rels.status === 'fulfilled') setRelations(rels.value?.relations || [])
     } catch (err) {
@@ -82,17 +77,14 @@ export function KnowledgeTab({ projectId }: KnowledgeTabProps) {
       case 'story_seed':
         return <StorySeedView data={storySeed} loading={loading} projectId={projectId} onUpdate={loadKnowledge} />
       case 'outline':
-        return <OutlineView data={outlineData} loading={loading} />
+        return <OutlineView data={outlineData} loading={loading} projectId={projectId} onUpdate={loadKnowledge} />
       case 'world':
         return <WorldSettingView data={worldSetting} loading={loading} onUpdate={loadKnowledge} projectId={projectId} />
       case 'style':
-        return <StyleConstraintsView data={styleConstraints} loading={loading} />
+        return <StyleConstraintsView data={styleConstraints} loading={loading} projectId={projectId} onUpdate={loadKnowledge} />
       case 'characters':
-        return <CharactersSection data={characters} relations={relations} loading={loading} projectId={projectId} />
-      case 'foreshadowing':
-        return <ForeshadowingView data={foreshadowings} loading={loading} />
-      case 'timeline':
-        return <TimelineView data={timeline} loading={loading} />
+        return <CharactersSection data={characters} relations={relations} loading={loading} projectId={projectId} onUpdate={loadKnowledge} />
+
       default:
         return null
     }
@@ -231,16 +223,53 @@ function StorySeedView({ data, loading, projectId, onUpdate }: { data: string; l
 }
 
 // ========== 大纲视图 ==========
-function OutlineView({ data, loading }: { data: any; loading: boolean }) {
+function OutlineView({ data, loading, projectId, onUpdate }: { data: any; loading: boolean; projectId: number; onUpdate: () => void }) {
+  const [editing, setEditing] = useState(false)
+  const [editSummary, setEditSummary] = useState('')
+  const [editPlotPoints, setEditPlotPoints] = useState<any[]>([])
+  const [saving, setSaving] = useState(false)
+
   if (loading) return <LoadingSkeleton />
   if (!data) return <EmptyState label="大纲尚未生成，请先完成创意孵化阶段" />
+
+  const startEdit = () => {
+    setEditSummary(data.summary || '')
+    setEditPlotPoints(data.plot_points?.map((p: any) => ({...p})) || [])
+    setEditing(true)
+  }
+
+  const cancelEdit = () => setEditing(false)
+
+  const saveEdit = async () => {
+    setSaving(true)
+    try {
+      const { outlineApi } = await import('@/lib/api')
+      await outlineApi.update(projectId, {
+        summary: editSummary,
+        plot_points: editPlotPoints,
+      })
+      setEditing(false)
+      useWorkbenchStore.getState().incrementKnowledgeVersion()
+      onUpdate()
+    } catch (err: any) {
+      if (err?.response?.status === 400) {
+        console.error('大纲已确认，无法编辑')
+      } else {
+        console.error('Failed to update outline:', err)
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
         <h3 className="text-sm font-semibold">大纲</h3>
-        {data.confirmed && (
+        {data.confirmed ? (
           <span className="text-[10px] bg-green-50 text-green-700 px-1.5 py-0.5 rounded">已确认</span>
+        ) : !editing && (
+          <button onClick={startEdit} className="text-[10px] text-muted-foreground hover:text-foreground">编辑</button>
         )}
       </div>
 
@@ -251,6 +280,39 @@ function OutlineView({ data, loading }: { data: any; loading: boolean }) {
         </div>
       )}
 
+      {editing ? (
+        <div className="space-y-3">
+          <div>
+            <div className="text-[10px] text-muted-foreground mb-1">概述</div>
+            <textarea
+              value={editSummary}
+              onChange={(e) => setEditSummary(e.target.value)}
+              className="w-full h-40 text-sm bg-muted/30 rounded-lg p-3 border focus:outline-none focus:ring-1 focus:ring-primary resize-y"
+            />
+          </div>
+          <div>
+            <div className="text-[10px] text-muted-foreground mb-1">情节节点</div>
+            <div className="space-y-2">
+              {editPlotPoints.map((point: any, i: number) => (
+                <div key={i} className="border rounded-lg p-2 text-xs space-y-1">
+                  <div className="flex gap-1">
+                    <input value={point.event || ''} onChange={(e) => { const pts = [...editPlotPoints]; pts[i] = {...pts[i], event: e.target.value}; setEditPlotPoints(pts) }} placeholder="事件" className="flex-1 text-xs border rounded px-2 py-1" />
+                    <input value={point.conflict || ''} onChange={(e) => { const pts = [...editPlotPoints]; pts[i] = {...pts[i], conflict: e.target.value}; setEditPlotPoints(pts) }} placeholder="冲突" className="flex-1 text-xs border rounded px-2 py-1" />
+                    <input value={point.hook || ''} onChange={(e) => { const pts = [...editPlotPoints]; pts[i] = {...pts[i], hook: e.target.value}; setEditPlotPoints(pts) }} placeholder="钩子" className="flex-1 text-xs border rounded px-2 py-1" />
+                    <button onClick={() => setEditPlotPoints(editPlotPoints.filter((_: any, idx: number) => idx !== i))} className="text-muted-foreground hover:text-red-500 px-1">×</button>
+                  </div>
+                </div>
+              ))}
+              <button onClick={() => setEditPlotPoints([...editPlotPoints, {event: '', conflict: '', hook: ''}])} className="text-[10px] text-muted-foreground hover:text-foreground">+ 添加情节节点</button>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={saveEdit} disabled={saving} className="text-xs px-3 py-1.5 bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50">{saving ? '保存中...' : '保存'}</button>
+            <button onClick={cancelEdit} className="text-xs px-3 py-1.5 border rounded hover:bg-muted/50">取消</button>
+          </div>
+        </div>
+      ) : (
+        <>
       {data.summary && (
         <div>
           <div className="text-[10px] text-muted-foreground mb-1">概述</div>
@@ -318,20 +380,93 @@ function OutlineView({ data, loading }: { data: any; loading: boolean }) {
           </div>
         </div>
       )}
-
-
+        </>
+      )}
     </div>
   )
 }
 
 // ========== 风格约束视图 ==========
-function StyleConstraintsView({ data, loading }: { data: any; loading: boolean }) {
+function StyleConstraintsView({ data, loading, projectId, onUpdate }: { data: any; loading: boolean; projectId: number; onUpdate: () => void }) {
+  const [editing, setEditing] = useState(false)
+  const [editAnchor, setEditAnchor] = useState('')
+  const [editTaboo, setEditTaboo] = useState<string[]>([])
+  const [editPatterns, setEditPatterns] = useState<string[]>([])
+  const [editRules, setEditRules] = useState<string[]>([])
+  const [saving, setSaving] = useState(false)
+
   if (loading) return <LoadingSkeleton />
   if (!data) return <EmptyState label="风格约束尚未生成，请先完成创意孵化阶段" />
 
+  const startEdit = () => {
+    setEditAnchor(data.style_anchor || '')
+    setEditTaboo([...(data.taboo_words || [])])
+    setEditPatterns([...(data.forbidden_patterns || [])])
+    setEditRules([...(data.abstract_rules || [])])
+    setEditing(true)
+  }
+
+  const cancelEdit = () => setEditing(false)
+
+  const saveEdit = async () => {
+    setSaving(true)
+    try {
+      await knowledgeApi.updateStyleConstraints(projectId, {
+        style_anchor: editAnchor,
+        taboo_words: editTaboo,
+        forbidden_patterns: editPatterns,
+        abstract_rules: editRules,
+      })
+      setEditing(false)
+      useWorkbenchStore.getState().incrementKnowledgeVersion()
+      onUpdate()
+    } catch (err) {
+      console.error('Failed to update style constraints:', err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold">风格约束</h3>
+        </div>
+        <div>
+          <div className="text-[10px] text-muted-foreground mb-1">风格锚点</div>
+          <textarea
+            value={editAnchor}
+            onChange={(e) => setEditAnchor(e.target.value)}
+            className="w-full h-32 text-sm bg-muted/30 rounded-lg p-3 border focus:outline-none focus:ring-1 focus:ring-primary resize-y"
+          />
+        </div>
+        <div>
+          <div className="text-[10px] text-muted-foreground mb-1">禁忌词</div>
+          <TagEditor items={editTaboo} setItems={setEditTaboo} placeholder="输入禁忌词后回车" />
+        </div>
+        <div>
+          <div className="text-[10px] text-muted-foreground mb-1">禁用句式</div>
+          <TagEditor items={editPatterns} setItems={setEditPatterns} placeholder="输入禁用句式后回车" />
+        </div>
+        <div>
+          <div className="text-[10px] text-muted-foreground mb-1">风格规则</div>
+          <TagEditor items={editRules} setItems={setEditRules} placeholder="输入风格规则后回车" />
+        </div>
+        <div className="flex gap-2">
+          <button onClick={saveEdit} disabled={saving} className="text-xs px-3 py-1.5 bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50">{saving ? '保存中...' : '保存'}</button>
+          <button onClick={cancelEdit} className="text-xs px-3 py-1.5 border rounded hover:bg-muted/50">取消</button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
-      <h3 className="text-sm font-semibold">风格约束</h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold">风格约束</h3>
+        <button onClick={startEdit} className="text-[10px] text-muted-foreground hover:text-foreground">编辑</button>
+      </div>
 
       {data.style_anchor && (
         <div>
@@ -389,95 +524,10 @@ function StyleConstraintsView({ data, loading }: { data: any; loading: boolean }
   )
 }
 
-// ========== 伏笔地图视图 ==========
-function ForeshadowingView({ data, loading }: { data: any[]; loading: boolean }) {
-  if (loading) return <LoadingSkeleton />
-  if (!data?.length) return <EmptyState label="伏笔地图尚未生成，请先完成创意孵化阶段" />
 
-  const statusLabel: Record<string, { text: string; color: string }> = {
-    active: { text: '活跃', color: 'bg-green-50 text-green-700' },
-    pending_reclaim: { text: '待回收', color: 'bg-amber-50 text-amber-700' },
-    reclaimed: { text: '已回收', color: 'bg-blue-50 text-blue-700' },
-  }
-  const levelLabel: Record<string, { text: string; color: string }> = {
-    hint: { text: '暗示', color: 'bg-gray-50 text-gray-600' },
-    strengthened: { text: '强化', color: 'bg-indigo-50 text-indigo-700' },
-    revealed: { text: '揭示', color: 'bg-purple-50 text-purple-700' },
-  }
-
-  return (
-    <div className="space-y-3">
-      <h3 className="text-sm font-semibold">伏笔地图</h3>
-      {data.map((item) => {
-        const st = statusLabel[item.status] || { text: item.status, color: 'bg-gray-50 text-gray-600' }
-        const lv = levelLabel[item.level] || { text: item.level, color: 'bg-gray-50 text-gray-600' }
-        return (
-          <div key={item.id} className="border rounded-lg p-3 space-y-1.5">
-            <div className="flex items-center gap-2">
-              <span className={cn('text-[10px] px-1.5 py-0.5 rounded', st.color)}>{st.text}</span>
-              <span className={cn('text-[10px] px-1.5 py-0.5 rounded', lv.color)}>{lv.text}</span>
-              {item.planted_chapter && <span className="text-[10px] text-muted-foreground">第{item.planted_chapter}章埋设</span>}
-              {item.expected_resolve_chapter && <span className="text-[10px] text-muted-foreground">→ 预计第{item.expected_resolve_chapter}章回收</span>}
-            </div>
-            <div className="text-xs">{item.content}</div>
-            {item.related_characters?.length > 0 && (
-              <div className="flex gap-1">
-                {item.related_characters.map((c: string, i: number) => (
-                  <span key={i} className="bg-muted text-[10px] px-1.5 py-0.5 rounded">{c}</span>
-                ))}
-              </div>
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-// ========== 时间线视图 ==========
-function TimelineView({ data, loading }: { data: any[]; loading: boolean }) {
-  if (loading) return <LoadingSkeleton />
-  if (!data?.length) return <EmptyState label="时间线将在写作过程中自动生成" />
-
-  return (
-    <div className="space-y-2">
-      <h3 className="text-sm font-semibold">时间线</h3>
-      {data.map((entry) => (
-        <div key={entry.id} className="flex gap-3 border-l-2 border-primary/20 pl-3 py-1">
-          <div className="text-[10px] text-muted-foreground w-14 shrink-0">第{entry.chapter_number}章</div>
-          <div className="flex-1 space-y-1">
-            <div className="text-xs">{entry.summary}</div>
-            <div className="flex gap-2">
-              {entry.emotion_tag && <span className="text-[10px] text-muted-foreground">{entry.emotion_tag}</span>}
-              {entry.causal_chain && <span className="text-[10px] text-muted-foreground">因果: {entry.causal_chain}</span>}
-            </div>
-            <div className="flex gap-1">
-              <ScoreBar label="节奏" value={entry.rhythm_score} />
-              <ScoreBar label="张力" value={entry.tension_score} />
-              <ScoreBar label="情绪" value={entry.emotion_score} />
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function ScoreBar({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="flex items-center gap-0.5">
-      <span className="text-[9px] text-muted-foreground">{label}</span>
-      <div className="w-8 h-1 bg-gray-200 rounded-full overflow-hidden">
-        <div className="h-full bg-primary rounded-full" style={{ width: `${(value / 5) * 100}%` }} />
-      </div>
-    </div>
-  )
-}
-
-// ========== 角色板块标签页容器 ==========
 type CharacterTab = 'characters' | 'relations' | 'evolution'
 
-function CharactersSection({ data, relations, loading, projectId }: { data: Character[]; relations: RelationWithCharacters[]; loading: boolean; projectId: number })
+function CharactersSection({ data, relations, loading, projectId, onUpdate }: { data: Character[]; relations: RelationWithCharacters[]; loading: boolean; projectId: number; onUpdate: () => void })
 {
     const [activeTab, setActiveTab] = useState<CharacterTab>('characters')
 
@@ -510,7 +560,7 @@ function CharactersSection({ data, relations, loading, projectId }: { data: Char
             {/* 标签页内容 */}
             <div>
                 {activeTab === 'characters' && (
-                    <CharactersListView data={data} loading={loading} />
+                    <CharactersListView data={data} loading={loading} projectId={projectId} onUpdate={onUpdate} />
                 )}
                 {activeTab === 'relations' && (
                     <RelationsView relations={relations} characters={data} loading={loading} projectId={projectId} />
