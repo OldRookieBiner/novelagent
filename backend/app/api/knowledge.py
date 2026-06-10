@@ -1,6 +1,6 @@
 """知识库 API 路由"""
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
 from typing import Optional
 from pydantic import BaseModel
@@ -51,7 +51,7 @@ def _check_busy(project) -> None:
     if project.is_busy:
         holder = project.busy_by or "未知"
         raise HTTPException(
-            status_code=409,
+            status_code=status.HTTP_409_CONFLICT,
             detail=f"项目正在被{holder}使用，请稍后再试"
         )
 

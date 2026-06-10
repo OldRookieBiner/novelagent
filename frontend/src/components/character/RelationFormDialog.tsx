@@ -79,10 +79,12 @@ function RelationFormDialogInner({
                     <CardTitle>{isEditing ? '编辑关系' : '新增关系'}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                    {!isEditing ? (
+                    <>
                     <div>
                         <Label>人物 A</Label>
                         <Select
-                            value={form.character_a_id.toString()}
+                            value={(form as RelationCreate).character_a_id.toString()}
                             onValueChange={(value) => setForm({ ...form, character_a_id: parseInt(value) })}
                         >
                             <SelectTrigger className="mt-1">
@@ -98,7 +100,7 @@ function RelationFormDialogInner({
                     <div>
                         <Label>人物 B</Label>
                         <Select
-                            value={form.character_b_id.toString()}
+                            value={(form as RelationCreate).character_b_id.toString()}
                             onValueChange={(value) => setForm({ ...form, character_b_id: parseInt(value) })}
                         >
                             <SelectTrigger className="mt-1">
@@ -111,6 +113,12 @@ function RelationFormDialogInner({
                             </SelectContent>
                         </Select>
                     </div>
+                    </>
+                    ) : (
+                    <div className="text-xs text-muted-foreground bg-muted/30 rounded p-2">
+                        {relation!.character_a?.name ?? '人物A'} ↔ {relation!.character_b?.name ?? '人物B'}
+                    </div>
+                    )}
                     <div>
                         <Label>关系类型</Label>
                         <Select
