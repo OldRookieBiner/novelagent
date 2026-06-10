@@ -7,7 +7,7 @@ import { useWorkbenchStore } from '@/stores/workbenchStore'
 import { TagEditor } from '@/components/common/TagEditor'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import type { PlotBlock } from '@/types/knowledge'
+import type { PlotBlock, Subplot, TimelineEntry } from '@/types/knowledge'
 
 interface StructureTabProps {
   projectId: number
@@ -22,27 +22,7 @@ const SECTIONS: { key: StructureSection; label: string; icon: React.ComponentTyp
   { key: 'rhythm', label: '节奏曲线', icon: Activity },
 ]
 
-// ========== 支线数据类型 ==========
-interface SubplotItem {
-  id: number
-  name: string
-  characters: string[]
-  current_status: string
-  raised_in_chapter: number | null
-  planned_intersection_chapter: number | null
-  expected_resolution_chapter: number | null
-}
 
-// ========== 时间线条目类型 ==========
-interface TimelineItem {
-  id: number
-  chapter_number: number
-  summary: string | null
-  rhythm_score: number
-  tension_score: number
-  emotion_score: number
-  emotion_tag: string | null
-}
 
 const STATUS_LABELS: Record<string, { text: string; color: string }> = {
   hint: { text: '暗示', color: 'bg-slate-100 text-slate-600' },
@@ -54,25 +34,23 @@ const STATUS_LABELS: Record<string, { text: string; color: string }> = {
 export function StructureTab({ projectId }: StructureTabProps) {
   const [activeSection, setActiveSection] = useState<StructureSection>('plot_blocks')
   const [plotBlocks, setPlotBlocks] = useState<PlotBlock[]>([])
-  const [subplots, setSubplots] = useState<SubplotItem[]>([])
-  const [timeline, setTimeline] = useState<TimelineItem[]>([])
+  const [subplots, setSubplots] = useState<Subplot[]>([])
+  const [timeline, setTimeline] = useState<TimelineEntry[]>([])
   const [loading, setLoading] = useState(false)
 
   const loadStructure = useCallback(async () => {
     setLoading(true)
     try {
-      const [blocks, subplotsData, timelineData] = await Promise.all([
+      const [blocks, subplotsData, timelineData] = await Promise.allSettled([
         knowledgeApi.getPlotBlocks(projectId),
-        knowledgeApi.getSubplots(projectId).catch(() => []),
-        knowledgeApi.getTimeline(projectId).catch(() => []),
+        knowledgeApi.getSubplots(projectId),
+        knowledgeApi.getTimeline(projectId),
       ])
-      setPlotBlocks(blocks)
-      setSubplots(subplotsData)
-      setTimeline(timelineData)
-    } catch {
-      setPlotBlocks([])
-      setSubplots([])
-      setTimeline([])
+      if (blocks.status === 'fulfilled') setPlotBlocks(blocks.value)
+      if (subplotsData.status === 'fulfilled') setSubplots(subplotsData.value)
+      if (timelineData.status === 'fulfilled') setTimeline(timelineData.value)
+    } catch (err) {
+      console.error('Failed to load structure data:', err)
     } finally {
       setLoading(false)
     }
@@ -350,7 +328,7 @@ function QuestionsView({ data, loading }: { data: PlotBlock[]; loading: boolean 
 }
 
 // ========== 支线网络视图 ==========
-function SubplotsView({ data, loading, projectId, onUpdate }: { data: SubplotItem[]; loading: boolean; projectId: number; onUpdate: () => void }) {
+function SubplotsView({ data, loading, projectId, onUpdate }: { data: Subplot[]; loading: boolean; projectId: number; onUpdate: () => void }) {
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editName, setEditName] = useState('')
@@ -368,7 +346,7 @@ function SubplotsView({ data, loading, projectId, onUpdate }: { data: SubplotIte
     resetForm(); setEditingId(null); setShowCreateForm(true)
   }
 
-  const startEdit = (s: SubplotItem) => {
+  const startEdit = (s: Subplot) => {
     setEditName(s.name); setEditStatus(s.current_status)
     setEditRaised(s.raised_in_chapter ?? ''); setEditIntersection(s.planned_intersection_chapter ?? '')
     setEditResolution(s.expected_resolution_chapter ?? ''); setEditingId(s.id); setShowCreateForm(true)
@@ -402,7 +380,7 @@ function SubplotsView({ data, loading, projectId, onUpdate }: { data: SubplotIte
     }
   }
 
-  const handleDelete = async (s: SubplotItem) => {
+  const handleDelete = async (s: Subplot) => {
     if (!confirm('确认删除该支线？')) return
     try {
       await knowledgeApi.deleteSubplot(projectId, s.id)
@@ -507,7 +485,7 @@ function SubplotsView({ data, loading, projectId, onUpdate }: { data: SubplotIte
 }
 
 // ========== 节奏曲线视图 ==========
-function RhythmView({ blocks, timeline, loading }: { blocks: PlotBlock[]; timeline: TimelineItem[]; loading: boolean }) {
+function RhythmView({ blocks, timeline, loading }: { blocks: PlotBlock[]; timeline: TimelineEntry[]; loading: boolean }) {
   if (loading) return <LoadingSkeleton />
 
   const hasTimeline = timeline.length > 0

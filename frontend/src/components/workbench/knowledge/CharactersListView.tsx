@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 import { characterApi } from '@/lib/characterApi'
 import CharacterFormDialog from '@/components/character/CharacterFormDialog'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
+import { toast } from 'sonner'
 
 interface CharactersListViewProps
 {
@@ -46,7 +47,7 @@ export function CharactersListView({ data, loading, projectId, onUpdate }: Chara
             useWorkbenchStore.getState().incrementKnowledgeVersion()
             onUpdate()
         } catch (err) {
-            console.error('Failed to delete character:', err)
+            toast.error('角色删除失败：' + (err instanceof Error ? err.message : '未知错误'))
         }
     }
 
@@ -63,7 +64,7 @@ export function CharactersListView({ data, loading, projectId, onUpdate }: Chara
             useWorkbenchStore.getState().incrementKnowledgeVersion()
             onUpdate()
         } catch (err) {
-            console.error('Failed to save character:', err)
+            toast.error('角色保存失败：' + (err instanceof Error ? err.message : '未知错误'))
         } finally {
             setSaving(false)
         }

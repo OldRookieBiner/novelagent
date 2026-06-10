@@ -438,13 +438,18 @@ function StyleTrackView({ data, loading }: { data: StyleSnapshot[]; loading: boo
   if (!data?.length) return <EmptyState label="风格偏差将在写作过程中自动计算" />
 
   // 计算各指标的统计范围（均值 ± 1σ）
-  const metrics = ['dialogue_ratio', 'avg_sentence_length', 'avg_paragraph_length', 'paragraph_count'] as const
+  const metrics: { key: keyof StyleSnapshot; label: string }[] = [
+    { key: 'dialogue_ratio', label: '对话占比' },
+    { key: 'avg_sentence_length', label: '平均句长' },
+    { key: 'avg_paragraph_length', label: '平均段长' },
+    { key: 'paragraph_count', label: '段落数' },
+  ]
   const stats: Record<string, { mean: number; std: number }> = {}
-  for (const m of metrics) {
-    const vals = data.map((d) => (d as any)[m] as number)
+  for (const { key } of metrics) {
+    const vals = data.map((d) => d[key] as number)
     const mean = vals.reduce((a, b) => a + b, 0) / vals.length
     const std = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length)
-    stats[m] = { mean, std }
+    stats[key] = { mean, std }
   }
 
   // 检查某值是否偏离

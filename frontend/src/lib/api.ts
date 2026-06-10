@@ -774,9 +774,10 @@ export const knowledgeApi = {
    */
   async createForeshadowing(projectId: number, data: Record<string, unknown>): Promise<any>
   {
+    // batch 端点接收 list[dict] 作为 body，这里传 [data] 创建单条
     return request<any>(`/api/projects/${projectId}/foreshadowings/batch`, {
       method: 'POST',
-      body: { foreshadowings: [data] },
+      body: [data],
     })
   },
 

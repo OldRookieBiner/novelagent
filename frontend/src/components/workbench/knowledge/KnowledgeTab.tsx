@@ -10,7 +10,7 @@ import ReactMarkdown from 'react-markdown'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
 import { TagEditor } from '@/components/common/TagEditor'
 import type { Outline, OutlineCharacter, PlotPoint } from '@/types'
-import type { StyleConstraints } from '@/types/knowledge'
+import type { StyleConstraints, WorldSetting as WorldSettingType } from '@/types/knowledge'
 import { WorldSettingView } from './WorldSettingView'
 import { CharactersListView } from './CharactersListView'
 import { RelationsView } from './RelationsView'
@@ -33,9 +33,9 @@ const SECTIONS: { key: KnowledgeSection; label: string; icon: React.ComponentTyp
 export function KnowledgeTab({ projectId }: KnowledgeTabProps) {
   const [activeSection, setActiveSection] = useState<KnowledgeSection>('story_seed')
   const [storySeed, setStorySeed] = useState<string>('')
-  const [outlineData, setOutlineData] = useState<any>(null)
-  const [worldSetting, setWorldSetting] = useState<any>(null)
-  const [styleConstraints, setStyleConstraints] = useState<any>(null)
+  const [outlineData, setOutlineData] = useState<Outline | null>(null)
+  const [worldSetting, setWorldSetting] = useState<WorldSettingType | null>(null)
+  const [styleConstraints, setStyleConstraints] = useState<StyleConstraints | null>(null)
 
   const [characters, setCharacters] = useState<Character[]>([])
   const [relations, setRelations] = useState<RelationWithCharacters[]>([])
@@ -53,9 +53,9 @@ export function KnowledgeTab({ projectId }: KnowledgeTabProps) {
         relationApi.list(projectId),
       ])
       if (ss.status === 'fulfilled') setStorySeed(ss.value?.story_seed || '')
-      if (os.status === 'fulfilled') setOutlineData(os.value?.outline || null)
-      if (ws.status === 'fulfilled') setWorldSetting(ws.value)
-      if (sc.status === 'fulfilled') setStyleConstraints(sc.value)
+      if (os.status === 'fulfilled') setOutlineData((os.value?.outline as unknown as Outline) || null)
+      if (ws.status === 'fulfilled') setWorldSetting(ws.value as WorldSettingType)
+      if (sc.status === 'fulfilled') setStyleConstraints(sc.value as StyleConstraints)
 
       if (chars.status === 'fulfilled') setCharacters(chars.value?.characters || [])
       if (rels.status === 'fulfilled') setRelations(rels.value?.relations || [])

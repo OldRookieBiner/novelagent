@@ -5,6 +5,7 @@ import type { Character, RelationWithCharacters, RelationCreate, RelationUpdate 
 import { relationApi } from '@/lib/characterApi'
 import { cn } from '@/lib/utils'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
+import { toast } from 'sonner'
 import RelationFormDialog from '@/components/character/RelationFormDialog'
 
 // 关系类型配色
@@ -52,7 +53,7 @@ export function RelationsView({ relations, characters, loading, projectId }: Rel
         }
         catch (err)
         {
-            console.error('Failed to save relation:', err)
+            toast.error('关系保存失败：' + (err instanceof Error ? err.message : '未知错误'))
         }
         finally
         {
@@ -149,7 +150,7 @@ function RelationCard({
         }
         catch (err)
         {
-            console.error('Failed to delete relation:', err)
+            toast.error('关系删除失败：' + (err instanceof Error ? err.message : '未知错误'))
         }
         finally
         {

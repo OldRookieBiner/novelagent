@@ -5,10 +5,12 @@ import { Globe, Edit3 } from 'lucide-react'
 import { knowledgeApi } from '@/lib/api'
 import { TagEditor } from '@/components/common/TagEditor'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
+import { toast } from 'sonner'
+import type { WorldSetting as WorldSettingType } from '@/types/knowledge'
 import ReactMarkdown from 'react-markdown'
 
 interface WorldSettingViewProps {
-  data: any
+  data: WorldSettingType | null
   loading: boolean
   projectId: number
   onUpdate: () => void
@@ -79,7 +81,7 @@ export function WorldSettingView({ data, loading, projectId, onUpdate }: WorldSe
       useWorkbenchStore.getState().incrementKnowledgeVersion()
       onUpdate()
     } catch (err) {
-      console.error('Failed to save world setting:', err)
+      toast.error('世界观保存失败：' + (err instanceof Error ? err.message : '未知错误'))
     } finally {
       setSaving(false)
     }
