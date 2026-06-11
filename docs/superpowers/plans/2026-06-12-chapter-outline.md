@@ -4,7 +4,7 @@
 
 **Goal:** 让 ChapterOutline 在写作流程中活起来——先规划、再审查、再动笔，提升章节写作质量。
 
-**Architecture:** 新增 `generate_chapter_outline` 工具实现规划环节，修改 `generate_chapter_content` 在写正文前检查大纲确认状态，通过 `agent_context.py` 将大纲注入 Agent system prompt 让 LLM 参考大纲写作，前端在 WritingPanel 正文上方增加可折叠大纲面板实现审查环节，通过监听 `agent_tool_result` 实现前端实时刷新。
+**Architecture:** 新增 `generate_chapter_outline` 工具实现规划环节，修改 `generate_chapter_content` 在写正文前检查大纲确认状态，通过 `agent_context.py` 将大纲注入 Agent system prompt 让 LLM 参考大纲写作，前端在 WritingPanel 正文上方增加可折叠大纲面板实现审查环节，通过 `knowledgeVersion` 机制实现前端自动刷新。
 
 **Tech Stack:** Python/FastAPI/SQLAlchemy/Alembic（后端），React/shadcn/ui/Zustand（前端），LangChain tools（Agent 工具）
 
@@ -29,7 +29,7 @@
 | Modify | `backend/app/agents/rewrite_utils.py` | _format_chapter_outline_str 加新字段 |
 | Modify | `backend/app/agents/tools/utils.py` | _build_state_for_review 加新字段 |
 | Modify | `frontend/src/types/index.ts` | ChapterOutline 类型加 4 字段 |
-| Modify | `frontend/src/components/workbench/creation/WritingPanel.tsx` | 加大纲面板 + 编辑 + 状态标识 + 前置检查 |
+| Modify | `frontend/src/components/workbench/creation/WritingPanel.tsx` | 加大纲面板 + 编辑 + 状态标识 + 前置检查 + knowledgeVersion |
 | Delete | `frontend/src/components/workbench/creation/ChapterOutlinePanel.tsx` | 死代码 |
 | Delete | `frontend/src/components/workbench/creation/ChapterOutlineEditor.tsx` | 死代码 |
 | Delete | `frontend/src/components/workbench/creation/ChapterOutlineCard.tsx` | 死代码 |
@@ -57,7 +57,7 @@
     pacing_note = Column(Text, nullable=True)  # 节奏标注
 ```
 
-注意：`key_scenes` 用 `nullable=True` 而不是 `default=list`，避免 SQLAlchemy 可变默认值陷阱。写入时由应用层设置空列表 `[]`，数据库层 NULL 表示未设置。
+注意：`key_scenes` 用 `nullable=True` 而非 `default=list`，避免 SQLAlchemy 可变默认值陷阱。写入时由应用层设置空列表 `[]`，数据库层 NULL 表示未设置。
 
 - [ ] **Step 2: Schema 加 4 字段**
 
@@ -78,6 +78,8 @@
     key_scenes: Optional[list[dict]] = None
     pacing_note: Optional[str] = None
 ```
+
+注意：`ChapterOutlineResponse` 继承自 `ChapterOutlineBase`，会自动继承这 4 个字段，无需额外修改。但 `chapters.py` 三个端点手动构造 kwargs 时必须包含这 4 个字段。
 
 - [ ] **Step 3: outline_service 加新字段**
 
@@ -111,12 +113,21 @@
         chapter_outline.pacing_note = request.pacing_note
 ```
 
-在 `list_chapter_outlines`、`update_chapter_outline`、`confirm_chapter_outline` 三个函数的响应构造字典中添加这 4 个字段：
+**关键**：`list_chapter_outlines`、`update_chapter_outline`、`confirm_chapter_outline` 三个函数的响应构造字典（kwargs）中都必须添加这 4 个字段。因为三个端点都是手动构造 `ChapterOutlineResponse` 的 kwargs，不使用 `from_orm`，遗漏字段会导致前端拿到的值为 None。
+
 ```python
         "opening_state": co.opening_state,
         "emotional_arc": co.emotional_arc,
         "key_scenes": co.key_scenes,
         "pacing_note": co.pacing_note,
+```
+
+注意 `confirm_chapter_outline` 中变量名是 `chapter_outline` 而非 `co`：
+```python
+        "opening_state": chapter_outline.opening_state,
+        "emotional_arc": chapter_outline.emotional_arc,
+        "key_scenes": chapter_outline.key_scenes,
+        "pacing_note": chapter_outline.pacing_note,
 ```
 
 - [ ] **Step 5: 创建 Alembic 迁移**
@@ -179,9 +190,14 @@ git commit -m "feat(db): ChapterOutline 新增开场状态/情绪弧线/核心�
 ```python
 """生成章节大纲工具"""
 
+import json as _json
+import logging
+
 from langchain_core.tools import tool
 
 from app.agents.tool_context import get_project_id
+
+logger = logging.getLogger(__name__)
 
 
 @tool
@@ -224,13 +240,13 @@ async def generate_chapter_outline(
         key_scenes: JSON string list of key scenes, each: {"seq": 1, "desc": "场景描述", "mood": "情绪"}
         pacing_note: Pacing instruction (e.g., "前慢后快，2/3处转折")
     """
-    import json as _json
     from app.database import SessionLocal
     from app.models.outline import ChapterOutline
 
     try:
         scenes = _json.loads(key_scenes) if isinstance(key_scenes, str) else key_scenes
     except _json.JSONDecodeError:
+        logger.warning("key_scenes JSON 解析失败，使用空列表: %s", key_scenes[:100])
         scenes = []
 
     project_id = get_project_id()
@@ -244,7 +260,7 @@ async def generate_chapter_outline(
         ).first()
 
         if chapter_outline:
-            # 更新现有大纲
+            # 更新现有大纲（即使已确认也允许更新，但重置确认状态）
             chapter_outline.title = title
             if scene:
                 chapter_outline.scene = scene
@@ -263,15 +279,15 @@ async def generate_chapter_outline(
             if ending:
                 chapter_outline.ending = ending
             chapter_outline.target_words = target_words
-            if opening_state is not None and opening_state != "":
+            if opening_state:
                 chapter_outline.opening_state = opening_state
-            if emotional_arc is not None and emotional_arc != "":
+            if emotional_arc:
                 chapter_outline.emotional_arc = emotional_arc
-            if scenes is not None and len(scenes) > 0:
+            if scenes:
                 chapter_outline.key_scenes = scenes
-            if pacing_note is not None and pacing_note != "":
+            if pacing_note:
                 chapter_outline.pacing_note = pacing_note
-            # 重置确认状态，等待用户审查
+            # 重置确认状态，要求用户重新审查
             chapter_outline.confirmed = False
             action = "updated"
         else:
@@ -310,6 +326,7 @@ async def generate_chapter_outline(
         }
 
     except Exception as e:
+        logger.error("generate_chapter_outline 失败: %s", e, exc_info=True)
         return {"error": str(e)}
     finally:
         if not committed:
@@ -322,6 +339,8 @@ async def generate_chapter_outline(
         except Exception:
             pass
 ```
+
+字段更新策略说明：更新时使用 `if value:` 判断非空才写入，空字符串参数表示"未提供"而非"清空"。这是有意设计——Agent 生成大纲时不会主动清空已有字段。创建时空字符串转为 `None` 存入数据库。
 
 - [ ] **Step 2: 在 __init__.py 中导出**
 
@@ -407,10 +426,10 @@ git commit -m "feat(agent): 新增 generate_chapter_outline 工具"
                     "transition": _co.transition or "",
                     "ending": _co.ending or "",
                     "target_words": _co.target_words,
-                    "opening_state": _co.opening_state or "",
-                    "emotional_arc": _co.emotional_arc or "",
-                    "key_scenes": _co.key_scenes or [],
-                    "pacing_note": _co.pacing_note or "",
+                    "opening_state": getattr(_co, "opening_state", None) or "",
+                    "emotional_arc": getattr(_co, "emotional_arc", None) or "",
+                    "key_scenes": getattr(_co, "key_scenes", None) or [],
+                    "pacing_note": getattr(_co, "pacing_note", None) or "",
                     "confirmed": _co.confirmed,
                 }
                 co_json = json.dumps(co_data, ensure_ascii=False)
@@ -418,14 +437,17 @@ git commit -m "feat(agent): 新增 generate_chapter_outline 工具"
                 if budget.can_add(co_tokens):
                     context["current_chapter_outline"] = co_data
                     budget.add(co_tokens)
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("加载当前章节大纲失败: %s", e)
         finally:
             try:
                 _db.close()
             except Exception:
                 pass
 ```
+
+注意：新字段使用 `getattr(_co, "field", None)` 读取，防御迁移未执行时新列不存在的情况。异常时记录 warning 日志而非静默吞没。
 
 - [ ] **Step 2: 重启后端**
 
@@ -466,8 +488,9 @@ git commit -m "feat(agent): writing phase 加载当前章节大纲到上下文"
                 "error": f"第{chapter_number}章大纲尚未确认，请先审查并确认章节大纲后再写作",
                 "hint": "使用 generate_chapter_outline 工具生成大纲，或提醒用户确认大纲",
             }
-    except Exception:
-        pass  # 检查失败不影响后续流程
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("大纲确认状态检查失败: %s", e)
     finally:
         try:
             _check_db.close()
@@ -475,7 +498,12 @@ git commit -m "feat(agent): writing phase 加载当前章节大纲到上下文"
             pass
 ```
 
-注意：此检查使用独立的 `_check_db` session，与后面的主逻辑 `db` 无关，先关闭。当 `_existing_co` 为 None（大纲不存在）时，不做拦截——保留向后兼容，允许跳过规划直接写正文。
+关键行为：
+- `_existing_co` 存在且 confirmed=False → 返回错误，要求先确认
+- `_existing_co` 存在且 confirmed=True → 通过检查，继续后续流程（大纲已通过 system prompt 注入）
+- `_existing_co` 不存在 → 不拦截，保留向后兼容（工具会自动创建空壳 ChapterOutline）
+
+注意：`_check_db` 使用独立 session，先关闭后再进入主流程的 `db = SessionLocal()`。检查异常时记录 warning 日志而非静默吞没，但检查失败不阻断后续流程。
 
 - [ ] **Step 2: 重启后端**
 
@@ -506,15 +534,17 @@ git commit -m "feat(agent): generate_chapter_content 写正文前检查已确认
 在 `backend/app/agents/tools/creation/review_chapter.py` 中，`chapter_outline_dict` 字典的 `"target_words": co.target_words,` 之后添加：
 
 ```python
-            "opening_state": co.opening_state,
-            "emotional_arc": co.emotional_arc,
-            "key_scenes": co.key_scenes,
-            "pacing_note": co.pacing_note,
+            "opening_state": getattr(co, "opening_state", None),
+            "emotional_arc": getattr(co, "emotional_arc", None),
+            "key_scenes": getattr(co, "key_scenes", None),
+            "pacing_note": getattr(co, "pacing_note", None),
 ```
+
+使用 `getattr` 带默认值，防御迁移未执行时新列不存在的情况。
 
 - [ ] **Step 2: rewrite_chapter.py 的 chapter_outline_dict 加 4 字段**
 
-在 `backend/app/agents/tools/creation/rewrite_chapter.py` 中，找到 `chapter_outline_dict` 字典，在 `"target_words": co.target_words,` 之后添加同样的 4 个字段。
+在 `backend/app/agents/tools/creation/rewrite_chapter.py` 中，找到 `chapter_outline_dict` 字典，在 `"target_words": co.target_words,` 之后添加同样的 4 个字段（同样用 `getattr`）。
 
 - [ ] **Step 3: review_utils.py 的 _format_chapter_outline_str 加新字段**
 
@@ -528,9 +558,12 @@ git commit -m "feat(agent): generate_chapter_content 写正文前检查已确认
 
 ```python
     scenes = chapter_outline.get("key_scenes")
-    if scenes:
+    if scenes and isinstance(scenes, list):
         for s in scenes:
-            parts.append(f"  场景{s.get('seq', '')}：{s.get('desc', '')}（{s.get('mood', '')}）")
+            seq = s.get("seq", "")
+            desc = s.get("desc", "")
+            mood = s.get("mood", "")
+            parts.append(f"  场景{seq}：{desc}（{mood}）")
 ```
 
 - [ ] **Step 4: rewrite_utils.py 的 _format_chapter_outline_str 加新字段**
@@ -542,10 +575,10 @@ git commit -m "feat(agent): generate_chapter_content 写正文前检查已确认
 在 `backend/app/agents/tools/utils.py` 的 `_build_state_for_review` 函数中，`chapter_outlines` 列表里每项字典的 `"target_words": co.target_words,` 之后添加：
 
 ```python
-                "opening_state": co.opening_state,
-                "emotional_arc": co.emotional_arc,
-                "key_scenes": co.key_scenes,
-                "pacing_note": co.pacing_note,
+                "opening_state": getattr(co, "opening_state", None),
+                "emotional_arc": getattr(co, "emotional_arc", None),
+                "key_scenes": getattr(co, "key_scenes", None),
+                "pacing_note": getattr(co, "pacing_note", None),
 ```
 
 - [ ] **Step 6: 重启后端**
@@ -563,7 +596,7 @@ git commit -m "feat(agent): 审核/重写上下文同步包含章节大纲新字
 
 ---
 
-### Task 6: 前端类型和 API — 新增 4 字段
+### Task 6: 前端类型 — 新增 4 字段
 
 **Files:**
 - Modify: `frontend/src/types/index.ts`
@@ -600,204 +633,122 @@ git commit -m "feat(frontend): ChapterOutline 类型新增写作指导字段"
 **Files:**
 - Modify: `frontend/src/components/workbench/creation/WritingPanel.tsx`
 
-- [ ] **Step 1: WritingPanel 增加可折叠大纲面板**
+- [ ] **Step 1: WritingPanel 订阅 knowledgeVersion 自动刷新**
 
-在 `frontend/src/components/workbench/creation/WritingPanel.tsx` 中：
+在 `frontend/src/components/workbench/creation/WritingPanel.tsx` 中，使用选择器方式订阅 `knowledgeVersion`（与 KnowledgeTab/StructureTab/TrackingTab 一致，避免解构导致不必要的重渲染）：
 
-1. 在组件顶部新增状态：
+```typescript
+  const knowledgeVersion = useWorkbenchStore((s) => s.knowledgeVersion)
+  const { toggleAiSidebar } = useWorkbenchStore()
+```
+
+在章节大纲列表的 `useEffect` 依赖数组中加入 `knowledgeVersion`：
+
+```typescript
+  }, [projectId, knowledgeVersion])
+```
+
+这样当 Agent 对话完成（`onAgentDone` → `incrementKnowledgeVersion()`）后，章节列表自动刷新。
+
+- [ ] **Step 2: WritingPanel 增加可折叠大纲面板**
+
+在组件顶部新增状态：
 ```typescript
   const [outlineCollapsed, setOutlineCollapsed] = useState(false)
 ```
 
-2. 在正文编辑区域（`<div className="max-w-3xl mx-auto">` 内，标题栏之后、TipTapEditor/预览区之前）插入大纲面板：
+在正文编辑区域（`<div className="max-w-3xl mx-auto">` 内，标题栏之后、TipTapEditor/预览区之前）插入大纲面板。
 
-```tsx
-              {/* 本章大纲面板 */}
-              {selectedChapter && (
-                <div className={`mb-4 border rounded-lg overflow-hidden ${
-                  selectedChapter.confirmed ? 'border-gray-200' : 'border-dashed border-amber-300'
-                }`}>
-                  <div
-                    className="flex items-center justify-between px-4 py-2 bg-gray-50 cursor-pointer"
-                    onClick={() => setOutlineCollapsed(!outlineCollapsed)}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium">📋 本章大纲</span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                        selectedChapter.confirmed
-                          ? 'bg-blue-100 text-blue-700'
-                          : 'bg-amber-100 text-amber-700'
-                      }`}>
-                        {selectedChapter.confirmed ? '已确认' : '待确认'}
-                      </span>
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      {outlineCollapsed ? '展开' : '收起'}
-                    </span>
-                  </div>
-                  {!outlineCollapsed && (
-                    <div className="px-4 py-3 text-xs space-y-2">
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-                        {selectedChapter.scene && (
-                          <><span className="text-muted-foreground">场景</span><span>{selectedChapter.scene}</span></>
-                        )}
-                        {selectedChapter.characters && (
-                          <><span className="text-muted-foreground">人物</span><span>{selectedChapter.characters}</span></>
-                        )}
-                        {selectedChapter.conflict && (
-                          <><span className="text-muted-foreground">冲突</span><span>{selectedChapter.conflict}</span></>
-                        )}
-                        {selectedChapter.turning_point && (
-                          <><span className="text-muted-foreground">转折</span><span>{selectedChapter.turning_point}</span></>
-                        )}
-                        {selectedChapter.hook && (
-                          <><span className="text-muted-foreground">钩子</span><span>{selectedChapter.hook}</span></>
-                        )}
-                        {selectedChapter.ending && (
-                          <><span className="text-muted-foreground">结尾</span><span>{selectedChapter.ending}</span></>
-                        )}
-                      </div>
-                      {selectedChapter.plot && (
-                        <div><span className="text-muted-foreground">情节：</span>{selectedChapter.plot}</div>
-                      )}
-                      {/* 写作指导区 */}
-                      {(selectedChapter.opening_state || selectedChapter.emotional_arc || selectedChapter.pacing_note || (selectedChapter.key_scenes && selectedChapter.key_scenes.length > 0)) && (
-                        <div className="border-t pt-2 mt-2">
-                          <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">写作指导</div>
-                          {selectedChapter.opening_state && (
-                            <div><span className="text-muted-foreground">开场：</span>{selectedChapter.opening_state}</div>
-                          )}
-                          {selectedChapter.emotional_arc && (
-                            <div><span className="text-muted-foreground">情绪：</span>{selectedChapter.emotional_arc}</div>
-                          )}
-                          {selectedChapter.pacing_note && (
-                            <div><span className="text-muted-foreground">节奏：</span>{selectedChapter.pacing_note}</div>
-                          )}
-                          {selectedChapter.key_scenes && selectedChapter.key_scenes.length > 0 && (
-                            <div className="flex gap-1.5 flex-wrap mt-0.5">
-                              <span className="text-muted-foreground">场景：</span>
-                              {selectedChapter.key_scenes.map((s, i) => (
-                                <span key={i} className="bg-gray-100 px-1.5 py-0.5 rounded text-[10px]">
-                                  {i + 1}. {s.desc}（{s.mood}）
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      {/* 操作按钮 */}
-                      <div className="flex gap-2 pt-1">
-                        {!selectedChapter.confirmed && (
-                          <button
-                            className="text-[10px] px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
-                            onClick={async (e) => {
-                              e.stopPropagation()
-                              try {
-                                await chapterOutlinesApi.confirm(projectId!, selectedChapter.chapter_number)
-                                // 刷新章节列表
-                                const data = await chapterOutlinesApi.list(projectId!)
-                                setChapters(data)
-                                const updated = data.find(c => c.chapter_number === selectedChapter.chapter_number)
-                                if (updated) setSelectedChapter(updated)
-                                toast.success('大纲已确认')
-                              } catch {
-                                toast.error('确认失败')
-                              }
-                            }}
-                          >
-                            确认大纲
-                          </button>
-                        )}
-                        <button
-                          className="text-[10px] px-2 py-1 border border-gray-200 rounded hover:bg-gray-50"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            toggleAiSidebar()
-                            // 通过 Agent 重新规划
-                          }}
-                        >
-                          重新规划
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+大纲面板结构：
+1. **头部**：可点击折叠/展开 + 状态标签（"待确认"/"已确认"）+ 当前章标题
+2. **基础规划区域**（8 字段）：scene、characters、plot、conflict、turning_point、hook、transition、ending — 每个字段一行，点击变输入框，失焦调用 `chapterOutlinesApi.update`
+3. **写作指导区域**（4 字段）：opening_state、emotional_arc、key_scenes（列表形式）、pacing_note — 同样 inline 可编辑
+4. **底部按钮**：确认大纲（调用 `chapterOutlinesApi.confirm`，成功后刷新章节列表）、重新规划（调用 `handleReplan`）
+
+样式规则：
+- 未确认大纲：默认展开，虚线边框 `border-dashed`，amber 色"待确认"标签
+- 已确认大纲：默认折叠，实线边框 `border-solid`，蓝色"已确认"标签
+- 无大纲：显示空状态提示
+
+key_scenes 编辑说明：使用简化的列表编辑——每个场景一行，显示"场景N: 描述（情绪）"，点击弹出简单编辑表单。避免复杂的嵌套 JSON 编辑器。
+
+- [ ] **Step 3: "重新规划"按钮实现**
+
+添加 `handleReplan` 函数：
+
+```typescript
+  const handleReplan = useCallback(() =>
+  {
+    if (!selectedChapter) return
+    const message = `重新规划第${selectedChapter.chapter_number}章大纲`
+    // 调用 AgentChatPanel 的发送逻辑
+    // 方式：通过 workbenchStore 的 aiSidebarOpen + 预填消息触发
+    toggleAiSidebar()
+    // 注意：实际发送需要调用 AgentChatPanel 暴露的 sendMessage 方法
+    // 或者通过 store 设置一个 "pendingMessage" 状态
+    // 最简实现：打开侧边栏 + toast 提示用户在对话框输入
+    toast.info('请在右侧 Agent 对话中输入重新规划请求', { description: message })
+  }, [selectedChapter, toggleAiSidebar])
 ```
 
-- [ ] **Step 2: 章节列表增加大纲状态标识**
+注意：当前 `AgentChatPanel` 没有暴露外部的 `sendMessage` 方法。最简实现是打开侧边栏 + toast 提示。后续迭代可以通过 store 添加 `pendingMessage` 状态来实现自动发送。
 
-在 `WritingPanel` 的左侧章节列表中，修改章节按钮的状态指示器部分，将原来的：
+- [ ] **Step 4: 章节列表增加大纲状态标识**
+
+将原有的 `has_content` ✅ 标识替换为四级状态：
+
 ```tsx
-{chapter.has_content && <span className="text-[10px] flex-shrink-0">✅</span>}
+{chapter.has_content ? (
+  <span className="text-[10px] text-green-500 flex-shrink-0">✓</span>
+) : chapter.confirmed ? (
+  <span className="text-[10px] text-blue-500 flex-shrink-0">●</span>
+) : chapter.plot ? (
+  <span className="text-[10px] text-amber-500 flex-shrink-0">●</span>
+) : (
+  <span className="text-[10px] text-gray-300 flex-shrink-0">○</span>
+)}
 ```
 
-替换为：
-```tsx
-                    {!chapter.has_content && chapter.confirmed && <span className="text-[10px] text-blue-500 flex-shrink-0">●</span>}
-                    {!chapter.has_content && !chapter.confirmed && chapter.plot && <span className="text-[10px] text-amber-500 flex-shrink-0">●</span>}
-                    {!chapter.has_content && !chapter.confirmed && !chapter.plot && <span className="text-[10px] text-gray-300 flex-shrink-0">○</span>}
-                    {chapter.has_content && <span className="text-[10px] text-green-500 flex-shrink-0">✓</span>}
-```
+折叠状态的侧边栏中，章节按钮的显示也需要同步修改：
+- 有正文 → 绿色 ✓
+- 已确认 → 蓝色数字
+- 已规划 → 琥珀色数字
+- 未规划 → 灰色数字
 
-同样修改折叠状态下的小按钮，将：
-```tsx
-{chapter.has_content ? '✅' : chapter.chapter_number}
-```
+- [ ] **Step 5: AI 生成按钮增加前置检查**
 
-替换为：
-```tsx
-{chapter.has_content ? '✓' : chapter.confirmed ? '●' : chapter.plot ? '●' : chapter.chapter_number}
-```
-
-- [ ] **Step 3: AI 生成按钮增加前置检查**
-
-在 `WritingPanel` 中找到"AI 生成"按钮的 `onClick` 处理，将其从直接调用 `toggleAiSidebar()` 改为：
+将"AI 生成"按钮的 onClick 从直接 `toggleAiSidebar()` 改为：
 
 ```tsx
 onClick={() => {
-  if (selectedChapter && !selectedChapter.confirmed) {
-    if (!selectedChapter.plot) {
-      toast.info('请先规划本章大纲', { description: '将自动发送规划请求' })
-      toggleAiSidebar()
-      return
-    }
+  if (!selectedChapter) return
+  // 无大纲 → 提示规划
+  if (!selectedChapter.plot) {
+    toast.info('请先规划本章大纲', { description: '将自动发送规划请求' })
+    toggleAiSidebar()
+    return
+  }
+  // 有大纲但未确认 → 提示确认
+  if (!selectedChapter.confirmed) {
     toast.info('请先确认章节大纲后再写作')
     return
   }
+  // 已确认 → 正常写作
   toggleAiSidebar()
 }}
 ```
 
-- [ ] **Step 4: 监听 Agent 工具结果刷新大纲**
-
-在 `WritingPanel` 中找到 `onToolResult` 回调（如果有的话），或者在 `AgentChatPanel` 层面的回调中，当 `tool === "generate_chapter_outline"` 时刷新章节列表：
-
-```typescript
-// 在 onToolResult 回调中
-if (tool === 'generate_chapter_outline') {
-  // 刷新章节大纲数据
-  chapterOutlinesApi.list(projectId!).then(data => {
-    setChapters(data)
-    const updated = data.find(c => c.chapter_number === selectedChapter?.chapter_number)
-    if (updated) setSelectedChapter(updated)
-  })
-}
-```
-
-具体实现取决于 AgentChatPanel 的回调传递方式，可能需要通过 workbenchStore 传递刷新事件。
-
-- [ ] **Step 5: 重启前端验证**
+- [ ] **Step 6: 重启前端验证**
 
 ```bash
 docker compose restart frontend
 ```
 
-- [ ] **Step 6: 提交**
+- [ ] **Step 7: 提交**
 
 ```bash
 git add frontend/src/components/workbench/creation/WritingPanel.tsx
-git commit -m "feat(frontend): WritingPanel 增加可折叠大纲面板、状态标识和前置检查"
+git commit -m "feat(frontend): WritingPanel 增加大纲面板、状态标识、前置检查和自动刷新"
 ```
 
 ---
@@ -805,11 +756,7 @@ git commit -m "feat(frontend): WritingPanel 增加可折叠大纲面板、状态
 ### Task 8: 清理死代码
 
 **Files:**
-- Delete: `frontend/src/components/workbench/creation/ChapterOutlinePanel.tsx`
-- Delete: `frontend/src/components/workbench/creation/ChapterOutlineEditor.tsx`
-- Delete: `frontend/src/components/workbench/creation/ChapterOutlineCard.tsx`
-- Delete: `frontend/src/components/workbench/creation/ChapterOutlineFlatList.tsx`
-- Delete: `frontend/src/components/workbench/creation/ChapterOutlineTreeView.tsx`
+- Delete: 5 个未使用的组件文件
 - Modify: `frontend/src/components/workbench/creation/index.ts`
 
 - [ ] **Step 1: 删除未使用的组件文件**
@@ -824,22 +771,17 @@ rm frontend/src/components/workbench/creation/ChapterOutlineTreeView.tsx
 
 - [ ] **Step 2: 更新 index.ts 导出**
 
-从 `frontend/src/components/workbench/creation/index.ts` 中移除已删除组件的导出行：
+从 `frontend/src/components/workbench/creation/index.ts` 中移除：
 ```typescript
-// 删除以下行：
 export { ChapterOutlinePanel } from './ChapterOutlinePanel'
 ```
 
-保留其他导出不变。
+其余 4 个组件没有被 index.ts 导出，无需移除。
 
 - [ ] **Step 3: 重启前端验证无编译错误**
 
 ```bash
 docker compose restart frontend
-```
-
-检查日志无报错：
-```bash
 docker compose logs frontend --tail 10
 ```
 
@@ -860,41 +802,33 @@ git commit -m "chore(frontend): 清理未使用的章节大纲组件死代码"
 docker exec novelagent-backend-1 alembic upgrade head
 ```
 
-预期：无报错
-
-- [ ] **Step 2: 验证后端 API**
+- [ ] **Step 2: 验证后端 API 新字段**
 
 ```bash
 curl -s http://localhost:8000/api/projects/1/chapter-outlines | python3 -m json.tool | grep -E "opening_state|emotional_arc|key_scenes|pacing_note"
 ```
 
-预期：每章大纲包含这 4 个新字段
-
 - [ ] **Step 3: 验证前端页面**
 
-打开 http://localhost:3001，进入一个项目的写作标签页，确认：
-- 左侧章节列表显示大纲状态标识（● ○ ✓）
-- 正文上方显示可折叠"本章大纲"面板
-- 点击面板标题可折叠/展开
-- 大纲未确认时显示虚线边框和"待确认"标签
-- 点击"确认大纲"按钮可确认，面板变为实线边框和"已确认"标签
+打开工作台写作标签页，确认：
+- 左侧章节列表显示四级状态标识（○ ● ● ✓）
+- 正文上方显示可折叠大纲面板
+- Agent 完成对话后大纲面板自动刷新
 
 - [ ] **Step 4: 验证 Agent 工具**
 
-在 Agent 对话中输入"规划第1章"，观察：
-- Agent 调用 `generate_chapter_outline` 工具
-- 返回大纲内容，前端面板更新
-- 大纲状态变为"已规划"（●）
+在 Agent 对话中输入"规划第1章"，观察 Agent 调用 `generate_chapter_outline`，大纲面板刷新，状态变为"已规划"。
 
 - [ ] **Step 5: 验证写作前置检查**
 
-在 Agent 对话中输入"写第1章"（大纲未确认时），观察：
-- `generate_chapter_content` 工具返回错误提示
-- Agent 转而提示用户确认大纲
+大纲未确认时点击"AI 生成"，确认 toast 提示出现。
 
-- [ ] **Step 6: 最终提交**
+- [ ] **Step 6: 验证审核/重写包含新字段**
 
-如有修复，提交：
+在 Agent 对话中审核已写章节，确认审核消息中包含开场状态、情绪弧线等指导信息。
+
+- [ ] **Step 7: 最终提交**
+
 ```bash
 git add -A
 git commit -m "fix: 章节大纲功能端到端验证修复"
