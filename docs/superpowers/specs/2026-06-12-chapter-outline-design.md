@@ -22,7 +22,7 @@
 |------|------|------|
 | `opening_state` | Text, nullable | 开场状态——本章起笔时角色/局面的状态，解决跨章衔接 |
 | `emotional_arc` | Text, nullable | 情绪弧线——如"压抑→紧张→爆发→余波" |
-| `key_scenes` | JSON, default=[] | 核心场景列表，如 `[{"seq":1,"desc":"大殿对峙","mood":"紧张"}]` |
+| `key_scenes` | JSON, nullable | 核心场景列表，如 `[{"seq":1,"desc":"大殿对峙","mood":"紧张"}]` |
 | `pacing_note` | Text, nullable | 节奏标注——如"前慢后快，2/3处转折" |
 
 同步更新：
@@ -45,9 +45,9 @@
 **修改 `generate_chapter_content` 工具**
 
 写正文前读取当前章的 ChapterOutline：
-- 存在且 confirmed → 将大纲格式化注入 LLM 的 user message 作为写作指导
-- 存在但未 confirmed → 返回提示"请先确认章节大纲"
-- 不存在 → 正常写正文（向后兼容）
+- 存在且 confirmed → 正常写正文（大纲已通过 agent_context 注入 Agent system prompt，LLM 在调用此工具时已参考大纲）
+- 存在但未 confirmed → 返回错误提示"请先确认章节大纲"
+- 不存在 → 正常写正文（向后兼容，保留原有自动创建空壳 ChapterOutline 的逻辑）
 
 ### Agent 上下文变更
 
@@ -57,9 +57,19 @@
 
 `HybridContentStrategy` 不需要改——已用 `chapter_outlines` 做远章概要。
 
+### 审核和重写上下文变更
+
+以下位置需要同步包含新增的 4 个字段，确保审核/重写时 LLM 能参考写作指导：
+
+1. `review_chapter.py` — 手动构建的 `chapter_outline_dict` 需要加 4 个新字段
+2. `rewrite_chapter.py` — 同上
+3. `review_utils.py` 的 `_format_chapter_outline_str` — 输出时包含开场状态、情绪弧线、节奏标注、核心场景
+4. `rewrite_utils.py` 的 `_format_chapter_outline_str` — 同上
+5. `tools/utils.py` 的 `_build_state_for_review` — `chapter_outlines` 列表中的每项加 4 个新字段
+
 ### SSE 事件变更
 
-`sse_events.py` 新增事件类型 `chapter_outline_generated`。工具执行完后 Agent 通过 SSE 推送大纲内容到前端，前端实时展示。
+不新增自定义 SSE 事件。`generate_chapter_outline` 工具的执行结果通过 Agent 已有的 `agent_tool_result` 事件推送（tool_name = "generate_chapter_outline"）。前端通过监听 `onToolResult` 回调中 `tool === "generate_chapter_outline"` 的结果来刷新大纲数据，无需新事件类型。
 
 ### 前端变更
 
@@ -67,28 +77,33 @@
 
 1. **`WritingPanel` 正文上方增加可折叠"本章大纲"面板**
    - 展示全部字段，分两个区域：基础规划（8 个原有字段）+ 写作指导（4 个新增字段）
-   - 每个字段 inline 可编辑（点击变输入框，失焦保存）
-   - 底部两个按钮：确认大纲（confirmed=true）、重新规划（触发 Agent 重新生成）
-   - 大纲未确认时默认展开 + "待确认"标签；确认后可折叠 + "已确认"标签
-   - 大纲不存在时显示空状态提示
+   - 每个字段 inline 可编辑（点击变输入框，失焦保存，调用 `chapterOutlinesApi.update`）
+   - 底部两个按钮：确认大纲（调用 `chapterOutlinesApi.confirm`）、重新规划（发送"重新规划第N章大纲"消息到 Agent）
+   - 大纲未确认时默认展开 + 虚线边框 + "待确认"标签；确认后可折叠 + 实线边框 + "已确认"标签
+   - 大纲不存在时显示空状态提示："尚未规划本章，点击重新规划或通过 Agent 对话生成"
 
 2. **左侧章节列表增加大纲状态标识**
-   - ○ 未规划（无 ChapterOutline 记录）
+   - ○ 未规划（无 ChapterOutline 记录或 plot 为空）
    - ● 已规划（有记录但 confirmed=false）
    - ● 已确认（confirmed=true）
    - ✓ 已写正文（has_content=true）
 
-3. **删除死代码** — `ChapterOutlinePanel.tsx`、`ChapterOutlineEditor.tsx`、`ChapterOutlineCard.tsx`、`ChapterOutlineFlatList.tsx`、`ChapterOutlineTreeView.tsx`
+3. **写作前置检查**
+   - 用户点击"AI 生成"按钮时，前端先检查当前章是否有已确认的大纲
+   - 无大纲 → toast 提示"请先规划本章大纲"，同时自动发送"规划第N章"消息到 Agent
+   - 有大纲但未确认 → toast 提示"请先确认章节大纲"
+   - 已确认 → 正常进入写作流程
 
-4. **SSE + 写作前置检查**
-   - `agentApi.ts` 处理 `chapter_outline_generated` 事件，自动刷新大纲数据
-   - 用户通过 Agent 说"写第N章"时，前端检查大纲状态，未确认时 toast 提示
+4. **删除死代码** — `ChapterOutlinePanel.tsx`、`ChapterOutlineEditor.tsx`、`ChapterOutlineCard.tsx`、`ChapterOutlineFlatList.tsx`、`ChapterOutlineTreeView.tsx`
+
+5. **Agent 结果监听**
+   - `agentApi.ts` 的 `onToolResult` 回调中，当 `tool === "generate_chapter_outline"` 时，自动刷新当前章的大纲数据
 
 ### 写作流程变更
 
-**规划阶段**：用户说"规划第5章" → Agent 调用 `generate_chapter_outline` → 大纲写入 DB + SSE 推送 → 面板展示 → 用户审查/编辑/确认
+**规划阶段**：用户说"规划第5章" → Agent 调用 `generate_chapter_outline` → 大纲写入 DB → 通过 `agent_tool_result` SSE 推送结果 → 前端监听到后刷新大纲面板 → 用户审查/编辑/确认
 
-**写作阶段**：用户说"写第5章" → 前端检查大纲已确认 → Agent 调用 `generate_chapter_content`（LLM 的 message 包含当前章大纲）→ 正文生成
+**写作阶段**：用户说"写第5章" → 前端检查大纲已确认 → Agent 调用 `generate_chapter_content`（Agent 的 system prompt 中已包含当前章大纲，LLM 参考大纲调用工具）→ 正文生成
 
 **快捷路径**：用户说"直接写第5章" → 大纲已确认则直接写；未规划则 Agent 先自动生成大纲再写正文（一次对话完成，大纲质量无保障）
 
@@ -102,11 +117,15 @@
 | `backend/app/agents/tools/creation/generate_chapter_outline.py` | 新增工具 |
 | `backend/app/agents/tools/creation/__init__.py` | 导出新工具 |
 | `backend/app/agents/tools/registry.py` | 注册到 STRUCTURE/WRITING_TOOLS |
-| `backend/app/agents/tools/creation/generate_chapter_content.py` | 写正文前读取并注入大纲 |
+| `backend/app/agents/tools/creation/generate_chapter_content.py` | 写正文前检查 confirmed 状态 |
 | `backend/app/agents/agent_context.py` | writing phase 加载 current_chapter_outline |
-| `backend/app/agents/sse_events.py` | 新增 chapter_outline_generated 事件 |
-| `frontend/src/components/workbench/creation/WritingPanel.tsx` | 加大纲面板 + 状态标识 |
-| `frontend/src/lib/agentApi.ts` | 处理新 SSE 事件 |
-| `frontend/src/lib/api.ts` | chapterOutlinesApi 更新字段 |
-| `frontend/src/types/` | ChapterOutline 类型加 4 字段 |
+| `backend/app/agents/tools/creation/review_chapter.py` | chapter_outline_dict 加 4 字段 |
+| `backend/app/agents/tools/creation/rewrite_chapter.py` | chapter_outline_dict 加 4 字段 |
+| `backend/app/agents/review_utils.py` | _format_chapter_outline_str 加新字段 |
+| `backend/app/agents/rewrite_utils.py` | _format_chapter_outline_str 加新字段 |
+| `backend/app/agents/tools/utils.py` | _build_state_for_review 加新字段 |
+| `backend/app/agents/services/outline_service.py` | read/update_chapter_outline 加新字段 |
+| `backend/app/api/chapters.py` | update/confirm 端点支持新字段 |
+| `frontend/src/components/workbench/creation/WritingPanel.tsx` | 加大纲面板 + 编辑 + 状态标识 + 前置检查 |
+| `frontend/src/types/index.ts` | ChapterOutline 类型加 4 字段 |
 | 死代码文件 ×5 | 删除 |
