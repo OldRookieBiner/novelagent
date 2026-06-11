@@ -673,15 +673,25 @@ class KnowledgeBaseService:
             self._close_db_read(db)
 
     def create_style_snapshot(self, data: dict) -> StyleSnapshot:
+        """创建风格快照（如已存在则更新）"""
         db = self._get_db()
         committed = False
         try:
-            snapshot = StyleSnapshot(project_id=self.project_id, **data)
-            db.add(snapshot)
+            existing = db.query(StyleSnapshot).filter(
+                StyleSnapshot.project_id == self.project_id,
+                StyleSnapshot.chapter_number == data.get("chapter_number"),
+            ).first()
+            if existing:
+                for key, value in data.items():
+                    if key != "chapter_number":
+                        setattr(existing, key, value)
+            else:
+                existing = StyleSnapshot(project_id=self.project_id, **data)
+                db.add(existing)
             db.commit()
             committed = True
-            db.refresh(snapshot)
-            return snapshot
+            db.refresh(existing)
+            return existing
         finally:
             self._close_db_write(db, committed)
 

@@ -6,6 +6,73 @@ from app.agents.tool_context import get_project_id
 from app.agents.tools.utils import _kb
 
 
+
+
+def _compute_style_snapshot(content: str) -> dict:
+    """从章节文本计算风格统计指标
+
+    指标：
+    - paragraph_count: 段落数（按空行分段，过滤空段）
+    - avg_paragraph_length: 平均段落字符数
+    - dialogue_ratio: 对话占比（「」和""内的文本长度 / 总长度）
+    - avg_sentence_length: 平均句长（按句末标点分句后的字符数均值）
+    """
+    import re as _re
+
+    if not content or not content.strip():
+        return {
+            "paragraph_count": 0,
+            "avg_paragraph_length": 0.0,
+            "dialogue_ratio": 0.0,
+            "avg_sentence_length": 0.0,
+        }
+
+    total_chars = len(content)
+
+    # 段落数：按 \n\n 分段，过滤空段
+    paragraphs = [p for p in content.split("\n\n") if p.strip()]
+    paragraph_count = len(paragraphs) if paragraphs else 1
+
+    # 平均段长
+    avg_paragraph_length = sum(len(p) for p in paragraphs) / paragraph_count
+
+    # 对话占比：匹配「…」和"…"和"…"
+    dialogue_chars = 0
+    # 中文引号「…」
+    for m in _re.finditer(r"「([^」]*)」", content):
+        dialogue_chars += len(m.group(1))
+    # 中文引号"…"（非贪婪，配对匹配）
+    for m in _re.finditer(r"“([^”]*)”", content):
+        dialogue_chars += len(m.group(1))
+    # 直引号"…"（英文双引号配对）
+    quote_open = False
+    start = 0
+    for i, ch in enumerate(content):
+        if ch == '"':
+            if not quote_open:
+                quote_open = True
+                start = i + 1
+            else:
+                dialogue_chars += len(content[start:i])
+                quote_open = False
+
+    dialogue_ratio = dialogue_chars / total_chars if total_chars > 0 else 0.0
+
+    # 平均句长：按句末标点分句
+    sentence_ends = _re.split(r"[。！？…]+", content)
+    sentences = [s for s in sentence_ends if s.strip()]
+    if sentences:
+        avg_sentence_length = sum(len(s) for s in sentences) / len(sentences)
+    else:
+        avg_sentence_length = 0.0
+
+    return {
+        "paragraph_count": paragraph_count,
+        "avg_paragraph_length": round(avg_paragraph_length, 1),
+        "dialogue_ratio": round(dialogue_ratio, 3),
+        "avg_sentence_length": round(avg_sentence_length, 1),
+    }
+
 @tool
 async def generate_chapter_content(
     chapter_number: int,
@@ -156,6 +223,17 @@ async def generate_chapter_content(
         except Exception:
             pass
 
+    # 6. 创建风格快照（独立 session，不影响章节主体）
+    style_snapshot_created = False
+    if content and content.strip():
+        try:
+            snapshot_data = _compute_style_snapshot(content)
+            snapshot_data["chapter_number"] = chapter_number
+            kb.create_style_snapshot(snapshot_data)
+            style_snapshot_created = True
+        except Exception:
+            pass  # 快照创建失败不影响章节主体
+
     return {
         "action": "created" if not existing_chapter else "updated",
         "chapter_number": chapter_number,
@@ -164,5 +242,6 @@ async def generate_chapter_content(
         "timeline_entry": bool(timeline_summary),
         "new_foreshadowings": len(created_fs),
         "reclaimed_foreshadowings": len(reclaimed_ids),
+        "style_snapshot_created": style_snapshot_created,
         "message": f"第{chapter_number}章「{chapter_title}」已写入（{word_count or len(content)}字）",
     }
