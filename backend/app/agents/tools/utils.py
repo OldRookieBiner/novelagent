@@ -179,6 +179,10 @@ def _build_state_for_review(project_id: int, chapter_number: int) -> dict:
                 "transition": co.transition,
                 "ending": co.ending,
                 "target_words": co.target_words,
+                "opening_state": getattr(co, "opening_state", None),
+                "emotional_arc": getattr(co, "emotional_arc", None),
+                "key_scenes": getattr(co, "key_scenes", None),
+                "pacing_note": getattr(co, "pacing_note", None),
             })
     finally:
         db.close()

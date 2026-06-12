@@ -235,10 +235,18 @@ def _format_chapter_outline_str(chapter_outline: dict) -> str:
     parts = [f"第{chapter_outline.get('chapter_number', '')}章：{chapter_outline.get('title', '')}"]
     for field, label in [("scene", "场景"), ("characters", "出场人物"), ("plot", "情节要点"),
                          ("conflict", "冲突"), ("turning_point", "转折"), ("hook", "悬念钩子"),
-                         ("ending", "结尾"), ("transition", "过渡")]:
+                         ("ending", "结尾"), ("transition", "过渡"),
+                         ("opening_state", "开场状态"), ("emotional_arc", "情绪弧线"), ("pacing_note", "节奏标注")]:
         val = chapter_outline.get(field)
         if val:
             parts.append(f"  {label}：{val}")
+    scenes = chapter_outline.get("key_scenes")
+    if scenes and isinstance(scenes, list):
+        for s in scenes:
+            seq = s.get("seq", "")
+            desc = s.get("desc", "")
+            mood = s.get("mood", "")
+            parts.append(f"  场景{seq}：{desc}（{mood}）")
     return "\n".join(parts)
 
 
