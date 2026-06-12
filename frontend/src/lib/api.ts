@@ -792,3 +792,22 @@ export const knowledgeApi = {
     })
   },
 }
+
+// ==================== Knowledge Status API ====================
+
+export const knowledgeStatusApi = {
+  async get(projectId: number, currentChapter?: number): Promise<{
+    blocked: { type: string; chapter?: number; message: string; severity: string }[]
+    warnings: { type: string; message: string; severity: string }[]
+    validated: boolean
+  }>
+  {
+    const params = new URLSearchParams()
+    if (currentChapter !== undefined)
+    {
+      params.set('current_chapter', String(currentChapter))
+    }
+    const query = params.toString() ? `?${params.toString()}` : ''
+    return request(`/api/${projectId}/knowledge-status${query}`)
+  },
+}

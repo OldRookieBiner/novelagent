@@ -20,6 +20,7 @@ from app.api import (
     characters,
     agent,
 )
+from app.api.knowledge_status import router as knowledge_status_router
 from app.api.inspiration import router as inspiration_router
 from app.api.knowledge import router as knowledge_router
 from app.utils.logger import setup_logging, get_logger
@@ -141,6 +142,7 @@ app.include_router(
     inspiration_router, tags=["inspiration"]
 )
 app.include_router(knowledge_router, prefix="/api", tags=["knowledge"])
+app.include_router(knowledge_status_router, prefix="/api", tags=["knowledge-status"])
 
 
 

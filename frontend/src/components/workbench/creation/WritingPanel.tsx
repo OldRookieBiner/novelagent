@@ -1,11 +1,10 @@
 // frontend/src/components/workbench/creation/WritingPanel.tsx
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Save, ChevronLeft, ChevronRight, MessageSquare, Eye, Pencil, PanelLeftClose, PanelLeft, Loader2, ChevronDown, ChevronUp, Check, RefreshCw } from 'lucide-react'
-import DOMPurify from 'dompurify'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { ChevronLeft, ChevronRight, PanelLeftClose, PanelLeft, ChevronDown, ChevronUp, Check, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import Skeleton from '@/components/ui/skeleton'
-import { chapterOutlinesApi, chaptersApi } from '@/lib/api'
+import { chapterOutlinesApi, chaptersApi, knowledgeStatusApi } from '@/lib/api'
 import { ChapterNodePanel } from './ChapterNodePanel'
 import type { ChapterNode } from './ChapterNodePanel'
 import TipTapEditor from '@/components/common/TipTapEditor'
@@ -55,10 +54,7 @@ function EditorSkeleton()
     <div className="space-y-4 p-6">
       <div className="flex items-center justify-between">
         <Skeleton className="h-6 w-40" />
-        <div className="flex gap-2">
-          <Skeleton className="h-8 w-20" />
-          <Skeleton className="h-8 w-16" />
-        </div>
+        <Skeleton className="h-8 w-24" />
       </div>
       <Skeleton className="h-[calc(100vh-250px)] w-full" />
     </div>
@@ -121,24 +117,78 @@ function EditableField(
   )
 }
 
+type SaveStatus = 'saved' | 'saving' | 'error'
+
+function SaveStatusIndicator({ status, onRetry }: { status: SaveStatus; onRetry: () => void })
+{
+  const config: Record<SaveStatus, { icon: string; text: string; className: string }> = {
+    saved: { icon: '✓', text: '已自动保存', className: 'text-muted-foreground bg-muted' },
+    saving: { icon: '↻', text: '保存中...', className: 'text-blue-600 bg-blue-50' },
+    error: { icon: '⚠', text: '保存失败，点击重试', className: 'text-red-600 bg-red-50 cursor-pointer' },
+  }
+  const c = config[status]
+  return (
+    <span
+      className={`flex items-center gap-1 text-xs px-2 py-1 rounded ${c.className}`}
+      onClick={status === 'error' ? onRetry : undefined}
+    >
+      <span>{c.icon}</span>
+      <span>{c.text}</span>
+    </span>
+  )
+}
+
+function KnowledgeStatusItem({ label, ok }: { label: string; ok: boolean })
+{
+  return (
+    <span className={ok ? 'text-green-600' : 'text-red-500'}>
+      {ok ? '✓' : '✗'} {label}
+    </span>
+  )
+}
+
 export function WritingPanel({ projectId }: WritingPanelProps)
 {
   const [chapters, setChapters] = useState<ChapterOutline[]>([])
   const [selectedChapter, setSelectedChapter] = useState<ChapterOutline | null>(null)
-  const [chapterContent, setChapterContent] = useState<Chapter | null>(null)
+  const [_chapterContent, setChapterContent] = useState<Chapter | null>(null)
   const [content, setContent] = useState('')
   const [loading, setLoading] = useState(true)
   const [loadingContent, setLoadingContent] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [mode, setMode] = useState<'preview' | 'edit'>('preview')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [chapterNode, setChapterNode] = useState<ChapterNode | null>(null)
   const [showChapterNode, setShowChapterNode] = useState(false)
   const [outlineCollapsed, setOutlineCollapsed] = useState(false)
 
+  // 自动保存状态
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const contentRef = useRef<string>('')
+  const prevChapterRef = useRef<ChapterOutline | null>(null)
+
+  // 知识库状态
+  const [kbStatus, setKbStatus] = useState<{
+    blocked: { type: string; message: string }[]
+    warnings: { type: string; message: string }[]
+  }>({ blocked: [], warnings: [] })
+
   const knowledgeVersion = useWorkbenchStore((s) => s.knowledgeVersion)
   const { toggleAiSidebar } = useWorkbenchStore()
+
+  // 保持 contentRef 与 content 同步
+  useEffect(() =>
+  {
+    contentRef.current = content
+  }, [content])
+
+  // 同步 prevChapterRef
+  useEffect(() =>
+  {
+    if (selectedChapter)
+    {
+      prevChapterRef.current = selectedChapter
+    }
+  }, [selectedChapter])
 
   useEffect(() =>
   {
@@ -176,9 +226,86 @@ export function WritingPanel({ projectId }: WritingPanelProps)
       .join('')
   }
 
+  // 加载 KB 状态
+  useEffect(() =>
+  {
+    const fetchKbStatus = async () =>
+    {
+      try
+      {
+        const data = await knowledgeStatusApi.get(projectId, selectedChapter?.chapter_number)
+        setKbStatus({ blocked: data.blocked || [], warnings: data.warnings || [] })
+      }
+      catch (e)
+      {
+        console.error('Failed to fetch KB status:', e)
+      }
+    }
+    fetchKbStatus()
+  }, [projectId, selectedChapter?.chapter_number])
+
+  // 自动保存核心逻辑
+  const doSave = useCallback(async (chapterNumber: number, text: string) =>
+  {
+    setSaveStatus('saving')
+    try
+    {
+      await chaptersApi.update(projectId, chapterNumber, { content: text })
+      setSaveStatus('saved')
+    }
+    catch (e)
+    {
+      console.error('Auto-save failed:', e)
+      setSaveStatus('error')
+    }
+  }, [projectId])
+
+  // 手动保存（重试用）
+  const handleManualSave = useCallback(async () =>
+  {
+    if (!selectedChapter) return
+    await doSave(selectedChapter.chapter_number, contentRef.current)
+  }, [selectedChapter, doSave])
+
+  // 防抖自动保存
+  const handleContentChange = useCallback((newContent: string) =>
+  {
+    setContent(newContent)
+    contentRef.current = newContent
+
+    if (saveTimeoutRef.current)
+    {
+      clearTimeout(saveTimeoutRef.current)
+    }
+
+    saveTimeoutRef.current = setTimeout(async () =>
+    {
+      if (!selectedChapter) return
+      await doSave(selectedChapter.chapter_number, newContent)
+    }, 2000)
+  }, [selectedChapter, doSave])
+
+  // 切换章节时自动保存旧章节 + 加载新章节
   useEffect(() =>
   {
     if (!selectedChapter) return
+
+    // 保存旧章节内容
+    const prevChapter = prevChapterRef.current
+    const currentContent = contentRef.current
+    if (prevChapter && currentContent && prevChapter.id !== selectedChapter.id)
+    {
+      chaptersApi.update(projectId, prevChapter.chapter_number, { content: currentContent }).catch(e =>
+      {
+        console.error('Save on chapter switch failed:', e)
+      })
+    }
+
+    // 清理待执行的防抖保存
+    if (saveTimeoutRef.current)
+    {
+      clearTimeout(saveTimeoutRef.current)
+    }
 
     const loadContent = async () =>
     {
@@ -187,15 +314,17 @@ export function WritingPanel({ projectId }: WritingPanelProps)
       {
         const chapter = await chaptersApi.get(projectId, selectedChapter.chapter_number)
         setChapterContent(chapter)
-        setContent(formatContentAsHtml(chapter.content || ''))
-        setSaved(true)
-        setTimeout(() => setSaved(false), 1500)
+        const html = formatContentAsHtml(chapter.content || '')
+        setContent(html)
+        contentRef.current = html
+        setSaveStatus('saved')
       }
       catch
       {
         setChapterContent(null)
         setContent('')
-        setSaved(false)
+        contentRef.current = ''
+        setSaveStatus('saved')
       }
       finally
       {
@@ -203,6 +332,33 @@ export function WritingPanel({ projectId }: WritingPanelProps)
       }
     }
     loadContent()
+  }, [projectId, selectedChapter?.id])
+
+  // 离开页面时自动保存
+  useEffect(() =>
+  {
+    const handleBeforeUnload = () =>
+    {
+      const currentContent = contentRef.current
+      if (!currentContent || !selectedChapter) return
+
+      if (saveTimeoutRef.current)
+      {
+        clearTimeout(saveTimeoutRef.current)
+      }
+
+      const url = `/api/projects/${projectId}/chapters/${selectedChapter.chapter_number}`
+      const payload = JSON.stringify({ content: currentContent })
+
+      if (navigator.sendBeacon)
+      {
+        const blob = new Blob([payload], { type: 'application/json' })
+        navigator.sendBeacon(url, blob)
+      }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [projectId, selectedChapter])
 
   /** 更新大纲单个字段 */
@@ -253,41 +409,6 @@ export function WritingPanel({ projectId }: WritingPanelProps)
     toast.info('请在右侧 Agent 对话中输入重新规划请求', { description: msg })
   }, [selectedChapter, toggleAiSidebar])
 
-  const handleSave = useCallback(async () =>
-  {
-    if (!selectedChapter) return
-    setSaving(true)
-    setSaved(false)
-    try
-    {
-      if (!chapterContent)
-      {
-        const created = await chaptersApi.create(projectId, selectedChapter.chapter_number)
-        setChapterContent(created)
-        setChapters(prev => prev.map(c =>
-          c.id === selectedChapter.id ? { ...c, has_content: true } : c
-        ))
-      }
-      const updated = await chaptersApi.update(
-        projectId,
-        selectedChapter.chapter_number,
-        { content }
-      )
-      setChapterContent(updated)
-      setSaved(true)
-      setTimeout(() => setSaved(false), 1500)
-    }
-    catch (err)
-    {
-      console.error('Failed to save chapter:', err)
-      toast.error('保存失败')
-    }
-    finally
-    {
-      setSaving(false)
-    }
-  }, [selectedChapter, chapterContent, content, projectId])
-
   const navigateChapter = (direction: 'prev' | 'next') =>
   {
     if (!selectedChapter) return
@@ -301,21 +422,6 @@ export function WritingPanel({ projectId }: WritingPanelProps)
       setSelectedChapter(chapters[currentIndex + 1])
     }
   }
-
-  useEffect(() =>
-  {
-    const handleKeyDown = (e: KeyboardEvent) =>
-    {
-      const isMod = e.metaKey || e.ctrlKey
-      if (isMod && e.key === 's')
-      {
-        e.preventDefault()
-        handleSave()
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handleSave])
 
   const wordCount = useMemo(() => getWordCount(content), [content])
   const writtenCount = chapters.filter(c => c.has_content).length
@@ -445,74 +551,7 @@ export function WritingPanel({ projectId }: WritingPanelProps)
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold">{selectedChapter.title || `第 ${selectedChapter.chapter_number} 章`}</h2>
                 <div className="flex gap-2 items-center">
-                  {!content && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() =>
-                      {
-                        if (!selectedChapter.plot)
-                        {
-                          toast.info('请先规划本章大纲', { description: '将自动发送规划请求' })
-                          toggleAiSidebar()
-                          return
-                        }
-                        if (!selectedChapter.confirmed)
-                        {
-                          toast.info('请先确认章节大纲后再写作')
-                          return
-                        }
-                        toggleAiSidebar()
-                      }}
-                      title="通过右侧 Agent 对话生成章节"
-                    >
-                      <MessageSquare className="h-4 w-4 mr-1.5" />
-                      AI 生成
-                    </Button>
-                  )}
-                  {content && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setMode(mode === 'preview' ? 'edit' : 'preview')}
-                    >
-                      {mode === 'preview' ? (
-                        <>
-                          <Pencil className="h-4 w-4 mr-1.5" />
-                          编辑
-                        </>
-                      ) : (
-                        <>
-                          <Eye className="h-4 w-4 mr-1.5" />
-                          预览
-                        </>
-                      )}
-                    </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    onClick={handleSave}
-                    disabled={saving}
-                    title="Ctrl+S"
-                    className={saved ? 'bg-green-500 hover:bg-green-500 text-white' : ''}
-                  >
-                    {saving ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                        保存中
-                      </>
-                    ) : saved ? (
-                      <>
-                        <span className="mr-1.5">✅</span>
-                        已保存
-                      </>
-                    ) : (
-                      <>
-                        <Save className="h-4 w-4 mr-1.5" />
-                        保存
-                      </>
-                    )}
-                  </Button>
+                  <SaveStatusIndicator status={saveStatus} onRetry={handleManualSave} />
                 </div>
               </div>
 
@@ -611,47 +650,61 @@ export function WritingPanel({ projectId }: WritingPanelProps)
               {loadingContent ? (
                 <EditorSkeleton />
               ) : (
-                mode === 'edit' ? (
-                  <TipTapEditor
-                    key={selectedChapter?.id}
-                    content={content}
-                    onChange={setContent}
-                    placeholder="开始写作..."
-                  />
-                ) : (
-                  <div
-                    className="w-full min-h-[calc(100vh-280px)] p-4 border rounded-lg overflow-auto prose max-w-none"
-                    dangerouslySetInnerHTML={{
-                      __html: content
-                        ? DOMPurify.sanitize(content)
-                        : '<p class="text-muted-foreground">通过右侧 Agent 对话生成章节内容，或手动编辑</p>'
-                    }}
-                  />
-                )
+                <TipTapEditor
+                  key={selectedChapter?.id}
+                  content={content}
+                  onChange={handleContentChange}
+                  placeholder="开始写作..."
+                />
               )}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2">
-              <MessageSquare className="h-8 w-8 text-muted-foreground/40" />
               <p>选择章节开始写作</p>
             </div>
           )}
         </div>
 
-        {/* 底部导航 */}
+        {/* 底部状态栏 */}
         <div className="border-t p-3 flex items-center justify-between bg-white">
-          <div className="text-sm text-muted-foreground">
-            字数: {wordCount.toLocaleString()}
+          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+            <span>第 {selectedChapter?.chapter_number || 1} 章 / {chapters.length} 章</span>
+            <span className="border-l pl-4">字数 {wordCount.toLocaleString()}</span>
+            {kbStatus.blocked.length > 0 && (
+              <span className="border-l pl-4 text-red-500 font-medium">
+                ⚠ 缺失: {kbStatus.blocked.map(b =>
+                {
+                  const typeMap: Record<string, string> = {
+                    'character_missing': '角色',
+                    'world_setting_missing': '世界观',
+                    'outline_unconfirmed': '大纲确认',
+                    'chapter_outline_missing': '章节大纲',
+                  }
+                  return typeMap[b.type] || b.type
+                }).join(' · ')}
+              </span>
+            )}
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => navigateChapter('prev')}>
-              <ChevronLeft className="h-4 w-4 mr-1" />
-              上一章
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => navigateChapter('next')}>
-              下一章
-              <ChevronRight className="h-4 w-4 ml-1" />
-            </Button>
+
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 text-[10px]">
+              <KnowledgeStatusItem label="角色" ok={!kbStatus.blocked.find(b => b.type === 'character_missing')} />
+              <KnowledgeStatusItem label="世界观" ok={!kbStatus.blocked.find(b => b.type === 'world_setting_missing')} />
+              <KnowledgeStatusItem label="伏笔" ok={!kbStatus.warnings.find(w => w.type === 'foreshadowing_empty')} />
+              <KnowledgeStatusItem label="风格" ok={!kbStatus.warnings.find(w => w.type === 'style_constraints_missing')} />
+              <KnowledgeStatusItem label="情节块" ok={!kbStatus.warnings.find(w => w.type === 'plot_block_empty')} />
+              <KnowledgeStatusItem label="时间线" ok={!kbStatus.warnings.find(w => w.type === 'timeline_empty')} />
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => navigateChapter('prev')}>
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                上一章
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => navigateChapter('next')}>
+                下一章
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
           </div>
         </div>
       </div>

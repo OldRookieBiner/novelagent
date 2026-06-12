@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db, SessionLocal
@@ -42,6 +42,9 @@ router = APIRouter()
 
 BUSY_TIMEOUT_SECONDS = 300
 
+# 会话数量软限制
+MAX_CONVERSATIONS_PER_PROJECT = 20
+
 PHASE_LABELS = {
     Phase.INCUBATION.value: "创意孵化",
     Phase.STRUCTURE.value: "结构设计",
@@ -71,6 +74,11 @@ class ImpactDecisionRequest(BaseModel):
     change_id: int
     decision: str  # "proceed" | "adjust" | "abandon"
     adjusted_value: Optional[str] = None  # JSON, only when decision="adjust"
+
+
+class ConversationRenameRequest(BaseModel):
+    """重命名会话请求"""
+    title: str = Field(min_length=1, max_length=50, description="会话标题")
 
 
 def _acquire_busy_lock(db: Session, project_id: int, owner: str = "agent") -> bool:
@@ -115,12 +123,14 @@ def _release_busy_lock(project_id: int):
             pass
 
 
-def _get_or_create_conversation(db: Session, project_id: int) -> AgentConversation:
+def _get_active_conversation(db: Session, project_id: int) -> AgentConversation:
+    """获取项目当前激活的会话，不存在则创建"""
     conv = db.query(AgentConversation).filter(
-        AgentConversation.project_id == project_id
+        AgentConversation.project_id == project_id,
+        AgentConversation.is_active == True,
     ).first()
     if not conv:
-        conv = AgentConversation(project_id=project_id)
+        conv = AgentConversation(project_id=project_id, is_active=True)
         db.add(conv)
         db.commit()
         db.refresh(conv)
@@ -131,7 +141,7 @@ def _save_user_message(project_id: int, message: str):
     db = SessionLocal()
     committed = False
     try:
-        conv = _get_or_create_conversation(db, project_id)
+        conv = _get_active_conversation(db, project_id)
         msg = AgentMessage(
             conversation_id=conv.id,
             role="user",
@@ -140,7 +150,7 @@ def _save_user_message(project_id: int, message: str):
         db.add(msg)
         conv.message_count = (conv.message_count or 0) + 1
         if not conv.title:
-            conv.title = message[:50]
+            conv.title = message[:20]
         conv.updated_at = datetime.utcnow()
         db.commit()
         committed = True
@@ -162,7 +172,7 @@ def _save_assistant_message(project_id: int, content: str, segments: list, actio
     db = SessionLocal()
     committed = False
     try:
-        conv = _get_or_create_conversation(db, project_id)
+        conv = _get_active_conversation(db, project_id)
         msg = AgentMessage(
             conversation_id=conv.id,
             role="assistant",
@@ -203,17 +213,30 @@ def _build_truncated_history(history: list[dict], history_budget: int) -> list[d
     return kept
 
 
+def _serialize_conversation(conv: AgentConversation) -> dict:
+    """序列化会话为 API 响应 dict"""
+    return {
+        "id": conv.id,
+        "title": conv.title,
+        "message_count": conv.message_count,
+        "is_active": conv.is_active,
+        "created_at": conv.created_at.isoformat() + "Z" if conv.created_at else None,
+        "updated_at": conv.updated_at.isoformat() + "Z" if conv.updated_at else None,
+    }
+
+
 async def stream_agent_events(
     graph,
     messages: list,
     project_id: int,
+    conversation_id: int,
     accumulator: dict | None = None,
 ):
     """Stream Agent events with cognitive tool awareness."""
     try:
         async for event in graph.astream_events(
             {"messages": messages},
-            config={"configurable": {"thread_id": f"agent-{project_id}"}},
+            config={"configurable": {"thread_id": f"agent-{project_id}-{conversation_id}"}},
             version="v2",
         ):
             kind = event.get("event", "")
@@ -237,6 +260,11 @@ async def stream_agent_events(
                         "status": "running",
                         "args": tool_input,
                     })
+                    accumulator.setdefault("segments", []).append({
+                        "type": "tool_start",
+                        "content": tool_name,
+                        "data": {"tool": tool_name},
+                    })
                 yield format_agent_tool_start(tool_name, tool_input)
 
             elif kind == "on_tool_end":
@@ -253,6 +281,11 @@ async def stream_agent_events(
                             a["status"] = "done"
                             a["result"] = tool_output if isinstance(tool_output, dict) else {"output": str(tool_output)}
                             break
+                    accumulator.setdefault("segments", []).append({
+                        "type": "tool_result",
+                        "content": tool_name,
+                        "data": {"tool": tool_name},
+                    })
 
                 # Impact assessment tools: emit dedicated SSE event
                 if tool_name in IMPACT_TOOLS and isinstance(tool_output, dict):
@@ -271,17 +304,193 @@ async def stream_agent_events(
         yield format_error_message(str(e))
 
 
+# ─── 会话 CRUD 端点 ───
+
+
+@router.get("/{project_id}/agent/conversations")
+async def list_conversations(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """列出项目所有会话"""
+    get_project_for_user(project_id, current_user.id, db)
+    convs = db.query(AgentConversation).filter(
+        AgentConversation.project_id == project_id
+    ).order_by(AgentConversation.updated_at.desc()).all()
+    return [_serialize_conversation(c) for c in convs]
+
+
+@router.post("/{project_id}/agent/conversations")
+async def create_conversation(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """新建会话"""
+    project = get_project_for_user(project_id, current_user.id, db)
+
+    if not _acquire_busy_lock(db, project_id, "agent"):
+        holder = project.busy_by or "未知"
+        raise HTTPException(status_code=409, detail=f"项目正在被{holder}使用，请稍后再试")
+
+    try:
+        # 软限制检查
+        count = db.query(AgentConversation).filter(
+            AgentConversation.project_id == project_id
+        ).count()
+        if count >= MAX_CONVERSATIONS_PER_PROJECT:
+            raise HTTPException(
+                status_code=400,
+                detail=f"会话数量已达上限（{MAX_CONVERSATIONS_PER_PROJECT}条），请删除旧会话后再创建",
+            )
+
+        # 将当前活跃会话置为非活跃
+        db.query(AgentConversation).filter(
+            AgentConversation.project_id == project_id,
+            AgentConversation.is_active == True,
+        ).update({"is_active": False})
+
+        # 创建新会话
+        conv = AgentConversation(project_id=project_id, is_active=True, title="")
+        db.add(conv)
+        db.commit()
+        db.refresh(conv)
+
+        return _serialize_conversation(conv)
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        _release_busy_lock(project_id)
+
+
+@router.put("/{project_id}/agent/conversations/{conversation_id}")
+async def rename_conversation(
+    project_id: int,
+    conversation_id: int,
+    req: ConversationRenameRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """重命名会话"""
+    get_project_for_user(project_id, current_user.id, db)
+    conv = db.query(AgentConversation).filter(
+        AgentConversation.id == conversation_id,
+        AgentConversation.project_id == project_id,
+    ).first()
+    if not conv:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    conv.title = req.title
+    conv.updated_at = datetime.utcnow()
+    db.commit()
+    return _serialize_conversation(conv)
+
+
+@router.post("/{project_id}/agent/conversations/{conversation_id}/activate")
+async def activate_conversation(
+    project_id: int,
+    conversation_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """切换到指定会话"""
+    project = get_project_for_user(project_id, current_user.id, db)
+
+    if not _acquire_busy_lock(db, project_id, "agent"):
+        holder = project.busy_by or "未知"
+        raise HTTPException(status_code=409, detail=f"项目正在被{holder}使用，请稍后再试")
+
+    try:
+        target = db.query(AgentConversation).filter(
+            AgentConversation.id == conversation_id,
+            AgentConversation.project_id == project_id,
+        ).first()
+        if not target:
+            raise HTTPException(status_code=404, detail="会话不存在")
+
+        # 同一事务中：先取消当前活跃，再激活目标
+        db.query(AgentConversation).filter(
+            AgentConversation.project_id == project_id,
+            AgentConversation.is_active == True,
+        ).update({"is_active": False})
+        target.is_active = True
+        db.commit()
+
+        return _serialize_conversation(target)
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        _release_busy_lock(project_id)
+
+
+@router.delete("/{project_id}/agent/conversations/{conversation_id}")
+async def delete_conversation(
+    project_id: int,
+    conversation_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """删除指定会话"""
+    project = get_project_for_user(project_id, current_user.id, db)
+
+    if not _acquire_busy_lock(db, project_id, "agent"):
+        holder = project.busy_by or "未知"
+        raise HTTPException(status_code=409, detail=f"项目正在被{holder}使用，请稍后再试")
+
+    try:
+        conv = db.query(AgentConversation).filter(
+            AgentConversation.id == conversation_id,
+            AgentConversation.project_id == project_id,
+        ).first()
+        if not conv:
+            raise HTTPException(status_code=404, detail="会话不存在")
+        if conv.is_active:
+            raise HTTPException(status_code=400, detail="无法删除当前激活的会话")
+
+        # 删除 DB 记录（cascade 会删除关联消息）
+        db.delete(conv)
+        db.commit()
+
+        return {"detail": "会话已删除"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        _release_busy_lock(project_id)
+
+
+# ─── 会话消息端点 ───
+
+
 @router.get("/{project_id}/agent/conversation")
 async def get_conversation(
     project_id: int,
+    conversation_id: Optional[int] = None,
     limit: int = 50,
     before_id: int | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Get the agent conversation and messages."""
+    """获取指定会话或当前激活会话的消息"""
     get_project_for_user(project_id, current_user.id, db)
-    conv = _get_or_create_conversation(db, project_id)
+
+    if conversation_id:
+        conv = db.query(AgentConversation).filter(
+            AgentConversation.id == conversation_id,
+            AgentConversation.project_id == project_id,
+        ).first()
+        if not conv:
+            raise HTTPException(status_code=404, detail="会话不存在")
+    else:
+        conv = _get_active_conversation(db, project_id)
 
     query = db.query(AgentMessage).filter(
         AgentMessage.conversation_id == conv.id
@@ -317,19 +526,16 @@ async def clear_conversation(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Clear the agent conversation."""
+    """清空当前激活会话的消息（保留会话）"""
     get_project_for_user(project_id, current_user.id, db)
-    conv = db.query(AgentConversation).filter(
-        AgentConversation.project_id == project_id
-    ).first()
-    if conv:
-        db.query(AgentMessage).filter(
-            AgentMessage.conversation_id == conv.id
-        ).delete()
-        conv.message_count = 0
-        conv.title = ""
-        conv.updated_at = datetime.utcnow()
-        db.commit()
+    conv = _get_active_conversation(db, project_id)
+    db.query(AgentMessage).filter(
+        AgentMessage.conversation_id == conv.id
+    ).delete()
+    conv.message_count = 0
+    conv.title = ""
+    conv.updated_at = datetime.utcnow()
+    db.commit()
     return {"detail": "对话已清空"}
 
 
@@ -346,6 +552,9 @@ async def agent_chat(
     if not _acquire_busy_lock(db, project_id, "agent"):
         holder = project.busy_by or "未知"
         raise HTTPException(status_code=409, detail=f"项目正在被{holder}使用，请稍后再试")
+
+    # 获取当前激活会话（在 busy lock 保护下）
+    conv = _get_active_conversation(db, project_id)
 
     _save_user_message(project_id, req.message)
 
@@ -373,12 +582,32 @@ async def agent_chat(
     # Format context block for system prompt
     context_block = json.dumps(context, ensure_ascii=False, default=str)
 
+    # Build prerequisites warning text
+    prereq = context.get("prerequisites", {})
+    if prereq.get("blocked"):
+        blocked_items = "\n".join([f"- {item['message']}" for item in prereq["blocked"]])
+        context_prerequisites_warning = f"""⚠️ 当前无法生成正文，存在以下阻断问题：
+
+{blocked_items}
+
+请先在知识库中补全以上内容。"""
+    elif prereq.get("warnings"):
+        warning_items = "\n".join([f"- {item['message']}" for item in prereq["warnings"]])
+        context_prerequisites_warning = f"""📝 当前存在以下次要项缺失（不影响生成）：
+
+{warning_items}
+
+你可以在写作时留意这些方面。"""
+    else:
+        context_prerequisites_warning = ""
+
     # Build system message
     phase_label = PHASE_LABELS.get(phase, "未知阶段")
     system_content = AGENT_SYSTEM_PROMPT.format(
         phase_label=phase_label,
         project_name=project.name,
         context_block=context_block,
+        context_prerequisites_warning=context_prerequisites_warning,
     )
 
     # Calculate history budget and truncate
@@ -396,6 +625,7 @@ async def agent_chat(
             phase_label=phase_label,
             project_name=project.name,
             context_block=slim_block,
+            context_prerequisites_warning=context_prerequisites_warning,
         )
         system_used = estimate_tokens(system_content)
         # 至少保留当前消息 4 倍的预算给历史
@@ -432,7 +662,9 @@ async def agent_chat(
     async def _stream_with_cleanup():
         acc: dict = {}
         try:
-            async for event in stream_agent_events(graph, messages, project_id, accumulator=acc):
+            async for event in stream_agent_events(
+                graph, messages, project_id, conv.id, accumulator=acc
+            ):
                 yield event
             _save_assistant_message(
                 project_id,
