@@ -174,6 +174,49 @@ def _load_writing_context(kb: KnowledgeBaseService, budget: BudgetTracker, conte
             context["style_constraints"] = data
             budget.add(estimate_tokens(data_json))
 
+    # 当前章节大纲（让 Agent 写正文时参考规划）
+    if current_chapter_number:
+        from app.database import SessionLocal as _SL
+        from app.models.outline import ChapterOutline as _CO
+        _db = _SL()
+        try:
+            _co = _db.query(_CO).filter(
+                _CO.project_id == kb.project_id,
+                _CO.chapter_number == current_chapter_number,
+            ).first()
+            if _co:
+                co_data = {
+                    "chapter_number": _co.chapter_number,
+                    "title": _co.title or "",
+                    "scene": _co.scene or "",
+                    "characters": _co.characters or "",
+                    "plot": _co.plot or "",
+                    "conflict": _co.conflict or "",
+                    "turning_point": _co.turning_point or "",
+                    "hook": _co.hook or "",
+                    "transition": _co.transition or "",
+                    "ending": _co.ending or "",
+                    "opening_state": getattr(_co, "opening_state", None) or "",
+                    "emotional_arc": getattr(_co, "emotional_arc", None) or "",
+                    "key_scenes": getattr(_co, "key_scenes", None) or [],
+                    "pacing_note": getattr(_co, "pacing_note", None) or "",
+                    "target_words": _co.target_words,
+                    "confirmed": _co.confirmed,
+                }
+                co_json = json.dumps(co_data, ensure_ascii=False)
+                co_tokens = estimate_tokens(co_json)
+                if budget.can_add(co_tokens):
+                    context["current_chapter_outline"] = co_data
+                    budget.add(co_tokens)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("加载当前章节大纲失败: %s", e)
+        finally:
+            try:
+                _db.close()
+            except Exception:
+                pass
+
     # 上一章结尾 500 字（确保下章开头的场景衔接）
     if current_chapter_number and current_chapter_number > 1:
         prev = kb.get_chapter_by_number(current_chapter_number - 1)
@@ -235,6 +278,9 @@ def _load_writing_context(kb: KnowledgeBaseService, budget: BudgetTracker, conte
                 context["relation_evolution_cues"] = evolution_cues
                 budget.add(cues_tokens)
 
+    # 前置条件校验
+    prereq = validate_prerequisites(kb.project_id, current_chapter_number)
+    context["prerequisites"] = prereq
 
 
 def _load_revision_context(kb: KnowledgeBaseService, budget: BudgetTracker, context: dict):
@@ -290,3 +336,176 @@ def get_context_window(model_config, model_name: str | None = None) -> int:
         return model_config.context_window
     fallback_name = model_name or ((model_config.model_name or "") if model_config else "")
     return _MODEL_CONTEXT_WINDOW_DEFAULTS.get(fallback_name, DEFAULT_CONTEXT_WINDOW)
+
+
+
+def validate_prerequisites(project_id: int, current_chapter: int | None) -> dict:
+    """校验写作前置条件，返回 blocked 和 warnings 列表
+
+    每个检查项独立 try-except，单项查询失败不影响其他检查项。
+    失败的检查项记入 errors 列表。
+    """
+    from app.database import SessionLocal
+    from app.models.outline import ChapterOutline
+    from app.models.character import Character, EvolutionPlan, Relation
+    from app.models.world_setting import WorldSetting
+    from app.models.foreshadowing import Foreshadowing
+    from app.models.style_constraints import StyleConstraints
+    from app.models.plot_structure import PlotBlock
+    from app.models.chapter import Chapter
+    from app.models.timeline import TimelineEntry
+
+    db = SessionLocal()
+    blocked = []
+    warnings = []
+    errors = []
+
+    try:
+        # === 关键项检查 ===
+
+        # 1. 章节大纲记录存在 + 已确认
+        if current_chapter:
+            try:
+                co = db.query(ChapterOutline).filter(
+                    ChapterOutline.project_id == project_id,
+                    ChapterOutline.chapter_number == current_chapter,
+                ).first()
+                if not co:
+                    blocked.append({
+                        "type": "chapter_outline_missing",
+                        "chapter": current_chapter,
+                        "message": f"第{current_chapter}章大纲不存在",
+                        "severity": "error",
+                    })
+                elif not co.confirmed:
+                    blocked.append({
+                        "type": "outline_unconfirmed",
+                        "chapter": current_chapter,
+                        "message": f"第{current_chapter}章大纲尚未确认",
+                        "severity": "error",
+                    })
+            except Exception as e:
+                errors.append({"type": "chapter_outline_check", "message": str(e)})
+
+        # 2. 角色存在
+        try:
+            char_count = db.query(Character).filter(Character.project_id == project_id).count()
+            if char_count == 0:
+                blocked.append({
+                    "type": "character_missing",
+                    "message": "项目中没有任何角色",
+                    "severity": "error",
+                })
+        except Exception as e:
+            errors.append({"type": "character_check", "message": str(e)})
+
+        # 3. 世界观存在（core_concept 非空）
+        try:
+            ws = db.query(WorldSetting).filter(WorldSetting.project_id == project_id).first()
+            if not ws or not ws.core_concept:
+                blocked.append({
+                    "type": "world_setting_missing",
+                    "message": "项目世界观尚未完善",
+                    "severity": "error",
+                })
+        except Exception as e:
+            errors.append({"type": "world_setting_check", "message": str(e)})
+
+        # === 次要项检查 ===
+
+        # 4. 伏笔记录
+        try:
+            fs_count = db.query(Foreshadowing).filter(Foreshadowing.project_id == project_id).count()
+            if fs_count == 0:
+                warnings.append({
+                    "type": "foreshadowing_empty",
+                    "message": "当前无伏笔记录",
+                    "severity": "warning",
+                })
+        except Exception as e:
+            errors.append({"type": "foreshadowing_check", "message": str(e)})
+
+        # 5. 风格约束
+        try:
+            style = db.query(StyleConstraints).filter(StyleConstraints.project_id == project_id).first()
+            if not style:
+                warnings.append({
+                    "type": "style_constraints_missing",
+                    "message": "尚未设置风格约束",
+                    "severity": "warning",
+                })
+        except Exception as e:
+            errors.append({"type": "style_check", "message": str(e)})
+
+        # 6. 情节块
+        try:
+            block_count = db.query(PlotBlock).filter(PlotBlock.project_id == project_id).count()
+            if block_count == 0:
+                warnings.append({
+                    "type": "plot_block_empty",
+                    "message": "尚未创建情节块",
+                    "severity": "warning",
+                })
+        except Exception as e:
+            errors.append({"type": "plot_block_check", "message": str(e)})
+
+        # 7. 上一章结尾内容
+        if current_chapter and current_chapter > 1:
+            try:
+                prev_co = db.query(ChapterOutline).filter(
+                    ChapterOutline.project_id == project_id,
+                    ChapterOutline.chapter_number == current_chapter - 1,
+                ).first()
+                if prev_co:
+                    prev_ch = db.query(Chapter).filter(
+                        Chapter.chapter_outline_id == prev_co.id
+                    ).first()
+                    if not prev_ch or not prev_ch.content:
+                        warnings.append({
+                            "type": "previous_chapter_empty",
+                            "chapter": current_chapter - 1,
+                            "message": f"第{current_chapter - 1}章尚无正文",
+                            "severity": "warning",
+                        })
+            except Exception as e:
+                errors.append({"type": "previous_chapter_check", "message": str(e)})
+
+        # 8. 关系演变规划
+        try:
+            plan_count = db.query(EvolutionPlan).filter(
+                EvolutionPlan.relation.has(Relation.project_id == project_id)
+            ).count()
+            if plan_count == 0:
+                warnings.append({
+                    "type": "relation_evolution_empty",
+                    "message": "尚未创建关系演变规划",
+                    "severity": "warning",
+                })
+        except Exception as e:
+            errors.append({"type": "evolution_check", "message": str(e)})
+
+        # 9. 时间线记录
+        try:
+            timeline_count = db.query(TimelineEntry).filter(
+                TimelineEntry.project_id == project_id
+            ).count()
+            if timeline_count == 0:
+                warnings.append({
+                    "type": "timeline_empty",
+                    "message": "尚未创建时间线记录",
+                    "severity": "warning",
+                })
+        except Exception as e:
+            errors.append({"type": "timeline_check", "message": str(e)})
+
+    finally:
+        db.close()
+
+    result = {
+        "blocked": blocked,
+        "warnings": warnings,
+        "validated": True,
+    }
+    if errors:
+        result["errors"] = errors
+    return result

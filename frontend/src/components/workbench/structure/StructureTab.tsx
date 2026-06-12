@@ -1,25 +1,24 @@
 // StructureTab.tsx — 结构标签页
 
 import { useState, useEffect, useCallback } from 'react'
-import { GitBranch, BoxSelect, Network, Activity } from 'lucide-react'
+import { GitBranch, BoxSelect, Network } from 'lucide-react'
 import { knowledgeApi } from '@/lib/api'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
 import { TagEditor } from '@/components/common/TagEditor'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import type { PlotBlock, Subplot, TimelineEntry } from '@/types/knowledge'
+import type { PlotBlock, Subplot } from '@/types/knowledge'
 
 interface StructureTabProps {
   projectId: number
 }
 
-type StructureSection = 'plot_blocks' | 'questions' | 'subplots' | 'rhythm'
+type StructureSection = 'plot_blocks' | 'questions' | 'subplots'
 
 const SECTIONS: { key: StructureSection; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: 'plot_blocks', label: '情节块', icon: BoxSelect },
   { key: 'questions', label: '问题链', icon: GitBranch },
   { key: 'subplots', label: '支线网络', icon: Network },
-  { key: 'rhythm', label: '节奏曲线', icon: Activity },
 ]
 
 
@@ -35,20 +34,17 @@ export function StructureTab({ projectId }: StructureTabProps) {
   const [activeSection, setActiveSection] = useState<StructureSection>('plot_blocks')
   const [plotBlocks, setPlotBlocks] = useState<PlotBlock[]>([])
   const [subplots, setSubplots] = useState<Subplot[]>([])
-  const [timeline, setTimeline] = useState<TimelineEntry[]>([])
   const [loading, setLoading] = useState(false)
 
   const loadStructure = useCallback(async () => {
     setLoading(true)
     try {
-      const [blocks, subplotsData, timelineData] = await Promise.allSettled([
+      const [blocks, subplotsData] = await Promise.allSettled([
         knowledgeApi.getPlotBlocks(projectId),
         knowledgeApi.getSubplots(projectId),
-        knowledgeApi.getTimeline(projectId),
       ])
       if (blocks.status === 'fulfilled') setPlotBlocks(blocks.value)
       if (subplotsData.status === 'fulfilled') setSubplots(subplotsData.value)
-      if (timelineData.status === 'fulfilled') setTimeline(timelineData.value)
     } catch (err) {
       console.error('Failed to load structure data:', err)
     } finally {
@@ -70,8 +66,6 @@ export function StructureTab({ projectId }: StructureTabProps) {
         return <QuestionsView data={plotBlocks} loading={loading} />
       case 'subplots':
         return <SubplotsView data={subplots} loading={loading} projectId={projectId} onUpdate={loadStructure} />
-      case 'rhythm':
-        return <RhythmView blocks={plotBlocks} timeline={timeline} loading={loading} />
       default:
         return null
     }
@@ -483,119 +477,6 @@ function SubplotsView({ data, loading, projectId, onUpdate }: { data: Subplot[];
     </div>
   )
 }
-
-// ========== 节奏曲线视图 ==========
-function RhythmView({ blocks, timeline, loading }: { blocks: PlotBlock[]; timeline: TimelineEntry[]; loading: boolean }) {
-  if (loading) return <LoadingSkeleton />
-
-  const hasTimeline = timeline.length > 0
-  const hasBlocks = blocks.length > 0
-
-  if (!hasTimeline && !hasBlocks) {
-    return <EmptyState label="节奏曲线需要情节块或已写章节的时间线数据" />
-  }
-
-  // 轻量张力折线数据（按章节排序）
-  const sortedTimeline = hasTimeline
-    ? [...timeline].sort((a, b) => a.chapter_number - b.chapter_number)
-    : []
-
-  return (
-    <div className="space-y-6">
-      {/* 预期节奏（来自情节块的 expected_mood） */}
-      {hasBlocks && (
-        <div>
-          <h3 className="text-sm font-semibold mb-3">预期节奏</h3>
-          <div className="space-y-2">
-            {blocks.map((block, index) => (
-              <div key={block.id} className="flex items-center gap-3">
-                <span className="text-[10px] text-muted-foreground w-16 shrink-0">
-                  {block.chapter_start
-                    ? `${block.chapter_start}-${block.chapter_end || '…'}`
-                    : `块${index + 1}`}
-                </span>
-                <div className="flex-1 h-6 relative">
-                  <div
-                    className="h-full rounded bg-primary/10 border border-primary/20"
-                    style={{ width: '100%' }}
-                  >
-                    <div className="absolute inset-0 flex items-center px-2">
-                      <span className="text-[10px] font-medium text-primary truncate">
-                        {block.title}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                {block.expected_mood && (
-                  <MoodTag mood={block.expected_mood} />
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* 轻量实际张力折线预览 */}
-      {hasTimeline && (
-        <div>
-          <h3 className="text-sm font-semibold mb-3">实际张力</h3>
-          <div className="border rounded-lg p-3 bg-muted/5">
-            <svg
-              width="100%"
-              height="48"
-              viewBox={`0 0 ${sortedTimeline.length * 30} 48`}
-              preserveAspectRatio="none"
-              className="text-primary"
-            >
-              <polyline
-                points={sortedTimeline
-                  .map((entry, i) => `${i * 30 + 15},${48 - (entry.tension_score / 5) * 42}`)
-                  .join(' ')}
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <div className="flex justify-between text-[9px] text-muted-foreground mt-1 px-1">
-              <span>第{sortedTimeline[0]?.chapter_number}章</span>
-              <span>第{sortedTimeline[sortedTimeline.length - 1]?.chapter_number}章</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 跳转追踪标签页查看详细对比 */}
-      <button
-        onClick={() => useWorkbenchStore.getState().setActiveTab('tracking')}
-        className="text-xs text-primary hover:underline flex items-center gap-1"
-      >
-        查看详细对比 →
-      </button>
-    </div>
-  )
-}
-
-// 预期情绪标签
-function MoodTag({ mood }: { mood: string }) {
-  const colorMap: Record<string, string> = {
-    '悬念': 'bg-violet-50 text-violet-700',
-    '紧张': 'bg-red-50 text-red-700',
-    '温暖': 'bg-orange-50 text-orange-700',
-    '悲伤': 'bg-blue-50 text-blue-700',
-    '转折': 'bg-amber-50 text-amber-700',
-    '日常': 'bg-slate-50 text-slate-700',
-    '高潮': 'bg-rose-50 text-rose-700',
-    '舒缓': 'bg-teal-50 text-teal-700',
-  }
-  const color = colorMap[mood] || 'bg-gray-50 text-gray-700'
-  return (
-    <span className={cn('text-[10px] px-1.5 py-0.5 rounded shrink-0', color)}>
-      {mood}
-    </span>
-  )
-}
-
 
 
 // ========== 通用组件 ==========

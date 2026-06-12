@@ -72,6 +72,10 @@ class ChapterOutline(Base):
     hook = Column(Text, nullable=True)  # 悬念钩子
     transition = Column(Text, nullable=True)  # 过渡衔接
     ending = Column(Text, nullable=True)
+    opening_state = Column(Text, nullable=True)  # 开场状态
+    emotional_arc = Column(Text, nullable=True)  # 情绪弧线
+    key_scenes = Column(JSON, nullable=True)  # 核心场景列表
+    pacing_note = Column(Text, nullable=True)  # 节奏标注
     target_words = Column(Integer, default=3000)
     confirmed = Column(Boolean, default=False)
     arc_id = Column(

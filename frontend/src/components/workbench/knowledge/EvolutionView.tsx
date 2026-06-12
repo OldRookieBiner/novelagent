@@ -1,8 +1,9 @@
 // EvolutionView.tsx — 关系演变标签页
 
 import { useState, useEffect, useCallback } from 'react'
-import type { RelationWithCharacters, EvolutionPlan, EvolutionRecord } from '@/types/character'
+import type { RelationWithCharacters, EvolutionPlan, EvolutionRecord, EvolutionPlanCreate } from '@/types/character'
 import { evolutionPlanApi, evolutionRecordApi } from '@/lib/characterApi'
+import { useWorkbenchStore } from '@/stores/workbenchStore'
 import { cn } from '@/lib/utils'
 
 interface EvolutionViewProps
@@ -100,7 +101,12 @@ export function EvolutionView({ relations, projectId }: EvolutionViewProps)
             ) : (
                 <>
                     {/* 演变规划表格 */}
-                    <EvolutionPlansTable plans={plans} />
+                    <EvolutionPlansTable
+                        plans={plans}
+                        projectId={projectId}
+                        relationId={selectedRelationId!}
+                        onCreated={loadEvolutionData}
+                    />
 
                     {/* 演变记录表格 */}
                     <EvolutionRecordsTable records={records} />
@@ -111,13 +117,150 @@ export function EvolutionView({ relations, projectId }: EvolutionViewProps)
 }
 
 // 演变规划表格
-function EvolutionPlansTable({ plans }: { plans: EvolutionPlan[] })
+function EvolutionPlansTable({
+    plans,
+    projectId,
+    relationId,
+    onCreated,
+}: {
+    plans: EvolutionPlan[]
+    projectId: number
+    relationId: number
+    onCreated: () => void
+})
 {
+    const [showForm, setShowForm] = useState(false)
+    const [saving, setSaving] = useState(false)
+    const [form, setForm] = useState<EvolutionPlanCreate>({
+        trigger_chapter: 1,
+        event_description: '',
+        status_after: '',
+    })
+
+    const handleCreate = async () =>
+    {
+        if (!form.event_description || !form.status_after) return
+        setSaving(true)
+        try
+        {
+            await evolutionPlanApi.create(projectId, relationId, form)
+            setShowForm(false)
+            setForm({ trigger_chapter: 1, event_description: '', status_after: '' })
+            useWorkbenchStore.getState().incrementKnowledgeVersion()
+            onCreated()
+        }
+        catch (err)
+        {
+            console.error('Failed to create evolution plan:', err)
+        }
+        finally
+        {
+            setSaving(false)
+        }
+    }
+
     return (
         <div>
             <div className="flex items-center justify-between mb-2">
                 <h4 className="text-sm font-semibold">演变规划（未来计划）</h4>
+                <button
+                    onClick={() => setShowForm(!showForm)}
+                    className="text-[10px] text-primary hover:underline"
+                >
+                    + 新增规划
+                </button>
             </div>
+
+            {showForm && (
+                <div className="border rounded-lg p-3 mb-3 space-y-2 bg-muted/20">
+                    <div className="grid grid-cols-2 gap-2">
+                        <div>
+                            <label className="text-[10px] text-muted-foreground">触发章节</label>
+                            <input
+                                type="number"
+                                min={1}
+                                value={form.trigger_chapter}
+                                onChange={(e) => setForm({ ...form, trigger_chapter: parseInt(e.target.value) || 1 })}
+                                className="w-full text-xs border rounded px-2 py-1 mt-0.5"
+                            />
+                        </div>
+                        <div>
+                            <label className="text-[10px] text-muted-foreground">事件描述</label>
+                            <input
+                                type="text"
+                                value={form.event_description}
+                                onChange={(e) => setForm({ ...form, event_description: e.target.value })}
+                                className="w-full text-xs border rounded px-2 py-1 mt-0.5"
+                                placeholder="描述触发事件"
+                            />
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                        <div>
+                            <label className="text-[10px] text-muted-foreground">变化前状态</label>
+                            <input
+                                type="text"
+                                value={form.status_before || ''}
+                                onChange={(e) => setForm({ ...form, status_before: e.target.value || undefined })}
+                                className="w-full text-xs border rounded px-2 py-1 mt-0.5"
+                                placeholder="可选"
+                            />
+                        </div>
+                        <div>
+                            <label className="text-[10px] text-muted-foreground">变化后状态</label>
+                            <input
+                                type="text"
+                                value={form.status_after}
+                                onChange={(e) => setForm({ ...form, status_after: e.target.value })}
+                                className="w-full text-xs border rounded px-2 py-1 mt-0.5"
+                                placeholder="必填"
+                            />
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                        <div>
+                            <label className="text-[10px] text-muted-foreground">变化前信任度</label>
+                            <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                value={form.trust_before ?? ''}
+                                onChange={(e) => setForm({ ...form, trust_before: e.target.value ? parseInt(e.target.value) : undefined })}
+                                className="w-full text-xs border rounded px-2 py-1 mt-0.5"
+                                placeholder="0-100"
+                            />
+                        </div>
+                        <div>
+                            <label className="text-[10px] text-muted-foreground">变化后信任度</label>
+                            <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                value={form.trust_after ?? ''}
+                                onChange={(e) => setForm({ ...form, trust_after: e.target.value ? parseInt(e.target.value) : undefined })}
+                                className="w-full text-xs border rounded px-2 py-1 mt-0.5"
+                                placeholder="0-100"
+                            />
+                        </div>
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                        <button
+                            onClick={handleCreate}
+                            disabled={saving || !form.event_description || !form.status_after}
+                            className="text-xs px-3 py-1 bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50"
+                        >
+                            {saving ? '创建中...' : '创建'}
+                        </button>
+                        <button
+                            onClick={() => setShowForm(false)}
+                            className="text-xs px-3 py-1 border rounded hover:bg-muted/50"
+                        >
+                            取消
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {plans.length === 0 ? (
                 <div className="text-xs text-muted-foreground text-center py-6 border rounded-lg">
                     暂无演变规划

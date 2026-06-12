@@ -94,6 +94,10 @@ async def read_chapter_outlines(db: Session, project_id: int) -> list[dict]:
             "hook": o.hook,
             "transition": o.transition,
             "ending": o.ending,
+            "opening_state": o.opening_state,
+            "emotional_arc": o.emotional_arc,
+            "key_scenes": o.key_scenes,
+            "pacing_note": o.pacing_note,
             "target_words": o.target_words,
             "confirmed": o.confirmed,
         }
@@ -125,6 +129,10 @@ async def update_chapter_outline(db: Session, project_id: int, chapter_number: i
         "hook": "悬念钩子",
         "transition": "过渡衔接",
         "ending": "结尾",
+        "opening_state": "开场状态",
+        "emotional_arc": "情绪弧线",
+        "key_scenes": "核心场景",
+        "pacing_note": "节奏标注",
         "target_words": "目标字数",
         "confirmed": "确认",
     }

@@ -1,31 +1,31 @@
 
 # AI 辅助开发工具文档（临时文件）
-.claude/
 # Claude Code 配置（本地）
-data/projects/*.json
-*.egg-info/
-.eggs/
-.env
-frontend/dist/
-frontend/node_modules/
 # Git worktrees
 # IDE
-.idea/
-*.log
 # Node.js / 前端
-node_modules/
-__pycache__/
-*.py[cod]
-*.pyo
-.pytest_cache/
 # Python
-.superpowers/
-*.swp
-.vscode/
-.worktrees/
-.DS_Store
-.codegraph/
 # 构建产物
 # 环境变量 (包含 API Key，不要提交)
-.opencode/
 # 项目数据
+*.egg-info/
+*.log
+*.py[cod]
+*.pyo
+*.swp
+.DS_Store
+.claude/
+.codegraph/
+.eggs/
+.env
+.idea/
+.opencode/
+.pytest_cache/
+.superpowers/
+.vscode/
+.worktrees/
+__pycache__/
+data/projects/*.json
+frontend/dist/
+frontend/node_modules/
+node_modules/

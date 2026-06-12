@@ -83,6 +83,10 @@ async def list_chapter_outlines(
             "hook": co.hook,
             "transition": co.transition,
             "ending": co.ending,
+            "opening_state": co.opening_state,
+            "emotional_arc": co.emotional_arc,
+            "key_scenes": co.key_scenes,
+            "pacing_note": co.pacing_note,
             "target_words": co.target_words,
             "confirmed": co.confirmed,
             "created_at": co.created_at,
@@ -141,6 +145,14 @@ async def update_chapter_outline(
         chapter_outline.ending = request.ending
     if request.target_words is not None:
         chapter_outline.target_words = request.target_words
+    if request.opening_state is not None:
+        chapter_outline.opening_state = request.opening_state
+    if request.emotional_arc is not None:
+        chapter_outline.emotional_arc = request.emotional_arc
+    if request.key_scenes is not None:
+        chapter_outline.key_scenes = request.key_scenes
+    if request.pacing_note is not None:
+        chapter_outline.pacing_note = request.pacing_note
 
     db.commit()
     db.refresh(chapter_outline)
@@ -162,6 +174,10 @@ async def update_chapter_outline(
         hook=chapter_outline.hook,
         transition=chapter_outline.transition,
         ending=chapter_outline.ending,
+        opening_state=chapter_outline.opening_state,
+        emotional_arc=chapter_outline.emotional_arc,
+        key_scenes=chapter_outline.key_scenes,
+        pacing_note=chapter_outline.pacing_note,
         target_words=chapter_outline.target_words,
         confirmed=chapter_outline.confirmed,
         created_at=chapter_outline.created_at,
@@ -241,6 +257,10 @@ async def confirm_chapter_outline(
         hook=chapter_outline.hook,
         transition=chapter_outline.transition,
         ending=chapter_outline.ending,
+        opening_state=chapter_outline.opening_state,
+        emotional_arc=chapter_outline.emotional_arc,
+        key_scenes=chapter_outline.key_scenes,
+        pacing_note=chapter_outline.pacing_note,
         target_words=chapter_outline.target_words,
         confirmed=chapter_outline.confirmed,
         created_at=chapter_outline.created_at,

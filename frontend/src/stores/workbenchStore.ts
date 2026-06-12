@@ -94,6 +94,10 @@ interface WorkbenchState {
   // Project isolation
   currentProjectId: number | null
   setCurrentProjectId: (id: number | null) => void
+
+  // 多会话管理
+  activeConversationId: number | null
+  setActiveConversationId: (id: number | null) => void
 }
 
 export const useWorkbenchStore = create<WorkbenchState>((set) => ({
@@ -153,5 +157,16 @@ export const useWorkbenchStore = create<WorkbenchState>((set) => ({
 
   // Project
   currentProjectId: null,
-  setCurrentProjectId: (id) => set({ currentProjectId: id, aiMessages: [], pendingImpacts: [], agentWarnings: [], knowledgeVersion: 0 }),
+  setCurrentProjectId: (id) => set({
+    currentProjectId: id,
+    aiMessages: [],
+    pendingImpacts: [],
+    agentWarnings: [],
+    knowledgeVersion: 0,
+    activeConversationId: null,
+  }),
+
+  // 多会话管理
+  activeConversationId: null,
+  setActiveConversationId: (id) => set({ activeConversationId: id }),
 }))

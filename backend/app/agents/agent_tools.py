@@ -25,6 +25,7 @@ from app.agents.tools import (
     create_world_setting,
     create_character,
     create_relation,
+    create_evolution_plan,
     create_subplot,
     create_plot_question,
     create_timeline_entry,

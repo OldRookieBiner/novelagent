@@ -94,6 +94,16 @@ export async function sendAgentMessage(
   )
 }
 
+/** 会话列表项 */
+export interface ConversationItem {
+  id: number
+  title: string
+  message_count: number
+  is_active: boolean
+  created_at: string | null
+  updated_at: string | null
+}
+
 /** 会话及消息响应类型 */
 export interface ConversationResponse {
   conversation_id: number
@@ -118,6 +128,7 @@ export interface ConversationResponse {
 /** 获取项目会话及消息 */
 export async function fetchConversation(
   projectId: number,
+  conversationId?: number,
   limit?: number,
   beforeId?: number,
 ): Promise<ConversationResponse> {
@@ -126,6 +137,7 @@ export async function fetchConversation(
   const token = getSessionToken()
 
   const params = new URLSearchParams()
+  if (conversationId) params.set('conversation_id', String(conversationId))
   if (limit) params.set('limit', String(limit))
   if (beforeId) params.set('before_id', String(beforeId))
 
@@ -144,8 +156,8 @@ export async function fetchConversation(
   return res.json()
 }
 
-/** 清空项目会话 */
-export async function deleteConversation(projectId: number): Promise<void> {
+/** 获取项目所有会话列表 */
+export async function fetchConversations(projectId: number): Promise<ConversationItem[]> {
   const { getSessionToken } = await import('./api')
   const API_BASE_URL = import.meta.env.VITE_API_URL || ''
   const token = getSessionToken()
@@ -156,10 +168,103 @@ export async function deleteConversation(projectId: number): Promise<void> {
   }
 
   const res = await fetch(
-    `${API_BASE_URL}/api/projects/${projectId}/agent/conversation`,
+    `${API_BASE_URL}/api/projects/${projectId}/agent/conversations`,
+    { headers, credentials: 'include' },
+  )
+  if (!res.ok) {
+    throw new Error(`Failed to fetch conversations: ${res.status}`)
+  }
+  return res.json()
+}
+
+/** 新建会话 */
+export async function createConversation(projectId: number): Promise<ConversationItem> {
+  const { getSessionToken } = await import('./api')
+  const API_BASE_URL = import.meta.env.VITE_API_URL || ''
+  const token = getSessionToken()
+
+  const headers: HeadersInit = { 'Content-Type': 'application/json' }
+  if (token) {
+    headers['Authorization'] = `Basic ${btoa(`${token}:`)}`
+  }
+
+  const res = await fetch(
+    `${API_BASE_URL}/api/projects/${projectId}/agent/conversations`,
+    { method: 'POST', headers, credentials: 'include' },
+  )
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.detail || `Failed to create conversation: ${res.status}`)
+  }
+  return res.json()
+}
+
+/** 切换到指定会话 */
+export async function activateConversation(projectId: number, conversationId: number): Promise<ConversationItem> {
+  const { getSessionToken } = await import('./api')
+  const API_BASE_URL = import.meta.env.VITE_API_URL || ''
+  const token = getSessionToken()
+
+  const headers: HeadersInit = { 'Content-Type': 'application/json' }
+  if (token) {
+    headers['Authorization'] = `Basic ${btoa(`${token}:`)}`
+  }
+
+  const res = await fetch(
+    `${API_BASE_URL}/api/projects/${projectId}/agent/conversations/${conversationId}/activate`,
+    { method: 'POST', headers, credentials: 'include' },
+  )
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.detail || `Failed to activate conversation: ${res.status}`)
+  }
+  return res.json()
+}
+
+/** 重命名会话 */
+export async function renameConversation(projectId: number, conversationId: number, title: string): Promise<ConversationItem> {
+  const { getSessionToken } = await import('./api')
+  const API_BASE_URL = import.meta.env.VITE_API_URL || ''
+  const token = getSessionToken()
+
+  const headers: HeadersInit = { 'Content-Type': 'application/json' }
+  if (token) {
+    headers['Authorization'] = `Basic ${btoa(`${token}:`)}`
+  }
+
+  const res = await fetch(
+    `${API_BASE_URL}/api/projects/${projectId}/agent/conversations/${conversationId}`,
+    {
+      method: 'PUT',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify({ title }),
+    },
+  )
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.detail || `Failed to rename conversation: ${res.status}`)
+  }
+  return res.json()
+}
+
+/** 删除指定会话 */
+export async function deleteConversation(projectId: number, conversationId: number): Promise<void> {
+  const { getSessionToken } = await import('./api')
+  const API_BASE_URL = import.meta.env.VITE_API_URL || ''
+  const token = getSessionToken()
+
+  const headers: HeadersInit = {}
+  if (token) {
+    headers['Authorization'] = `Basic ${btoa(`${token}:`)}`
+  }
+
+  const res = await fetch(
+    `${API_BASE_URL}/api/projects/${projectId}/agent/conversations/${conversationId}`,
     { method: 'DELETE', headers, credentials: 'include' },
   )
   if (!res.ok) {
-    throw new Error(`Failed to clear conversation: ${res.status}`)
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.detail || `Failed to delete conversation: ${res.status}`)
   }
 }

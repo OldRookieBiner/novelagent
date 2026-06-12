@@ -153,7 +153,7 @@ export default function CreateProjectDialog({ open, onOpenChange }: CreateProjec
 
     try
     {
-      const result = await (projectsApi).initialize(
+      const result = await projectsApi.initialize(
         concept.trim(),
         {
           onEvent: (type: string, data: Record<string, unknown>) =>
@@ -266,7 +266,6 @@ export default function CreateProjectDialog({ open, onOpenChange }: CreateProjec
   const handleCancel = () =>
   {
     // 只发送 abort 信号，状态重置由 finally 块统一处理
-    // 避免竞态：SSE 流可能还在处理中
     if (abortControllerRef.current)
     {
       abortControllerRef.current.abort()

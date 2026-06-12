@@ -15,6 +15,10 @@ class ChapterOutlineBase(BaseModel):
     hook: Optional[str] = None  # 悬念钩子
     transition: Optional[str] = None  # 过渡衔接
     ending: Optional[str] = None
+    opening_state: Optional[str] = None  # 开场状态
+    emotional_arc: Optional[str] = None  # 情绪弧线
+    key_scenes: Optional[list[dict]] = None  # 核心场景列表
+    pacing_note: Optional[str] = None  # 节奏标注
     target_words: Optional[int] = 3000
 
 
@@ -28,6 +32,10 @@ class ChapterOutlineUpdate(BaseModel):
     hook: Optional[str] = None  # 悬念钩子
     transition: Optional[str] = None  # 过渡衔接
     ending: Optional[str] = None
+    opening_state: Optional[str] = None  # 开场状态
+    emotional_arc: Optional[str] = None  # 情绪弧线
+    key_scenes: Optional[list[dict]] = None  # 核心场景列表
+    pacing_note: Optional[str] = None  # 节奏标注
     target_words: Optional[int] = None
 
 
@@ -64,4 +72,3 @@ class ChapterResponse(BaseModel):
 
     class Config:
         from_attributes = True
-

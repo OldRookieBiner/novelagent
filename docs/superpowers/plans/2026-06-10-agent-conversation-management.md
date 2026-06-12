@@ -277,7 +277,7 @@ async def create_conversation(
     project = get_project_for_user(project_id, current_user.id, db)
 
     # 获取 busy lock 防止并发
-    if not _acquire_busy_lock(db, project_id, "conversation"):
+    if not _acquire_busy_lock(db, project_id, "agent"):
         raise HTTPException(status_code=409, detail="项目正在被使用，请稍后再试")
 
     try:
@@ -363,7 +363,7 @@ async def activate_conversation(
     project = get_project_for_user(project_id, current_user.id, db)
 
     # 获取 busy lock
-    if not _acquire_busy_lock(db, project_id, "conversation"):
+    if not _acquire_busy_lock(db, project_id, "agent"):
         raise HTTPException(status_code=409, detail="项目正在被使用，请稍后再试")
 
     try:
@@ -413,7 +413,7 @@ async def delete_conversation(
     project = get_project_for_user(project_id, current_user.id, db)
     
     # 获取 busy lock 防止并发和 Agent 正在生成时删除
-    if not _acquire_busy_lock(db, project_id, "conversation"):
+    if not _acquire_busy_lock(db, project_id, "agent"):
         raise HTTPException(status_code=409, detail="项目正在被使用，请稍后再试")
     
     try:
