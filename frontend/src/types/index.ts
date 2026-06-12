@@ -223,6 +223,10 @@ export interface ChapterOutline {
   transition?: string;
   ending?: string;
   target_words: number;
+  opening_state?: string;
+  emotional_arc?: string;
+  key_scenes?: { seq: number; desc: string; mood: string }[];
+  pacing_note?: string;
   confirmed: boolean;
   created_at: string;
   has_content: boolean;
@@ -239,6 +243,10 @@ export interface ChapterOutlineUpdate {
   transition?: string;
   ending?: string;
   target_words?: number;
+  opening_state?: string;
+  emotional_arc?: string;
+  key_scenes?: { seq: number; desc: string; mood: string }[];
+  pacing_note?: string;
 }
 
 export interface Chapter {
