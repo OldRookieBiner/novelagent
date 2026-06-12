@@ -26,6 +26,7 @@ from app.agents.tools.assist import (
     expand_world_setting,
 )
 from app.agents.tools.creation import (
+    create_evolution_plan,
     create_world_setting,
     create_character,
     create_relation,
@@ -36,6 +37,7 @@ from app.agents.tools.creation import (
     create_foreshadowing,
     create_plot_block,
     generate_outline,
+    generate_chapter_outline,
     generate_chapter_content,
     generate_story_seed,
     generate_world_setting_complete,
@@ -60,6 +62,7 @@ INCUBATION_TOOLS = [
     create_world_setting,
     create_character,
     create_relation,
+    create_evolution_plan,
     create_style_constraints,
     create_foreshadowing,
 ]
@@ -80,6 +83,7 @@ STRUCTURE_TOOLS = [
     expand_world_setting,
     # 生成（孵化继承 + 结构生成）
     generate_outline,
+    generate_chapter_outline,
     generate_story_seed,
     generate_world_setting_complete,
     # 修改
@@ -95,6 +99,7 @@ STRUCTURE_TOOLS = [
     create_foreshadowing,
     create_character,
     create_relation,
+    create_evolution_plan,
 ]
 
 # 写作阶段可用工具（全部工具）
@@ -112,6 +117,7 @@ WRITING_TOOLS = [
     progress_report,
     rhythm_analysis,
     # 生成（主要写作工具）
+    generate_chapter_outline,
     generate_chapter_content,
     generate_outline,
     generate_story_seed,
@@ -129,6 +135,7 @@ WRITING_TOOLS = [
     create_world_setting,
     create_character,
     create_relation,
+    create_evolution_plan,
     create_style_constraints,
     create_subplot,
     create_plot_question,
