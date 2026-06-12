@@ -20,16 +20,16 @@ async def propose_outline_adjustment(
     """
     kb = _kb()
 
-    blocks = kb.get_plot_blocks()
-    foreshadowings = kb.get_foreshadowings(status="active")
-    questions = kb.get_plot_questions(status="pending")
+    blocks = kb.plots.list_plot_blocks()
+    foreshadowings = kb.foreshadowings.list_foreshadowings(status="active")
+    questions = kb.plots.list_plot_questions(status="pending")
 
     affected_blocks = []
     if affected_plot_blocks:
-        affected_blocks = [b for b in blocks if b.id in affected_plot_blocks]
+        affected_blocks = [b for b in blocks if b["id"] in affected_plot_blocks]
     else:
         for b in blocks:
-            block_text = f"{b.title} {' '.join(b.must_happen or [])} {' '.join(b.questions_to_answer or [])}"
+            block_text = f"{b.get('title', '')} {' '.join(b.get('must_happen') or [])} {' '.join(b.get('questions_to_answer') or [])}"
             for word in description.split():
                 if len(word) >= 2 and word in block_text:
                     affected_blocks.append(b)
@@ -38,22 +38,22 @@ async def propose_outline_adjustment(
     affected_foreshadowings = []
     for f in foreshadowings:
         for b in affected_blocks:
-            if b.chapter_start and f.expected_resolve_chapter:
-                if b.chapter_start <= f.expected_resolve_chapter <= (b.chapter_end or 999):
+            if b.get("chapter_start") and f.get("expected_resolve_chapter"):
+                if b["chapter_start"] <= f["expected_resolve_chapter"] <= (b.get("chapter_end") or 999):
                     affected_foreshadowings.append({
-                        "id": f.id,
-                        "content": f.content[:60],
-                        "expected_resolve_chapter": f.expected_resolve_chapter,
+                        "id": f["id"],
+                        "content": f.get("content", "")[:60],
+                        "expected_resolve_chapter": f["expected_resolve_chapter"],
                     })
 
     affected_questions = []
     for q in questions:
         for b in affected_blocks:
-            if q.plot_block_id == b.id:
+            if q.get("plot_block_id") == b["id"]:
                 affected_questions.append({
-                    "id": q.id,
-                    "question": q.question_text[:60],
-                    "status": q.status,
+                    "id": q["id"],
+                    "question": q.get("question_text", "")[:60],
+                    "status": q.get("status"),
                 })
 
     impact_level = "minor"
@@ -62,7 +62,7 @@ async def propose_outline_adjustment(
     if len(affected_blocks) > 2:
         impact_level = "severe"
 
-    change = kb.create_setting_change({
+    change = kb.changes.create({
         "target_type": "outline_adjustment",
         "target_id": 0,
         "old_value": {},
@@ -72,7 +72,7 @@ async def propose_outline_adjustment(
         "impact_report": {
             "level": impact_level,
             "affected_blocks": [
-                {"id": b.id, "title": b.title, "chapter_range": f"{b.chapter_start}-{b.chapter_end}"}
+                {"id": b["id"], "title": b.get("title", ""), "chapter_range": f"{b.get('chapter_start')}-{b.get('chapter_end')}"}
                 for b in affected_blocks
             ],
             "affected_foreshadowings": affected_foreshadowings,
@@ -83,7 +83,7 @@ async def propose_outline_adjustment(
     level_labels = {"minor": "🟡 轻微影响", "moderate": "🟠 中度影响", "severe": "🔴 严重影响"}
 
     return {
-        "change_id": change.id,
+        "change_id": change["id"],
         "status": "proposed",
         "impact_level": impact_level,
         "impact_label": level_labels.get(impact_level, impact_level),

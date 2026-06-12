@@ -57,6 +57,7 @@ def build_config_response(c: ModelConfig) -> ModelConfigResponse:
                 "health_latency": m.get("health_latency"),
                 "temperature": m.get("temperature", 0.7),
                 "reasoning_effort": m.get("reasoning_effort"),
+                "context_window": m.get("context_window"),
             }
             models.append(item)
     elif c.model_name:
@@ -68,6 +69,7 @@ def build_config_response(c: ModelConfig) -> ModelConfigResponse:
             "health_status": None,
             "temperature": 0.7,
             "reasoning_effort": None,
+            "context_window": c.context_window,
         }]
 
     return ModelConfigResponse(
@@ -327,6 +329,8 @@ async def update_model_config(
         config.api_key_encrypted = encrypt_api_key(request.api_key, current_user.id)
     if request.clear_api_key is True:
         config.api_key_encrypted = None
+    if request.context_window is not None:
+        config.context_window = request.context_window
 
     db.commit()
     db.refresh(config)

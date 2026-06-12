@@ -43,10 +43,10 @@ async def create_subplot(
     if expected_resolution_chapter is not None:
         data["expected_resolution_chapter"] = expected_resolution_chapter
 
-    s = kb.create_subplot(data)
+    s = kb.plots.create_subplot(data)
     return {
         "action": "created",
-        "id": s.id,
+        "id": s["id"],
         "name": name,
         "message": f"支线「{name}」已创建并写入知识库",
     }

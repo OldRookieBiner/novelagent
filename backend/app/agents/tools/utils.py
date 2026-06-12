@@ -1,6 +1,7 @@
 """共享工具函数
 
 从 agent_tools.py 提取的公共函数，供所有工具使用。
+Store 返回 dict，不再需要 _serialize。
 """
 
 from app.agents.services.knowledge_base import KnowledgeBaseService
@@ -18,50 +19,37 @@ def _kb() -> KnowledgeBaseService:
     return KnowledgeBaseService(project_id)
 
 
-def _serialize(obj) -> dict | list | str:
-    """Serialize an ORM object to a dict, handling detached sessions."""
-    if obj is None:
-        return {}
-    if isinstance(obj, list):
-        return [_serialize(item) for item in obj]
-    if hasattr(obj, "__dict__") and hasattr(obj, "__table__"):
-        return {
-            c.name: getattr(obj, c.name)
-            for c in obj.__table__.columns
-            if c.name not in ("created_at", "updated_at")
-        }
-    return str(obj)
-
-
 def _get_current_value(kb: KnowledgeBaseService, target_type: str, target_id: int) -> dict:
-    """Get the current value of a knowledge base object for comparison."""
+    """Get the current value of a knowledge base object for comparison.
+
+    Store 返回 dict，直接返回即可。
+    """
     if target_type == "world_setting":
-        obj = kb.get_world_setting()
-        if obj and obj.id == target_id:
-            return _serialize(obj)
+        obj = kb.world_setting.get()
+        if obj and obj.get("id") == target_id:
+            return obj
     elif target_type == "character":
-        chars = kb.get_characters()
+        chars = kb.characters.list_characters()
         for c in chars:
-            if c.id == target_id:
-                return _serialize(c)
+            if c["id"] == target_id:
+                return c
     elif target_type == "foreshadowing":
-        foreshadowings = kb.get_foreshadowings()
-        for f in foreshadowings:
-            if f.id == target_id:
-                return _serialize(f)
+        f = kb.foreshadowings.get(target_id)
+        if f:
+            return f
     elif target_type == "style":
-        style = kb.get_style_constraints()
-        if style and style.id == target_id:
-            return _serialize(style)
+        style = kb.styles.get_constraints()
+        if style and style.get("id") == target_id:
+            return style
     elif target_type == "outline":
-        outline = kb.get_outline()
-        if outline and outline.id == target_id:
-            return _serialize(outline)
+        outline = kb.outlines.get()
+        if outline and outline.get("id") == target_id:
+            return outline
     elif target_type == "relation":
-        relations = kb.get_relations()
+        relations = kb.characters.list_relations()
         for r in relations:
-            if r.id == target_id:
-                return _serialize(r)
+            if r["id"] == target_id:
+                return r
     return {}
 
 
@@ -103,126 +91,6 @@ def _grade_impact(
         return "moderate", f"中度影响：{total_chapters} 章、{total_paragraphs} 段提及，细心读者可能发现矛盾"
 
     return "severe", f"严重影响：{total_chapters} 章、{total_paragraphs} 段提及，核心情节可能直接矛盾"
-
-
-def _build_state_for_review(project_id: int, chapter_number: int) -> dict:
-    """Build a minimal NovelState dict for review/rewrite message construction.
-
-    Reads characters, relations, world_setting, chapter_outlines, written_chapters
-    from KnowledgeBaseService to satisfy _build_review_messages / _build_rewrite_messages contracts.
-    """
-    from app.database import SessionLocal
-    from app.models.outline import ChapterOutline
-
-    kb = KnowledgeBaseService(project_id)
-
-    # Outline for chapter_count and target words
-    outline = kb.get_outline()
-    target_words = 100000
-    if outline:
-        target_words = (outline.chapter_count_confirmed or outline.chapter_count_suggested or 100) * 3000
-
-    # Characters
-    chars_raw = kb.get_characters()
-    characters = []
-    for c in chars_raw:
-        characters.append({
-            "id": c.id, "name": c.name, "role": getattr(c, "role", ""),
-            "personality": getattr(c, "personality", ""),
-            "appearance": getattr(c, "appearance", ""),
-            "backstory": getattr(c, "backstory", ""),
-            "catchphrase": getattr(c, "catchphrase", ""),
-            "habit_action": getattr(c, "habit_action", ""),
-            "deep_fear": getattr(c, "deep_fear", ""),
-            "core_motivation": getattr(c, "core_motivation", ""),
-            "growth_arc": getattr(c, "growth_arc", ""),
-            "signature_item": getattr(c, "signature_item", ""),
-        })
-
-    # Relations
-    relations_raw = kb.get_relations()
-    relations = []
-    for r in relations_raw:
-        relations.append({
-            "character_a_id": getattr(r, "character_a_id", None),
-            "character_b_id": getattr(r, "character_b_id", None),
-            "relation_type": getattr(r, "relation_type", ""),
-            "current_status": getattr(r, "current_status", ""),
-        })
-
-    # Evolution plans
-    evolution_plans_raw = kb.get_relations_with_plans()
-    evolution_plans = []
-    for ep in evolution_plans_raw:
-        evolution_plans.append(ep if isinstance(ep, dict) else _serialize(ep))
-
-    # World setting
-    ws = kb.get_world_setting()
-
-    # Chapter outlines
-    chapter_outlines = []
-    db = SessionLocal()
-    try:
-        co_list = db.query(ChapterOutline).filter(
-            ChapterOutline.project_id == project_id
-        ).order_by(ChapterOutline.chapter_number).all()
-        for co in co_list:
-            chapter_outlines.append({
-                "chapter_number": co.chapter_number,
-                "title": co.title or "",
-                "scene": co.scene,
-                "characters": co.characters,
-                "plot": co.plot or "",
-                "conflict": co.conflict,
-                "turning_point": co.turning_point,
-                "hook": co.hook,
-                "transition": co.transition,
-                "ending": co.ending,
-                "target_words": co.target_words,
-                "opening_state": getattr(co, "opening_state", None),
-                "emotional_arc": getattr(co, "emotional_arc", None),
-                "key_scenes": getattr(co, "key_scenes", None),
-                "pacing_note": getattr(co, "pacing_note", None),
-            })
-    finally:
-        db.close()
-
-    # Written chapters (timeline summaries for context)
-    timeline = kb.get_timeline()
-    written_chapters = []
-    for t in timeline:
-        written_chapters.append({
-            "chapter_number": t.chapter_number,
-            "summary": getattr(t, "summary", ""),
-        })
-
-    # Collected info (style preferences, genre)
-    collected_info = {}
-    if outline:
-        collected_info["novelType"] = getattr(outline, "novel_type", "") or ""
-    style = kb.get_style_constraints()
-    if style:
-        collected_info["stylePreference"] = getattr(style, "style_preference", "") or ""
-    collected_info["targetWords"] = target_words
-
-    # 加载 prompt 模板
-    from app.agents.prompts import DEFAULT_PROMPTS
-    _prompts = DEFAULT_PROMPTS
-
-    return {
-        "project_id": project_id,
-        "current_chapter": chapter_number,
-        "characters": characters,
-        "relations": relations,
-        "evolution_plans": evolution_plans,
-        "evolution_records": [],
-        "world_setting": _serialize(ws) if ws else {},
-        "chapter_outlines": chapter_outlines,
-        "written_chapters": written_chapters,
-        "collected_info": collected_info,
-        "_prompts": _prompts,
-        "_context_window": 32000,
-    }
 
 
 # ========================================================================
@@ -271,9 +139,9 @@ def _extract_names(text: str, kb: KnowledgeBaseService | None = None) -> list[st
     # 优先路径：从知识库获取角色名，在文本中查找
     if kb is not None:
         try:
-            chars = kb.get_characters()
-            char_names = [c.name for c in chars if c.name]
-            # 按名字长度降序排列，避免短名误匹配（如"李"匹配"李白"）
+            chars = kb.characters.list_characters()
+            char_names = [c["name"] for c in chars if c.get("name")]
+            # 按名字长度降序排列，避免短名误匹配
             char_names.sort(key=len, reverse=True)
             for name in char_names:
                 if name in text:
@@ -282,9 +150,8 @@ def _extract_names(text: str, kb: KnowledgeBaseService | None = None) -> list[st
         except Exception:
             pass  # KB 查询失败，降级
 
-    # 降级路径：中文人名模式匹配（2-3字常见人名）
+    # 降级路径：中文人名模式匹配
     import re
-    # 排除常见非人名双字组合
     stopwords = {"但是", "因为", "所以", "如果", "虽然", "已经", "可以", "这个",
                  "那个", "什么", "怎么", "这样", "那样", "他们", "我们", "她们",
                  "自己", "不是", "没有", "知道", "看到", "一个", "就是", "还是"}

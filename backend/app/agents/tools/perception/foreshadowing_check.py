@@ -1,7 +1,7 @@
 """伏笔状态检查工具
 
 B2 增强：新增健康度评分 + 回收建议。
-健康评分考虑小说规模（总章数越多，待回收伏笔容忍度越高）。
+Store 返回 dict，用 dict[key] 访问。
 """
 
 from langchain_core.tools import tool
@@ -22,44 +22,42 @@ async def foreshadowing_check(current_chapter: int | None = None) -> dict:
     """
     kb = _kb()
 
-    active = kb.get_foreshadowings(status="active")
-    pending = kb.get_pending_foreshadowings()
+    active = kb.foreshadowings.list_foreshadowings(status="active")
+    pending = kb.foreshadowings.list_pending()
     overdue = []
     if current_chapter:
-        overdue = kb.get_overdue_foreshadowings(current_chapter)
+        overdue = kb.foreshadowings.list_overdue(current_chapter)
 
     result = {
         "active_count": len(active),
         "pending_reclaim_count": len(pending),
         "overdue_count": len(overdue),
         "active": [
-            {"id": f.id, "content": f.content[:80], "planted_chapter": f.planted_chapter, "level": f.level}
+            {"id": f["id"], "content": (f.get("content") or "")[:80], "planted_chapter": f.get("planted_chapter"), "level": f.get("level")}
             for f in active
         ],
         "pending_reclaim": [
-            {"id": f.id, "content": f.content[:80], "expected_resolve_chapter": f.expected_resolve_chapter}
+            {"id": f["id"], "content": (f.get("content") or "")[:80], "expected_resolve_chapter": f.get("expected_resolve_chapter")}
             for f in pending
         ],
         "overdue": [
             {
-                "id": f.id,
-                "content": f.content[:80],
-                "expected_resolve_chapter": f.expected_resolve_chapter,
-                "overdue_by": current_chapter - f.expected_resolve_chapter
-                if current_chapter and f.expected_resolve_chapter else 0,
+                "id": f["id"],
+                "content": (f.get("content") or "")[:80],
+                "expected_resolve_chapter": f.get("expected_resolve_chapter"),
+                "overdue_by": current_chapter - f["expected_resolve_chapter"]
+                if current_chapter and f.get("expected_resolve_chapter") else 0,
             }
             for f in overdue
         ],
     }
 
-    # B2 增强：健康度评分（规模感知）
-    # 根据小说规模调整待回收伏笔容忍度
-    outline = kb.get_outline()
+    # B2 增强：健康度评分
+    outline = kb.outlines.get()
     total_chapters = 0
     if outline:
-        total_chapters = outline.chapter_count_confirmed or outline.chapter_count_suggested or 0
+        total_chapters = outline.get("chapter_count_confirmed") or outline.get("chapter_count_suggested") or 0
 
-    # 长篇小说容忍更多待回收伏笔（先检查大值）
     pending_tolerance = 3
     if total_chapters >= 50:
         pending_tolerance = 8
@@ -80,15 +78,15 @@ async def foreshadowing_check(current_chapter: int | None = None) -> dict:
     else:
         result["health_label"] = "🔴 需紧急处理"
 
-    # B2 增强：超期伏笔回收建议
+    # 超期伏笔回收建议
     if overdue:
         suggestions = []
         for f in overdue:
-            suggested_method = "强化暗示" if f.level == "hint" else "推进揭示"
+            suggested_method = "强化暗示" if f.get("level") == "hint" else "推进揭示"
             suggested_chapter = (current_chapter or 1) + 1 if current_chapter else None
             suggestions.append({
-                "id": f.id,
-                "content": f.content[:80],
+                "id": f["id"],
+                "content": (f.get("content") or "")[:80],
                 "suggested_method": suggested_method,
                 "suggested_chapter": suggested_chapter,
             })

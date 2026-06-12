@@ -80,7 +80,7 @@ async def propose_setting_change(
         "search_method": search_method,
     }
 
-    change = kb.create_setting_change({
+    change = kb.changes.create({
         "target_type": target_type,
         "target_id": target_id,
         "old_value": old_value,
@@ -93,7 +93,7 @@ async def propose_setting_change(
     level_labels = {"none": "🟢 不影响", "minor": "🟡 轻微影响", "moderate": "🟠 中度影响", "severe": "🔴 严重影响"}
 
     return {
-        "change_id": change.id,
+        "change_id": change["id"],
         "status": "proposed",
         "impact_level": impact_level,
         "impact_label": level_labels.get(impact_level, impact_level),

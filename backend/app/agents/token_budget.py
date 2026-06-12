@@ -3,7 +3,8 @@
 import re
 from typing import Optional
 
-from app.agents.constants import MODEL_CONTEXT_WINDOWS, DEFAULT_CONTEXT_WINDOW
+# 上下文窗口默认值：用户未在设置中配置时的兜底值
+DEFAULT_CONTEXT_WINDOW = 262144  # 256K
 
 # 预编译 CJK 字符正则，避免每次调用 re.findall 重新编译
 _CJK_RE = re.compile(r'[一-龥]')
@@ -23,20 +24,31 @@ def estimate_tokens(text: str) -> int:
     return max(int(chinese_chars * 2 + other_chars * 0.5), 1)
 
 
-def get_context_window(model_name: str, model_config=None) -> int:
-    """获取模型上下文窗口大小（三级策略）
+def get_context_window(model_config=None, model_name: str | None = None) -> int:
+    """获取模型上下文窗口大小
 
-    1. DB 配置优先（ModelConfig.context_window）
-    2. 硬编码映射（MODEL_CONTEXT_WINDOWS）
-    3. 安全默认值（DEFAULT_CONTEXT_WINDOW = 32K）
+    优先级：
+    1. 子模型的 context_window（coding_plan 类型 + model_name 指定时）
+    2. 配置级别的 context_window
+    3. 默认值 256K
+
+    Args:
+        model_config: ModelConfig ORM 对象（可选）
+        model_name: 具体子模型名（coding_plan 类型时匹配子模型，可选）
     """
-    # 级别 1: DB 配置
+    # 级别 1: 子模型 context_window（coding_plan 类型的配置）
+    if model_config and model_name and model_config.models:
+        for m in model_config.models:
+            if m.get("is_enabled", True) and (m.get("id") == model_name or m.get("name") == model_name):
+                if m.get("context_window"):
+                    return m["context_window"]
+                break
+
+    # 级别 2: 配置级别 context_window
     if model_config and getattr(model_config, 'context_window', None):
         return model_config.context_window
-    # 级别 2: 硬编码映射
-    if model_name in MODEL_CONTEXT_WINDOWS:
-        return MODEL_CONTEXT_WINDOWS[model_name]
-    # 级别 3: 安全默认值
+
+    # 级别 3: 默认值
     return DEFAULT_CONTEXT_WINDOW
 
 

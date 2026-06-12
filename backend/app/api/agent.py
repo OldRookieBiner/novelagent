@@ -22,7 +22,8 @@ from app.agents.agent_graph import create_agent_graph
 from app.agents.prompts import AGENT_SYSTEM_PROMPT
 from app.models.workflow_state import WorkflowState
 from app.agents.constants import Phase
-from app.agents.agent_context import build_agent_context, get_context_window, estimate_tokens
+from app.agents.agent_context import build_agent_context
+from app.agents.token_budget import get_context_window, estimate_tokens
 from app.agents.tool_context import set_tool_context, reset_tool_context
 from app.agents.services.knowledge_base import KnowledgeBaseService
 from app.agents.sse_events import (
@@ -704,14 +705,14 @@ async def impact_decision(
     get_project_for_user(project_id, current_user.id, db)
     kb = KnowledgeBaseService(project_id)
 
-    change = kb.get_setting_change(req.change_id)
+    change = kb.changes.get(req.change_id)
     if not change:
         raise HTTPException(status_code=404, detail="变更提案不存在")
-    if change.status != "proposed":
-        raise HTTPException(status_code=400, detail=f"提案状态为 {change.status}，无法决策")
+    if change.get("status") != "proposed":
+        raise HTTPException(status_code=400, detail=f"提案状态为 {change.get('status')}，无法决策")
 
     if req.decision == "abandon":
-        kb.update_setting_change(req.change_id, {
+        kb.changes.update(req.change_id, {
             "status": "abandoned",
             "author_decision": "abandon",
         })
@@ -719,7 +720,7 @@ async def impact_decision(
 
     elif req.decision == "proceed":
         _apply_change(kb, change)
-        kb.update_setting_change(req.change_id, {
+        kb.changes.update(req.change_id, {
             "status": "applied",
             "author_decision": "proceed",
         })
@@ -734,9 +735,9 @@ async def impact_decision(
             raise HTTPException(status_code=400, detail="adjusted_value 不是有效的 JSON")
 
         # Apply the adjusted value instead
-        change.new_value = adjusted
+        change["new_value"] = adjusted
         _apply_change(kb, change)
-        kb.update_setting_change(req.change_id, {
+        kb.changes.update(req.change_id, {
             "status": "applied",
             "author_decision": "adjust",
             "new_value": adjusted,
@@ -750,21 +751,21 @@ async def impact_decision(
 def _apply_change(kb: KnowledgeBaseService, change):
     """Apply a proposed change to the actual knowledge base object.
 
-    Delegates to the appropriate KnowledgeBaseService update method
-    based on target_type.
+    Delegates to the appropriate Store update method
+    based on target_type. change is a dict (Store 返回值).
     """
-    target_type = change.target_type
-    target_id = change.target_id
-    new_value = change.new_value if not isinstance(change.new_value, str) else json.loads(change.new_value)
+    target_type = change["target_type"]
+    target_id = change["target_id"]
+    new_value = change["new_value"] if not isinstance(change.get("new_value"), str) else json.loads(change["new_value"])
 
     if target_type == "world_setting":
-        kb.update_world_setting(target_id, new_value)
+        kb.world_setting.update_by_id(target_id, new_value)
     elif target_type == "character":
-        kb.update_character_direct(target_id, new_value)
+        kb.characters.update_character(target_id, new_value)
     elif target_type == "style":
-        kb.update_style_constraints(target_id, new_value)
+        kb.styles.update_constraints_by_id(target_id, new_value)
     elif target_type == "foreshadowing":
-        kb.update_foreshadowing(target_id, new_value)
+        kb.foreshadowings.update(target_id, new_value)
     elif target_type == "outline_adjustment":
         # Outline adjustments are structural; mark as applied but don't auto-modify
         pass

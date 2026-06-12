@@ -39,10 +39,10 @@ async def create_relation(
     if current_status:
         data["current_status"] = current_status
 
-    relation = kb.create_relation(data)
+    relation = kb.characters.create_relation(data)
     return {
         "action": "created",
-        "id": relation.id,
+        "id": relation["id"],
         "relation_type": relation_type,
         "direction": direction,
         "message": f"角色关系「{relation_type}」已创建并写入知识库",

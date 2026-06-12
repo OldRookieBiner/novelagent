@@ -16,6 +16,7 @@ class ModelItem(BaseModel):
     health_status: Optional[str] = None
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     reasoning_effort: Optional[ReasoningEffort] = None
+    context_window: Optional[int] = Field(default=None, ge=1, le=1048576, description="模型上下文窗口大小（token 数），留空则使用默认值 256K")
 
 
 class ModelConfigBase(BaseModel):

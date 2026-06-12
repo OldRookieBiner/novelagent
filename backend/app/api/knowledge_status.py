@@ -9,7 +9,7 @@ from app.database import get_db
 from app.utils.auth import get_current_user
 from app.models.user import User
 from app.utils.project import get_project_for_user
-from app.agents.agent_context import validate_prerequisites
+from app.agents.services.knowledge_base import KnowledgeBaseService
 
 router = APIRouter()
 
@@ -24,5 +24,6 @@ async def get_knowledge_status(
     """获取项目知识库完整性状态"""
     get_project_for_user(project_id, current_user.id, db)
 
-    result = validate_prerequisites(project_id, current_chapter)
+    kb = KnowledgeBaseService(project_id)
+    result = kb.validate_prerequisites(current_chapter)
     return result

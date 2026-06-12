@@ -148,33 +148,33 @@ def _collect_documents_from_db(project_id: int) -> tuple[list[str], list[dict]]:
     ws = data["world_setting"]
     if ws:
         parts = []
-        if ws.core_concept:
-            parts.append(f"核心理念：{ws.core_concept}")
-        if ws.tiered_settings:
-            parts.append(f"分级设定：{ws.tiered_settings}")
-        if ws.key_locations:
-            parts.append(f"关键地点：{ws.key_locations}")
+        if ws.get("core_concept"):
+            parts.append(f"核心理念：{ws['core_concept']}")
+        if ws.get("tiered_settings"):
+            parts.append(f"分级设定：{ws['tiered_settings']}")
+        if ws.get("key_locations"):
+            parts.append(f"关键地点：{ws['key_locations']}")
         _add("\n".join(parts), "world_setting")
 
     # 2. 角色
     characters = data["characters"]
     for char in characters:
-        parts = [f"角色：{char.name}"]
-        if hasattr(char, 'role') and char.role:
-            parts.append(f"定位：{char.role}")
-        if hasattr(char, 'core_motivation') and char.core_motivation:
-            parts.append(f"核心动机：{char.core_motivation}")
-        if hasattr(char, 'core_conflict') and char.core_conflict:
-            parts.append(f"核心冲突：{char.core_conflict}")
-        if hasattr(char, 'character_arc') and char.character_arc:
-            parts.append(f"人物弧：{char.character_arc}")
-        if hasattr(char, 'knowledge_boundary') and char.knowledge_boundary:
-            parts.append(f"知识边界：{char.knowledge_boundary}")
-        if hasattr(char, 'speech_style') and char.speech_style:
-            parts.append(f"说话风格：{char.speech_style}")
-        if hasattr(char, 'dialogue_samples') and char.dialogue_samples:
-            parts.append(f"对话样本：{char.dialogue_samples}")
-        _add("\n".join(parts), f"character/{char.name}")
+        parts = [f"角色：{char['name']}"]
+        if char.get("role"):
+            parts.append(f"定位：{char['role']}")
+        if char.get("core_motivation"):
+            parts.append(f"核心动机：{char['core_motivation']}")
+        if char.get("core_conflict"):
+            parts.append(f"核心冲突：{char['core_conflict']}")
+        if char.get("character_arc"):
+            parts.append(f"人物弧：{char['character_arc']}")
+        if char.get("knowledge_boundary"):
+            parts.append(f"知识边界：{char['knowledge_boundary']}")
+        if char.get("speech_style"):
+            parts.append(f"说话风格：{char['speech_style']}")
+        if char.get("dialogue_samples"):
+            parts.append(f"对话样本：{char['dialogue_samples']}")
+        _add("\n".join(parts), f"character/{char['name']}")
 
     # 3. 关系
     relations = data["relations"]
@@ -188,58 +188,58 @@ def _collect_documents_from_db(project_id: int) -> tuple[list[str], list[dict]]:
     style = data["style_constraints"]
     if style:
         parts = []
-        if style.taboo_words:
-            parts.append(f"禁忌词：{', '.join(style.taboo_words)}")
-        if style.forbidden_patterns:
-            parts.append(f"禁用句式：{', '.join(style.forbidden_patterns) if isinstance(style.forbidden_patterns, list) else style.forbidden_patterns}")
-        if style.style_anchor:
-            parts.append(f"风格锚点：{style.style_anchor}")
-        if style.abstract_rules:
-            parts.append(f"抽象风格规则：{style.abstract_rules}")
+        if style.get("taboo_words"):
+            parts.append(f"禁忌词：{', '.join(style['taboo_words'])}")
+        if style.get("forbidden_patterns"):
+            parts.append(f"禁用句式：{', '.join(style['forbidden_patterns']) if isinstance(style['forbidden_patterns'], list) else style['forbidden_patterns']}")
+        if style.get("style_anchor"):
+            parts.append(f"风格锚点：{style['style_anchor']}")
+        if style.get("abstract_rules"):
+            parts.append(f"抽象风格规则：{style['abstract_rules']}")
         _add("\n".join(parts), "style_constraints")
 
     # 5. 情节块
     blocks = data["plot_blocks"]
     for block in blocks:
-        parts = [f"情节块：{block.title}"]
-        if block.must_happen:
-            parts.append(f"必须事件：{', '.join(block.must_happen) if isinstance(block.must_happen, list) else block.must_happen}")
-        if hasattr(block, 'questions_to_answer') and block.questions_to_answer:
-            parts.append(f"要回答的问题：{', '.join(block.questions_to_answer) if isinstance(block.questions_to_answer, list) else block.questions_to_answer}")
-        if hasattr(block, 'questions_to_raise') and block.questions_to_raise:
-            parts.append(f"要提出的问题：{', '.join(block.questions_to_raise) if isinstance(block.questions_to_raise, list) else block.questions_to_raise}")
-        _add("\n".join(parts), f"plot_block/{block.title}")
+        parts = [f"情节块：{block['title']}"]
+        if block.get("must_happen"):
+            parts.append(f"必须事件：{', '.join(block['must_happen']) if isinstance(block['must_happen'], list) else block['must_happen']}")
+        if block.get("questions_to_answer"):
+            parts.append(f"要回答的问题：{', '.join(block['questions_to_answer']) if isinstance(block['questions_to_answer'], list) else block['questions_to_answer']}")
+        if block.get("questions_to_raise"):
+            parts.append(f"要提出的问题：{', '.join(block['questions_to_raise']) if isinstance(block['questions_to_raise'], list) else block['questions_to_raise']}")
+        _add("\n".join(parts), f"plot_block/{block['title']}")
 
     # 6. 伏笔
     foreshadowings = data["foreshadowings"]
     for f in foreshadowings:
-        parts = [f"伏笔：{f.content}"]
-        parts.append(f"等级：{f.level}，状态：{f.status}")
-        if f.planted_chapter:
-            parts.append(f"埋设章节：第{f.planted_chapter}章")
-        if f.expected_resolve_chapter:
-            parts.append(f"预期回收：第{f.expected_resolve_chapter}章")
-        _add("\n".join(parts), f"foreshadowing/{f.id}")
+        parts = [f"伏笔：{f['content']}"]
+        parts.append(f"等级：{f['level']}，状态：{f['status']}")
+        if f.get("planted_chapter"):
+            parts.append(f"埋设章节：第{f['planted_chapter']}章")
+        if f.get("expected_resolve_chapter"):
+            parts.append(f"预期回收：第{f['expected_resolve_chapter']}章")
+        _add("\n".join(parts), f"foreshadowing/{f['id']}")
 
     # 7. 时间线（最近50条）
     timeline = data["timeline"]
     recent = timeline[-50:] if len(timeline) > 50 else timeline
     for t in recent:
-        parts = [f"第{t.chapter_number}章"]
-        if t.summary:
-            parts.append(t.summary)
-        if t.causal_chain:
-            parts.append(f"因果链：{t.causal_chain}")
-        if t.emotion_tag:
-            parts.append(f"情绪：{t.emotion_tag}")
-        _add(" | ".join(parts), f"timeline/{t.chapter_number}")
+        parts = [f"第{t['chapter_number']}章"]
+        if t.get("summary"):
+            parts.append(t['summary'])
+        if t.get("causal_chain"):
+            parts.append(f"因果链：{t['causal_chain']}")
+        if t.get("emotion_tag"):
+            parts.append(f"情绪：{t['emotion_tag']}")
+        _add(" | ".join(parts), f"timeline/{t['chapter_number']}")
 
     # 8. 场景清单
     scenes = data["scene_entries"]
     if scenes:
         scene_parts = []
         for s in scenes:
-            scene_parts.append(f"第{s.chapter_number}章：{s.scene_description}")
+            scene_parts.append(f"第{s['chapter_number']}章：{s['scene_description']}")
         _add("\n".join(scene_parts), "scene_entries")
 
     return docs, meta
@@ -324,49 +324,49 @@ def _collect_volume_documents_from_db(project_id: int, volume_number: int) -> tu
     if not volume:
         return docs, meta
 
-    chapter_start = volume.chapter_offset + 1
+    chapter_start = volume["chapter_offset"] + 1
     # 计算卷的章节范围（到下一卷的 chapter_offset 为止）
-    volumes_all = kb.get_volumes()
+    volumes_all = kb.volumes.list_volumes()
     next_volume = None
-    for v in volumes:
+    for v in volumes_all:
         if v.volume_number == volume_number + 1:
             next_volume = v
             break
-    chapter_end = next_volume.chapter_offset if next_volume else 999999
+    chapter_end = next_volume["chapter_offset"] if next_volume else 999999
 
     # 1. 时间线（卷范围）
-    timeline = kb.get_timeline(chapter_range=(chapter_start, chapter_end))
+    timeline = kb.timelines.list_timeline(chapter_range=(chapter_start, chapter_end))
     for t in timeline:
-        parts = [f"第{t.chapter_number}章"]
-        if t.summary:
-            parts.append(t.summary)
-        if t.causal_chain:
-            parts.append(f"因果链：{t.causal_chain}")
-        if t.emotion_tag:
-            parts.append(f"情绪：{t.emotion_tag}")
-        _add(" | ".join(parts), f"timeline/{t.chapter_number}")
+        parts = [f"第{t['chapter_number']}章"]
+        if t.get("summary"):
+            parts.append(t['summary'])
+        if t.get("causal_chain"):
+            parts.append(f"因果链：{t['causal_chain']}")
+        if t.get("emotion_tag"):
+            parts.append(f"情绪：{t['emotion_tag']}")
+        _add(" | ".join(parts), f"timeline/{t['chapter_number']}")
 
     # 2. 伏笔（卷范围）
-    foreshadowings = kb.get_foreshadowings()
+    foreshadowings = kb.foreshadowings.list_foreshadowings()
     for f in foreshadowings:
-        if f.planted_chapter and chapter_start <= f.planted_chapter <= chapter_end:
-            parts = [f"伏笔：{f.content}"]
-            parts.append(f"等级：{f.level}，状态：{f.status}")
-            if f.expected_resolve_chapter:
-                parts.append(f"预期回收：第{f.expected_resolve_chapter}章")
-            _add("\n".join(parts), f"foreshadowing/{f.id}")
+        if f.get("planted_chapter") and chapter_start <= f["planted_chapter"] <= chapter_end:
+            parts = [f"伏笔：{f['content']}"]
+            parts.append(f"等级：{f['level']}，状态：{f['status']}")
+            if f.get("expected_resolve_chapter"):
+                parts.append(f"预期回收：第{f['expected_resolve_chapter']}章")
+            _add("\n".join(parts), f"foreshadowing/{f['id']}")
 
     # 3. 场景清单（卷范围）
-    scenes = kb.get_scene_entries()
+    scenes = kb.timelines.list_scene_entries()
     for s in scenes:
-        if chapter_start <= s.chapter_number <= chapter_end:
-            _add(f"第{s.chapter_number}章：{s.scene_description}", f"scene/{s.chapter_number}")
+        if chapter_start <= s["chapter_number"] <= chapter_end:
+            _add(f"第{s['chapter_number']}章：{s['scene_description']}", f"scene/{s['chapter_number']}")
 
     # 4. 卷摘要
-    if volume.summary:
-        _add(f"第{volume_number}卷摘要：{volume.summary}", f"volume_summary/{volume_number}")
-    if volume.last_block_summary:
-        _add(f"第{volume_number}卷末尾摘要：{volume.last_block_summary}", f"volume_block_summary/{volume_number}")
+    if volume.get("summary"):
+        _add(f"第{volume_number}卷摘要：{volume['summary']}", f"volume_summary/{volume_number}")
+    if volume.get("last_block_summary"):
+        _add(f"第{volume_number}卷末尾摘要：{volume['last_block_summary']}", f"volume_block_summary/{volume_number}")
 
     return docs, meta
 
@@ -508,31 +508,31 @@ def _collect_global_documents_from_db(project_id: int) -> tuple[list[str], list[
     ws = data["world_setting"]
     if ws:
         parts = []
-        if ws.core_concept:
-            parts.append(f"核心理念：{ws.core_concept}")
-        if ws.tiered_settings:
-            parts.append(f"分级设定：{ws.tiered_settings}")
-        if ws.key_locations:
-            parts.append(f"关键地点：{ws.key_locations}")
+        if ws.get("core_concept"):
+            parts.append(f"核心理念：{ws['core_concept']}")
+        if ws.get("tiered_settings"):
+            parts.append(f"分级设定：{ws['tiered_settings']}")
+        if ws.get("key_locations"):
+            parts.append(f"关键地点：{ws['key_locations']}")
         _add("\n".join(parts), "world_setting")
 
     # 2. 角色
     characters = data["characters"]
     for char in characters:
-        parts = [f"角色：{char.name}"]
-        if hasattr(char, 'role') and char.role:
-            parts.append(f"定位：{char.role}")
-        if hasattr(char, 'core_motivation') and char.core_motivation:
-            parts.append(f"核心动机：{char.core_motivation}")
-        if hasattr(char, 'core_conflict') and char.core_conflict:
-            parts.append(f"核心冲突：{char.core_conflict}")
-        if hasattr(char, 'character_arc') and char.character_arc:
-            parts.append(f"人物弧：{char.character_arc}")
-        if hasattr(char, 'knowledge_boundary') and char.knowledge_boundary:
-            parts.append(f"知识边界：{char.knowledge_boundary}")
-        if hasattr(char, 'speech_style') and char.speech_style:
-            parts.append(f"说话风格：{char.speech_style}")
-        _add("\n".join(parts), f"character/{char.name}")
+        parts = [f"角色：{char['name']}"]
+        if char.get("role"):
+            parts.append(f"定位：{char['role']}")
+        if char.get("core_motivation"):
+            parts.append(f"核心动机：{char['core_motivation']}")
+        if char.get("core_conflict"):
+            parts.append(f"核心冲突：{char['core_conflict']}")
+        if char.get("character_arc"):
+            parts.append(f"人物弧：{char['character_arc']}")
+        if char.get("knowledge_boundary"):
+            parts.append(f"知识边界：{char['knowledge_boundary']}")
+        if char.get("speech_style"):
+            parts.append(f"说话风格：{char['speech_style']}")
+        _add("\n".join(parts), f"character/{char['name']}")
 
     # 3. 关系
     relations = data["relations"]
@@ -546,41 +546,41 @@ def _collect_global_documents_from_db(project_id: int) -> tuple[list[str], list[
     style = data["style_constraints"]
     if style:
         parts = []
-        if style.taboo_words:
-            parts.append(f"禁忌词：{', '.join(style.taboo_words)}")
-        if style.forbidden_patterns:
-            parts.append(f"禁用句式：{', '.join(style.forbidden_patterns) if isinstance(style.forbidden_patterns, list) else style.forbidden_patterns}")
-        if style.style_anchor:
-            parts.append(f"风格锚点：{style.style_anchor}")
-        if style.abstract_rules:
-            parts.append(f"抽象风格规则：{style.abstract_rules}")
+        if style.get("taboo_words"):
+            parts.append(f"禁忌词：{', '.join(style['taboo_words'])}")
+        if style.get("forbidden_patterns"):
+            parts.append(f"禁用句式：{', '.join(style['forbidden_patterns']) if isinstance(style['forbidden_patterns'], list) else style['forbidden_patterns']}")
+        if style.get("style_anchor"):
+            parts.append(f"风格锚点：{style['style_anchor']}")
+        if style.get("abstract_rules"):
+            parts.append(f"抽象风格规则：{style['abstract_rules']}")
         _add("\n".join(parts), "style_constraints")
 
     # 5. 情节块
     blocks = data["plot_blocks"]
     for block in blocks:
-        parts = [f"情节块：{block.title}"]
-        if block.must_happen:
-            parts.append(f"必须事件：{', '.join(block.must_happen) if isinstance(block.must_happen, list) else block.must_happen}")
-        if hasattr(block, 'questions_to_answer') and block.questions_to_answer:
-            parts.append(f"要回答的问题：{', '.join(block.questions_to_answer) if isinstance(block.questions_to_answer, list) else block.questions_to_answer}")
-        if hasattr(block, 'questions_to_raise') and block.questions_to_raise:
-            parts.append(f"要提出的问题：{', '.join(block.questions_to_raise) if isinstance(block.questions_to_raise, list) else block.questions_to_raise}")
-        _add("\n".join(parts), f"plot_block/{block.title}")
+        parts = [f"情节块：{block['title']}"]
+        if block.get("must_happen"):
+            parts.append(f"必须事件：{', '.join(block['must_happen']) if isinstance(block['must_happen'], list) else block['must_happen']}")
+        if block.get("questions_to_answer"):
+            parts.append(f"要回答的问题：{', '.join(block['questions_to_answer']) if isinstance(block['questions_to_answer'], list) else block['questions_to_answer']}")
+        if block.get("questions_to_raise"):
+            parts.append(f"要提出的问题：{', '.join(block['questions_to_raise']) if isinstance(block['questions_to_raise'], list) else block['questions_to_raise']}")
+        _add("\n".join(parts), f"plot_block/{block['title']}")
 
     # 6. 跨卷伏笔
-    cv_foreshadowings = kb.get_cross_volume_foreshadowings()
+    cv_foreshadowings = kb.volumes.list_cross_volume_foreshadowings()
     for cvf in cv_foreshadowings:
-        parts = [f"跨卷伏笔 (ID:{cvf.source_foreshadowing_id})"]
-        parts.append(f"出现{cvf.appearance_count}次，预期回收卷：{cvf.expected_volume}，状态：{cvf.status}")
-        _add("\n".join(parts), f"cross_volume_foreshadowing/{cvf.id}")
+        parts = [f"跨卷伏笔 (ID:{cvf['source_foreshadowing_id']})"]
+        parts.append(f"出现{cvf['appearance_count']}次，预期回收卷：{cvf['expected_volume']}，状态：{cvf['status']}")
+        _add("\n".join(parts), f"cross_volume_foreshadowing/{cvf['id']}")
 
     # 7. 跨卷支线
-    cv_subplots = kb.get_cross_volume_subplots()
+    cv_subplots = kb.volumes.list_cross_volume_subplots()
     for cvs in cv_subplots:
-        parts = [f"跨卷支线 (ID:{cvs.source_subplot_id})"]
-        parts.append(f"状态：{cvs.status}，预期交汇卷：{cvs.expected_intersection_volume}")
-        _add("\n".join(parts), f"cross_volume_subplot/{cvs.id}")
+        parts = [f"跨卷支线 (ID:{cvs['source_subplot_id']})"]
+        parts.append(f"状态：{cvs['status']}，预期交汇卷：{cvs['expected_intersection_volume']}")
+        _add("\n".join(parts), f"cross_volume_subplot/{cvs['id']}")
 
     return docs, meta
 
@@ -789,34 +789,34 @@ def _keyword_fallback(project_id: int, query: str, top_k: int) -> list[dict]:
     query_lower = query.lower()
 
     # 搜索角色
-    characters = kb.get_characters()
+    characters = kb.characters.list_characters()
     for char in characters:
-        char_text = f"{char.name} {getattr(char, 'core_motivation', '')} {getattr(char, 'knowledge_boundary', '')} {getattr(char, 'speech_style', '')}"
+        char_text = f"{char['name']} {char.get('core_motivation', '')} {char.get('knowledge_boundary', '')} {char.get('speech_style', '')}"
         if any(kw in char_text for kw in query_lower.split()):
             results.append({
                 "score": 0.5,
-                "source": f"character/{char.name}",
-                "text": f"角色：{char.name}，核心动机：{getattr(char, 'core_motivation', '未设定')}，知识边界：{getattr(char, 'knowledge_boundary', '未设定')}",
+                "source": f"character/{char['name']}",
+                "text": f"角色：{char['name']}，核心动机：{char.get('core_motivation', '未设定')}，知识边界：{char.get('knowledge_boundary', '未设定')}",
             })
 
     # 搜索世界观
-    ws = kb.get_world_setting()
-    if ws and ws.core_concept:
-        if any(kw in ws.core_concept for kw in query_lower.split()):
+    ws = kb.world_setting.get()
+    if ws and ws.get("core_concept"):
+        if any(kw in ws["core_concept"] for kw in query_lower.split()):
             results.append({
                 "score": 0.5,
                 "source": "world_setting",
-                "text": f"核心理念：{ws.core_concept}",
+                "text": f"核心理念：{ws['core_concept']}",
             })
 
     # 搜索伏笔
-    foreshadowings = kb.get_foreshadowings()
+    foreshadowings = kb.foreshadowings.list_foreshadowings()
     for f in foreshadowings:
-        if any(kw in f.content for kw in query_lower.split()):
+        if any(kw in f.get("content", "") for kw in query_lower.split()):
             results.append({
                 "score": 0.4,
-                "source": f"foreshadowing/{f.id}",
-                "text": f"伏笔：{f.content}（{f.level}/{f.status}）",
+                "source": f"foreshadowing/{f['id']}",
+                "text": f"伏笔：{f['content']}（{f['level']}/{f['status']}）",
             })
 
     return results[:top_k]

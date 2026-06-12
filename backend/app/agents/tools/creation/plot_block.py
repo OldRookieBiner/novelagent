@@ -58,10 +58,10 @@ async def create_plot_block(
     if expected_mood:
         data["expected_mood"] = expected_mood
 
-    block = kb.create_plot_block(data)
+    block = kb.plots.create_plot_block(data)
     return {
         "action": "created",
-        "id": block.id,
+        "id": block["id"],
         "title": title,
         "chapter_range": f"{chapter_start}-{chapter_end}",
         "message": f"情节块「{title}」已创建并写入知识库",

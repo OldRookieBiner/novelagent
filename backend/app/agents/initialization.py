@@ -15,7 +15,6 @@ from typing import AsyncIterator, Optional, Tuple
 
 from app.database import SessionLocal
 from app.models.project import Project
-from app.models.outline import Outline
 from app.agents.services.knowledge_base import KnowledgeBaseService
 from app.agents.sse_events import (
     format_init_start,
@@ -106,12 +105,12 @@ async def generate_world_setting(story_seed: str, kb: KnowledgeBaseService, llm,
         await check_disconnect(request)
 
     parsed = parse_world_setting_response(response)
-    world_setting = kb.create_world_setting({
+    world_setting = kb.world_setting.create({
         "core_concept": parsed["core_concept"],
         "tiered_settings": parsed["tiered_settings"],
         "key_locations": parsed["key_locations"],
     })
-    return world_setting.id, response
+    return world_setting["id"], response
 
 
 async def generate_characters(story_seed: str, world_setting_text: str, kb: KnowledgeBaseService, llm, request=None) -> int:
@@ -139,7 +138,7 @@ async def generate_characters(story_seed: str, world_setting_text: str, kb: Know
         return 0
 
     for char_data in characters:
-        kb.create_character(char_data)
+        kb.characters.create_character(char_data)
 
     logger.info(f"Successfully created {len(characters)} characters")
     return len(characters)
@@ -446,40 +445,18 @@ async def generate_outline(story_seed: str, kb: KnowledgeBaseService, llm, targe
 
     outline_data = _parse_outline(response, chapter_count)
 
-    db = SessionLocal()
-    try:
-        outline = db.query(Outline).filter(Outline.project_id == kb.project_id).first()
-
-        if outline:
-            outline.title = outline_data.get("title", "待命名")
-            outline.summary = outline_data.get("summary", "")
-            outline.plot_points = outline_data.get("plot_points", [])
-            outline.characters = outline_data.get("characters", [])
-            outline.world_setting = outline_data.get("world_setting", {})
-            outline.emotional_curve = outline_data.get("emotional_curve", "")
-            outline.confirmed = True
-            outline.chapter_count_suggested = outline_data.get("chapter_count_suggested", chapter_count)
-            outline.chapter_count_confirmed = True
-        else:
-            outline = Outline(
-                project_id=kb.project_id,
-                title=outline_data.get("title", "待命名"),
-                summary=outline_data.get("summary", ""),
-                plot_points=outline_data.get("plot_points", []),
-                characters=outline_data.get("characters", []),
-                world_setting=outline_data.get("world_setting", {}),
-                emotional_curve=outline_data.get("emotional_curve", ""),
-                confirmed=True,
-                chapter_count_suggested=outline_data.get("chapter_count_suggested", chapter_count),
-                chapter_count_confirmed=True,
-            )
-            db.add(outline)
-
-        db.commit()
-        db.refresh(outline)
-        return outline.id, outline_data.get("summary", "")
-    finally:
-        db.close()
+    result = kb.outlines.upsert({
+        "title": outline_data.get("title", "待命名"),
+        "summary": outline_data.get("summary", ""),
+        "plot_points": outline_data.get("plot_points", []),
+        "characters": outline_data.get("characters", []),
+        "world_setting": outline_data.get("world_setting", {}),
+        "emotional_curve": outline_data.get("emotional_curve", ""),
+        "confirmed": True,
+        "chapter_count_suggested": outline_data.get("chapter_count_suggested", chapter_count),
+        "chapter_count_confirmed": True,
+    })
+    return result["id"], outline_data.get("summary", "")
 
 
 async def generate_style(story_seed: str, outline_text: str, kb: KnowledgeBaseService, llm, request=None) -> Optional[int]:
@@ -494,13 +471,13 @@ async def generate_style(story_seed: str, outline_text: str, kb: KnowledgeBaseSe
         response += chunk
         await check_disconnect(request)
 
-    constraints = kb.create_style_constraints({
+    constraints = kb.styles.create_constraints({
         "taboo_words": [],
         "forbidden_patterns": [],
         "style_anchor": response,
         "abstract_rules": [],
     })
-    return constraints.id
+    return constraints["id"]
 
 
 async def stream_initialization(

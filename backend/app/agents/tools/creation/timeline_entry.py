@@ -44,10 +44,10 @@ async def create_timeline_entry(
     if emotion_tag:
         data["emotion_tag"] = emotion_tag
 
-    entry = kb.create_timeline_entry(data)
+    entry = kb.timelines.create_timeline_entry(data)
     return {
         "action": "created",
-        "id": entry.id,
+        "id": entry["id"],
         "chapter_number": chapter_number,
         "message": f"第{chapter_number}章时间线条目已创建",
     }

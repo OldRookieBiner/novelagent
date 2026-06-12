@@ -6,17 +6,8 @@ from app.agents.tool_context import get_project_id
 from app.agents.tools.utils import _kb
 
 
-
-
 def _compute_style_snapshot(content: str) -> dict:
-    """从章节文本计算风格统计指标
-
-    指标：
-    - paragraph_count: 段落数（按空行分段，过滤空段）
-    - avg_paragraph_length: 平均段落字符数
-    - dialogue_ratio: 对话占比（「」和""内的文本长度 / 总长度）
-    - avg_sentence_length: 平均句长（按句末标点分句后的字符数均值）
-    """
+    """从章节文本计算风格统计指标"""
     import re as _re
 
     if not content or not content.strip():
@@ -28,23 +19,15 @@ def _compute_style_snapshot(content: str) -> dict:
         }
 
     total_chars = len(content)
-
-    # 段落数：按 \n\n 分段，过滤空段
     paragraphs = [p for p in content.split("\n\n") if p.strip()]
     paragraph_count = len(paragraphs) if paragraphs else 1
-
-    # 平均段长
     avg_paragraph_length = sum(len(p) for p in paragraphs) / paragraph_count
 
-    # 对话占比：匹配「…」和"…"和"…"
     dialogue_chars = 0
-    # 中文引号「…」
     for m in _re.finditer(r"「([^」]*)」", content):
         dialogue_chars += len(m.group(1))
-    # 中文引号"…"（非贪婪，配对匹配）
-    for m in _re.finditer(r"“([^”]*)”", content):
+    for m in _re.finditer(r"\u201c([^\u201d]*)\u201d", content):
         dialogue_chars += len(m.group(1))
-    # 直引号"…"（英文双引号配对）
     quote_open = False
     start = 0
     for i, ch in enumerate(content):
@@ -58,13 +41,9 @@ def _compute_style_snapshot(content: str) -> dict:
 
     dialogue_ratio = dialogue_chars / total_chars if total_chars > 0 else 0.0
 
-    # 平均句长：按句末标点分句
     sentence_ends = _re.split(r"[。！？…]+", content)
     sentences = [s for s in sentence_ends if s.strip()]
-    if sentences:
-        avg_sentence_length = sum(len(s) for s in sentences) / len(sentences)
-    else:
-        avg_sentence_length = 0.0
+    avg_sentence_length = sum(len(s) for s in sentences) / len(sentences) if sentences else 0.0
 
     return {
         "paragraph_count": paragraph_count,
@@ -72,6 +51,7 @@ def _compute_style_snapshot(content: str) -> dict:
         "dialogue_ratio": round(dialogue_ratio, 3),
         "avg_sentence_length": round(avg_sentence_length, 1),
     }
+
 
 @tool
 async def generate_chapter_content(
@@ -94,30 +74,25 @@ async def generate_chapter_content(
 
     This is the primary tool for writing chapters. It creates the chapter content
     and simultaneously updates timeline, foreshadowings, and style stats.
-    Use this when the user asks to write a chapter.
 
     Args:
         chapter_number: Chapter number (e.g., 1)
-        chapter_title: Chapter title (e.g., "星辰陨落")
+        chapter_title: Chapter title
         content: Full chapter text content
-        summary: One-sentence chapter summary for the timeline
-        word_count: Word/character count of this chapter
+        summary: One-sentence chapter summary
+        word_count: Word/character count
         status: Chapter status - "draft" or "complete"
-        scene_count: Number of scenes in this chapter
-        new_foreshadowings: JSON string list of new foreshadowings planted in this chapter.
-                           Each: {"content": "...", "level": "hint", "expected_resolve_chapter": N, "related_characters": ["..."]}
-        reclaimed_foreshadowing_ids: JSON string list of foreshadowing IDs reclaimed in this chapter
-        timeline_summary: Summary entry for the timeline (format: "第X章：[摘要] → [因果链]")
-        rhythm_score: Rhythm score 1-5 (1=slow, 5=frantic)
-        tension_score: Tension score 1-5 (1=relaxed, 5=peak)
+        scene_count: Number of scenes
+        new_foreshadowings: JSON string list of new foreshadowings
+        reclaimed_foreshadowing_ids: JSON string list of reclaimed foreshadowing IDs
+        timeline_summary: Summary entry for the timeline
+        rhythm_score: Rhythm score 1-5
+        tension_score: Tension score 1-5
         emotion_score: Emotion score 1-5
-        emotion_tag: Emotion tag (e.g., "紧张", "舒缓", "悲伤", "温暖", "转折", "日常")
+        emotion_tag: Emotion tag
     """
     import json as _json
-    from app.database import SessionLocal
-    from app.models.chapter import Chapter
-    from app.models.outline import ChapterOutline
-    from app.models.timeline import TimelineEntry
+    from app.agents.services.knowledge_base import KnowledgeBaseService
 
     try:
         new_fs = _json.loads(new_foreshadowings) if isinstance(new_foreshadowings, str) else new_foreshadowings
@@ -130,15 +105,12 @@ async def generate_chapter_content(
         reclaimed_ids = []
 
     project_id = get_project_id()
+    kb = KnowledgeBaseService(project_id)
 
     # 检查当前章是否有已确认的大纲
-    _check_db = SessionLocal()
     try:
-        _existing_co = _check_db.query(ChapterOutline).filter(
-            ChapterOutline.project_id == project_id,
-            ChapterOutline.chapter_number == chapter_number,
-        ).first()
-        if _existing_co and not _existing_co.confirmed:
+        co = kb.outlines.get_chapter_outline(chapter_number)
+        if co and not co.get("confirmed"):
             return {
                 "error": f"第{chapter_number}章大纲尚未确认，请先审查并确认章节大纲后再写作",
                 "hint": "使用 generate_chapter_outline 工具生成大纲，或提醒用户确认大纲",
@@ -146,122 +118,75 @@ async def generate_chapter_content(
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning("大纲确认状态检查失败: %s", e)
-    finally:
+
+    # 1. 保存章节正文（通过 OutlineStore 确保 ChapterOutline 存在，然后 ChapterStore 保存）
+    # 如果大纲不存在，先创建
+    existing_co = kb.outlines.get_chapter_outline(chapter_number)
+    if not existing_co:
+        kb.outlines.create_chapter_outline({
+            "chapter_number": chapter_number,
+            "title": chapter_title,
+        })
+
+    chapter_result = kb.chapters.save_content(chapter_number, content, word_count or len(content))
+    existing_chapter = chapter_result.get("id") is not None
+
+    # 2. 时间线
+    timeline_created = False
+    if timeline_summary:
         try:
-            _check_db.close()
+            kb.timelines.create_timeline_entry({
+                "chapter_number": chapter_number,
+                "summary": timeline_summary or summary or "",
+                "causal_chain": "",
+                "rhythm_score": rhythm_score,
+                "tension_score": tension_score,
+                "emotion_score": emotion_score,
+                "emotion_tag": emotion_tag or "",
+            })
+            timeline_created = True
         except Exception:
             pass
 
-    kb = _kb()
-    db = SessionLocal()
-    committed = False
-
-    try:
-        # 1. 找到或创建 ChapterOutline（Chapter 的必需外键）
-        chapter_outline = db.query(ChapterOutline).filter(
-            ChapterOutline.project_id == project_id,
-            ChapterOutline.chapter_number == chapter_number
-        ).first()
-
-        if not chapter_outline:
-            chapter_outline = ChapterOutline(
-                project_id=project_id,
-                chapter_number=chapter_number,
-                title=chapter_title,
-            )
-            db.add(chapter_outline)
-            db.flush()
-
-        # 2. 创建或更新 Chapter
-        existing_chapter = db.query(Chapter).filter(
-            Chapter.chapter_outline_id == chapter_outline.id
-        ).first()
-
-        if existing_chapter:
-            existing_chapter.content = content
-            if summary:
-                existing_chapter.summary = summary
-            if word_count:
-                existing_chapter.word_count = word_count
-        else:
-            chapter = Chapter(
-                chapter_outline_id=chapter_outline.id,
-                content=content,
-                summary=summary or "",
-                word_count=word_count or len(content),
-            )
-            db.add(chapter)
-
-        # 3. 创建时间线条目
-        if timeline_summary:
-            timeline = TimelineEntry(
-                project_id=project_id,
-                chapter_number=chapter_number,
-                summary=timeline_summary or summary or "",
-                causal_chain="",
-                rhythm_score=rhythm_score,
-                tension_score=tension_score,
-                emotion_score=emotion_score,
-                emotion_tag=emotion_tag or "",
-            )
-            db.add(timeline)
-
-        # 先提交核心数据（Chapter + Timeline），确保主记录持久化
-        db.commit()
-        committed = True
-
-    except Exception as e:
-        return {"error": str(e)}
-    finally:
-        if not committed:
-            try:
-                db.rollback()
-            except Exception:
-                pass
-        try:
-            db.close()
-        except Exception:
-            pass
-
-    # 4. 通过 KB service 创建新伏笔（独立 session，在主记录持久化之后执行）
+    # 3. 创建新伏笔
     created_fs = []
     for fs_data in new_fs:
         try:
-            f = kb.create_foreshadowing({
+            f = kb.foreshadowings.create({
                 "content": fs_data.get("content", ""),
                 "level": fs_data.get("level", "hint"),
                 "planted_chapter": chapter_number,
                 "expected_resolve_chapter": fs_data.get("expected_resolve_chapter"),
                 "related_characters": fs_data.get("related_characters", []),
             })
-            created_fs.append({"id": f.id, "content": f.content[:60]})
-        except Exception:
-            pass  # 伏笔创建失败不影响章节主体
-
-    # 5. 回收伏笔
-    for fs_id in reclaimed_ids:
-        try:
-            kb.update_foreshadowing(fs_id, {"status": "reclaimed"})
+            created_fs.append({"id": f["id"], "content": (f.get("content") or "")[:60]})
         except Exception:
             pass
 
-    # 6. 创建风格快照（独立 session，不影响章节主体）
+    # 4. 回收伏笔
+    for fs_id in reclaimed_ids:
+        try:
+            kb.foreshadowings.update(fs_id, {"status": "reclaimed"})
+        except Exception:
+            pass
+
+    # 5. 风格快照
     style_snapshot_created = False
     if content and content.strip():
         try:
             snapshot_data = _compute_style_snapshot(content)
             snapshot_data["chapter_number"] = chapter_number
-            kb.create_style_snapshot(snapshot_data)
+            kb.styles.create_snapshot(snapshot_data)
             style_snapshot_created = True
         except Exception:
-            pass  # 快照创建失败不影响章节主体
+            pass
 
     return {
         "action": "created" if not existing_chapter else "updated",
         "chapter_number": chapter_number,
         "title": chapter_title,
         "word_count": word_count or len(content),
-        "timeline_entry": bool(timeline_summary),
+        "timeline_entry": timeline_created,
         "new_foreshadowings": len(created_fs),
         "reclaimed_foreshadowings": len(reclaimed_ids),
         "style_snapshot_created": style_snapshot_created,

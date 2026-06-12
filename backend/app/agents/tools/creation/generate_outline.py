@@ -2,7 +2,6 @@
 
 from langchain_core.tools import tool
 
-from app.agents.tool_context import get_project_id
 
 
 @tool
@@ -31,10 +30,7 @@ async def generate_outline(
         world_setting_summary: Brief summary of the world setting (optional)
     """
     import json as _json
-    from app.agents.services.outline_service import (
-        update_outline,
-    )
-    from app.database import SessionLocal
+    from app.agents.tools.utils import _kb
 
     try:
         points = _json.loads(plot_points) if isinstance(plot_points, str) else plot_points
@@ -51,29 +47,18 @@ async def generate_outline(
     except _json.JSONDecodeError:
         char_list = []
 
-    project_id = get_project_id()
-    db = SessionLocal()
-    committed = False
+    kb = _kb()
     try:
-        result = await update_outline(
-            db,
-            project_id,
-            {
-                "title": title,
-                "summary": summary,
-                "chapter_count_suggested": chapter_count,
-                "chapter_count_confirmed": chapter_count,
-                "plot_points": points,
-                "emotional_curve": curve,
-                "characters": char_list,
-                "confirmed": True,
-            },
-        )
-        if "error" in result:
-            db.rollback()
-            return result
-        db.commit()
-        committed = True
+        result = kb.outlines.upsert({
+            "title": title,
+            "summary": summary,
+            "chapter_count_suggested": chapter_count,
+            "chapter_count_confirmed": chapter_count,
+            "plot_points": points,
+            "emotional_curve": curve,
+            "characters": char_list,
+            "confirmed": True,
+        })
         return {
             "action": "created",
             "title": title,
@@ -83,13 +68,3 @@ async def generate_outline(
         }
     except Exception as e:
         return {"error": str(e)}
-    finally:
-        if not committed:
-            try:
-                db.rollback()
-            except Exception:
-                pass
-        try:
-            db.close()
-        except Exception:
-            pass

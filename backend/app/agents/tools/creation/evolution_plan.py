@@ -45,10 +45,10 @@ async def create_evolution_plan(
     if trust_after >= 0:
         kwargs["trust_after"] = trust_after
 
-    plan = kb.create_evolution_plan(**kwargs)
+    plan = kb.characters.create_evolution_plan(kwargs)
     return {
         "action": "created",
-        "id": plan.id,
+        "id": plan["id"],
         "relation_id": relation_id,
         "trigger_chapter": trigger_chapter,
         "message": f"关系演变规划已创建：第{trigger_chapter}章「{event_description[:30]}」",

@@ -59,7 +59,7 @@ class WarningService:
 
         novelskills 规则：伏笔在预期回收位置后 2 个情节块仍未回收 → 🟡
         """
-        overdue = self.kb.get_overdue_foreshadowings(current_chapter)
+        overdue = self.kb.foreshadowings.list_overdue(current_chapter)
         if not overdue:
             return None
 
@@ -69,8 +69,8 @@ class WarningService:
 
         items = []
         for f in overdue[:5]:
-            overdue_by = current_chapter - f.expected_resolve_chapter if f.expected_resolve_chapter else 0
-            items.append(f"「{f.content[:30]}」超期{overdue_by}章")
+            overdue_by = current_chapter - f["expected_resolve_chapter"] if f.get("expected_resolve_chapter") else 0
+            items.append(f"「{f['content'][:30]}」超期{overdue_by}章")
 
         warning = {
             "type": "foreshadowing_overdue",
@@ -88,20 +88,20 @@ class WarningService:
 
         novelskills 规则：最近 10 章统计偏离基准 >25% → 🟡
         """
-        snapshots = self.kb.get_style_snapshots(last_n=10)
+        snapshots = self.kb.styles.list_snapshots(last_n=10)
         if len(snapshots) < 5:
             return None
 
         # 计算基准（前 3 章平均）
-        earliest = sorted(snapshots, key=lambda s: s.chapter_number)[:3]
+        earliest = sorted(snapshots, key=lambda s: s.get("chapter_number", 0))[:3]
         n = len(earliest)
-        baseline_dialogue = sum(s.dialogue_ratio for s in earliest) / n
-        baseline_sent_len = sum(s.avg_sentence_length for s in earliest) / n
+        baseline_dialogue = sum(s.get("dialogue_ratio", 0) for s in earliest) / n
+        baseline_sent_len = sum(s.get("avg_sentence_length", 0) for s in earliest) / n
 
         # 检查最近 3 章是否偏离
-        recent = sorted(snapshots, key=lambda s: s.chapter_number)[-3:]
-        recent_dialogue = sum(s.dialogue_ratio for s in recent) / len(recent)
-        recent_sent_len = sum(s.avg_sentence_length for s in recent) / len(recent)
+        recent = sorted(snapshots, key=lambda s: s.get("chapter_number", 0))[-3:]
+        recent_dialogue = sum(s.get("dialogue_ratio", 0) for s in recent) / len(recent)
+        recent_sent_len = sum(s.get("avg_sentence_length", 0) for s in recent) / len(recent)
 
         drifts = []
         if baseline_dialogue > 0:
@@ -117,7 +117,7 @@ class WarningService:
         if not drifts:
             return None
 
-        key = f"style_drift_{snapshots[0].chapter_number}"
+        key = f"style_drift_{snapshots[0].get(\"chapter_number\", 0)}"
         if self._is_deduped(key):
             return None
 
@@ -136,14 +136,14 @@ class WarningService:
 
         novelskills 规则：连续 3+ 章相同情绪且无预期节奏变化 → 🟡
         """
-        timeline = self.kb.get_timeline(
+        timeline = self.kb.timelines.list_timeline(
             chapter_range=(max(1, current_chapter - 5), current_chapter - 1)
         )
         if len(timeline) < 3:
             return None
 
         # 检查最近 3+ 章是否相同情绪
-        recent_emotions = [t.emotion_tag for t in timeline[-5:] if t.emotion_tag != "未标注"]
+        recent_emotions = [t.get("emotion_tag") for t in timeline[-5:] if t.get("emotion_tag") != "未标注"]
         if len(recent_emotions) < 3:
             return None
 
@@ -178,8 +178,8 @@ class WarningService:
 
         novelskills 规则：写作中产生的新内容与🔴设定矛盾 → 🔴
         """
-        ws = self.kb.get_world_setting()
-        if not ws or not ws.tiered_settings:
+        ws = self.kb.world_setting.get()
+        if not ws or not ws.get("tiered_settings"):
             return None
 
         # 🔴设定存在但需要 LLM 判断是否违反
@@ -194,17 +194,17 @@ class WarningService:
         修复：原代码在 recent_answered 为空时引用未定义的 latest_answered_chapter，
         导致 UnboundLocalError。
         """
-        questions = self.kb.get_plot_questions(status="pending")
+        questions = self.kb.plots.list_plot_questions(status="pending")
         if not questions:
             return None
 
         # 计算最近一次回答问题的章节号
-        recent_answered = self.kb.get_plot_questions(status="answered")
+        recent_answered = self.kb.plots.list_plot_questions(status="answered")
         latest_answered_chapter = 0
         if recent_answered:
             for q in recent_answered:
-                if q.answered_in_chapter:
-                    latest_answered_chapter = max(latest_answered_chapter, q.answered_in_chapter)
+                if q.get("answered_in_chapter"):
+                    latest_answered_chapter = max(latest_answered_chapter, q["answered_in_chapter"])
 
         # 如果最近 2 章内有回答，不算停滞
         if latest_answered_chapter > 0 and current_chapter - latest_answered_chapter <= 2:
@@ -235,11 +235,11 @@ class WarningService:
         if current_volume <= 1:
             return None
 
-        cvs_list = self.kb.get_cross_volume_subplots(status="active")
+        cvs_list = self.kb.volumes.list_cross_volume_subplots(status="active")
         overdue = []
         for cvs in cvs_list:
-            if cvs.expected_intersection_volume and current_volume > cvs.expected_intersection_volume + 1:
-                overdue.append(f"跨卷支线#{cvs.id}")
+            if cvs.get("expected_intersection_volume") and current_volume > cvs["expected_intersection_volume"] + 1:
+                overdue.append(f"跨卷支线#{cvs['id']}")
 
         if not overdue:
             return None
@@ -267,16 +267,16 @@ class WarningService:
         if current_volume <= 1:
             return None
 
-        ccl = self.kb.get_character_change_logs(volume_number=current_volume - 1)
+        ccl = self.kb.volumes.list_character_change_logs(volume_number=current_volume - 1)
         if not ccl:
             return None
 
         # 检查是否有大量无铺垫变化
         jump_chars = []
         for log in ccl:
-            changes = log.changes if isinstance(log.changes, dict) else {}
+            changes = log.get("changes", {}) if isinstance(log.get("changes"), dict) else {}
             if len(changes) >= 3:  # 单角色同时3个以上属性变化视为跳变
-                jump_chars.append(f"角色#{log.character_id}")
+                jump_chars.append(f"角色#{log['character_id']}")
 
         if not jump_chars:
             return None
@@ -303,11 +303,11 @@ class WarningService:
         if current_volume <= 1:
             return None
 
-        cvf_list = self.kb.get_cross_volume_foreshadowings(status="active")
+        cvf_list = self.kb.volumes.list_cross_volume_foreshadowings(status="active")
         overdue = []
         for cvf in cvf_list:
-            if cvf.expected_volume and current_volume > cvf.expected_volume + 1:
-                overdue.append(f"跨卷伏笔#{cvf.id}（预期第{cvf.expected_volume}卷回收）")
+            if cvf.get("expected_volume") and current_volume > cvf["expected_volume"] + 1:
+                overdue.append(f"跨卷伏笔#{cvf['id']}（预期第{cvf['expected_volume']}卷回收）")
 
         if not overdue:
             return None

@@ -101,20 +101,6 @@ STYLE_EXEMPLAR_RULES = [
 # 默认选择
 STYLE_EXEMPLAR_DEFAULT = ["opening", "emotion"]
 
-# 模型上下文窗口映射（三级策略的第二级）
-MODEL_CONTEXT_WINDOWS = {
-    "deepseek-chat": 64000,
-    "deepseek-v3-241227": 64000,
-    "gpt-4o": 128000,
-    "gpt-4o-mini": 128000,
-    "claude-3-5-sonnet": 200000,
-    "claude-sonnet-4-6": 200000,
-    "qwen-max": 32000,
-    "qwen-plus": 131072,
-}
-
-# 三级策略的第三级：未知模型的默认上下文窗口
-DEFAULT_CONTEXT_WINDOW = 32000
 
 
 

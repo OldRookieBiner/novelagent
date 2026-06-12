@@ -18,17 +18,15 @@ async def generate_world_setting_complete(
 ) -> dict:
     """Generate and save a complete world setting with tiered rules.
 
-    Creates the full world setting in one call, including tiered rules
-    (red=unbreakable, yellow=breakable-with-cost, green=decorative),
+    Creates the full world setting in one call, including tiered rules,
     key locations, and optional lore sections.
 
     Args:
-        core_concept: Core concept of the world (1-2 sentences explaining how this world works)
-        red_rules: JSON string list of unbreakable rules (e.g., ["灵力来源于血脉，不可后天获得"])
-        yellow_rules: JSON string list of breakable-with-cost rules (e.g., ["可以跨越位面，但会消耗寿命"])
-        green_rules: JSON string list of decorative rules (e.g., ["修仙者有独特的灵纹"])
+        core_concept: Core concept of the world
+        red_rules: JSON string list of unbreakable rules
+        yellow_rules: JSON string list of breakable-with-cost rules
+        green_rules: JSON string list of decorative rules
         key_locations: JSON string list of key locations with descriptions
-                       (e.g., [{"name": "天枢城", "desc": "修仙界最大城市，灵脉交汇处", "plot_role": "主角起点"}])
         history: World history / backstory (optional)
         social_structure: Social/political structure description (optional)
         magic_system: Magic/power system description (optional)
@@ -77,12 +75,12 @@ async def generate_world_setting_complete(
     if magic_system:
         data["magic_system"] = magic_system
 
-    existing = kb.get_world_setting()
+    existing = kb.world_setting.get()
     if existing:
-        updated = kb.update_world_setting(existing.id, data)
+        updated = kb.world_setting.update_by_id(existing["id"], data)
         return {
             "action": "updated",
-            "id": updated.id,
+            "id": updated["id"],
             "red_rules": len(red),
             "yellow_rules": len(yellow),
             "green_rules": len(green),
@@ -90,10 +88,10 @@ async def generate_world_setting_complete(
             "message": f"世界观已更新（{len(red)}个🔴规则 / {len(yellow)}个🟡规则 / {len(green)}个🟢规则 / {len(locations)}个地点）",
         }
     else:
-        created = kb.create_world_setting(data)
+        created = kb.world_setting.create(data)
         return {
             "action": "created",
-            "id": created.id,
+            "id": created["id"],
             "red_rules": len(red),
             "yellow_rules": len(yellow),
             "green_rules": len(green),

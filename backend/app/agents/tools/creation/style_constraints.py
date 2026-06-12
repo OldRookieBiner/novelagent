@@ -19,9 +19,9 @@ async def create_style_constraints(
 
     Args:
         style_anchor: Reference text snippet that embodies the desired style
-        taboo_words: JSON string list of forbidden words (e.g., ["突然", "不由得"])
+        taboo_words: JSON string list of forbidden words
         forbidden_patterns: JSON string list of forbidden sentence patterns
-        abstract_rules: JSON string list of abstract style rules (e.g., ["对话占比不低于30%", "避免长段内心独白"])
+        abstract_rules: JSON string list of abstract style rules
     """
     import json as _json
     kb = _kb()
@@ -41,7 +41,7 @@ async def create_style_constraints(
     except _json.JSONDecodeError:
         rules = []
 
-    existing = kb.get_style_constraints()
+    existing = kb.styles.get_constraints()
     if existing:
         update_data = {}
         if taboo:
@@ -53,14 +53,14 @@ async def create_style_constraints(
         if style_anchor:
             update_data["style_anchor"] = style_anchor
         if update_data:
-            updated = kb.update_style_constraints(existing.id, update_data)
-            return {"action": "updated", "id": updated.id, "message": "风格约束已更新"}
+            updated = kb.styles.update_constraints_by_id(existing["id"], update_data)
+            return {"action": "updated", "id": updated["id"], "message": "风格约束已更新"}
         return {"action": "unchanged", "message": "没有需要更新的内容"}
     else:
-        created = kb.create_style_constraints({
+        created = kb.styles.create_constraints({
             "style_anchor": style_anchor,
             "taboo_words": taboo,
             "forbidden_patterns": patterns,
             "abstract_rules": rules,
         })
-        return {"action": "created", "id": created.id, "message": "风格约束已创建并写入知识库"}
+        return {"action": "created", "id": created["id"], "message": "风格约束已创建并写入知识库"}

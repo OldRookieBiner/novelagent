@@ -29,10 +29,10 @@ async def create_plot_question(
     if plot_block_id is not None:
         data["plot_block_id"] = plot_block_id
 
-    q = kb.create_plot_question(data)
+    q = kb.plots.create_plot_question(data)
     return {
         "action": "created",
-        "id": q.id,
+        "id": q["id"],
         "question_text": question_text[:80],
         "message": f"问题「{question_text[:60]}」已创建并写入知识库",
     }

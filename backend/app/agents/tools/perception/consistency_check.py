@@ -7,7 +7,7 @@ A3 增强：在原有知识库约束返回基础上，新增章节内容交叉�
 
 from langchain_core.tools import tool
 
-from app.agents.tools.utils import _kb, _serialize, _extract_names, _extract_times
+from app.agents.tools.utils import _kb, _extract_names, _extract_times
 
 
 @tool
@@ -26,32 +26,32 @@ async def consistency_check(chapter_a: int, chapter_b: int, aspect: str = "all")
     result = {"chapters_compared": [chapter_a, chapter_b], "issues": []}
 
     if aspect in ("all", "character"):
-        chars = kb.get_characters()
+        chars = kb.characters.list_characters()
         constraints = []
         for char in chars:
             constraints.append({
-                "name": char.name,
-                "knowledge_boundary": getattr(char, "knowledge_boundary", None) or getattr(char, "deep_fear", ""),
+                "name": char["name"],
+                "knowledge_boundary": char.get("knowledge_boundary") or char.get("deep_fear") or "",
             })
         result["character_constraints"] = constraints
 
     if aspect in ("all", "timeline"):
-        timeline = kb.get_timeline(chapter_range=(chapter_a, chapter_b))
-        result["timeline_entries"] = _serialize(timeline)
+        timeline = kb.timelines.list_timeline(chapter_range=(chapter_a, chapter_b))
+        result["timeline_entries"] = timeline
 
     if aspect in ("all", "setting"):
-        ws = kb.get_world_setting()
+        ws = kb.world_setting.get()
         if ws:
-            result["world_setting_red"] = ws.tiered_settings.get("red", []) if ws.tiered_settings else []
+            result["world_setting_red"] = (ws.get("tiered_settings") or {}).get("red", [])
 
     # A3 增强：章节内容交叉分析
     if aspect in ("all", "character", "timeline"):
-        chapter_a_obj = kb.get_chapter_by_number(chapter_a)
-        chapter_b_obj = kb.get_chapter_by_number(chapter_b)
+        chapter_a_obj = kb.chapters.get_by_number(chapter_a)
+        chapter_b_obj = kb.chapters.get_by_number(chapter_b)
 
-        if chapter_a_obj and chapter_a_obj.content and chapter_b_obj and chapter_b_obj.content:
-            content_a = chapter_a_obj.content
-            content_b = chapter_b_obj.content
+        if chapter_a_obj and chapter_a_obj.get("content") and chapter_b_obj and chapter_b_obj.get("content"):
+            content_a = chapter_a_obj["content"]
+            content_b = chapter_b_obj["content"]
 
             # 提取角色名（传入 kb 使用知识库精确匹配）
             names_a = set(_extract_names(content_a, kb))

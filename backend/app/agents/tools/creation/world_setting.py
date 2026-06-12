@@ -17,10 +17,9 @@ async def create_world_setting(
     If a world setting already exists, it will be updated.
 
     Args:
-        core_concept: The core concept of the world (e.g., "一个以灵力为基石的修仙世界，灵力枯竭导致文明衰败")
+        core_concept: The core concept of the world
         tiered_settings: JSON string with tiered rules: {"red": [...], "yellow": [...], "green": [...]}
-                         red = 🔴不可违反的核心规则, yellow = 🟡可突破但有代价, green = 🟢装饰性设定
-        key_locations: JSON string list of key locations (e.g., ["天枢城", "灵脉深渊"])
+        key_locations: JSON string list of key locations
     """
     import json as _json
     kb = _kb()
@@ -35,26 +34,24 @@ async def create_world_setting(
     except _json.JSONDecodeError:
         locations = []
 
-    existing = kb.get_world_setting()
+    existing = kb.world_setting.get()
     if existing:
-        # 合并策略：只更新用户显式传入的字段，避免"仅改 core_concept 却清空 tiered_settings"
+        # 合并策略：只更新用户显式传入的字段
         update_data = {"core_concept": core_concept}
-        # 只有当 LLM 显式传入了 tiered_settings 时才覆盖
         if tiered_settings != "{}" or tiered:
             update_data["tiered_settings"] = tiered
         else:
-            update_data["tiered_settings"] = existing.tiered_settings or {}
-        # 只有当 LLM 显式传入了 key_locations 时才覆盖
+            update_data["tiered_settings"] = existing.get("tiered_settings") or {}
         if key_locations != "[]" or locations:
             update_data["key_locations"] = locations
         else:
-            update_data["key_locations"] = existing.key_locations or []
-        updated = kb.update_world_setting(existing.id, update_data)
-        return {"action": "updated", "id": updated.id, "core_concept": core_concept[:100]}
+            update_data["key_locations"] = existing.get("key_locations") or []
+        updated = kb.world_setting.update_by_id(existing["id"], update_data)
+        return {"action": "updated", "id": updated["id"], "core_concept": core_concept[:100]}
     else:
-        created = kb.create_world_setting({
+        created = kb.world_setting.create({
             "core_concept": core_concept,
             "tiered_settings": tiered,
             "key_locations": locations,
         })
-        return {"action": "created", "id": created.id, "core_concept": core_concept[:100]}
+        return {"action": "created", "id": created["id"], "core_concept": core_concept[:100]}

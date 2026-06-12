@@ -1,4 +1,8 @@
-"""知识库 API 路由"""
+"""知识库 API 路由
+
+所有 KB 调用通过 Store 的 dict 返回值，不再接触 ORM 对象。
+FastAPI response_model 自动将 dict 序列化为 JSON。
+"""
 
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
@@ -103,11 +107,11 @@ def get_outline_summary(
     """获取大纲摘要（知识库视图用）"""
     project = get_project_for_user(project_id, current_user.id, db)
     kb = _get_kb(project.id)
-    outline = kb.get_outline()
+    outline = kb.outlines.get()
     if not outline:
         return {"outline": None}
     # 过滤空的世界观数据，避免前端显示全空 JSON
-    ws = outline.world_setting
+    ws = outline.get("world_setting")
     if isinstance(ws, dict):
         # 移除空字符串和空列表字段，如果全部为空则设为 None
         non_empty = {k: v for k, v in ws.items() if v not in ("", [], None)}
@@ -115,14 +119,14 @@ def get_outline_summary(
 
     return {
         "outline": {
-            "title": outline.title,
-            "summary": outline.summary,
-            "plot_points": outline.plot_points,
-            "characters": outline.characters,
+            "title": outline.get("title"),
+            "summary": outline.get("summary"),
+            "plot_points": outline.get("plot_points"),
+            "characters": outline.get("characters"),
             "world_setting": ws,
-            "emotional_curve": outline.emotional_curve,
-            "chapter_count_suggested": outline.chapter_count_suggested,
-            "confirmed": outline.confirmed,
+            "emotional_curve": outline.get("emotional_curve"),
+            "chapter_count_suggested": outline.get("chapter_count_suggested"),
+            "confirmed": outline.get("confirmed"),
         }
     }
 
@@ -137,7 +141,7 @@ def get_world_setting(
 ):
     project = get_project_for_user(project_id, current_user.id, db)
     kb = _get_kb(project.id)
-    setting = kb.get_world_setting()
+    setting = kb.world_setting.get()
     if not setting:
         raise HTTPException(status_code=404, detail="World setting not found")
     return setting
@@ -153,10 +157,10 @@ def update_world_setting(
     project = get_project_for_user(project_id, current_user.id, db)
     _check_busy(project)
     kb = _get_kb(project.id)
-    setting = kb.get_world_setting()
+    setting = kb.world_setting.get()
     if not setting:
         raise HTTPException(status_code=404, detail="World setting not found")
-    updated = kb.update_world_setting(setting.id, data.model_dump(exclude_none=True))
+    updated = kb.world_setting.update_by_id(setting["id"], data.model_dump(exclude_none=True))
     return updated
 
 
@@ -170,7 +174,7 @@ def get_style_constraints(
 ):
     project = get_project_for_user(project_id, current_user.id, db)
     kb = _get_kb(project.id)
-    constraints = kb.get_style_constraints()
+    constraints = kb.styles.get_constraints()
     if not constraints:
         raise HTTPException(status_code=404, detail="Style constraints not found")
     return constraints
@@ -187,11 +191,11 @@ def update_style_constraints(
     _check_busy(project)
     kb = _get_kb(project.id)
     # 风格约束不存在则创建
-    constraints = kb.get_style_constraints()
+    constraints = kb.styles.get_constraints()
     if constraints:
-        updated = kb.update_style_constraints(constraints.id, data.model_dump(exclude_none=True))
+        updated = kb.styles.update_constraints_by_id(constraints["id"], data.model_dump(exclude_none=True))
     else:
-        updated = kb.create_style_constraints(data.model_dump(exclude_none=True))
+        updated = kb.styles.create_constraints(data.model_dump(exclude_none=True))
     return updated
 
 
@@ -205,7 +209,7 @@ def get_plot_blocks(
 ):
     project = get_project_for_user(project_id, current_user.id, db)
     kb = _get_kb(project.id)
-    return kb.get_plot_blocks()
+    return kb.plots.list_plot_blocks()
 
 
 @router.post("/projects/{project_id}/plot-blocks/batch", status_code=201)
@@ -222,9 +226,12 @@ def create_plot_blocks_batch(
 
     created = []
     for item in items:
-        block = kb.create_plot_block(item)
-        created.append({"id": block.id, "title": block.title,
-                         "chapter_range": f"{block.chapter_start}-{block.chapter_end}"})
+        block = kb.plots.create_plot_block(item)
+        created.append({
+            "id": block["id"],
+            "title": block.get("title"),
+            "chapter_range": f"{block.get('chapter_start')}-{block.get('chapter_end')}",
+        })
 
     return {"created": len(created), "plot_blocks": created}
 
@@ -243,7 +250,7 @@ def update_plot_block(
     _check_busy(project)
     kb = _get_kb(project.id)
     try:
-        return kb.update_plot_block(block_id, data.model_dump(exclude_none=True))
+        return kb.plots.update_plot_block(block_id, data.model_dump(exclude_none=True))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -263,7 +270,7 @@ def delete_plot_block(
     _check_busy(project)
     kb = _get_kb(project.id)
     try:
-        kb.delete_plot_block(block_id)
+        kb.plots.delete_plot_block(block_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -279,7 +286,7 @@ def get_subplots(
     """获取项目支线列表"""
     project = get_project_for_user(project_id, current_user.id, db)
     kb = _get_kb(project.id)
-    return kb.get_subplots()
+    return kb.plots.list_subplots()
 
 @router.post("/projects/{project_id}/subplots", response_model=SubplotResponse, status_code=201)
 def create_subplot(
@@ -297,7 +304,7 @@ def create_subplot(
     project = get_project_for_user(project_id, current_user.id, db)
     _check_busy(project)
     kb = _get_kb(project.id)
-    return kb.create_subplot(data.model_dump())
+    return kb.plots.create_subplot(data.model_dump())
 
 
 @router.put("/projects/{project_id}/subplots/{subplot_id}", response_model=SubplotResponse)
@@ -318,7 +325,7 @@ def update_subplot(
     _check_busy(project)
     kb = _get_kb(project.id)
     try:
-        return kb.update_subplot(subplot_id, data.model_dump(exclude_none=True))
+        return kb.plots.update_subplot(subplot_id, data.model_dump(exclude_none=True))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -335,7 +342,7 @@ def delete_subplot(
     _check_busy(project)
     kb = _get_kb(project.id)
     try:
-        kb.delete_subplot(subplot_id)
+        kb.plots.delete_subplot(subplot_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -350,7 +357,7 @@ def get_foreshadowings(
 ):
     project = get_project_for_user(project_id, current_user.id, db)
     kb = _get_kb(project.id)
-    return kb.get_foreshadowings(status=status)
+    return kb.foreshadowings.list_foreshadowings(status=status)
 
 
 @router.post("/projects/{project_id}/foreshadowings/batch", status_code=201)
@@ -370,8 +377,8 @@ def create_foreshadowings_batch(
 
     created = []
     for item in items:
-        f = kb.create_foreshadowing(item)
-        created.append({"id": f.id, "content": f.content[:60], "level": f.level})
+        f = kb.foreshadowings.create(item)
+        created.append({"id": f["id"], "content": f.get("content", "")[:60], "level": f.get("level")})
 
     return {"created": len(created), "foreshadowings": created}
 
@@ -392,8 +399,8 @@ def update_foreshadowing(
     _check_busy(project)
     kb = _get_kb(project.id)
 
-    # 获取当前伏笔，用于状态流转校验（单条查询，避免全量加载）
-    current_foreshadowing = kb.get_foreshadowing(foreshadowing_id)
+    # 获取当前伏笔，用于状态流转校验
+    current_foreshadowing = kb.foreshadowings.get(foreshadowing_id)
     if not current_foreshadowing:
         raise HTTPException(status_code=404, detail=f"Foreshadowing {foreshadowing_id} not found")
 
@@ -407,11 +414,12 @@ def update_foreshadowing(
                 status_code=422,
                 detail=f"Invalid status: {new_status}. Must be one of {FORESHADOWING_VALID_STATUSES}"
             )
-        allowed = FORESHADOWING_STATUS_TRANSITIONS.get(current_foreshadowing.status, set())
+        current_status = current_foreshadowing.get("status", "")
+        allowed = FORESHADOWING_STATUS_TRANSITIONS.get(current_status, set())
         if new_status not in allowed:
             raise HTTPException(
                 status_code=422,
-                detail=f"Cannot transition from '{current_foreshadowing.status}' to '{new_status}'. "
+                detail=f"Cannot transition from '{current_status}' to '{new_status}'. "
                        f"Allowed transitions: {allowed or 'none (terminal state)'}"
             )
 
@@ -423,7 +431,7 @@ def update_foreshadowing(
         )
 
     try:
-        return kb.update_foreshadowing(foreshadowing_id, update_data)
+        return kb.foreshadowings.update(foreshadowing_id, update_data)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -441,8 +449,8 @@ def get_timeline(
     project = get_project_for_user(project_id, current_user.id, db)
     kb = _get_kb(project.id)
     if chapter_start is not None and chapter_end is not None:
-        return kb.get_timeline(chapter_range=(chapter_start, chapter_end))
-    return kb.get_timeline()
+        return kb.timelines.list_timeline(chapter_range=(chapter_start, chapter_end))
+    return kb.timelines.list_timeline()
 
 
 # ========== 风格统计 ==========
@@ -456,4 +464,4 @@ def get_style_snapshots(
 ):
     project = get_project_for_user(project_id, current_user.id, db)
     kb = _get_kb(project.id)
-    return kb.get_style_snapshots(last_n=last_n)
+    return kb.styles.list_snapshots(last_n=last_n)

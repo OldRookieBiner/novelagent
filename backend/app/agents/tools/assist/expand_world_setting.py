@@ -16,12 +16,13 @@ async def expand_world_setting(aspect: str, description: str) -> dict:
         description: Natural language description of the expansion
     """
     kb = _kb()
-    ws = kb.get_world_setting()
+    ws = kb.world_setting.get()
 
     if not ws:
         return {"error": "世界观尚未创建，请先完成创意孵化阶段"}
 
-    red_settings = ws.tiered_settings.get("red", []) if ws.tiered_settings else []
+    tiered = ws.get("tiered_settings") or {}
+    red_settings = tiered.get("red", []) if isinstance(tiered, dict) else []
     contradictions = []
     for rule in red_settings:
         rule_text = rule if isinstance(rule, str) else str(rule)
@@ -44,11 +45,11 @@ async def expand_world_setting(aspect: str, description: str) -> dict:
     # 将扩展内容实际写入数据库（追加到 red/yellow/green 对应层级）
     tier_map = {"rule": "red", "culture": "yellow", "history": "yellow", "technology": "yellow", "location": "green"}
     target_tier = tier_map.get(aspect, "yellow")
-    updated_tiered = dict(ws.tiered_settings) if ws.tiered_settings else {}
+    updated_tiered = dict(tiered) if tiered else {}
     if target_tier not in updated_tiered:
         updated_tiered[target_tier] = []
     updated_tiered[target_tier].append(f"[扩展-{aspect}] {description}")
-    kb.update_world_setting(ws.id, {"tiered_settings": updated_tiered})
+    kb.world_setting.update_by_id(ws["id"], {"tiered_settings": updated_tiered})
 
     return {
         "aspect": aspect,

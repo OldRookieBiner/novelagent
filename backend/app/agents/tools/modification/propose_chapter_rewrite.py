@@ -20,13 +20,13 @@ async def propose_chapter_rewrite(
         reason: Why the rewrite is needed (e.g., "审核不通过", "设定矛盾")
     """
     kb = _kb()
-    chapter = kb.get_chapter_by_number(chapter_number)
+    chapter = kb.chapters.get_by_number(chapter_number)
     if not chapter:
         return {"error": f"第{chapter_number}章不存在"}
-    old_content = chapter.content[:500] if chapter.content else ""
-    chapter_id = chapter.id
+    old_content = (chapter.get("content") or "")[:500]
+    chapter_id = chapter["id"]
 
-    change = kb.create_setting_change({
+    change = kb.changes.create({
         "target_type": "chapter_rewrite",
         "target_id": chapter_id,
         "old_value": {"chapter_number": chapter_number, "content_preview": old_content},
@@ -41,7 +41,7 @@ async def propose_chapter_rewrite(
     })
 
     return {
-        "change_id": change.id,
+        "change_id": change["id"],
         "chapter_number": chapter_number,
         "status": "proposed",
         "reason": reason,

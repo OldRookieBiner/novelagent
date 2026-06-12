@@ -2,6 +2,7 @@
 
 B3 增强：情感词汇密度 + 修辞统计 + 锚点对比。
 读取章节实际内容进行分析，无内容时降级为快照统计。
+Store 返回 dict，用 dict[key] 访问。
 """
 
 from langchain_core.tools import tool
@@ -18,11 +19,11 @@ _EMOTION_WORDS = {
     "欢快": ["欢快", "喜悦", "大笑", "兴奋", "雀跃", "轻松", "惬意", "畅快", "愉悦", "灿烂"],
 }
 
-# 修辞模式（简化版，基于中文常见标志词）
+# 修辞模式
 _RHETORIC_PATTERNS = {
     "比喻": ["像", "如同", "仿佛", "宛如", "犹如", "好似", "一般", "似的", "般"],
     "夸张": ["极", "无比", "绝不", "千万", "无尽", "滔天", "惊天", "震天", "万里"],
-    "排比": None,  # 排比需要结构分析，用句式重复检测
+    "排比": None,
 }
 
 
@@ -36,7 +37,6 @@ def _count_emotion_density(content: str) -> dict:
     result = {}
     for emotion, words in _EMOTION_WORDS.items():
         count = sum(content.count(w) for w in words)
-        # 密度 = 每千字出现次数
         density = round(count / char_count * 1000, 2)
         result[emotion] = {
             "count": count,
@@ -52,14 +52,10 @@ def _count_rhetoric(content: str) -> dict:
     result = {}
     for category, markers in _RHETORIC_PATTERNS.items():
         if markers is None:
-            # 排比检测：连续 3+ 个以相同字/词开头的短句
-            # 简化方案：检测句号/逗号分隔的重复句首
             import re
             sentences = re.split(r"[，。！？；]", content)
             if len(sentences) >= 3:
-                # 取前2个字作为句首指纹
                 starters = [s.strip()[:2] for s in sentences if len(s.strip()) >= 2]
-                # 统计连续相同句首
                 parallel_count = 0
                 for i in range(2, len(starters)):
                     if starters[i] == starters[i-1] == starters[i-2]:
@@ -84,20 +80,20 @@ async def style_analysis(last_n_chapters: int = 10) -> dict:
         last_n_chapters: Number of recent chapters to analyze (default 10)
     """
     kb = _kb()
-    snapshots = kb.get_style_snapshots(last_n=last_n_chapters)
+    snapshots = kb.styles.list_snapshots(last_n=last_n_chapters)
 
     if not snapshots:
         return {"has_data": False, "message": "尚无风格统计数据，需要先写几章后才能分析"}
 
-    avg_dialogue = sum(s.dialogue_ratio for s in snapshots if s.dialogue_ratio) / max(len(snapshots), 1)
-    avg_sent_len = sum(s.avg_sentence_length for s in snapshots if s.avg_sentence_length) / max(len(snapshots), 1)
-    avg_para_len = sum(s.avg_paragraph_length for s in snapshots if s.avg_paragraph_length) / max(len(snapshots), 1)
+    avg_dialogue = sum(s.get("dialogue_ratio", 0) or 0 for s in snapshots) / max(len(snapshots), 1)
+    avg_sent_len = sum(s.get("avg_sentence_length", 0) or 0 for s in snapshots) / max(len(snapshots), 1)
+    avg_para_len = sum(s.get("avg_paragraph_length", 0) or 0 for s in snapshots) / max(len(snapshots), 1)
 
     drift = {}
     if len(snapshots) >= 3:
         recent_3 = snapshots[:3]
-        recent_dialogue = sum(s.dialogue_ratio for s in recent_3) / 3
-        recent_sent = sum(s.avg_sentence_length for s in recent_3) / 3
+        recent_dialogue = sum(s.get("dialogue_ratio", 0) or 0 for s in recent_3) / 3
+        recent_sent = sum(s.get("avg_sentence_length", 0) or 0 for s in recent_3) / 3
 
         if avg_dialogue > 0 and abs(recent_dialogue - avg_dialogue) / avg_dialogue > 0.25:
             drift["dialogue_ratio"] = {
@@ -121,10 +117,10 @@ async def style_analysis(last_n_chapters: int = 10) -> dict:
         },
         "snapshots": [
             {
-                "chapter": s.chapter_number,
-                "dialogue_ratio": s.dialogue_ratio,
-                "avg_sentence_length": s.avg_sentence_length,
-                "paragraph_count": s.paragraph_count,
+                "chapter": s.get("chapter_number"),
+                "dialogue_ratio": s.get("dialogue_ratio"),
+                "avg_sentence_length": s.get("avg_sentence_length"),
+                "paragraph_count": s.get("paragraph_count"),
             }
             for s in snapshots
         ],
@@ -132,17 +128,16 @@ async def style_analysis(last_n_chapters: int = 10) -> dict:
     }
 
     # B3 增强：读取最近章节的实际内容进行分析
-    recent_chapter_numbers = [s.chapter_number for s in snapshots[:5] if s.chapter_number]
+    recent_chapter_numbers = [s.get("chapter_number") for s in snapshots[:5] if s.get("chapter_number")]
     collected_content = ""
     chapters_analyzed = 0
     for ch_num in recent_chapter_numbers:
-        chapter = kb.get_chapter_by_number(ch_num)
-        if chapter and chapter.content:
-            collected_content += chapter.content + "\n"
+        chapter = kb.chapters.get_by_number(ch_num)
+        if chapter and chapter.get("content"):
+            collected_content += chapter["content"] + "\n"
             chapters_analyzed += 1
 
     if collected_content:
-        # B3 增强：情感词汇密度（实际计算）
         emotion_density = _count_emotion_density(collected_content)
         result["emotion_vocabulary"] = {
             "chapters_analyzed": chapters_analyzed,
@@ -150,25 +145,22 @@ async def style_analysis(last_n_chapters: int = 10) -> dict:
             "density": emotion_density,
         }
 
-        # B3 增强：修辞统计（实际计算）
         rhetoric = _count_rhetoric(collected_content)
         result["rhetoric_stats"] = {
             "chapters_analyzed": chapters_analyzed,
             "counts": rhetoric,
         }
 
-        # B3 增强：风格锚点对比（用实际内容）
-        style = kb.get_style_constraints()
-        if style and style.style_anchor:
-            anchor_comparison = _compare_with_anchor(collected_content, style.style_anchor)
+        style = kb.styles.get_constraints()
+        if style and style.get("style_anchor"):
+            anchor_comparison = _compare_with_anchor(collected_content, style["style_anchor"])
             result["anchor_comparison"] = {
-                "anchor_preview": style.style_anchor[:100],
+                "anchor_preview": style["style_anchor"][:100],
                 "match_rate": anchor_comparison["match_rate"],
                 "anchor_words": anchor_comparison["anchor_words"],
                 "found_words": anchor_comparison["found_words"],
             }
     else:
-        # 无章节内容时降级为快照级统计
         result["emotion_vocabulary"] = {"note": "无章节内容可用，需要先写几章"}
         result["rhetoric_stats"] = {"note": "无章节内容可用，需要先写几章"}
 

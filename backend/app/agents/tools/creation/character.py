@@ -54,11 +54,11 @@ async def create_character(
         if val:
             data[key] = val
 
-    char = kb.create_character(data)
+    char = kb.characters.create_character(data)
     return {
         "action": "created",
-        "id": char.id,
-        "name": char.name,
-        "role": char.role,
+        "id": char["id"],
+        "name": char["name"],
+        "role": char["role"],
         "message": f"角色「{name}」已创建并写入知识库",
     }

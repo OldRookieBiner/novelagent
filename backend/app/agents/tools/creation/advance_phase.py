@@ -11,13 +11,7 @@ async def advance_phase() -> dict:
     """Advance the creation phase based on knowledge base completeness.
 
     Checks the current phase and knowledge base state to determine if
-    the project is ready to advance to the next creation phase:
-    - incubation → structure: when outline + characters + world setting exist
-    - structure → writing: when plot blocks + foreshadowings exist
-    - writing → revision: when all planned chapters are written
-
-    Only advances if completeness criteria are met. Returns current and
-    suggested phase with a reason.
+    the project is ready to advance to the next creation phase.
     """
     project_id = get_project_id()
     if project_id is None:
@@ -39,19 +33,19 @@ async def advance_phase() -> dict:
     finally:
         db.close()
 
-    # 检查知识库完整度
-    outline = kb.get_outline()
-    characters = kb.get_characters()
-    world_setting = kb.get_world_setting()
-    plot_blocks = kb.get_plot_blocks()
-    foreshadowings = kb.get_foreshadowings()
-    timeline = kb.get_timeline()
+    # 检查知识库完整度（Store 返回 dict）
+    outline = kb.outlines.get()
+    characters = kb.characters.list_characters()
+    world_setting = kb.world_setting.get()
+    plot_blocks = kb.plots.list_plot_blocks()
+    foreshadowings = kb.foreshadowings.list_foreshadowings()
+    timeline = kb.timelines.list_timeline()
 
     suggested_phase = current_phase
     reason = ""
 
     if current_phase == Phase.INCUBATION:
-        has_outline = outline and (outline.title or outline.summary)
+        has_outline = outline and (outline.get("title") or outline.get("summary"))
         has_characters = len(characters) >= 1
         has_world = world_setting is not None
         if has_outline and has_characters and has_world:
@@ -79,7 +73,7 @@ async def advance_phase() -> dict:
     elif current_phase == Phase.WRITING:
         total_chapters = 0
         if outline:
-            total_chapters = outline.chapter_count_confirmed or outline.chapter_count_suggested or 0
+            total_chapters = outline.get("chapter_count_confirmed") or outline.get("chapter_count_suggested") or 0
         written = len(timeline) if timeline else 0
         if total_chapters > 0 and written >= total_chapters:
             suggested_phase = Phase.REVISION

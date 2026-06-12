@@ -43,10 +43,10 @@ async def create_foreshadowing(
     if expected_resolve_chapter is not None:
         data["expected_resolve_chapter"] = expected_resolve_chapter
 
-    f = kb.create_foreshadowing(data)
+    f = kb.foreshadowings.create(data)
     return {
         "action": "created",
-        "id": f.id,
+        "id": f["id"],
         "content": content[:80],
         "level": level,
         "message": f"伏笔已创建并写入知识库",
