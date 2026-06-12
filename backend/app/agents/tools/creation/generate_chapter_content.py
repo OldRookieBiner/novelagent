@@ -130,6 +130,28 @@ async def generate_chapter_content(
         reclaimed_ids = []
 
     project_id = get_project_id()
+
+    # 检查当前章是否有已确认的大纲
+    _check_db = SessionLocal()
+    try:
+        _existing_co = _check_db.query(ChapterOutline).filter(
+            ChapterOutline.project_id == project_id,
+            ChapterOutline.chapter_number == chapter_number,
+        ).first()
+        if _existing_co and not _existing_co.confirmed:
+            return {
+                "error": f"第{chapter_number}章大纲尚未确认，请先审查并确认章节大纲后再写作",
+                "hint": "使用 generate_chapter_outline 工具生成大纲，或提醒用户确认大纲",
+            }
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("大纲确认状态检查失败: %s", e)
+    finally:
+        try:
+            _check_db.close()
+        except Exception:
+            pass
+
     kb = _kb()
     db = SessionLocal()
     committed = False
