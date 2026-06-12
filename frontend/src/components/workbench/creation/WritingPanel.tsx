@@ -8,7 +8,7 @@ import { chapterOutlinesApi, chaptersApi, knowledgeStatusApi } from '@/lib/api'
 import { ChapterNodePanel } from './ChapterNodePanel'
 import type { ChapterNode } from './ChapterNodePanel'
 import TipTapEditor from '@/components/common/TipTapEditor'
-import type { ChapterOutline, ChapterOutlineUpdate, Chapter } from '@/types'
+import type { ChapterOutline, ChapterOutlineUpdate } from '@/types'
 import { toast } from 'sonner'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
 
@@ -151,8 +151,7 @@ export function WritingPanel({ projectId }: WritingPanelProps)
 {
   const [chapters, setChapters] = useState<ChapterOutline[]>([])
   const [selectedChapter, setSelectedChapter] = useState<ChapterOutline | null>(null)
-  const [_chapterContent, setChapterContent] = useState<Chapter | null>(null)
-  const [content, setContent] = useState('')
+    const [content, setContent] = useState('')
   const [loading, setLoading] = useState(true)
   const [loadingContent, setLoadingContent] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -165,6 +164,7 @@ export function WritingPanel({ projectId }: WritingPanelProps)
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const contentRef = useRef<string>('')
   const prevChapterRef = useRef<ChapterOutline | null>(null)
+  const selectedChapterRef = useRef<ChapterOutline | null>(null)
 
   // 知识库状态
   const [kbStatus, setKbStatus] = useState<{
@@ -181,12 +181,13 @@ export function WritingPanel({ projectId }: WritingPanelProps)
     contentRef.current = content
   }, [content])
 
-  // 同步 prevChapterRef
+  // 同步 prevChapterRef 和 selectedChapterRef
   useEffect(() =>
   {
     if (selectedChapter)
     {
       prevChapterRef.current = selectedChapter
+      selectedChapterRef.current = selectedChapter
     }
   }, [selectedChapter])
 
@@ -244,7 +245,7 @@ export function WritingPanel({ projectId }: WritingPanelProps)
     fetchKbStatus()
   }, [projectId, selectedChapter?.chapter_number])
 
-  // 自动保存核心逻辑
+  // 自动保存核心逻辑（章节不存在时自动创建）
   const doSave = useCallback(async (chapterNumber: number, text: string) =>
   {
     setSaveStatus('saving')
@@ -253,8 +254,23 @@ export function WritingPanel({ projectId }: WritingPanelProps)
       await chaptersApi.update(projectId, chapterNumber, { content: text })
       setSaveStatus('saved')
     }
-    catch (e)
+    catch (e: any)
     {
+      // 章节记录不存在，先创建再保存
+      if (e?.status === 404 || e?.response?.status === 404)
+      {
+        try
+        {
+          await chaptersApi.create(projectId, chapterNumber)
+          await chaptersApi.update(projectId, chapterNumber, { content: text })
+          setSaveStatus('saved')
+          return
+        }
+        catch
+        {
+          // 创建也失败，走正常错误流程
+        }
+      }
       console.error('Auto-save failed:', e)
       setSaveStatus('error')
     }
@@ -280,10 +296,11 @@ export function WritingPanel({ projectId }: WritingPanelProps)
 
     saveTimeoutRef.current = setTimeout(async () =>
     {
-      if (!selectedChapter) return
-      await doSave(selectedChapter.chapter_number, newContent)
+      const ch = selectedChapterRef.current
+      if (!ch) return
+      await doSave(ch.chapter_number, newContent)
     }, 2000)
-  }, [selectedChapter, doSave])
+  }, [doSave])
 
   // 切换章节时自动保存旧章节 + 加载新章节
   useEffect(() =>
@@ -313,7 +330,6 @@ export function WritingPanel({ projectId }: WritingPanelProps)
       try
       {
         const chapter = await chaptersApi.get(projectId, selectedChapter.chapter_number)
-        setChapterContent(chapter)
         const html = formatContentAsHtml(chapter.content || '')
         setContent(html)
         contentRef.current = html
@@ -321,7 +337,6 @@ export function WritingPanel({ projectId }: WritingPanelProps)
       }
       catch
       {
-        setChapterContent(null)
         setContent('')
         contentRef.current = ''
         setSaveStatus('saved')
@@ -350,11 +365,20 @@ export function WritingPanel({ projectId }: WritingPanelProps)
       const url = `/api/projects/${projectId}/chapters/${selectedChapter.chapter_number}`
       const payload = JSON.stringify({ content: currentContent })
 
-      if (navigator.sendBeacon)
+      // 使用 fetch+keepalive 替代 sendBeacon（sendBeacon 无法设置 Authorization header）
+      const token = localStorage.getItem('token')
+      fetch(url, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': 'Basic ' + btoa(token + ':') } : {}),
+        },
+        body: payload,
+        keepalive: true,
+      }).catch(() =>
       {
-        const blob = new Blob([payload], { type: 'application/json' })
-        navigator.sendBeacon(url, blob)
-      }
+        // 页面关闭时忽略网络错误
+      })
     }
 
     window.addEventListener('beforeunload', handleBeforeUnload)

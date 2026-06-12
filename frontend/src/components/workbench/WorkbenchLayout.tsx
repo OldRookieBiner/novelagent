@@ -1,4 +1,4 @@
-// WorkbenchLayout.tsx — 三栏+标签页+底栏布局
+// WorkbenchLayout.tsx — 三栏+标签页布局
 
 import { ReactNode, useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
@@ -8,7 +8,6 @@ import Header from '@/components/layout/Header'
 import { TabNavigation } from './TabNavigation'
 import { ChapterListPanel } from './ChapterListPanel'
 import { AgentChatPanel } from './AgentChatPanel'
-import { ProgressDashboard } from './ProgressDashboard'
 import { VolumePanel, VolumeInfo } from './VolumePanel'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
 import { cn } from '@/lib/utils'
@@ -24,11 +23,6 @@ interface WorkbenchLayoutProps {
   onNameChange?: (name: string) => void
   progress: number
   plotBlocks: PlotBlockGroup[]
-  rhythmData?: number[]
-  pendingForeshadowings?: number
-  overdueForeshadowings?: number
-  styleStatus?: 'stable' | 'drift' | 'unknown'
-  currentBlock?: string
   volumes?: VolumeInfo[]
   currentVolume?: number
   showChapterList?: boolean  // 是否显示左侧章节列表
@@ -40,11 +34,6 @@ export function WorkbenchLayout({
   onNameChange,
   progress,
   plotBlocks,
-  rhythmData = [],
-  pendingForeshadowings = 0,
-  overdueForeshadowings = 0,
-  styleStatus = 'unknown',
-  currentBlock = '',
   volumes = [],
   currentVolume = 1,
   showChapterList = false,  // 默认不显示章节列表
@@ -114,16 +103,6 @@ export function WorkbenchLayout({
         {/* 右栏：智能体对话 */}
         <AgentChatPanel />
       </div>
-
-      {/* 底栏：进度仪表盘 */}
-      <ProgressDashboard
-        rhythmData={rhythmData}
-        pendingForeshadowings={pendingForeshadowings}
-        overdueForeshadowings={overdueForeshadowings}
-        styleStatus={styleStatus}
-        currentBlock={currentBlock}
-        progress={progress}
-      />
     </div>
   )
 }
@@ -209,4 +188,3 @@ function InlineEditableName({ name, onChange }: { name: string; onChange?: (name
     </h1>
   )
 }
-

@@ -8,6 +8,7 @@ import { modelConfigsApi, settingsApi } from '@/lib/api'
 import type { AiMessage, AiMessageSegment, ImpactReport, AgentWarning } from '@/stores/workbenchStore'
 import type { ModelConfig, ModelItem } from '@/types'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 const PHASE_LABELS: Record<string, string> = {
   incubation: '创意孵化',
@@ -61,6 +62,101 @@ function hasTextSegments(segments: AiMessageSegment[]): boolean
   return segments.some(s => s.type === 'agent_text')
 }
 
+/** 工具调用分组（用于折叠连续相同工具调用） */
+interface ToolGroup {
+  type: 'tool_group'
+  toolName: string
+  count: number
+  items: Array<{
+    status: 'running' | 'done'
+    args?: Record<string, unknown>
+    result?: Record<string, unknown>
+  }>
+}
+
+/**
+ * 合并连续相同工具调用为 tool_group
+ * 将连续的 tool_start + tool_result 对（相同工具名）合并为一个分组
+ */
+function mergeToolGroups(
+  parts: Array<{ type: 'text'; content: string } | AiMessageSegment>
+): Array<{ type: 'text'; content: string } | AiMessageSegment | ToolGroup>
+{
+  const result: Array<{ type: 'text'; content: string } | AiMessageSegment | ToolGroup> = []
+  let i = 0
+  
+  while (i < parts.length)
+  {
+    const part = parts[i]
+    
+    // 如果是 tool_start，检查后续是否有对应的 tool_result
+    if (part.type === 'tool_start')
+    {
+      const toolName = (part.data?.tool as string) || part.content.replace('...', '')
+      const collected: Array<{ start: typeof part; result?: typeof part }> = []
+      
+      // 收集连续的相同工具调用（tool_start + tool_result 对）
+      while (i < parts.length)
+      {
+        const curr = parts[i]
+        
+        if (curr.type === 'tool_start')
+        {
+          const currToolName = (curr.data?.tool as string) || curr.content.replace('...', '')
+          if (currToolName === toolName)
+          {
+            collected.push({ start: curr })
+            i++
+          }
+          else
+          {
+            break
+          }
+        }
+        else if (curr.type === 'tool_result' && collected.length > 0 && !collected[collected.length - 1].result)
+        {
+          collected[collected.length - 1].result = curr
+          i++
+        }
+        else
+        {
+          break
+        }
+      }
+      
+      // 只有多个调用才折叠
+      if (collected.length > 1)
+      {
+        result.push({
+          type: 'tool_group',
+          toolName,
+          count: collected.length,
+          items: collected.map(c => ({
+            status: c.result ? 'done' as const : 'running' as const,
+            args: c.start.data?.args as Record<string, unknown> | undefined,
+            result: c.result?.data?.result as Record<string, unknown> | undefined,
+          })),
+        })
+      }
+      else if (collected.length === 1)
+      {
+        // 只有一个，保持原样
+        result.push(collected[0].start)
+        if (collected[0].result)
+        {
+          result.push(collected[0].result)
+        }
+      }
+      continue
+    }
+    
+    result.push(part)
+    i++
+  }
+  
+  return result
+}
+
 /**
  * 按顺序渲染 assistant 消息内容
  * 新格式：segments 中有 agent_text 段，按 segments 顺序渲染
@@ -85,7 +181,7 @@ function AssistantMessageContent({
     return (
       <>
         {msg.content
-          ? <div className="agent-markdown"><ReactMarkdown>{msg.content}</ReactMarkdown></div>
+          ? <div className="agent-markdown"><ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown></div>
           : showThinking ? null : null}
         {msg.segments.filter(s => s.type === 'tool_result').map((s, i) => (
           <div key={`tool-${i}`} className="mt-1.5 text-[10px] text-muted-foreground flex items-center gap-1 border-t border-gray-100 pt-1">
@@ -124,14 +220,32 @@ function AssistantMessageContent({
     mergedParts.push({ type: 'text', content: textBuffer })
   }
 
+  // 二次合并：折叠连续相同工具调用
+  const finalParts = mergeToolGroups(mergedParts)
+
+  // 展开/折叠状态
+  const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set())
+
+  const toggleGroup = (index: number) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(index)) {
+        next.delete(index)
+      } else {
+        next.add(index)
+      }
+      return next
+    })
+  }
+
   return (
     <>
-      {mergedParts.map((part, i) => {
+      {finalParts.map((part, i) => {
         if (part.type === 'text')
         {
           return (
             <div key={`text-${i}`} className="agent-markdown">
-              <ReactMarkdown>{part.content}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{part.content}</ReactMarkdown>
             </div>
           )
         }
@@ -152,6 +266,50 @@ function AssistantMessageContent({
             <div key={`tr-${i}`} className="mt-1 text-[10px] text-muted-foreground flex items-center gap-1">
               <CheckCircle2 className="h-3 w-3 shrink-0 text-green-500" />
               <span>{seg.content}</span>
+            </div>
+          )
+        }
+        // tool_group: 折叠的连续相同工具调用
+        if ((seg as any).type === 'tool_group')
+        {
+          const group = seg as any as ToolGroup
+          const isExpanded = expandedGroups.has(i)
+          const label = TOOL_LABELS[group.toolName] || group.toolName
+          
+          return (
+            <div key={`tg-${i}`} className="mt-1.5">
+              <button
+                onClick={() => toggleGroup(i)}
+                className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {isExpanded ? (
+                  <ChevronDown className="h-3 w-3 shrink-0" />
+                ) : (
+                  <ChevronRight className="h-3 w-3 shrink-0" />
+                )}
+                <CheckCircle2 className="h-3 w-3 shrink-0 text-green-500" />
+                <span>{label}</span>
+                <span className="text-primary font-medium">×{group.count}</span>
+              </button>
+              {isExpanded && (
+                <div className="ml-4 mt-1 space-y-0.5">
+                  {group.items.map((item, j) => (
+                    <div key={j} className="text-[9px] text-muted-foreground flex items-center gap-1">
+                      {item.status === 'running' ? (
+                        <>
+                          <Loader2 className="h-2.5 w-2.5 shrink-0 animate-spin text-blue-400" />
+                          <span>调用 {j + 1}</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="h-2.5 w-2.5 shrink-0 text-green-500" />
+                          <span>调用 {j + 1} 完成</span>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )
         }
@@ -738,19 +896,22 @@ export function AgentChatPanel() {
             <div
               key={msg.id}
               className={cn(
-                'rounded-lg px-3 py-2 text-[11px] leading-relaxed',
-                msg.role === 'assistant'
-                  ? 'bg-primary/5 text-foreground'
-                  : 'bg-primary text-primary-foreground ml-10'
+                msg.role === 'user' ? 'flex justify-end' : ''
               )}
             >
-              {msg.role === 'assistant'
-                ? <AssistantMessageContent
+              {msg.role === 'user' ? (
+                <div className="rounded-lg px-3 py-2 text-[11px] leading-relaxed max-w-[80%] bg-primary text-primary-foreground">
+                  {msg.content}
+                </div>
+              ) : (
+                <div className="text-[11px] leading-relaxed text-foreground">
+                  <AssistantMessageContent
                     msg={msg}
                     isLastAssistant={msg.id === lastAssistantId}
                     isAgentSending={isAgentSending}
                   />
-                : msg.content}
+                </div>
+              )}
             </div>
           ))}
         </div>

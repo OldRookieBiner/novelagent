@@ -225,27 +225,27 @@ async def delete_project(
     return {"success": True, "message": "Project deleted"}
 
 
-# ============================================================
-# 项目初始化端点 - 通过 body 接收参数避免路由解析问题
-# ============================================================
 
 
-# ============================================================
 # 项目初始化端点
-# ============================================================
 @router.post("/initialize")
 async def initialize_project(
     body: dict,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """初始化项目：创建项目 + 空知识库
+    """初始化项目：创建项目 + 生成基础知识库（SSE 流）
 
-    Agent 模式下，项目创建后用户通过 Agent 对话进行创作引导，
-    不再自动执行初始化流程。
+    根据用户输入的概念描述，自动生成故事种子、小说名、世界观、大纲、角色、风格约束。
+    返回 SSE 事件流，前端可实时展示初始化进度。
     """
+    from fastapi.responses import StreamingResponse
+
     concept = body.get("concept", "").strip() if body.get("concept") else ""
     target_words = body.get("target_words", 100000)
+    model_config_id = body.get("model_config_id")
+    model_id = body.get("model_id")
 
     if not concept:
         raise HTTPException(status_code=400, detail="概念描述不能为空")
@@ -268,13 +268,50 @@ async def initialize_project(
         db.commit()
         db.refresh(project)
 
+        project_id = project.id
+        user_id = current_user.id
+
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"创建项目失败: {str(e)}")
 
-    return {
-        "id": project.id,
-        "name": project.name,
-        "status": "created",
-        "message": "项目已创建，请通过 Agent 对话开始创作",
-    }
+    from app.agents.initialization import stream_initialization
+
+    async def event_generator():
+        completed = False
+        try:
+            async for event in stream_initialization(
+                concept=concept,
+                target_words=target_words,
+                project_id=project_id,
+                user_id=user_id,
+                model_config_id=model_config_id,
+                model_id=model_id,
+                request=request,
+            ):
+                yield event
+                if '"status": "complete"' in event:
+                    completed = True
+            if not completed:
+                pass
+        except Exception as e:
+            logger.error(f"初始化流程异常: {str(e)}")
+            err_msg = str(e).replace('"', '\\"').replace("'", "\'")
+            yield f'event: init:error\ndata: {{"error": "{err_msg}"}}\n\n'
+            yield f'event: init:done\ndata: {{"project_id": {project_id}, "status": "partial"}}\n\n'
+        finally:
+            # 如果项目未完成（取消/超时/异常），删除项目及关联数据
+            if not completed:
+                try:
+                    cleanup_db = SessionLocal()
+                    try:
+                        project = cleanup_db.query(Project).filter(Project.id == project_id).first()
+                        if project:
+                            cleanup_db.delete(project)
+                            cleanup_db.commit()
+                    finally:
+                        cleanup_db.close()
+                except Exception as cleanup_err:
+                    logger.error(f"清理失败项目时出错: {cleanup_err}")
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
