@@ -174,6 +174,49 @@ def _load_writing_context(kb: KnowledgeBaseService, budget: BudgetTracker, conte
             context["style_constraints"] = data
             budget.add(estimate_tokens(data_json))
 
+    # 当前章节大纲（让 Agent 写正文时参考规划）
+    if current_chapter_number:
+        from app.database import SessionLocal as _SL
+        from app.models.outline import ChapterOutline as _CO
+        _db = _SL()
+        try:
+            _co = _db.query(_CO).filter(
+                _CO.project_id == kb.project_id,
+                _CO.chapter_number == current_chapter_number,
+            ).first()
+            if _co:
+                co_data = {
+                    "chapter_number": _co.chapter_number,
+                    "title": _co.title or "",
+                    "scene": _co.scene or "",
+                    "characters": _co.characters or "",
+                    "plot": _co.plot or "",
+                    "conflict": _co.conflict or "",
+                    "turning_point": _co.turning_point or "",
+                    "hook": _co.hook or "",
+                    "transition": _co.transition or "",
+                    "ending": _co.ending or "",
+                    "opening_state": getattr(_co, "opening_state", None) or "",
+                    "emotional_arc": getattr(_co, "emotional_arc", None) or "",
+                    "key_scenes": getattr(_co, "key_scenes", None) or [],
+                    "pacing_note": getattr(_co, "pacing_note", None) or "",
+                    "target_words": _co.target_words,
+                    "confirmed": _co.confirmed,
+                }
+                co_json = json.dumps(co_data, ensure_ascii=False)
+                co_tokens = estimate_tokens(co_json)
+                if budget.can_add(co_tokens):
+                    context["current_chapter_outline"] = co_data
+                    budget.add(co_tokens)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("加载当前章节大纲失败: %s", e)
+        finally:
+            try:
+                _db.close()
+            except Exception:
+                pass
+
     # 上一章结尾 500 字（确保下章开头的场景衔接）
     if current_chapter_number and current_chapter_number > 1:
         prev = kb.get_chapter_by_number(current_chapter_number - 1)
