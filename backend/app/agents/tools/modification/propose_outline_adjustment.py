@@ -3,6 +3,7 @@
 from langchain_core.tools import tool
 
 from app.agents.tools.utils import _kb
+from app.utils.text import tokenize_chinese
 
 
 @tool
@@ -30,7 +31,7 @@ async def propose_outline_adjustment(
     else:
         for b in blocks:
             block_text = f"{b.get('title', '')} {' '.join(b.get('must_happen') or [])} {' '.join(b.get('questions_to_answer') or [])}"
-            for word in description.split():
+            for word in tokenize_chinese(description):
                 if len(word) >= 2 and word in block_text:
                     affected_blocks.append(b)
                     break

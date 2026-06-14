@@ -60,21 +60,7 @@ def _get_model():
             return None
 
 
-_jieba_available = False
-
-def _tokenize_chinese(text: str) -> list[str]:
-    """中文分词，jieba 不可用时退化为字符 bigram"""
-    global _jieba_available
-    try:
-        import jieba
-        _jieba_available = True
-        return list(jieba.cut(text))
-    except ImportError:
-        _jieba_available = False
-        result = []
-        for i in range(len(text) - 1):
-            result.append(text[i:i+2])
-        return result
+from app.utils.text import tokenize_chinese as _tokenize_chinese
 
 
 # ========== 文本切分 ==========

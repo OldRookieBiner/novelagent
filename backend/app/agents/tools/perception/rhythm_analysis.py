@@ -101,6 +101,23 @@ async def rhythm_analysis(last_n_chapters: int = 10) -> dict:
         "block_deviation_warnings": block_warnings,
     }
 
+    # 生成可操作性建议
+    suggested_adjustments = []
+    for section in monotone_sections:
+        suggested_adjustments.append({
+            "type": "单调段打破",
+            "chapters": f"{section.get('start_chapter', '?')}-{section.get('end_chapter', '?')}",
+            "suggestion": f"建议在第{section.get('end_chapter', '?')}章后加入冲突或转折事件打破连续「{section.get('emotion', '相同')}」节奏",
+        })
+    for bw in block_warnings:
+        suggested_adjustments.append({
+            "type": "节奏偏差",
+            "chapter": bw.get("chapter"),
+            "suggestion": f"情节块「{bw.get('block_title', '')}」预期「{bw.get('expected_mood', '')}」但实际张力{bw.get('actual_tension')}分，建议{'增加紧迫感事件' if bw.get('actual_tension', 3) < bw.get('expected_tension', 3) else '适当放缓节奏'}",
+        })
+    if suggested_adjustments:
+        result["suggested_adjustments"] = suggested_adjustments
+
     if monotone_sections:
         result["warning"] = f"检测到 {len(monotone_sections)} 段节奏单调区域，建议调整情绪节奏"
     elif block_warnings:

@@ -164,6 +164,39 @@ async def style_analysis(last_n_chapters: int = 10) -> dict:
         result["emotion_vocabulary"] = {"note": "无章节内容可用，需要先写几章"}
         result["rhetoric_stats"] = {"note": "无章节内容可用，需要先写几章"}
 
+    # 生成可操作性建议
+    suggested_fixes = []
+    if "dialogue_ratio" in drift:
+        d = drift["dialogue_ratio"]
+        if d["direction"] == "偏高":
+            suggested_fixes.append({
+                "issue": f"最近3章对话比例{d['recent_avg']:.1%}，整体平均{d['overall_avg']:.1%}",
+                "suggestion": "建议增加叙述和动作描写降低对话比例",
+                "priority": "medium",
+            })
+        else:
+            suggested_fixes.append({
+                "issue": f"最近3章对话比例{d['recent_avg']:.1%}，整体平均{d['overall_avg']:.1%}",
+                "suggestion": "建议增加角色对话和互动来活跃气氛",
+                "priority": "medium",
+            })
+    if "sentence_length" in drift:
+        d = drift["sentence_length"]
+        if d["direction"] == "偏长":
+            suggested_fixes.append({
+                "issue": f"最近3章平均句长{d['recent_avg']:.1f}字，整体平均{d['overall_avg']:.1f}字",
+                "suggestion": "建议拆分长句，增加短句和对话来加快节奏",
+                "priority": "low",
+            })
+        else:
+            suggested_fixes.append({
+                "issue": f"最近3章平均句长{d['recent_avg']:.1f}字，整体平均{d['overall_avg']:.1f}字",
+                "suggestion": "建议增加细节描写和长句来丰富表达层次",
+                "priority": "low",
+            })
+    if suggested_fixes:
+        result["suggested_fixes"] = suggested_fixes
+
     if drift:
         result["warning"] = "检测到风格漂移，建议检查最近几章的写作风格"
     return result

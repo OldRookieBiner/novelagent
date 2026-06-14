@@ -6,6 +6,7 @@ Store 返回 dict，不再需要 _serialize。
 
 from app.agents.services.knowledge_base import KnowledgeBaseService
 from app.agents.tool_context import get_project_id
+from app.utils.text import tokenize_chinese
 
 
 def _kb() -> KnowledgeBaseService:
@@ -54,9 +55,12 @@ def _get_current_value(kb: KnowledgeBaseService, target_type: str, target_id: in
 
 
 def _extract_keywords(old_value: dict, new_value: dict, description: str) -> list[str]:
-    """Extract search keywords from the change description and values."""
+    """Extract search keywords from the change description and values.
+    
+    使用 tokenize_chinese 替代 .split()，正确处理中文分词。
+    """
     keywords = []
-    for word in description.split():
+    for word in tokenize_chinese(description):
         if len(word) >= 2:
             keywords.append(word)
     if isinstance(new_value, dict) and isinstance(old_value, dict):
@@ -64,7 +68,7 @@ def _extract_keywords(old_value: dict, new_value: dict, description: str) -> lis
             if new_value.get(key) != old_value.get(key):
                 val = new_value[key]
                 if isinstance(val, str):
-                    for word in val.split():
+                    for word in tokenize_chinese(val):
                         if len(word) >= 2:
                             keywords.append(word)
     return keywords[:20]

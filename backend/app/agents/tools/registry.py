@@ -5,7 +5,6 @@ INCUBATION_TOOLS ⊆ STRUCTURE_TOOLS ⊆ WRITING_TOOLS ⊆ REVISION_TOOLS
 使用列表拼接保证递进关系，新阶段只需添加增量工具。
 """
 
-# 延迟导入，避免循环依赖
 from app.agents.tools.perception import (
     knowledge_search,
     foreshadowing_check,
@@ -53,9 +52,11 @@ from app.agents.tools.creation import (
     update_foreshadowing,
     delete_plot_block,
     record_chapter_meta,
+    batch_confirm_outlines,
+    batch_update_foreshadowing_status,
 )
 
-# 孵化阶段可用工具（基础感知 + 内容创建）
+# 孵化阶段
 INCUBATION_TOOLS = [
     advance_phase,
     knowledge_search,
@@ -72,7 +73,7 @@ INCUBATION_TOOLS = [
     create_foreshadowing,
 ]
 
-# 结构阶段增量工具
+# 结构阶段增量
 _STRUCTURE_EXTRA = [
     foreshadowing_check,
     review_chapter,
@@ -88,9 +89,10 @@ _STRUCTURE_EXTRA = [
     update_plot_block,
     update_plot_question,
     delete_plot_block,
+    batch_confirm_outlines,
 ]
 
-# 写作阶段增量工具
+# 写作阶段增量
 _WRITING_EXTRA = [
     consistency_check,
     consistency_scan,
@@ -105,12 +107,11 @@ _WRITING_EXTRA = [
     record_chapter_meta,
     update_subplot,
     update_foreshadowing,
+    batch_update_foreshadowing_status,
 ]
 
-# 递进构建
 STRUCTURE_TOOLS = INCUBATION_TOOLS + _STRUCTURE_EXTRA
 WRITING_TOOLS = STRUCTURE_TOOLS + _WRITING_EXTRA
 REVISION_TOOLS = WRITING_TOOLS
 
-# 全部工具（默认）
 AGENT_TOOLS = WRITING_TOOLS

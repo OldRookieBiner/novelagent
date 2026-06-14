@@ -3,6 +3,7 @@
 from langchain_core.tools import tool
 
 from app.agents.tools.utils import _kb
+from app.utils.text import tokenize_chinese
 
 
 @tool
@@ -26,7 +27,7 @@ async def expand_world_setting(aspect: str, description: str) -> dict:
     contradictions = []
     for rule in red_settings:
         rule_text = rule if isinstance(rule, str) else str(rule)
-        for word in description.split():
+        for word in tokenize_chinese(description):
             if len(word) >= 2 and word in rule_text:
                 contradictions.append(rule_text[:80])
 
@@ -36,7 +37,7 @@ async def expand_world_setting(aspect: str, description: str) -> dict:
         impact_level = "severe"
         impact_detail = f"扩展可能与🔴设定冲突：{'; '.join(contradictions[:3])}"
 
-    keywords = [w for w in description.split() if len(w) >= 2][:5]
+    keywords = [w for w in tokenize_chinese(description) if len(w) >= 2][:5]
     affected = kb.search_chapters_for_references(keywords) if keywords else []
 
     if affected and impact_level != "severe":

@@ -1,8 +1,8 @@
 """一致性检查工具
 
 A3 增强：在原有知识库约束返回基础上，新增章节内容交叉分析。
-读取两章实际内容，提取角色名和时间表达，找出交叉数据。
-不调用 LLM，由 Agent 判断矛盾。
+R19 修正：字段名与 Character 模型一致。
+R19b 精确加载：只加载出场角色的约束信息，减少 token 噪音。
 """
 
 from langchain_core.tools import tool
@@ -12,26 +12,42 @@ from app.agents.tools.utils import _kb, _extract_names, _extract_times
 
 @tool
 async def consistency_check(chapter_a: int, chapter_b: int, aspect: str = "all") -> dict:
-    """Check consistency between two chapters or across the whole novel.
+    """检查两章之间的一致性。
 
-    Use when the user suspects a contradiction or wants to verify
-    consistency of character behavior, timeline, or settings.
+    当用户怀疑有矛盾或想验证角色行为、时间线、设定的一致性时使用。
 
     Args:
-        chapter_a: First chapter number to compare
-        chapter_b: Second chapter number to compare
-        aspect: What to check - "character", "timeline", "setting", or "all"
+        chapter_a: 第一个章节号
+        chapter_b: 第二个章节号
+        aspect: 检查方面 - "character"(角色), "timeline"(时间线), "setting"(设定), 或 "all"(全部)
     """
     kb = _kb()
     result = {"chapters_compared": [chapter_a, chapter_b], "issues": []}
 
+    # 读取两章内容以确定出场角色
+    chapter_a_obj = kb.chapters.get_by_number(chapter_a)
+    chapter_b_obj = kb.chapters.get_by_number(chapter_b)
+    content_a = chapter_a_obj.get("content", "") if chapter_a_obj else ""
+    content_b = chapter_b_obj.get("content", "") if chapter_b_obj else ""
+
     if aspect in ("all", "character"):
-        chars = kb.characters.list_characters()
+        # 精确加载：只加载出场角色的约束
+        appearing_names = set()
+        if content_a:
+            appearing_names.update(_extract_names(content_a, kb))
+        if content_b:
+            appearing_names.update(_extract_names(content_b, kb))
+
+        all_chars = kb.characters.list_characters()
         constraints = []
-        for char in chars:
+        for char in all_chars:
+            # 如果有出场角色名，只加载出场角色；否则加载全部
+            if appearing_names and char["name"] not in appearing_names:
+                continue
             constraints.append({
                 "name": char["name"],
                 "deep_fear": char.get("deep_fear") or "",
+                "core_motivation": char.get("core_motivation") or "",
             })
         result["character_constraints"] = constraints
 
@@ -44,21 +60,13 @@ async def consistency_check(chapter_a: int, chapter_b: int, aspect: str = "all")
         if ws:
             result["world_setting_red"] = (ws.get("tiered_settings") or {}).get("red", [])
 
-    # A3 增强：章节内容交叉分析
+    # 章节内容交叉分析
     if aspect in ("all", "character", "timeline"):
-        chapter_a_obj = kb.chapters.get_by_number(chapter_a)
-        chapter_b_obj = kb.chapters.get_by_number(chapter_b)
-
-        if chapter_a_obj and chapter_a_obj.get("content") and chapter_b_obj and chapter_b_obj.get("content"):
-            content_a = chapter_a_obj["content"]
-            content_b = chapter_b_obj["content"]
-
-            # 提取角色名（传入 kb 使用知识库精确匹配）
+        if content_a and content_b:
             names_a = set(_extract_names(content_a, kb))
             names_b = set(_extract_names(content_b, kb))
             common_names = names_a & names_b
 
-            # 提取时间表达
             times_a = set(_extract_times(content_a))
             times_b = set(_extract_times(content_b))
             common_times = times_a & times_b
