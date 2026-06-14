@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 # ========== 懒加载依赖 ==========
 
+import asyncio
 import threading
 
 _sentence_transformers_available = False
@@ -868,7 +869,6 @@ class RetrievalService:
             metadata: 元��据，包含 chapter_number, volume_number 等
         """
         try:
-            from app.agents.services.retrieval import add_chunk_to_index
             # 使用异步方式添加
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
@@ -888,7 +888,6 @@ class RetrievalService:
     def add_document(self, text: str, metadata: dict) -> bool:
         """增量添加文档到索引（同步）"""
         try:
-            from app.agents.services.retrieval import add_chunk_to_index
             add_chunk_to_index(self.project_id, text, metadata)
             return True
         except Exception as e:
@@ -949,7 +948,7 @@ def add_chunk_to_index(project_id: int, text: str, metadata: dict) -> bool:
     try:
         import faiss
         import numpy as np
-        from app.agents.services.retrieval import _get_model, _index_dir
+        # _get_model 和 _index_dir 是本模块函数，直接调用
         
         # 获取模型和维度
         model = _get_model()
