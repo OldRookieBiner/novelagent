@@ -61,6 +61,7 @@ export default function CreateProjectDialog({ open, onOpenChange }: CreateProjec
     characters: false,
     outline: false,
     style: false,
+    errors: {},
   })
   const [currentStage, setCurrentStage] = useState('')
   const [progress, setProgress] = useState(0)
