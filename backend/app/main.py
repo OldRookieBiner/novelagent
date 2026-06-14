@@ -23,6 +23,7 @@ from app.api import (
 from app.api.knowledge_status import router as knowledge_status_router
 from app.api.inspiration import router as inspiration_router
 from app.api.knowledge import router as knowledge_router
+from app.api.volumes import router as volumes_router
 from app.utils.logger import setup_logging, get_logger
 from app.utils.exceptions import (
     APIError,
@@ -143,6 +144,7 @@ app.include_router(
 )
 app.include_router(knowledge_router, prefix="/api", tags=["knowledge"])
 app.include_router(knowledge_status_router, prefix="/api", tags=["knowledge-status"])
+app.include_router(volumes_router, prefix="/api/projects", tags=["volumes"])
 
 
 
