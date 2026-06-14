@@ -64,18 +64,35 @@ NovelAgent v0.8.11 的 Agent 工具体系包含 31 个工具，分布在 4 个�
 - 如果写入失败，整体回滚，`current_phase` 保持不变
 
 ```python
-db = SessionLocal()
-try:
-    ws = db.query(WorkflowState).filter(
-        WorkflowState.project_id == project_id
-    ).with_for_update().first()
-    current_phase = ws.stage if ws else Phase.INCUBATION
-    # ... 判断逻辑 ...
-    if advanced:
-        ws.stage = suggested_phase
+# R20 修正：先通过 KB 读取完整度（独立 session），再获取行锁写入。
+# 行锁持有期间只做读取确认和写入，最小化锁持有时间。
+
+# 1. 无锁读取当前阶段 + KB 完整度判断（省略，同现有逻辑）
+current_phase = ...
+suggested_phase = ...
+
+# 2. 获取行锁写入（仅当需要推进时）
+if advanced:
+    db = SessionLocal()
+    try:
+        ws = db.query(WorkflowState).filter(
+            WorkflowState.project_id == project_id
+        ).with_for_update().first()
+        # 二次确认：获取锁后检查是否被并发推进
+        actual_phase = ws.stage if ws else Phase.INCUBATION
+        if actual_phase != current_phase:
+            return {"advanced": False, "reason": "并发推进检测"}
+        if not ws:
+            ws = WorkflowState(project_id=project_id, stage=suggested_phase)
+            db.add(ws)
+        else:
+            ws.stage = suggested_phase
         db.commit()
-finally:
-    db.close()
+    except Exception as e:
+        db.rollback()
+        return {"error": f"推进阶段失败: {e}"}
+    finally:
+        db.close()
 ```
 
 ### 2.3 合并 `report_progress` / `progress_report`
@@ -140,7 +157,7 @@ def parse_json_param(value: str | list | dict, default, param_name: str = "") ->
     return default, f"参数 {param_name} 类型不支持，使用默认值"
 ```
 
-受影响的 9 个工具、20 个 JSON 参数（全部替换为调用 `parse_json_param`）：
+受影响的 9 个工具、23 个 JSON 参数（全部替换为调用 `parse_json_param`）：
 
 **注意**：`propose_setting_change` 的 `new_value` 参数解析逻辑不同（解析失败时保留原始字符串），不适用 `parse_json_param`，保持原有逻辑。
 - `create_world_setting`：`tiered_settings`, `key_locations`
@@ -151,6 +168,7 @@ def parse_json_param(value: str | list | dict, default, param_name: str = "") ->
 - `create_subplot`：`characters`
 - `generate_chapter_content`：`new_foreshadowings`, `reclaimed_foreshadowing_ids`
 - `generate_chapter_outline`：`key_scenes`
+- `generate_outline`：`plot_points`, `emotional_curve`, `characters`
 
 解析警告汇总到返回结果的 `param_parse_warnings` 字段中。
 
@@ -183,24 +201,24 @@ Store 层已有 `update_character`、`update_plot_block`、`delete_plot_block`�
 @tool
 async def update_character(
     character_id: int,
-    name: str = "",
-    role: str = "",
-    personality: str = "",
-    catchphrase: str = "",
-    habit_action: str = "",
-    deep_fear: str = "",
-    core_motivation: str = "",
-    growth_arc: str = "",
-    appearance: str = "",
-    backstory: str = "",
-    signature_item: str = "",
+    name: str | None = None,
+    role: str | None = None,
+    personality: str | None = None,
+    catchphrase: str | None = None,
+    habit_action: str | None = None,
+    deep_fear: str | None = None,
+    core_motivation: str | None = None,
+    growth_arc: str | None = None,
+    appearance: str | None = None,
+    backstory: str | None = None,
+    signature_item: str | None = None,
 ) -> dict:
-    """更新已有角色的属性。只修改传入的非 None 字段（参数默认值改为 None，空字符串表示清空该字段）。
+    """更新已有角色的属性。None 表示不修改，传入具体值则更新。要清空字段需传入空字符串 ""。
 
     Args:
         character_id: 角色 ID
-        name: 角色名（留空不修改）
-        ... 其余字段留空不修改
+        name: 角色名（None 不修改，"" 清空）
+        ... 其余字段同理
     """
 ```
 
@@ -209,9 +227,9 @@ async def update_character(
 @tool
 async def update_foreshadowing(
     foreshadowing_id: int,
-    level: str = "",
-    status: str = "",
-    content: str = "",
+    level: str | None = None,
+    status: str | None = None,
+    content: str | None = None,
     appearance_count: int | None = None,
     expected_resolve_chapter: int | None = None,
     resolved_chapter: int | None = None,
@@ -220,9 +238,9 @@ async def update_foreshadowing(
 
     Args:
         foreshadowing_id: 伏笔 ID
-        level: 新等级 - "hint"(暗示), "strengthened"(强化), "revealed"(揭示)，留空不修改
-        status: 新状态 - "active", "pending_reclaim", "reclaimed"，留空不修改
-        content: 伏笔内容，留空不修改
+        level: 新等级 - "hint"(暗示), "strengthened"(强化), "revealed"(揭示)，None 不修改
+        status: 新状态 - "active", "pending_reclaim", "reclaimed"，None 不修改
+        content: 伏笔内容，None 不修改
         appearance_count: 出现次数（用于判断升级：>=2 且 hint→strengthened），None 不修改
         expected_resolve_chapter: 预期回收章节号，None 不修改
         resolved_chapter: 实际回收章节号，None 不修改
@@ -302,12 +320,12 @@ async def check_chapter_transition(chapter_number: int) -> dict:
 @tool
 async def record_chapter_meta(
     chapter_number: int,
-    timeline_summary: str = "",
-    causal_chain: str = "",
+    timeline_summary: str | None = None,
+    causal_chain: str | None = None,
     rhythm_score: int = 3,
     tension_score: int = 3,
     emotion_score: int = 3,
-    emotion_tag: str = "",
+    emotion_tag: str | None = None,
     new_foreshadowings: str = "[]",
     reclaimed_foreshadowing_ids: str = "[]",
 ) -> dict:
@@ -894,17 +912,17 @@ Phase 4 (P3, ~7.5d) ─ 依赖 Phase 2 的工具集稳定
 ```python
 async def update_character(
     character_id: int,
-    name: str = "",
-    role: str = "",
-    personality: str = "",
-    catchphrase: str = "",
-    habit_action: str = "",
-    deep_fear: str = "",
-    core_motivation: str = "",
-    growth_arc: str = "",
-    appearance: str = "",
-    backstory: str = "",
-    signature_item: str = "",
+    name: str | None = None,
+    role: str | None = None,
+    personality: str | None = None,
+    catchphrase: str | None = None,
+    habit_action: str | None = None,
+    deep_fear: str | None = None,
+    core_motivation: str | None = None,
+    growth_arc: str | None = None,
+    appearance: str | None = None,
+    backstory: str | None = None,
+    signature_item: str | None = None,
 ) -> dict:
 ```
 （与 spec 原签名一致，确认无误。但 spec 中"其余字段留空不修改"的说明需明确：空字符串 `""` 表示不修改，这需要与字段的自然默认值区分。）
@@ -1000,9 +1018,9 @@ REVISION_TOOL_NAMES = WRITING_TOOL_NAMES
 @tool
 async def update_foreshadowing(
     foreshadowing_id: int,
-    level: str = "",
-    status: str = "",
-    content: str = "",
+    level: str | None = None,
+    status: str | None = None,
+    content: str | None = None,
     appearance_count: int | None = None,
     expected_resolve_chapter: int | None = None,
     resolved_chapter: int | None = None,
@@ -1052,3 +1070,142 @@ async def update_foreshadowing(
 | R15 | P2 | 修正签名 | 3.1 | Task 11 |
 | R16 | P2 | 修正方案 | 3.1 | Task 12 |
 | R17 | P2 | 修正方案 | 5.3 | Task 30 |
+
+---
+
+## 十、第二遍深度审查修正（2026-06-14）
+
+> 本附录记录对 spec 和 plan 的第二遍审查发现。验证第一轮修正的内部一致性，
+> 交叉对比源码，深挖遗漏的技术债。修正原则不变：从根源解决问题，不打补丁。
+
+### R18. `batch_read_for_index` 三次重复调用 `_read_all_with_session`（P0 级缺陷，R12 修正不完整）
+
+**发现位置**：`backend/app/agents/services/knowledge_base.py` `batch_read_for_index`
+**问题**：R12 只说"只调用一次并缓存结果"，但没有指出根本原因——`batch_read_for_index` 方法中对 `self.plots._read_all_with_session(db)` 调用了 **3 次**（分别取 `plot_blocks`、`plot_questions`、`subplots`），每次调用都执行 3 条 SQL 查询，共 **9 次查询**。同理，`self.timelines._read_all_with_session(db)` 也调用了 **2 次**（取 `timeline` 和 `scene_entries`），共 4 次查询。
+**修正方案**：
+- `batch_read_for_index` 应只调用 `self.plots._read_all_with_session(db)` 一次，赋值给 `plots_data`，然后从中提取三个字段
+- 同理，`self.timelines._read_all_with_session(db)` 只调用一次，赋值给 `timelines_data`
+- 修正后查询次数从 9+4=13 降到 3+2=5
+
+### R19. `consistency_check` 仍然引用 Character 模型不存在的字段（P0 级缺陷）
+
+**发现位置**：`backend/app/agents/tools/perception/consistency_check.py`
+**问题**：R6 修正了 `retrieval.py` 中索引构建的字段映射，但 `consistency_check.py` 第 37 行仍有：
+```python
+"knowledge_boundary": char.get("knowledge_boundary") or char.get("deep_fear") or "",
+```
+`char.get("knowledge_boundary")` 永远返回 `None`（Character 模型无此字段），回退到 `deep_fear`。这虽然不会报错，但字段名 `knowledge_boundary` 在返回结果中误导 Agent 认为存在独立的知识边界字段。R6 修正范围不够——只修了 retrieval.py，遗漏了 consistency_check.py。
+**修正方案**：
+- `consistency_check.py` 中的字段名改为 `deep_fear`（与模型一致）
+- 或改为 `inner_constraint` 并注释说明来源是 `deep_fear`
+
+### R20. `advance_phase` 事务合并后 KB 查询仍在事务外（P0 级设计缺陷）
+
+**发现位置**：spec 2.2 节 + plan Task 3
+**问题**：spec 和 plan 的 `advance_phase` 合并方案将读取和写入放在同一 Session + `with_for_update()` 行锁中。但在读取阶段后，代码调用了 `kb.outlines.get()`、`kb.characters.list_characters()` 等方法——这些方法使用 `_kb()` 返回的 KnowledgeBaseService，而 KB 内部每个方法都创建独立的 `SessionLocal()` session。这意味着：
+1. 行锁锁住的是 WorkflowState 行，但 KB 查询的数据不在同一事务中
+2. 在行锁持有期间，KB 查询的数据可能被其他请求修改（虽然概率低）
+3. 行锁持有时间过长（KB 查询 6 次，每次一个 session），可能导致其他请求等待
+
+**根本原因**：`_kb()` 返回的 KnowledgeBaseService 和 `advance_phase` 自己的 `SessionLocal()` 是完全独立的 session，无法形成真正的事务一致性保证。
+
+**修正方案**：
+- 将 `advance_phase` 的判断逻辑改为纯 SQL 查询（不通过 KB facade），在同一个 session 中完成：
+  - 查 WorkflowState（with_for_update）
+  - 查 Outline（判断是否存在）
+  - 查 Character（判断数量 >= 1）
+  - 查 WorldSetting（判断是否存在）
+  - 如果需要推进，更新 WorkflowState 并 commit
+- 或者，将 KB 的完整度判断放在获取行锁之前（先读取状态判断是否可能推进，再获取行锁确认并写入），这样行锁持有时间极短
+- 推荐后者，因为改动更小，且实际并发风险极低（Agent 不会真正并发推进同一项目）
+
+### R21. `_extract_keywords` 中 `description.split()` 对中文无效（P1 级，R7 修正范围不够）
+
+**发现位置**：`backend/app/agents/tools/utils.py` `_extract_keywords` 函数
+**问题**：R7 指出了 `knowledge_search.py`、`expand_world_setting.py`、`propose_outline_adjustment.py` 中使用 `.split()` 的问题，但遗漏了 `utils.py` 中 `_extract_keywords` 函数的同样问题。`_extract_keywords` 被 `propose_setting_change.py` 调用，是变更影响评估的关键函数。`description.split()` 对中文描述几乎无效，导致关键词提取失败，影响评估不准确。
+**修正方案**：
+- 在 R7 修正范围中补入 `utils.py` 的 `_extract_keywords` 函数
+- 将 `description.split()` 替换为 `_tokenize_chinese(description)`
+- 将内部 `val.split()` 也替换为 `_tokenize_chinese(val)`
+
+### R22. `generate_outline` 的 3 个 JSON 参数未列入 spec 2.4 的受影响工具（P1 级遗漏）
+
+**发现位置**：spec 2.4 节
+**问题**：spec 2.4 节列出受影响的 9 个工具文件，其中包括 `generate_outline.py`，但受影响的参数列表中没有列出 `plot_points`、`emotional_curve`、`characters` 这 3 个 JSON 参数。plan Task 2 Step 7 只说"3 个 JSON 参数：`plot_points`, `emotional_curve`, `characters`"，与 spec 参数表不一致。
+**根因**：spec 正文受影响参数列表缺失 `generate_outline` 的参数。
+**修正方案**：在 spec 2.4 节的受影响工具列表中补充 `generate_outline` 的 3 个参数。
+
+### R23. `update_character` 签名中空字符串 `""` 默认值的语义歧义（P1 级，R9 修正不完整）
+
+**发现位置**：spec 3.1 节
+**问题**：R9 指出"参数默认值改为 None"，但 spec 正文 3.1 节的 `update_character` 签名仍显示 `str = ""`。R9 在附录中说了"参数默认值改为 None"，但正文未同步修改。这是第一轮修正的内部不一致。
+**修正方案**：将 spec 3.1 节 `update_character` 签名中的 `str = ""` 全部改为 `str | None = None`，并更新说明："`None` 表示不修改，传入具体值则更新。要清空字段需传入空字符串 `""`。"
+
+### R24. `record_chapter_meta` 防重复逻辑未定义——TimelineStore 无按 chapter_number 查询+更新方法（P1 级设计缺陷）
+
+**发现位置**：spec 3.4 节
+**问题**：spec 说"`record_chapter_meta` 检查该章节是否已有时间线条目，有则更新而非重复创建"。但 TimelineStore 当前只有 `create_timeline_entry`（创建）和 `list_timeline`（列表），没有 `get_by_chapter_number`（按章节号查询）或 `update_timeline_entry`（更新）方法。这意味着 `record_chapter_meta` 的防重复逻辑无法实现。
+**修正方案**：
+- 在 TimelineStore 中新增 `get_by_chapter_number(chapter_number: int) -> dict | None` 方法
+- 在 TimelineStore 中新增 `update_timeline_entry(entry_id: int, data: dict) -> dict` 方法
+- 或复用已有的 `_create_with_session`（需先查再决定创建/更新）
+- plan Task 15 需补充修改 TimelineStore 的步骤
+
+### R25. `retrieval.py` 的 `_keyword_fallback` 也引用了 Character 模型不存在的字段（P1 级，R6 修正范围不够）
+
+**发现位置**：`backend/app/agents/services/retrieval.py` `_keyword_fallback` 函数
+**问题**：R6 修正了 `_collect_documents_from_db` 和 `_collect_global_documents_from_db` 中的字段映射，但 `_keyword_fallback` 函数中仍有 `char.get('knowledge_boundary', '')` 和 `char.get('speech_style', '')`（第 488-490 行），同样永远返回空字符串。
+**修正方案**：
+- 将 `_keyword_fallback` 中的 `knowledge_boundary` → `deep_fear`
+- 将 `speech_style` → `catchphrase`
+- 与 R6 修正保持一致
+
+### R26. `generate_story_seed` 工具未在 spec/plan 中提及任何修改（P2 级遗漏）
+
+**发现位置**：spec + plan
+**问题**：`generate_story_seed` 存在于 `tools/creation/` 目录，注册在 INCUBATION_TOOLS 中，但 spec 和 plan 中未提及它的任何修改（docstring 中文化、JSON 参数替换等都没有）。虽然它没有 JSON 字符串参数需要替换，但它也需要 docstring 中文化（P2 4.1 节说"全部 31 个工具"）。
+**修正方案**：确认 `generate_story_seed` 在 Task 26（docstring 中文化）的覆盖范围内，无需额外处理。
+
+### R27. `_tokenize_chinese` 的归属问题——retrieval.py 和 tools/utils.py 各有一份（P2 级设计问题）
+
+**发现位置**：spec 4.2 节 + R7 修正
+**问题**：`retrieval.py` 中已有 `_tokenize_chinese` 实现（jieba/bigram），spec 4.2 节说"关键词匹配使用 `_tokenize_chinese` 替代空格分词"，plan Task 1 在 `tools/utils.py` 新增该函数。但两个文件各有一份实现，违反 DRY 原则。如果未来修改分词逻辑（如加入自定义词典），需要同时改两处。
+**修正方案**：
+- 将 `_tokenize_chinese` 统一放在 `tools/utils.py`（工具层公共函数）
+- `retrieval.py` 从 `tools/utils.py` 导入
+- 或者统一放在更底层的公共模块（如 `app/utils/text.py`），两处都从那里导入
+- 推荐放在 `tools/utils.py`，因为 retrieval.py 对 tools 层有反向依赖风险，放 `app/utils/text.py` 更干净
+- 但需注意 `retrieval.py` 是服务层，不应依赖工具层。因此最终推荐放在 `app/utils/text.py`
+
+### R28. Plan Task 2 "修改文件"列表仍写"13 个含 JSON 参数的工具"（P1 级，R8 修正不完整）
+
+**发现位置**：plan Task 2 的文件列表
+**问题**：plan "修改文件（约 20 个）"表格中仍有"13 个含 JSON 参数的工具"行，与 R8 修正的"9 个工具"不一致。同时 Task 2 的 Steps 列了 10 个文件（含 `propose_setting_change.py`），但 Step 10 说"不替换"——那它不应出现在修改文件列表中。
+**修正方案**：将"13 个含 JSON 参数的工具"改为"9 个含 JSON 参数的工具"，从文件列表中移除 `propose_setting_change.py`。
+
+### R29. `expand_world_setting` 中 `description.split()` 匹配红色设定的逻辑会误报（P2 级）
+
+**发现位置**：`backend/app/agents/tools/assist/expand_world_setting.py`
+**问题**：R7 提到了 `expand_world_setting.py` 使用 `description.split()` 的问题，但未深入分析匹配逻辑。当前代码 `for word in description.split()` 对中文几乎无效（整个描述变成一个词或按标点断开），导致 `contradictions` 几乎永远为空列表，红色设定冲突检测形同虚设。
+**修正方案**：
+- 替换为 `_tokenize_chinese(description)`
+- 同时将 `word in rule_text` 改为更精确的子串匹配或关键词包含检查
+
+---
+
+### 第二遍审查修正汇总
+
+| 编号 | 级别 | 修正类型 | 影响 spec 章节 | 影响 plan Task |
+|------|------|----------|---------------|----------------|
+| R18 | P0 | 补充修正 | 无（现有缺陷） | Task 33b |
+| R19 | P0 | 扩大修正范围 | 无（现有缺陷） | 新增 Task 0c |
+| R20 | P0 | 修正设计 | 2.2 | Task 3 |
+| R21 | P1 | 扩大修正范围 | 4.2 | Task 18 |
+| R22 | P1 | 补充遗漏 | 2.4 | Task 2 |
+| R23 | P1 | 正文同步 | 3.1 | Task 7-12 |
+| R24 | P1 | 补充设计 | 3.4 | Task 15 |
+| R25 | P1 | 扩大修正范围 | 无（现有缺陷） | Task 0b |
+| R26 | P2 | 确认覆盖 | 无 | Task 26 |
+| R27 | P2 | 归属设计 | 4.2 | Task 1 |
+| R28 | P1 | 正文同步 | 无 | Task 2 |
+| R29 | P2 | 扩大修正范围 | 4.2 | Task 18 |
