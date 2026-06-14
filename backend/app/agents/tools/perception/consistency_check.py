@@ -31,7 +31,7 @@ async def consistency_check(chapter_a: int, chapter_b: int, aspect: str = "all")
         for char in chars:
             constraints.append({
                 "name": char["name"],
-                "knowledge_boundary": char.get("knowledge_boundary") or char.get("deep_fear") or "",
+                "deep_fear": char.get("deep_fear") or "",
             })
         result["character_constraints"] = constraints
 
