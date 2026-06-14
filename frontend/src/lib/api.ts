@@ -811,3 +811,27 @@ export const knowledgeStatusApi = {
     return request(`/api/${projectId}/knowledge-status${query}`)
   },
 }
+
+// ==================== Unified Error Handler ====================
+
+/**
+ * 统一业务错误处理：对非 401 错误弹出 toast
+ * 用于 try/catch 中替代静默 catch
+ */
+export function handleApiError(err: unknown, context?: string): void
+{
+  if (err instanceof Error)
+  {
+    // 401 已在 request() 中处理，此处不重复
+    if (err.message.includes('HTTP 401')) return
+    console.error(`[${context || 'API'}]`, err.message)
+    // 使用动态导入避免循环依赖
+    import('sonner').then(({ toast }) => {
+      toast.error(context ? `${context}：${err.message}` : err.message)
+    })
+  }
+  else
+  {
+    console.error(`[${context || 'API'}]`, err)
+  }
+}

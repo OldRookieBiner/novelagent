@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { BookOpen, Globe, Palette, Users, Sparkles, FileText } from 'lucide-react'
-import { knowledgeApi } from '@/lib/api'
+import { knowledgeApi, handleApiError } from '@/lib/api'
 import { characterApi, relationApi } from '@/lib/characterApi'
 import type { Character, RelationWithCharacters } from '@/types/character'
 import { cn } from '@/lib/utils'
@@ -61,7 +61,7 @@ export function KnowledgeTab({ projectId }: KnowledgeTabProps) {
       if (chars.status === 'fulfilled') setCharacters(chars.value?.characters || [])
       if (rels.status === 'fulfilled') setRelations(rels.value?.relations || [])
     } catch (err) {
-      console.error('Failed to load knowledge:', err)
+      handleApiError(err, '加载知识库')
     } finally {
       setLoading(false)
     }
