@@ -29,6 +29,7 @@ interface StageState
   characters: boolean
   outline: boolean
   style: boolean
+  errors: Record<string, string>
 }
 
 // 展平后的模型选项
@@ -149,6 +150,7 @@ export default function CreateProjectDialog({ open, onOpenChange }: CreateProjec
       characters: false,
       outline: false,
       style: false,
+      errors: {},
     })
 
     try
@@ -209,6 +211,25 @@ export default function CreateProjectDialog({ open, onOpenChange }: CreateProjec
               setCurrentStage(stageNames.style)
               setProgress(95)
             }
+            else if (type === 'init:error')
+            {
+              const stageName = data.stage as string
+              const errorMsg = data.error as string
+              const stageKeyMap: Record<string, string | null> = {
+                story_seed: 'seed',
+                novel_name: 'name',
+                world_setting: 'world',
+                characters: 'characters',
+                outline: 'outline',
+                style: 'style',
+                llm_init: null,
+              }
+              const key = stageKeyMap[stageName]
+              if (key)
+              {
+                setStage(s => ({ ...s, [key]: true, errors: { ...s.errors, [key]: errorMsg } }))
+              }
+            }
             else if (type === 'init:cancelled')
             {
               setError('创建已取消')
@@ -219,11 +240,11 @@ export default function CreateProjectDialog({ open, onOpenChange }: CreateProjec
             }
             else if (type === 'init:done')
             {
+              if (data.status === 'partial')
+              {
+                setError('部分步骤失败，项目已创建但可能不完整')
+              }
               setProgress(100)
-            }
-            else if (type === 'init:error')
-            {
-              console.error('Init error:', data)
             }
           },
         },
@@ -296,6 +317,7 @@ export default function CreateProjectDialog({ open, onOpenChange }: CreateProjec
         characters: false,
         outline: false,
         style: false,
+      errors: {},
       })
       setProgress(0)
     }
@@ -409,21 +431,32 @@ export default function CreateProjectDialog({ open, onOpenChange }: CreateProjec
             </div>
 
             <div className="bg-gray-50 rounded-lg p-3 space-y-1">
-              {stages.map((s) => (
-                <div 
-                  key={s.key}
-                  className={`flex items-center text-sm ${
-                    s.done ? 'text-gray-500' : 
-                    stage[s.key as keyof StageState] ? 'text-indigo-600 font-medium' : 
-                    'text-gray-300'
-                  }`}
-                >
-                  <span className="w-5 h-5 rounded-full border-2 border-current flex items-center justify-center mr-2 text-xs">
-                    {s.done ? '✓' : stage[s.key as keyof StageState] ? '●' : '○'}
-                  </span>
-                  {s.label}
-                </div>
-              ))}
+              {stages.map((s) => {
+                const hasError = stage.errors[s.key]
+                return (
+                  <div
+                    key={s.key}
+                    className={`flex items-center text-sm ${
+                      hasError ? 'text-red-500' :
+                      s.done ? 'text-gray-500' :
+                      (stage as any)[s.key] ? 'text-indigo-600 font-medium' :
+                      'text-gray-300'
+                    }`}
+                  >
+                    <span className={`w-5 h-5 rounded-full border-2 border-current flex items-center justify-center mr-2 text-xs ${
+                      hasError ? 'bg-red-50' : ''
+                    }`}>
+                      {hasError ? '✗' : s.done ? '✓' : (stage as any)[s.key] ? '●' : '○'}
+                    </span>
+                    <span className="flex-1">{s.label}</span>
+                    {hasError && (
+                      <span className="text-[10px] text-red-400 truncate max-w-[120px]" title={hasError}>
+                        失败
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
             </div>
 
             {error && (
