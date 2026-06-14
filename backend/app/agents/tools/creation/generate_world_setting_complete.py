@@ -2,7 +2,7 @@
 
 from langchain_core.tools import tool
 
-from app.agents.tools.utils import _kb
+from app.agents.tools.utils import _kb, parse_json_param
 
 
 @tool
@@ -16,42 +16,28 @@ async def generate_world_setting_complete(
     social_structure: str = "",
     magic_system: str = "",
 ) -> dict:
-    """Generate and save a complete world setting with tiered rules.
+    """生成并保存完整的世界观设定，含分级规则。
 
-    Creates the full world setting in one call, including tiered rules,
-    key locations, and optional lore sections.
+    当用户需要一次性创建完整世界观时使用。包括红色（不可违反）、黄色（重要参考）、绿色（可灵活调整）三级规则。
 
     Args:
-        core_concept: Core concept of the world
-        red_rules: JSON string list of unbreakable rules
-        yellow_rules: JSON string list of breakable-with-cost rules
-        green_rules: JSON string list of decorative rules
-        key_locations: JSON string list of key locations with descriptions
-        history: World history / backstory (optional)
-        social_structure: Social/political structure description (optional)
-        magic_system: Magic/power system description (optional)
+            core_concept: 世界观核心概念
+            red_rules: JSON 字符串列表，不可违反的规则
+            yellow_rules: JSON 字符串列表，可违反但有代价的规则
+            green_rules: JSON 字符串列表，装饰性规则
+            key_locations: JSON 字符串列表，关键地点及描述
+            history: 世界历史/背景故事（可选）
+            social_structure: 社会/政治结构描述（可选）
+            magic_system: 魔法/力量体系描述（可选）
     """
-    import json as _json
 
-    try:
-        red = _json.loads(red_rules) if isinstance(red_rules, str) else red_rules
-    except _json.JSONDecodeError:
-        red = []
+    red, red_warn = parse_json_param(red_rules, [], "red_rules")
 
-    try:
-        yellow = _json.loads(yellow_rules) if isinstance(yellow_rules, str) else yellow_rules
-    except _json.JSONDecodeError:
-        yellow = []
+    yellow, yellow_warn = parse_json_param(yellow_rules, [], "yellow_rules")
 
-    try:
-        green = _json.loads(green_rules) if isinstance(green_rules, str) else green_rules
-    except _json.JSONDecodeError:
-        green = []
+    green, green_warn = parse_json_param(green_rules, [], "green_rules")
 
-    try:
-        locations = _json.loads(key_locations) if isinstance(key_locations, str) else key_locations
-    except _json.JSONDecodeError:
-        locations = []
+    locations, locations_warn = parse_json_param(key_locations, [], "key_locations")
 
     kb = _kb()
 

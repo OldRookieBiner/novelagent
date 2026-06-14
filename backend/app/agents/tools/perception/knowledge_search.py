@@ -2,7 +2,8 @@
 
 支持 FAISS + BM25 混合检索，索引不存在时降级为关键词匹配。
 A4 增强：DB fallback 路径新增子情节、关系、风格快照搜索。
-Store 返回 dict，无需 _serialize。
+R7/R21 修正：降级路径使用 tokenize_chinese 替代 .split()，
+每种子类型最多返回 5 条，大数据集返回 truncated 标记。
 """
 
 from langchain_core.tools import tool
@@ -11,19 +12,22 @@ from app.agents.tool_context import get_project_id
 from app.agents.services.retrieval import RetrievalService
 from app.agents.tools.utils import _kb
 
+# 降级截断：每种子类型最多返回的条目数
+_FALLBACK_MAX_PER_TYPE = 5
+
 
 @tool
 async def knowledge_search(query: str, target: str = "all") -> dict:
-    """Search the knowledge base for specific information.
+    """搜索知识库中的特定信息。
 
-    Use when the user asks about any aspect of the novel's settings,
-    characters, plot, or style. Uses semantic retrieval when available,
-    falls back to structured DB queries.
+    当用户询问小说的设定、角色、情节、风格等任何方面时使用。
+    优先使用语义检索，不可用时降级为关键词匹配。
 
     Args:
-        query: Natural language search query (e.g., "主角的魔法限制", "世界观核心规则")
-        target: Which part to search - "world_setting", "characters",
-                "foreshadowing", "timeline", "plot", "style", or "all"
+        query: 自然语言搜索查询（如"主角的魔法限制"、"世界观核心规则"）
+        target: 搜索范围 - "world_setting"(世界观), "characters"(角色),
+                "foreshadowing"(伏笔), "timeline"(时间线), "plot"(情节),
+                "style"(风格), 或 "all"(全部)
     """
     project_id = get_project_id()
     if project_id is None:
@@ -39,51 +43,79 @@ async def knowledge_search(query: str, target: str = "all") -> dict:
     # 降级为结构化 DB 查询
     kb = _kb()
     results = {}
+    truncated = False
 
     if target in ("all", "world_setting"):
         ws = kb.world_setting.get()
         if ws:
             results["world_setting"] = ws
 
-    # 角色 + 关系（复用查询结果）
-    chars_for_map = {}
     if target in ("all", "characters"):
         chars = kb.characters.list_characters()
-        results["characters"] = chars
-        chars_for_map = {c["id"]: c["name"] for c in chars}
+        if len(chars) > _FALLBACK_MAX_PER_TYPE:
+            results["characters"] = chars[:_FALLBACK_MAX_PER_TYPE]
+            results["characters_total"] = len(chars)
+            truncated = True
+        else:
+            results["characters"] = chars
 
     if target in ("all", "foreshadowing"):
         foreshadowings = kb.foreshadowings.list_foreshadowings()
-        results["foreshadowings"] = foreshadowings
+        if len(foreshadowings) > _FALLBACK_MAX_PER_TYPE:
+            results["foreshadowings"] = foreshadowings[:_FALLBACK_MAX_PER_TYPE]
+            results["foreshadowings_total"] = len(foreshadowings)
+            truncated = True
+        else:
+            results["foreshadowings"] = foreshadowings
 
     if target in ("all", "timeline"):
         timeline = kb.timelines.list_timeline()
-        results["timeline"] = timeline
+        if len(timeline) > _FALLBACK_MAX_PER_TYPE:
+            results["timeline"] = timeline[:_FALLBACK_MAX_PER_TYPE]
+            results["timeline_total"] = len(timeline)
+            truncated = True
+        else:
+            results["timeline"] = timeline
 
-    # 情节块 + 子情节
-    subplots = []
     if target in ("all", "plot"):
         blocks = kb.plots.list_plot_blocks()
         questions = kb.plots.list_plot_questions()
         subplots = kb.plots.list_subplots()
-        results["plot_blocks"] = blocks
-        results["plot_questions"] = questions
-        results["subplots"] = subplots
+        if len(blocks) > _FALLBACK_MAX_PER_TYPE:
+            results["plot_blocks"] = blocks[:_FALLBACK_MAX_PER_TYPE]
+            results["plot_blocks_total"] = len(blocks)
+            truncated = True
+        else:
+            results["plot_blocks"] = blocks
+        if len(questions) > _FALLBACK_MAX_PER_TYPE:
+            results["plot_questions"] = questions[:_FALLBACK_MAX_PER_TYPE]
+            truncated = True
+        else:
+            results["plot_questions"] = questions
+        if len(subplots) > _FALLBACK_MAX_PER_TYPE:
+            results["subplots"] = subplots[:_FALLBACK_MAX_PER_TYPE]
+            truncated = True
+        else:
+            results["subplots"] = subplots
 
-    # 风格 + 快照
-    snapshots = []
     if target in ("all", "style"):
         style = kb.styles.get_constraints()
         snapshots = kb.styles.list_snapshots(last_n=5)
         results["style_constraints"] = style if style else {}
         results["recent_style_snapshots"] = snapshots
 
-    # A4 增强：关键词匹配补充
-    query_lower = query.lower()
-    query_words = [w for w in query_lower.split() if len(w) >= 2]
+    # 关键词匹配补充（使用 tokenize_chinese 替代 .split()）
+    from app.utils.text import tokenize_chinese
+    query_words = [w for w in tokenize_chinese(query.lower()) if len(w) >= 2]
+
+    # 为大数据集建议精确 target
+    if target == "all" and truncated:
+        results["suggestion"] = "数据量较大，建议使用精确的 target 参数（如 'characters'、'plot'）获取更精准的结果"
+
+    chars_for_map = {c["id"]: c["name"] for c in results.get("characters", [])}
 
     if query_words:
-        # 子情节搜索
+        subplots = results.get("subplots", [])
         if target in ("all", "plot") and subplots:
             for s in subplots:
                 subplot_text = f"{s.get('name', '')} {s.get('current_status') or ''}"
@@ -94,10 +126,9 @@ async def knowledge_search(query: str, target: str = "all") -> dict:
                         "current_status": s.get("current_status"),
                     })
 
-        # 关系搜索
         if target in ("all", "characters") and chars_for_map:
             relations = kb.characters.list_relations()
-            for r in relations:
+            for r in relations[:_FALLBACK_MAX_PER_TYPE]:
                 rel_text = f"{chars_for_map.get(r.get('character_a_id'), '')} {chars_for_map.get(r.get('character_b_id'), '')} {r.get('relation_type') or ''} {r.get('current_status') or ''}"
                 if any(kw in rel_text for kw in query_words):
                     results.setdefault("relation_matches", []).append({
@@ -108,13 +139,9 @@ async def knowledge_search(query: str, target: str = "all") -> dict:
                         "current_status": r.get("current_status"),
                     })
 
-        # 风格快照搜索
-        if target in ("all", "style") and not snapshots:
-            snapshots = kb.styles.list_snapshots(last_n=10)
-            if snapshots:
-                results["style_snapshots"] = snapshots
-
     filtered = {k: v for k, v in results.items() if v}
+    if truncated:
+        filtered["truncated"] = True
     if not filtered:
         return {"found": False, "message": f"未找到与「{query}」相关的知识库内容"}
     return {"found": True, "results": filtered}

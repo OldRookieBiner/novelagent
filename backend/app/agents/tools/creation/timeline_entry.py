@@ -15,20 +15,18 @@ async def create_timeline_entry(
     emotion_score: int = 3,
     emotion_tag: str = "",
 ) -> dict:
-    """Create a timeline entry for a chapter.
+    """为章节创建时间线条目。
 
-    Use when the user wants to manually add a timeline summary entry
-    for a specific chapter. Timeline entries help the Agent track
-    story progression across chapters.
+    当用户需要记录章节的关键时间线事件时使用。时间线帮助追踪情节的因果链和节奏。
 
     Args:
-        chapter_number: Chapter number this entry refers to
-        summary: One-sentence summary of key events in this chapter
-        causal_chain: Causal chain description (what led to what)
-        rhythm_score: Rhythm score 1-5 (1=slow, 5=frantic)
-        tension_score: Tension score 1-5 (1=relaxed, 5=peak)
-        emotion_score: Emotion score 1-5
-        emotion_tag: Emotion tag - one of: 紧张, 舒缓, 悲伤, 温暖, 转折, 日常
+            chapter_number: 时间线条目对应的章节号
+            summary: 本章关键事件的一句话摘要
+            causal_chain: 因果链描述（什么导致了什么）
+            rhythm_score: 节奏评分 1-5（1=缓慢，5=急促）
+            tension_score: 张力评分 1-5（1=轻松，5=高潮）
+            emotion_score: 情感评分 1-5
+            emotion_tag: Emotion tag - one of: 紧张, 舒缓, 悲伤, 温暖, 转折, 日常
     """
     kb = _kb()
 

@@ -2,7 +2,7 @@
 
 from langchain_core.tools import tool
 
-from app.agents.tools.utils import _kb
+from app.agents.tools.utils import _kb, parse_json_param
 
 
 @tool
@@ -14,26 +14,19 @@ async def create_subplot(
     planned_intersection_chapter: int | None = None,
     expected_resolution_chapter: int | None = None,
 ) -> dict:
-    """Create a new subplot (支线) in the novel.
+    """在小说中创建新的支线。
 
-    Use when the user wants to add a subplot or secondary storyline.
-    This directly writes to the knowledge base.
+    当用户需要添加独立于主线的支线故事时使用。支线有自己的状态和进展追踪。
 
     Args:
-        name: Subplot name (e.g., "皇室阴谋线", "师徒恩怨线")
-        characters: JSON string list of character names involved
-        current_status: Current subplot status - one of: hint (暗示), developing (发展中), pending_intersection (待交汇), resolved (已解决)
-        raised_in_chapter: Chapter number where this subplot is first introduced
-        planned_intersection_chapter: Chapter number where this subplot intersects with the main plot
-        expected_resolution_chapter: Chapter number where this subplot resolves
+        name: 支线名称
+        description: 支线描述
+        characters: JSON 字符串列表，参与角色名
+        plot_block_id: 关联的情节块 ID
     """
-    import json as _json
     kb = _kb()
 
-    try:
-        chars = _json.loads(characters) if isinstance(characters, str) else characters
-    except _json.JSONDecodeError:
-        chars = []
+    chars, chars_warn = parse_json_param(characters, [], "characters")
 
     data = {"name": name, "characters": chars, "current_status": current_status}
     if raised_in_chapter is not None:

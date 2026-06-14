@@ -11,13 +11,13 @@ from app.agents.tools.utils import _kb, _mood_to_tension
 
 @tool
 async def rhythm_analysis(last_n_chapters: int = 10) -> dict:
-    """Analyze story rhythm — tension, emotion, pacing trends.
+    """分析故事节奏——张力、情绪、步调趋势。
 
-    Use when the user asks about pacing, whether recent chapters
-    feel flat, or whether the rhythm curve is monotone.
+    当用户询问节奏是否单调、最近章节是否平淡、或节奏曲线是否单调时使用。
+    返回节奏曲线、单调段检测、高潮/低谷分布，并提供可操作性建议。
 
     Args:
-        last_n_chapters: Number of recent chapters to analyze (default 10)
+        last_n_chapters: 分析最近多少章的节奏（默认 10）
     """
     kb = _kb()
     timeline = kb.timelines.list_timeline()
@@ -100,6 +100,23 @@ async def rhythm_analysis(last_n_chapters: int = 10) -> dict:
         "valleys": valleys,
         "block_deviation_warnings": block_warnings,
     }
+
+    # 生成可操作性建议
+    suggested_adjustments = []
+    for section in monotone_sections:
+        suggested_adjustments.append({
+            "type": "单调段打破",
+            "chapters": f"{section.get('start_chapter', '?')}-{section.get('end_chapter', '?')}",
+            "suggestion": f"建议在第{section.get('end_chapter', '?')}章后加入冲突或转折事件打破连续「{section.get('emotion', '相同')}」节奏",
+        })
+    for bw in block_warnings:
+        suggested_adjustments.append({
+            "type": "节奏偏差",
+            "chapter": bw.get("chapter"),
+            "suggestion": f"情节块「{bw.get('block_title', '')}」预期「{bw.get('expected_mood', '')}」但实际张力{bw.get('actual_tension')}分，建议{'增加紧迫感事件' if bw.get('actual_tension', 3) < bw.get('expected_tension', 3) else '适当放缓节奏'}",
+        })
+    if suggested_adjustments:
+        result["suggested_adjustments"] = suggested_adjustments
 
     if monotone_sections:
         result["warning"] = f"检测到 {len(monotone_sections)} 段节奏单调区域，建议调整情绪节奏"

@@ -80,7 +80,7 @@ async def generate_story_seed(concept: str, llm, request=None) -> str:
     """根据概念生成故事种子"""
     prompt = STORY_SEED_PROMPT.format(conversation_summary=concept)
     response = ""
-    async for chunk in llm.chat_stream([{"role": "user", "content": prompt}], temperature=0.7):
+    async for chunk in llm.chat_stream([{"role": "user", "content": prompt}], temperature=0.7, max_tokens=8192):
         response += chunk
         await check_disconnect(request)
     return response.strip()
@@ -100,7 +100,7 @@ async def generate_world_setting(story_seed: str, kb: KnowledgeBaseService, llm,
     """根据故事种子生成世界观，返回 (id, 文本内容)"""
     prompt = safe_format(WORLD_SETTING_PROMPT, outline=story_seed)
     response = ""
-    async for chunk in llm.chat_stream([{"role": "user", "content": prompt}], temperature=0.7):
+    async for chunk in llm.chat_stream([{"role": "user", "content": prompt}], temperature=0.7, max_tokens=16384):
         response += chunk
         await check_disconnect(request)
 
@@ -124,7 +124,7 @@ async def generate_characters(story_seed: str, world_setting_text: str, kb: Know
         world_setting=world_setting_text,
     )
     response = ""
-    async for chunk in llm.chat_stream([{"role": "user", "content": prompt}], temperature=0.7):
+    async for chunk in llm.chat_stream([{"role": "user", "content": prompt}], temperature=0.7, max_tokens=16384):
         response += chunk
         await check_disconnect(request)
 
@@ -439,7 +439,7 @@ async def generate_outline(story_seed: str, kb: KnowledgeBaseService, llm, targe
         chapter_count=str(chapter_count),
     )
     response = ""
-    async for chunk in llm.chat_stream([{"role": "user", "content": prompt}], temperature=0.7, max_tokens=8192):
+    async for chunk in llm.chat_stream([{"role": "user", "content": prompt}], temperature=0.7, max_tokens=16384):
         response += chunk
         await check_disconnect(request)
 
@@ -467,7 +467,7 @@ async def generate_style(story_seed: str, outline_text: str, kb: KnowledgeBaseSe
         user_preference="",
     )
     response = ""
-    async for chunk in llm.chat_stream([{"role": "user", "content": prompt}], temperature=0.5):
+    async for chunk in llm.chat_stream([{"role": "user", "content": prompt}], temperature=0.5, max_tokens=8192):
         response += chunk
         await check_disconnect(request)
 

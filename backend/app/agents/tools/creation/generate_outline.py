@@ -14,38 +14,25 @@ async def generate_outline(
     characters: str = "[]",
     world_setting_summary: str = "",
 ) -> dict:
-    """Generate and save the complete novel outline.
+    """生成并保存完整的小说大纲。
 
-    Use this when the user asks to create or update the novel outline.
-    This directly writes a full outline to the knowledge base — no approval needed.
+    当用户需要从创意概念生成整体故事大纲时使用。包括章节规划、情节走向和情感曲线。
 
     Args:
-        title: Novel title (e.g., "星辰陨落之时")
-        summary: 500-800 word story overview, must include surface conflict, deep conflict, and theme
-        chapter_count: Total planned chapter count
-        plot_points: JSON string list of plot points. Each should include:
-                     [chapter_range, event, conflict, hook, foreshadowing_id]
-        emotional_curve: JSON string list of emotional arc per plot block
-        characters: JSON string list of character names in the novel
-        world_setting_summary: Brief summary of the world setting (optional)
+        title: 小说标题
+        summary: 故事摘要
+        chapter_count: 预计章节数
+        plot_points: JSON 字符串列表，关键情节节点
+        emotional_curve: JSON 字符串列表，情感曲线
+        characters: JSON 字符串列表，主要角色概要
     """
-    import json as _json
-    from app.agents.tools.utils import _kb
+    from app.agents.tools.utils import _kb, parse_json_param
 
-    try:
-        points = _json.loads(plot_points) if isinstance(plot_points, str) else plot_points
-    except _json.JSONDecodeError:
-        points = []
+    points, points_warn = parse_json_param(plot_points, [], "plot_points")
 
-    try:
-        curve = _json.loads(emotional_curve) if isinstance(emotional_curve, str) else emotional_curve
-    except _json.JSONDecodeError:
-        curve = []
+    curve, curve_warn = parse_json_param(emotional_curve, [], "emotional_curve")
 
-    try:
-        char_list = _json.loads(characters) if isinstance(characters, str) else characters
-    except _json.JSONDecodeError:
-        char_list = []
+    char_list, char_list_warn = parse_json_param(characters, [], "characters")
 
     kb = _kb()
     try:

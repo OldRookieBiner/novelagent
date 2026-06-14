@@ -41,11 +41,18 @@ def build_agent_context(
     current_chapter_number: int | None = None,
     max_tokens: int = 12000,
 ) -> dict:
-    """Build phase-aware project context for the agent system prompt.
+    """构建阶段感知的项目上下文。
 
-    Uses KnowledgeBaseService facade (Store 返回 dict)。
-    Returns a dict with context sections to be formatted by the caller.
+    通过 KnowledgeBaseService facade 读取数据，返回上下文字典供调用方格式化。
+    当 max_tokens <= 5000 时自动切换为轻量模式（只加载核心索引），
+    详细信息由 Agent 通过 knowledge_search 按需获取。
     """
+    # 小 token 预算自动切换为轻量模式
+    if max_tokens <= 5000:
+        return build_lightweight_context(
+            project_id, phase, current_chapter_number, max_tokens
+        )
+
     kb = KnowledgeBaseService(project_id)
     budget = BudgetTracker(max_tokens)
     context: dict = {}
@@ -273,3 +280,83 @@ def _load_revision_context(kb: KnowledgeBaseService, budget: BudgetTracker, cont
         context["style_constraints"] = style
     snapshots = kb.styles.list_snapshots()
     context["style_snapshots"] = snapshots
+
+
+def build_lightweight_context(
+    project_id: int,
+    phase: str = "incubation",
+    current_chapter_number: int | None = None,
+    max_tokens: int = 4000,
+) -> dict:
+    """构建轻量级上下文 — 只包含核心索引，详细信息由 Agent 通过 knowledge_search 按需获取。
+
+    预期从 ~12K token 降到 ~3-4K token。
+    """
+    kb = KnowledgeBaseService(project_id)
+    budget = BudgetTracker(max_tokens)
+    context: dict = {}
+
+    # 核心索引：大纲标题 + 总章数
+    outline = kb.outlines.get()
+    if outline:
+        outline_index = {
+            "title": outline.get("title") or "未命名",
+            "chapter_count": outline.get("chapter_count_confirmed") or outline.get("chapter_count_suggested") or 0,
+            "summary": (outline.get("summary") or "")[:100],
+        }
+        context["outline_index"] = outline_index
+        budget.add(estimate_tokens(json.dumps(outline_index, ensure_ascii=False)))
+
+    # 角色名+ID 列表（不包含完整 backstory）
+    chars = kb.characters.list_characters()
+    char_index = [{"id": c["id"], "name": c["name"], "role": c.get("role", "")} for c in chars]
+    context["character_index"] = char_index
+    budget.add(estimate_tokens(json.dumps(char_index, ensure_ascii=False)))
+
+    # 当前阶段 + 当前章节号
+    context["phase"] = phase
+    if current_chapter_number:
+        context["current_chapter_number"] = current_chapter_number
+
+    # 关键红色设定（最多 3 条）
+    ws = kb.world_setting.get()
+    if ws:
+        red = (ws.get("tiered_settings") or {}).get("red", [])
+        if red:
+            context["critical_rules"] = red[:3]
+            budget.add(estimate_tokens(json.dumps(red[:3], ensure_ascii=False)))
+
+    # 写作阶段：预取当前章节大纲 + 上一章结尾
+    if phase in (Phase.WRITING.value, Phase.REVISION.value) and current_chapter_number:
+        try:
+            co = kb.outlines.get_chapter_outline(current_chapter_number)
+            if co:
+                co_data = {
+                    "chapter_number": co.get("chapter_number"),
+                    "title": co.get("title") or "",
+                    "scene": co.get("scene") or "",
+                    "characters": co.get("characters") or "",
+                    "emotional_arc": co.get("emotional_arc") or "",
+                    "key_scenes": co.get("key_scenes") or [],
+                    "target_words": co.get("target_words"),
+                }
+                co_json = json.dumps(co_data, ensure_ascii=False)
+                if budget.can_add(estimate_tokens(co_json)):
+                    context["current_chapter_outline"] = co_data
+                    budget.add(estimate_tokens(co_json))
+        except Exception:
+            pass
+
+        if current_chapter_number > 1:
+            prev = kb.chapters.get_by_number(current_chapter_number - 1)
+            if prev and prev.get("content"):
+                closing = prev["content"][-300:]
+                closing_json = json.dumps({"closing_scene": closing.strip()}, ensure_ascii=False)
+                if budget.can_add(estimate_tokens(closing_json)):
+                    context["previous_chapter_closing"] = closing.strip()
+                    budget.add(estimate_tokens(closing_json))
+
+    context["_budget_used"] = budget.used
+    context["_budget_max"] = budget.max
+    context["_mode"] = "lightweight"
+    return context

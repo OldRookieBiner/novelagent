@@ -7,13 +7,12 @@ from app.agents.tools.utils import _kb
 
 @tool
 async def writer_block_assist(current_chapter: int) -> dict:
-    """Help overcome writer's block with 2-3 writing directions.
+    """帮助克服写作瓶颈，提供 2-3 个写作方向。
 
-    Suggests scene ideas, reclaimable foreshadowings, and
-    question chain prompts based on current progress.
+    当用户遇到写作困难或不知道如何继续时使用。基于当前情节状态和角色信息提供具体的写作建议。
 
     Args:
-        current_chapter: Current chapter number being worked on
+            current_chapter: 当前正在写作的章节号
     """
     kb = _kb()
 

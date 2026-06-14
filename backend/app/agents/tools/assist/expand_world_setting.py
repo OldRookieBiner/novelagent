@@ -3,17 +3,19 @@
 from langchain_core.tools import tool
 
 from app.agents.tools.utils import _kb
+from app.utils.text import tokenize_chinese
 
 
 @tool
 async def expand_world_setting(aspect: str, description: str) -> dict:
-    """Expand the world setting in a specific direction.
+    """在特定方向扩展世界观设定。
 
-    Automatically assesses impact of the expansion on existing content.
+    自动评估扩展对已有内容的影响，检查与红色设定的冲突。
+    扩展内容会写入知识库对应层级。
 
     Args:
-        aspect: What aspect to expand - "location", "rule", "culture", "history", "technology"
-        description: Natural language description of the expansion
+        aspect: 扩展方向 - "location"(地点), "rule"(规则), "culture"(文化), "history"(历史), "technology"(技术)
+        description: 扩展内容的自然语言描述
     """
     kb = _kb()
     ws = kb.world_setting.get()
@@ -26,7 +28,7 @@ async def expand_world_setting(aspect: str, description: str) -> dict:
     contradictions = []
     for rule in red_settings:
         rule_text = rule if isinstance(rule, str) else str(rule)
-        for word in description.split():
+        for word in tokenize_chinese(description):
             if len(word) >= 2 and word in rule_text:
                 contradictions.append(rule_text[:80])
 
@@ -36,7 +38,7 @@ async def expand_world_setting(aspect: str, description: str) -> dict:
         impact_level = "severe"
         impact_detail = f"扩展可能与🔴设定冲突：{'; '.join(contradictions[:3])}"
 
-    keywords = [w for w in description.split() if len(w) >= 2][:5]
+    keywords = [w for w in tokenize_chinese(description) if len(w) >= 2][:5]
     affected = kb.search_chapters_for_references(keywords) if keywords else []
 
     if affected and impact_level != "severe":

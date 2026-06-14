@@ -57,8 +57,95 @@
 | `agents/agent_context.py` | P3 精简 system prompt |
 | `agents/agent_graph.py` | P3 集成 ToolRegistry + hooks + cache |
 | `agents/tool_context.py` | P3 新增 cache ContextVar |
-| 13 个含 JSON 参数的工具 | 统一替换为 parse_json_param |
+| 9 个含 JSON 参数的工具 | 统一替换为 parse_json_param |
 | 全部工具文件 | docstring 中文化 |
+
+---
+
+## 前置任务：修复现有代码缺陷（R5/R6 审查发现）
+
+> 在 Phase 1 开始前修复两个已存在的 P0 级代码缺陷，防止后续任务在此基础上构建时引入更多问题。
+
+---
+
+### Task 0a: 修复 retrieval.py 缺少 import asyncio 和冗余自引用
+
+**Files:**
+- Modify: `backend/app/agents/services/retrieval.py`
+
+- [ ] **Step 1: 添加 `import asyncio` 到文件顶部**
+
+- [ ] **Step 2: 修正 `add_document_async` 中的冗余导入**
+
+将 `from app.agents.services.retrieval import add_chunk_to_index` 替换为直接调用当前模块的 `add_chunk_to_index` 函数（去掉 from ... import 自引用）。
+
+- [ ] **Step 3: 将本地 `_tokenize_chinese` 改为从 `app/utils/text.py` 导入（R27 预处理）**
+
+如果 `app/utils/text.py` 已在 Task 1 Step 2b 中创建，则将 `retrieval.py` 中本地的 `_tokenize_chinese` 函数替换为 `from app.utils.text import tokenize_chinese as _tokenize_chinese`。
+如果 Task 0a 先于 Task 1 执行，暂保留本地函数，在 Task 18 中统一替换。
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add backend/app/agents/services/retrieval.py
+git commit -m "fix(retrieval): add missing import asyncio, remove self-import, prepare tokenize_chinese migration"
+```
+
+---
+
+### Task 0b: 修复 retrieval.py 索引构建中引用 Character 模型不存在的字段
+
+**Files:**
+- Modify: `backend/app/agents/services/retrieval.py`
+
+- [ ] **Step 1: 修正 `_collect_documents_from_db` 和 `_collect_global_documents_from_db` 中的字段映射**
+
+将以下字段映射修正为与 Character 模型一致：
+- `core_conflict` → 删除（模型中不存在等价字段）
+- `character_arc` → `growth_arc`（模型中的实际字段名）
+- `knowledge_boundary` → `deep_fear`（作为内在约束的近似替代）
+- `speech_style` → `catchphrase`（作为语言特征的近似替代）
+- `dialogue_samples` → 删除（模型中不存在）
+
+- [ ] **Step 2: 修正 `_keyword_fallback` 中的同样问题（R25）**
+
+`_keyword_fallback` 函数中 `char.get('knowledge_boundary', '')` 和 `char.get('speech_style', '')` 同样引用了不存在的字段，修正为：
+- `knowledge_boundary` → `deep_fear`
+- `speech_style` → `catchphrase`
+- 同步修正结果文本中的字段标签（如"知识边界"→"深层恐惧"）
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add backend/app/agents/services/retrieval.py
+git commit -m "fix(retrieval): align index building and keyword fallback with Character model fields"
+```
+
+---
+
+### Task 0c: 修复 consistency_check.py 引用 Character 模型不存在的字段（R19）
+
+**Files:**
+- Modify: `backend/app/agents/tools/perception/consistency_check.py`
+
+- [ ] **Step 1: 修正 `knowledge_boundary` 字段引用**
+
+将 `consistency_check.py` 中的：
+```python
+"knowledge_boundary": char.get("knowledge_boundary") or char.get("deep_fear") or "",
+```
+改为：
+```python
+"deep_fear": char.get("deep_fear") or "",
+```
+字段名与 Character 模型保持一致，不再使用不存在的 `knowledge_boundary`。
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add backend/app/agents/tools/perception/consistency_check.py
+git commit -m "fix(consistency_check): remove reference to non-existent knowledge_boundary field"
+```
 
 ---
 
@@ -143,6 +230,35 @@ class TestParseJsonParam:
 Run: `docker exec novelagent-backend-1 pytest tests/test_parse_json_param.py -v`
 Expected: FAIL — `ImportError: cannot import name 'parse_json_param'`
 
+- [ ] **Step 2b: 创建 `app/utils/text.py` 放置 `_tokenize_chinese`（R27 修正）**
+
+将 `_tokenize_chinese` 放在 `app/utils/text.py` 而非 `tools/utils.py`，避免 retrieval.py（服务层）依赖工具层。
+`retrieval.py` 和 `tools/utils.py` 都从此处导入。
+
+```python
+# app/utils/text.py
+"""公共文本处理工具"""
+
+_jieba_available = False
+
+def tokenize_chinese(text: str) -> list[str]:
+    """中文分词，jieba 不可用时退化为字符 bigram
+
+    统一放在 app/utils/text.py，retrieval.py 和 tools/utils.py 共用。
+    """
+    global _jieba_available
+    try:
+        import jieba
+        _jieba_available = True
+        return list(jieba.cut(text))
+    except ImportError:
+        _jieba_available = False
+        result = []
+        for i in range(len(text) - 1):
+            result.append(text[i:i+2])
+        return result
+```
+
 - [ ] **Step 3: 实现 parse_json_param**
 
 在 `tools/utils.py` 末尾追加：
@@ -190,7 +306,7 @@ git commit -m "feat(tools): add parse_json_param for unified JSON string parsing
 
 ---
 
-### Task 2: 统一替换 13 个工具的 JSON 解析为 parse_json_param
+### Task 2: 统一替换 9 个工具的 JSON 解析为 parse_json_param
 
 **Files:**
 - Modify: `backend/app/agents/tools/creation/world_setting.py`
@@ -202,7 +318,6 @@ git commit -m "feat(tools): add parse_json_param for unified JSON string parsing
 - Modify: `backend/app/agents/tools/creation/generate_outline.py`
 - Modify: `backend/app/agents/tools/creation/generate_chapter_outline.py`
 - Modify: `backend/app/agents/tools/creation/generate_chapter_content.py`
-- Modify: `backend/app/agents/tools/modification/propose_setting_change.py`
 
 每个文件的替换模式相同。以 `world_setting.py` 为例，将：
 
@@ -271,11 +386,9 @@ warnings = [w for w in [tiered_warn, loc_warn] if w]
 2 个 JSON 参数：`new_foreshadowings`, `reclaimed_foreshadowing_ids`。
 此文件的异常处理修改在 Task 4 中进行，此处只替换 JSON 解析部分。
 
-- [ ] **Step 10: 替换 `propose_setting_change.py`**
+- [ ] **Step 10: 确认 `propose_setting_change.py` 不替换**
 
-1 个 JSON 参数：`new_value`（默认值为 `{"value": new_value}`，需要特殊处理：parse_json_param 不适用此场景，保持原有逻辑但记录警告）。
-
-注意：`propose_setting_change.py` 的 `new_value` 解析逻辑不同——解析失败时保留原始字符串。此处不做替换，仅移除 `import json` 的冗余（它仍需用于其他处）。
+`propose_setting_change` 的 `new_value` 参数解析逻辑不同——解析失败时保留原始字符串构造 `{"value": new_value}`，不适用 `parse_json_param`。**保持原有逻辑不修改**。
 
 - [ ] **Step 11: 运行 agent_tools 测试**
 
@@ -346,92 +459,113 @@ async def advance_phase() -> dict:
 
     kb = _kb()
 
-    # 单次 Session，读取+判断+写入在同一事务中
-    db = SessionLocal()
+    # R20 修正：先通过 KB 读取完整度判断（KB 用独立 session，不需要行锁），
+    # 判断完成后再获取行锁写入，最小化行锁持有时间。
+    # 这样既保证了写入的原子性，又避免了在行锁持有期间执行多次 KB 查询。
+
+    # 1. 读取当前阶段（无锁查询，仅用于判断）
+    db_read = SessionLocal()
     try:
-        ws = db.query(WorkflowState).filter(
+        ws_read = db_read.query(WorkflowState).filter(
             WorkflowState.project_id == project_id
-        ).with_for_update().first()
+        ).first()
+        current_phase = ws_read.stage if ws_read else Phase.INCUBATION
+    finally:
+        db_read.close()
 
-        current_phase = ws.stage if ws else Phase.INCUBATION
+    # 2. 检查知识库完整度（通过 KB facade，每次调用使用独立 session）
+    outline = kb.outlines.get()
+    characters = kb.characters.list_characters()
+    world_setting = kb.world_setting.get()
+    plot_blocks = kb.plots.list_plot_blocks()
+    timeline = kb.timelines.list_timeline()
 
-        # 检查知识库完整度
-        outline = kb.outlines.get()
-        characters = kb.characters.list_characters()
-        world_setting = kb.world_setting.get()
-        plot_blocks = kb.plots.list_plot_blocks()
-        foreshadowings = kb.foreshadowings.list_foreshadowings()
-        timeline = kb.timelines.list_timeline()
+    suggested_phase = current_phase
+    reason = ""
 
-        suggested_phase = current_phase
-        reason = ""
+    if current_phase == Phase.INCUBATION:
+        has_outline = outline and (outline.get("title") or outline.get("summary"))
+        has_characters = len(characters) >= 1
+        has_world = world_setting is not None
+        if has_outline and has_characters and has_world:
+            suggested_phase = Phase.STRUCTURE
+            reason = "大纲、人物、世界观已就绪，可进入结构设计阶段"
+        else:
+            missing = []
+            if not has_outline: missing.append("大纲")
+            if not has_characters: missing.append("人物")
+            if not has_world: missing.append("世界观")
+            reason = f"孵化阶段尚未完成，缺少：{'、'.join(missing)}"
 
-        if current_phase == Phase.INCUBATION:
-            has_outline = outline and (outline.get("title") or outline.get("summary"))
-            has_characters = len(characters) >= 1
-            has_world = world_setting is not None
-            if has_outline and has_characters and has_world:
-                suggested_phase = Phase.STRUCTURE
-                reason = "大纲、人物、世界观已就绪，可进入结构设计阶段"
-            else:
-                missing = []
-                if not has_outline: missing.append("大纲")
-                if not has_characters: missing.append("人物")
-                if not has_world: missing.append("世界观")
-                reason = f"孵化阶段尚未完成，缺少：{'、'.join(missing)}"
+    elif current_phase == Phase.STRUCTURE:
+        has_blocks = len(plot_blocks) >= 1
+        if has_blocks:
+            suggested_phase = Phase.WRITING
+            reason = "情节块已规划，可进入写作阶段"
+        else:
+            reason = "结构阶段尚未完成，缺少情节块规划"
 
-        elif current_phase == Phase.STRUCTURE:
-            has_blocks = len(plot_blocks) >= 1
-            if has_blocks:
-                suggested_phase = Phase.WRITING
-                reason = "情节块已规划，可进入写作阶段"
-            else:
-                reason = "结构阶段尚未完成，缺少情节块规划"
+    elif current_phase == Phase.WRITING:
+        total_chapters = 0
+        if outline:
+            total_chapters = outline.get("chapter_count_confirmed") or outline.get("chapter_count_suggested") or 0
+        written = len(timeline) if timeline else 0
+        if total_chapters > 0 and written >= total_chapters:
+            suggested_phase = Phase.REVISION
+            reason = f"全部 {total_chapters} 章已写完，可进入修订阶段"
+        else:
+            reason = f"写作阶段进行中（{written}/{total_chapters} 章）"
 
-        elif current_phase == Phase.WRITING:
-            total_chapters = 0
-            if outline:
-                total_chapters = outline.get("chapter_count_confirmed") or outline.get("chapter_count_suggested") or 0
-            written = len(timeline) if timeline else 0
-            if total_chapters > 0 and written >= total_chapters:
-                suggested_phase = Phase.REVISION
-                reason = f"全部 {total_chapters} 章已写完，可进入修订阶段"
-            else:
-                reason = f"写作阶段进行中（{written}/{total_chapters} 章）"
+    elif current_phase == Phase.REVISION:
+        reason = "已在修订阶段"
 
-        elif current_phase == Phase.REVISION:
-            reason = "已在修订阶段"
+    # 3. 如果可以推进，获取行锁并写入（最小化锁持有时间）
+    advanced = suggested_phase != current_phase
+    if advanced:
+        db = SessionLocal()
+        try:
+            ws = db.query(WorkflowState).filter(
+                WorkflowState.project_id == project_id
+            ).with_for_update().first()
 
-        # 如果可以推进，在同一事务中写入
-        advanced = suggested_phase != current_phase
-        if advanced:
+            # 二次确认：获取锁后再次检查当前阶段，防止并发推进
+            actual_phase = ws.stage if ws else Phase.INCUBATION
+            if actual_phase != current_phase:
+                # 并发推进已发生，放弃本次推进
+                return {
+                    "current_phase": actual_phase,
+                    "suggested_phase": actual_phase,
+                    "advanced": False,
+                    "reason": f"并发推进检测：阶段已由 {current_phase} 变为 {actual_phase}",
+                }
+
             if not ws:
                 ws = WorkflowState(project_id=project_id, stage=suggested_phase)
                 db.add(ws)
             else:
                 ws.stage = suggested_phase
             db.commit()
+        except Exception as e:
+            db.rollback()
+            return {"error": f"推进阶段失败: {e}"}
+        finally:
+            db.close()
 
-        phase_labels = {
-            Phase.INCUBATION: "创意孵化",
-            Phase.STRUCTURE: "结构设计",
-            Phase.WRITING: "写作中",
-            Phase.REVISION: "修订中",
-        }
+    phase_labels = {
+        Phase.INCUBATION: "创意孵化",
+        Phase.STRUCTURE: "结构设计",
+        Phase.WRITING: "写作中",
+        Phase.REVISION: "修订中",
+    }
 
-        return {
-            "current_phase": current_phase,
-            "suggested_phase": suggested_phase,
-            "advanced": advanced,
-            "reason": reason,
-            "current_phase_label": phase_labels.get(current_phase, current_phase),
-            "suggested_phase_label": phase_labels.get(suggested_phase, suggested_phase),
-        }
-    except Exception as e:
-        db.rollback()
-        return {"error": f"推进阶段失败: {e}"}
-    finally:
-        db.close()
+    return {
+        "current_phase": current_phase,
+        "suggested_phase": suggested_phase,
+        "advanced": advanced,
+        "reason": reason,
+        "current_phase_label": phase_labels.get(current_phase, current_phase),
+        "suggested_phase_label": phase_labels.get(suggested_phase, suggested_phase),
+    }
 ```
 
 - [ ] **Step 4: 运行测试确认通过**
@@ -452,8 +586,18 @@ git commit -m "fix(tools): merge advance_phase into single session with row lock
 
 **Files:**
 - Modify: `backend/app/agents/tools/creation/generate_chapter_content.py`
+- Modify: `backend/app/agents/services/stores/chapter_store.py`（R3 修正：`save_content` 返回 `is_new` 字段）
 
-- [ ] **Step 1: 重写异常处理逻辑**
+- [ ] **Step 1: 修正 ChapterStore.save_content 返回值（R3 修正）**
+
+在 `chapter_store.py` 的 `save_content` 方法中，返回结果新增 `is_new: bool` 字段：
+```python
+result = self._to_dict(chapter)
+result["chapter_number"] = chapter_number
+result["is_new"] = is_new_chapter  # 保存前通过查询判断
+```
+
+- [ ] **Step 2: 重写异常处理逻辑**
 
 将 4 处 `except Exception: pass` 替换为具体异常捕获 + warnings 追加：
 
@@ -532,7 +676,7 @@ async def generate_chapter_content(
         })
 
     chapter_result = kb.chapters.save_content(chapter_number, content, word_count or len(content))
-    existing_chapter = chapter_result.get("id") is not None
+    existing_chapter = chapter_result.get("is_new") is not True  # R3 修正：依赖 ChapterStore 返回的 is_new 字段
 
     # 2. 时间线
     timeline_created = False
@@ -600,7 +744,7 @@ async def generate_chapter_content(
             warnings.append({"step": "create_style_snapshot", "error": style_snapshot_error})
 
     result = {
-        "action": "created" if not existing_chapter else "updated",
+        "action": "created" if chapter_result.get("is_new") else "updated",  # R3 修正：基于 ChapterStore 返回的 is_new 字段
         "chapter_number": chapter_number,
         "title": chapter_title,
         "word_count": word_count or len(content),
@@ -815,19 +959,19 @@ from app.agents.tools.utils import _kb
 @tool
 async def update_character(
     character_id: int,
-    name: str = "",
-    role: str = "",
-    personality: str = "",
-    catchphrase: str = "",
-    habit_action: str = "",
-    deep_fear: str = "",
-    core_motivation: str = "",
-    growth_arc: str = "",
-    appearance: str = "",
-    backstory: str = "",
-    signature_item: str = "",
+    name: str | None = None,
+    role: str | None = None,
+    personality: str | None = None,
+    catchphrase: str | None = None,
+    habit_action: str | None = None,
+    deep_fear: str | None = None,
+    core_motivation: str | None = None,
+    growth_arc: str | None = None,
+    appearance: str | None = None,
+    backstory: str | None = None,
+    signature_item: str | None = None,
 ) -> dict:
-    """更新已有角色的属性。只修改传入的非空字段。
+    """更新已有角色的属性。只修改传入的非 None 字段（None 不修改，空字符串表示清空该字段）。
 
     当需要修改已有角色的任何属性时使用。未传入的字段保持不变。
 
@@ -908,13 +1052,13 @@ from app.agents.tools.utils import _kb, parse_json_param
 @tool
 async def update_plot_block(
     block_id: int,
-    title: str = "",
+    title: str | None = None,
     chapter_start: int | None = None,
     chapter_end: int | None = None,
-    must_happen: str = "",
-    questions_to_raise: str = "",
-    questions_to_answer: str = "",
-    expected_mood: str = "",
+    must_happen: str | None = None,
+    questions_to_raise: str | None = None,
+    questions_to_answer: str | None = None,
+    expected_mood: str | None = None,
 ) -> dict:
     """更新已有情节块的属性。只修改传入的非空字段。
 
@@ -1020,9 +1164,9 @@ from app.agents.tools.utils import _kb, parse_json_param
 @tool
 async def update_subplot(
     subplot_id: int,
-    name: str = "",
-    characters: str = "",
-    current_status: str = "",
+    name: str | None = None,
+    characters: str | None = None,
+    current_status: str | None = None,
     planned_intersection_chapter: int | None = None,
     expected_resolution_chapter: int | None = None,
 ) -> dict:
@@ -1112,8 +1256,8 @@ from app.agents.tools.utils import _kb
 @tool
 async def update_plot_question(
     question_id: int,
-    question_text: str = "",
-    status: str = "",
+    question_text: str | None = None,
+    status: str | None = None,
     answered_in_chapter: int | None = None,
 ) -> dict:
     """更新问题链条目。用于标记问题为已回答或修改问题文本。
@@ -1189,10 +1333,12 @@ from app.agents.tools.utils import _kb
 @tool
 async def update_foreshadowing(
     foreshadowing_id: int,
-    level: str = "",
-    status: str = "",
-    content: str = "",
+    level: str | None = None,
+    status: str | None = None,
+    content: str | None = None,
+    appearance_count: int | None = None,
     expected_resolve_chapter: int | None = None,
+    resolved_chapter: int | None = None,
 ) -> dict:
     """更新伏笔状态或属性。用于推进伏笔等级或标记回收。
 
@@ -1623,6 +1769,40 @@ git commit -m "feat(tools): add check_chapter_transition for chapter continuity 
 
 **Files:**
 - Create: `backend/app/agents/tools/creation/record_chapter_meta.py`
+- Modify: `backend/app/agents/services/stores/timeline_store.py`（R24：新增按章节号查询和更新方法）
+
+- [ ] **Step 0: 在 TimelineStore 中新增 `get_by_chapter_number` 和 `update_timeline_entry` 方法（R24）**
+
+当前 TimelineStore 只有 `create_timeline_entry` 和 `list_timeline`，缺少按章节号查询和更新方法。
+`record_chapter_meta` 的防重复逻辑需要这两个方法。
+
+```python
+# 在 TimelineStore 中新增：
+
+def get_by_chapter_number(self, chapter_number: int) -> Optional[dict]:
+    """按章节号获取时间线条目（每章最多一条）"""
+    with self.session(readonly=True) as db:
+        obj = db.query(TimelineEntry).filter(
+            TimelineEntry.project_id == self.project_id,
+            TimelineEntry.chapter_number == chapter_number,
+        ).first()
+        return self._to_dict(obj)
+
+def update_timeline_entry(self, entry_id: int, data: dict) -> dict:
+    """更新时间线条目"""
+    with self.session() as db:
+        obj = db.query(TimelineEntry).filter(
+            TimelineEntry.id == entry_id,
+            TimelineEntry.project_id == self.project_id,
+        ).first()
+        if not obj:
+            raise ValueError(f"TimelineEntry {entry_id} not found")
+        for key, value in data.items():
+            setattr(obj, key, value)
+        db.flush()
+        db.refresh(obj)
+        return self._to_dict(obj)
+```
 
 - [ ] **Step 1: 创建 record_chapter_meta.py**
 
@@ -1643,12 +1823,12 @@ from app.agents.tools.utils import _kb, parse_json_param
 @tool
 async def record_chapter_meta(
     chapter_number: int,
-    timeline_summary: str = "",
-    causal_chain: str = "",
+    timeline_summary: str | None = None,
+    causal_chain: str | None = None,
     rhythm_score: int = 3,
     tension_score: int = 3,
     emotion_score: int = 3,
-    emotion_tag: str = "",
+    emotion_tag: str | None = None,
     new_foreshadowings: str = "[]",
     reclaimed_foreshadowing_ids: str = "[]",
 ) -> dict:
@@ -1671,22 +1851,28 @@ async def record_chapter_meta(
     kb = _kb()
     warnings = []
 
-    # 1. 时间线条目
-    timeline_created = False
+    # 1. 时间线条目（防重复：已有则更新）
+    timeline_action = "skipped"
     if timeline_summary:
         try:
-            kb.timelines.create_timeline_entry({
-                "chapter_number": chapter_number,
+            existing_tl = kb.timelines.get_by_chapter_number(chapter_number)
+            tl_data = {
                 "summary": timeline_summary,
                 "causal_chain": causal_chain,
                 "rhythm_score": rhythm_score,
                 "tension_score": tension_score,
                 "emotion_score": emotion_score,
                 "emotion_tag": emotion_tag,
-            })
-            timeline_created = True
+            }
+            if existing_tl:
+                kb.timelines.update_timeline_entry(existing_tl["id"], tl_data)
+                timeline_action = "updated"
+            else:
+                tl_data["chapter_number"] = chapter_number
+                kb.timelines.create_timeline_entry(tl_data)
+                timeline_action = "created"
         except Exception as e:
-            warnings.append({"step": "create_timeline", "error": str(e)})
+            warnings.append({"step": "upsert_timeline", "error": str(e)})
 
     # 2. 新伏笔
     new_fs, fs_warn = parse_json_param(new_foreshadowings, [], "new_foreshadowings")
@@ -1722,7 +1908,7 @@ async def record_chapter_meta(
 
     result = {
         "chapter_number": chapter_number,
-        "timeline_entry": timeline_created,
+        "timeline_action": timeline_action,
         "new_foreshadowings": len(created_fs),
         "reclaimed_foreshadowings": reclaimed_count,
         "message": f"第{chapter_number}章追踪元数据已记录",
@@ -1818,32 +2004,16 @@ Run: `docker compose restart backend`
 
 ---
 
-### Task 18: knowledge_search 降级截断 + 分词优化
+### Task 18: knowledge_search 降级截断 + 分词优化（含 R21/R29 扩大范围）
 
 **Files:**
 - Modify: `backend/app/agents/tools/perception/knowledge_search.py`
+- Modify: `backend/app/agents/tools/utils.py`（R21：`_extract_keywords` 函数中 `.split()` 替换为 `tokenize_chinese`）
+- Modify: `backend/app/agents/tools/assist/expand_world_setting.py`（R29：`description.split()` 替换 + 匹配逻辑优化）
+- Modify: `backend/app/agents/tools/modification/propose_outline_adjustment.py`（R7：`description.split()` 替换）
+- Modify: `backend/app/agents/services/retrieval.py`（R27：移除本地 `_tokenize_chinese`，改为从 `app/utils/text.py` 导入）
 
-- [ ] **Step 1: 在 utils.py 新增 _tokenize_chinese 函数**
-
-```python
-def _tokenize_chinese(text: str) -> list[str]:
-    """中文分词：基于字符 bigram + 常见词切分
-
-    替代空格分词，用于关键词匹配场景。
-    """
-    import re
-    # 去除标点
-    text = re.sub(r'[，。！？、；：""''（）【】《》\s]', '', text)
-    if len(text) <= 1:
-        return [text] if text else []
-    # bigram 切分
-    tokens = []
-    for i in range(len(text) - 1):
-        tokens.append(text[i:i+2])
-    return tokens
-```
-
-- [ ] **Step 2: 修改 knowledge_search.py 降级路径**
+- [ ] **Step 1: 修改 knowledge_search.py 降级路径**
 
 在降级 DB 查询路径中，每种子类型最多返回 5 条，并标记 truncated：
 
@@ -1866,8 +2036,8 @@ if target in ("all", "foreshadowing"):
 关键词匹配部分，将 `query_words = [w for w in query_lower.split() if len(w) >= 2]` 替换为：
 
 ```python
-from app.agents.tools.utils import _tokenize_chinese
-query_words = _tokenize_chinese(query)
+from app.utils.text import tokenize_chinese
+query_words = tokenize_chinese(query)
 ```
 
 如果 `target="all"` 且返回的数据集有 3 个以上被截断，在返回结果中增加建议：
@@ -2495,16 +2665,23 @@ git commit -m "docs(tools): localize all tool docstrings to Chinese"
 - `batch_confirm_outlines` → STRUCTURE_TOOLS
 - `batch_update_foreshadowing_status` → WRITING_TOOLS
 
-- [ ] **Step 2: 运行测试**
+- [ ] **Step 2: 同步更新 `__init__.py` 导出（R4 审查修正）**
+
+更新以下文件的导出列表和注释：
+- `tools/__init__.py`：新增 `generate_chapter_outline`、`create_timeline_entry`、`report_progress` 的导入（当前缺失），更新工具计数注释
+- `tools/creation/__init__.py`：新增 update/delete/batch 工具导出，更新注释为"18个"
+- `tools/perception/__init__.py`：新增 `consistency_scan`、`check_chapter_transition` 导出
+
+- [ ] **Step 3: 运行测试**
 
 Run: `docker exec novelagent-backend-1 pytest tests/test_agent_tools.py -v`
 Expected: PASS
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add backend/app/agents/tools/registry.py
-git commit -m "feat(tools): register batch tools in registry"
+git add backend/app/agents/tools/registry.py backend/app/agents/tools/__init__.py backend/app/agents/tools/creation/__init__.py backend/app/agents/tools/perception/__init__.py
+git commit -m "feat(tools): register batch tools in registry and sync __init__ exports"
 ```
 
 ---
@@ -2704,7 +2881,7 @@ async def run_post_hooks(tool_name: str, tool_result: dict, project_id: int) -> 
             auto_results[hook_name] = result
         except Exception as e:
             logger.warning("Hook %s 执行失败: %s", hook_name, e)
-            auto_results[hook_name] = {"checked": False, "error": str(e)}
+            auto_results[hook_name] = {"checked": False, "error": str(e)}  # R17 修正：记录到 auto_check_results 而非静默吞异常
 
     tool_result["auto_check_results"] = auto_results
     return tool_result
@@ -2995,6 +3172,29 @@ git commit -m "feat(agent): add lightweight context builder for on-demand retrie
 
 ---
 
+### Task 33b: 优化 batch_read_for_index 消除重复查询（R12 审查修正）
+
+**Files:**
+- Modify: `backend/app/agents/services/knowledge_base.py`
+
+- [ ] **Step 1: 优化 `batch_read_for_index` 中的 `_read_all_with_session` 调用**
+
+当前 `self.plots._read_all_with_session(db)` 被调用后用 `.get()` 提取各字段，但每次调用都执行 3 次 query。修改为只调用一次并缓存结果：
+
+```python
+plots_data = self.plots._read_all_with_session(db)
+# 直接使用 plots_data 而非再次调用
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add backend/app/agents/services/knowledge_base.py
+git commit -m "perf(kb): eliminate duplicate queries in batch_read_for_index"
+```
+
+---
+
 ### Task 34: Phase 4 集成测试 + 全量验证
 
 **Files:** None (运行全部测试)
@@ -3053,12 +3253,17 @@ REVISION_TOOLS:    WRITING
 ## 依赖关系
 
 ```
-Phase 1 (P0) ─ 无外部依赖，可立即开始
+前置任务 ─ 修复现有代码缺陷（必须在 Phase 1 前完成）
+  Task 0a: retrieval.py 缺少 import asyncio + 冗余自引用 + tokenize_chinese 迁移准备（独立）
+  Task 0b: retrieval.py 索引构建 + _keyword_fallback 字段映射错误（独立）
+  Task 0c: consistency_check.py knowledge_boundary 字段修正（独立）
+
+Phase 1 (P0) ─ 依赖前置任务完成
   Task 1: parse_json_param
-  Task 2: 统一替换 JSON 解析（依赖 Task 1）
+  Task 2: 统一替换 9 个工具的 JSON 解析（依赖 Task 1）
   Task 3: advance_phase 事务合并（独立）
-  Task 4: generate_chapter_content 异常处理（独立，但 Task 2 先替换了 JSON 解析）
-  Task 5: 合并 report_progress（独立）
+  Task 4: generate_chapter_content 异常处理 + ChapterStore is_new 修正（独立，但 Task 2 先替换了 JSON 解析）
+  Task 5: 合并 report_progress（独立，注意同步→异步差异）
   Task 6: Phase 1 集成测试
 
 Phase 2 (P1) ─ 依赖 Phase 1 的 parse_json_param

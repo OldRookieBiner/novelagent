@@ -1,4 +1,4 @@
-"""创作工具（17个）— 直接写入知识库"""
+"""创作工具（25个）— 直接写入知识库"""
 
 from .world_setting import create_world_setting
 from .character import create_character
@@ -18,3 +18,13 @@ from .review_chapter import review_chapter
 from .rewrite_chapter import rewrite_chapter
 from .advance_phase import advance_phase
 from .evolution_plan import create_evolution_plan
+# 更新/删除工具
+from .update_character import update_character
+from .update_plot_block import update_plot_block
+from .update_subplot import update_subplot
+from .update_plot_question import update_plot_question
+from .update_foreshadowing import update_foreshadowing
+from .delete_plot_block import delete_plot_block
+from .record_chapter_meta import record_chapter_meta
+from .batch_confirm_outlines import batch_confirm_outlines
+from .batch_update_foreshadowing_status import batch_update_foreshadowing_status

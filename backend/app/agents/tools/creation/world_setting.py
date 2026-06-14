@@ -2,7 +2,7 @@
 
 from langchain_core.tools import tool
 
-from app.agents.tools.utils import _kb
+from app.agents.tools.utils import _kb, parse_json_param
 
 
 @tool
@@ -11,28 +11,20 @@ async def create_world_setting(
     tiered_settings: str = "{}",
     key_locations: str = "[]",
 ) -> dict:
-    """Create or update the world setting for the novel.
+    """创建或更新小说的世界观设定。
 
-    Use when the user asks to set up or modify the world/setting of their novel.
-    If a world setting already exists, it will be updated.
+    当用户需要建立故事世界的规则和设定时使用。支持分级规则（红色/黄色/绿色）和关键地点。
 
     Args:
-        core_concept: The core concept of the world
-        tiered_settings: JSON string with tiered rules: {"red": [...], "yellow": [...], "green": [...]}
-        key_locations: JSON string list of key locations
+        core_concept: 世界观核心概念
+        tiered_settings: JSON 字符串，分级设定（含 red/yellow/green 三级）
+        key_locations: JSON 字符串列表，关键地点
     """
-    import json as _json
     kb = _kb()
 
-    try:
-        tiered = _json.loads(tiered_settings) if isinstance(tiered_settings, str) else tiered_settings
-    except _json.JSONDecodeError:
-        tiered = {}
+    tiered, tiered_warn = parse_json_param(tiered_settings, {}, "tiered_settings")
 
-    try:
-        locations = _json.loads(key_locations) if isinstance(key_locations, str) else key_locations
-    except _json.JSONDecodeError:
-        locations = []
+    locations, locations_warn = parse_json_param(key_locations, [], "key_locations")
 
     existing = kb.world_setting.get()
     if existing:

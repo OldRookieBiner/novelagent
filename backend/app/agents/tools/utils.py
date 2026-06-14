@@ -6,12 +6,13 @@ Store 返回 dict，不再需要 _serialize。
 
 from app.agents.services.knowledge_base import KnowledgeBaseService
 from app.agents.tool_context import get_project_id
+from app.utils.text import tokenize_chinese
 
 
 def _kb() -> KnowledgeBaseService:
-    """Get KnowledgeBaseService for the current project context.
+    """获取当前项目上下文的 KnowledgeBaseService。
 
-    Raises ValueError if project_id is not set in tool_context.
+    如果 tool_context 中未设置 project_id，抛出 ValueError。
     """
     project_id = get_project_id()
     if project_id is None:
@@ -54,9 +55,12 @@ def _get_current_value(kb: KnowledgeBaseService, target_type: str, target_id: in
 
 
 def _extract_keywords(old_value: dict, new_value: dict, description: str) -> list[str]:
-    """Extract search keywords from the change description and values."""
+    """Extract search keywords from the change description and values.
+    
+    使用 tokenize_chinese 替代 .split()，正确处理中文分词。
+    """
     keywords = []
-    for word in description.split():
+    for word in tokenize_chinese(description):
         if len(word) >= 2:
             keywords.append(word)
     if isinstance(new_value, dict) and isinstance(old_value, dict):
@@ -64,7 +68,7 @@ def _extract_keywords(old_value: dict, new_value: dict, description: str) -> lis
             if new_value.get(key) != old_value.get(key):
                 val = new_value[key]
                 if isinstance(val, str):
-                    for word in val.split():
+                    for word in tokenize_chinese(val):
                         if len(word) >= 2:
                             keywords.append(word)
     return keywords[:20]
@@ -73,10 +77,9 @@ def _extract_keywords(old_value: dict, new_value: dict, description: str) -> lis
 def _grade_impact(
     affected_chapters: list, target_type: str, new_value: dict, old_value: dict
 ) -> tuple[str, str]:
-    """Grade the impact level of a proposed change.
+    """评估变更的影响等级。
 
-    Returns (level, detail) where level is one of:
-    none, minor, moderate, severe
+    返回 (level, detail)，level 取值：none, minor, moderate, severe
     """
     total_paragraphs = sum(len(ch.get("matching_paragraphs", [])) for ch in affected_chapters)
     total_chapters = len(affected_chapters)
@@ -175,3 +178,31 @@ def _extract_times(text: str) -> list[str]:
     for p in patterns:
         times.extend(re.findall(p, text))
     return times
+
+
+def parse_json_param(value: str | list | dict, default, param_name: str = "") -> tuple:
+    """解析 JSON 字符串参数，返回 (解析结果, 警告信息)
+
+    如果 value 已经是目标类型（与 default 同类型），直接返回。
+    如果解析失败，返回 default 和警告信息。
+
+    Args:
+        value: 输入值（可能是 JSON 字符串或已是目标类型）
+        default: 解析失败时的默认返回值（同时作为类型参考）
+        param_name: 参数名（用于警告信息）
+    """
+    import json
+    if isinstance(value, type(default)):
+        return value, None
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, type(default)):
+                return parsed, None
+            warning = f"参数 {param_name} JSON 解析类型不匹配，使用默认值"
+            return default, warning
+        except json.JSONDecodeError as e:
+            warning = f"参数 {param_name} JSON 解析失败({e})，使用默认值"
+            return default, warning
+    warning = f"参数 {param_name} 类型不支持，使用默认值"
+    return default, warning

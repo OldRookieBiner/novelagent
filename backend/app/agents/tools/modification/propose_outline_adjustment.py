@@ -3,6 +3,7 @@
 from langchain_core.tools import tool
 
 from app.agents.tools.utils import _kb
+from app.utils.text import tokenize_chinese
 
 
 @tool
@@ -10,13 +11,13 @@ async def propose_outline_adjustment(
     description: str,
     affected_plot_blocks: list[int] | None = None,
 ) -> dict:
-    """Propose an adjustment to the story structure.
+    """提议调整故事结构。
 
-    Evaluates impact on foreshadowing, plot questions, and already-written chapters.
+    当用户需要修改大纲、增删章节或调整情节走向时使用。自动评估变更对已有内容的影响，返回影响评估结果。
 
     Args:
-        description: Natural language description of the proposed adjustment
-        affected_plot_blocks: List of plot block IDs that would be affected
+            description: 调整内容的自然语言描述
+            affected_plot_blocks: 受影响的情节块 ID 列表
     """
     kb = _kb()
 
@@ -30,7 +31,7 @@ async def propose_outline_adjustment(
     else:
         for b in blocks:
             block_text = f"{b.get('title', '')} {' '.join(b.get('must_happen') or [])} {' '.join(b.get('questions_to_answer') or [])}"
-            for word in description.split():
+            for word in tokenize_chinese(description):
                 if len(word) >= 2 and word in block_text:
                     affected_blocks.append(b)
                     break

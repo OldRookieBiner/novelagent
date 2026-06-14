@@ -27,6 +27,15 @@ class TimelineStore(_BaseStore):
                 )
             return self._to_dict_list(query.all())
 
+    def get_by_chapter_number(self, chapter_number: int) -> dict | None:
+        """按章节号查询时间线条目，返回最新的一条或 None"""
+        with self.session(readonly=True) as db:
+            entry = db.query(TimelineEntry).filter(
+                TimelineEntry.project_id == self.project_id,
+                TimelineEntry.chapter_number == chapter_number,
+            ).order_by(TimelineEntry.id.desc()).first()
+            return self._to_dict(entry) if entry else None
+
     def create_timeline_entry(self, data: dict) -> dict:
         with self.session() as db:
             obj = TimelineEntry(project_id=self.project_id, **data)
@@ -34,6 +43,22 @@ class TimelineStore(_BaseStore):
             db.flush()
             db.refresh(obj)
             return self._to_dict(obj)
+
+    def update_timeline_entry(self, entry_id: int, data: dict) -> dict:
+        """更新时间线条目的指定字段"""
+        with self.session() as db:
+            entry = db.query(TimelineEntry).filter(
+                TimelineEntry.project_id == self.project_id,
+                TimelineEntry.id == entry_id,
+            ).first()
+            if not entry:
+                raise ValueError(f"TimelineEntry id={entry_id} 不存在")
+            for key, value in data.items():
+                if hasattr(entry, key):
+                    setattr(entry, key, value)
+            db.flush()
+            db.refresh(entry)
+            return self._to_dict(entry)
 
     # --- SceneEntry ---
 

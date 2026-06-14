@@ -15,19 +15,18 @@ async def create_evolution_plan(
     trust_before: int = -1,
     trust_after: int = -1,
 ) -> dict:
-    """Create an evolution plan for a character relationship.
+    """为角色关系创建演变规划。
 
-    Use when the user describes how a relationship will change at a specific point in the story.
-    This directly writes to the knowledge base.
+    当用户需要规划两个角色之间关系的发展变化时使用。定义关系如何随情节推进而演变。
 
     Args:
-        relation_id: ID of the relationship to add evolution plan to
-        trigger_chapter: The chapter number where this evolution is expected to trigger
-        event_description: Description of the event that triggers the evolution
-        status_before: The relationship status before the event (optional)
-        status_after: The relationship status after the event (optional)
-        trust_before: Trust level before the event (0-100, optional, -1 to skip)
-        trust_after: Trust level after the event (0-100, optional, -1 to skip)
+            relation_id: 要添加演变计划的关系 ID
+            trigger_chapter: 触发演变的章节号
+            event_description: 触发演变的事件描述
+            status_before: 事件前的关系状态（可选）
+            status_after: 事件后的关系状态（可选）
+            trust_before: 事件前信任等级（0-100，可选，-1 跳过）
+            trust_after: 事件后信任等级（0-100，可选，-1 跳过）
     """
     kb = _kb()
 

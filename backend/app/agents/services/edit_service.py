@@ -145,7 +145,7 @@ async def revise_section(
 请直接输出修改后的段落，不要输出其他说明。"""
 
     try:
-        revised = await llm.chat([{"role": "user", "content": prompt}], max_tokens=4096)
+        revised = await llm.chat([{"role": "user", "content": prompt}], max_tokens=8192)
     except Exception as e:
         return {"error": f"修改失败: {str(e)}"}
 

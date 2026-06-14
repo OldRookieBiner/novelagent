@@ -2,7 +2,7 @@
 
 from langchain_core.tools import tool
 
-from app.agents.tools.utils import _kb
+from app.agents.tools.utils import _kb, parse_json_param
 
 
 @tool
@@ -12,34 +12,23 @@ async def create_style_constraints(
     forbidden_patterns: str = "[]",
     abstract_rules: str = "[]",
 ) -> dict:
-    """Create or update style constraints for the novel.
+    """创建或更新小说的风格约束。
 
-    Use when the user describes writing style requirements, forbidden words,
-    or style rules they want to enforce.
+    当用户需要定义写作风格规则时使用。包括禁忌词、禁止模式和抽象规则。
 
     Args:
-        style_anchor: Reference text snippet that embodies the desired style
-        taboo_words: JSON string list of forbidden words
-        forbidden_patterns: JSON string list of forbidden sentence patterns
-        abstract_rules: JSON string list of abstract style rules
+            style_anchor: 体现目标风格的参考文本片段
+            taboo_words: JSON 字符串列表，禁用词
+            forbidden_patterns: JSON 字符串列表，禁用句式
+            abstract_rules: JSON 字符串列表，抽象风格规则
     """
-    import json as _json
     kb = _kb()
 
-    try:
-        taboo = _json.loads(taboo_words) if isinstance(taboo_words, str) else taboo_words
-    except _json.JSONDecodeError:
-        taboo = []
+    taboo, taboo_warn = parse_json_param(taboo_words, [], "taboo_words")
 
-    try:
-        patterns = _json.loads(forbidden_patterns) if isinstance(forbidden_patterns, str) else forbidden_patterns
-    except _json.JSONDecodeError:
-        patterns = []
+    patterns, patterns_warn = parse_json_param(forbidden_patterns, [], "forbidden_patterns")
 
-    try:
-        rules = _json.loads(abstract_rules) if isinstance(abstract_rules, str) else abstract_rules
-    except _json.JSONDecodeError:
-        rules = []
+    rules, rules_warn = parse_json_param(abstract_rules, [], "abstract_rules")
 
     existing = kb.styles.get_constraints()
     if existing:

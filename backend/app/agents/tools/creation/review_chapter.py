@@ -10,14 +10,12 @@ from app.agents.token_budget import get_context_window
 
 @tool
 async def review_chapter(chapter_number: int) -> dict:
-    """Review a chapter for quality across 6 dimensions.
+    """审查章节质量（6 维度评分）。
 
-    Performs a comprehensive quality review analyzing plot consistency,
-    character consistency, writing quality, emotional tension, AI flavor,
-    and outline deviation. Results are saved to the database.
+    对已完成章节进行多维度质量评估，包括情节连贯性、角色表现、文笔质量、节奏感、情感表达和整体评分。
 
     Args:
-        chapter_number: The chapter number to review (e.g., 1, 2, 3)
+            chapter_number: 要审核的章节号（如 1, 2, 3）
     """
     project_id = get_project_id()
     if project_id is None:

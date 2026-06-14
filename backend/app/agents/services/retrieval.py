@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 # ========== 懒加载依赖 ==========
 
+import asyncio
 import threading
 
 _sentence_transformers_available = False
@@ -59,21 +60,7 @@ def _get_model():
             return None
 
 
-_jieba_available = False
-
-def _tokenize_chinese(text: str) -> list[str]:
-    """中文分词，jieba 不可用时退化为字符 bigram"""
-    global _jieba_available
-    try:
-        import jieba
-        _jieba_available = True
-        return list(jieba.cut(text))
-    except ImportError:
-        _jieba_available = False
-        result = []
-        for i in range(len(text) - 1):
-            result.append(text[i:i+2])
-        return result
+from app.utils.text import tokenize_chinese as _tokenize_chinese
 
 
 # ========== 文本切分 ==========
@@ -164,16 +151,12 @@ def _collect_documents_from_db(project_id: int) -> tuple[list[str], list[dict]]:
             parts.append(f"定位：{char['role']}")
         if char.get("core_motivation"):
             parts.append(f"核心动机：{char['core_motivation']}")
-        if char.get("core_conflict"):
-            parts.append(f"核心冲突：{char['core_conflict']}")
-        if char.get("character_arc"):
-            parts.append(f"人物弧：{char['character_arc']}")
-        if char.get("knowledge_boundary"):
-            parts.append(f"知识边界：{char['knowledge_boundary']}")
-        if char.get("speech_style"):
-            parts.append(f"说话风格：{char['speech_style']}")
-        if char.get("dialogue_samples"):
-            parts.append(f"对话样本：{char['dialogue_samples']}")
+        if char.get("growth_arc"):
+            parts.append(f"人物弧：{char['growth_arc']}")
+        if char.get("deep_fear"):
+            parts.append(f"深层恐惧：{char['deep_fear']}")
+        if char.get("catchphrase"):
+            parts.append(f"口头禅：{char['catchphrase']}")
         _add("\n".join(parts), f"character/{char['name']}")
 
     # 3. 关系
@@ -524,14 +507,12 @@ def _collect_global_documents_from_db(project_id: int) -> tuple[list[str], list[
             parts.append(f"定位：{char['role']}")
         if char.get("core_motivation"):
             parts.append(f"核心动机：{char['core_motivation']}")
-        if char.get("core_conflict"):
-            parts.append(f"核心冲突：{char['core_conflict']}")
-        if char.get("character_arc"):
-            parts.append(f"人物弧：{char['character_arc']}")
-        if char.get("knowledge_boundary"):
-            parts.append(f"知识边界：{char['knowledge_boundary']}")
-        if char.get("speech_style"):
-            parts.append(f"说话风格：{char['speech_style']}")
+        if char.get("growth_arc"):
+            parts.append(f"人物弧：{char['growth_arc']}")
+        if char.get("deep_fear"):
+            parts.append(f"深层恐惧：{char['deep_fear']}")
+        if char.get("catchphrase"):
+            parts.append(f"口头禅：{char['catchphrase']}")
         _add("\n".join(parts), f"character/{char['name']}")
 
     # 3. 关系
@@ -791,12 +772,12 @@ def _keyword_fallback(project_id: int, query: str, top_k: int) -> list[dict]:
     # 搜索角色
     characters = kb.characters.list_characters()
     for char in characters:
-        char_text = f"{char['name']} {char.get('core_motivation', '')} {char.get('knowledge_boundary', '')} {char.get('speech_style', '')}"
+        char_text = f"{char['name']} {char.get('core_motivation', '')} {char.get('deep_fear', '')} {char.get('catchphrase', '')}"
         if any(kw in char_text for kw in query_lower.split()):
             results.append({
                 "score": 0.5,
                 "source": f"character/{char['name']}",
-                "text": f"角色：{char['name']}，核心动机：{char.get('core_motivation', '未设定')}，知识边界：{char.get('knowledge_boundary', '未设定')}",
+                "text": f"角色：{char['name']}，核心动机：{char.get('core_motivation', '未设定')}，深层恐惧：{char.get('deep_fear', '未设定')}",
             })
 
     # 搜索世界观
@@ -868,7 +849,6 @@ class RetrievalService:
             metadata: 元��据，包含 chapter_number, volume_number 等
         """
         try:
-            from app.agents.services.retrieval import add_chunk_to_index
             # 使用异步方式添加
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
@@ -888,7 +868,6 @@ class RetrievalService:
     def add_document(self, text: str, metadata: dict) -> bool:
         """增量添加文档到索引（同步）"""
         try:
-            from app.agents.services.retrieval import add_chunk_to_index
             add_chunk_to_index(self.project_id, text, metadata)
             return True
         except Exception as e:
@@ -949,7 +928,7 @@ def add_chunk_to_index(project_id: int, text: str, metadata: dict) -> bool:
     try:
         import faiss
         import numpy as np
-        from app.agents.services.retrieval import _get_model, _index_dir
+        # _get_model 和 _index_dir 是本模块函数，直接调用
         
         # 获取模型和维度
         model = _get_model()

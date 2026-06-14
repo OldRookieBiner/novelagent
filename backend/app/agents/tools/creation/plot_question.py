@@ -11,15 +11,15 @@ async def create_plot_question(
     raised_in_chapter: int | None = None,
     plot_block_id: int | None = None,
 ) -> dict:
-    """Create a new plot question in the question chain.
+    """在问题链中创建新的问题。
 
-    Use when the user wants to add a dramatic question that the story
-    needs to answer. Part of the reverse-planning question chain system.
+    当用户需要为情节块添加需要提出或回答的问题时使用。问题链帮助追踪情节中需要解决的悬念。
 
     Args:
-        question_text: The question to be answered (e.g., "主角为什么被追捕？")
-        raised_in_chapter: Chapter number where this question is raised
-        plot_block_id: Optional plot block ID that this question belongs to
+        plot_block_id: 所属情节块 ID
+        question: 问题内容
+        question_type: 问题类型 - "raise"(提出), "answer"(回答)
+        raised_in_chapter: 提出问题的章节号
     """
     kb = _kb()
 

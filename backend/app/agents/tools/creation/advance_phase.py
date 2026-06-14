@@ -1,4 +1,8 @@
-"""推进阶段工具"""
+"""推进阶段工具
+
+R20 修正：先通过 KB 读取完整度判断（KB 用独立 session，不需要行锁），
+判断完成后再获取行锁写入，最小化行锁持有时间。
+"""
 
 from langchain_core.tools import tool
 
@@ -8,11 +12,7 @@ from app.agents.tools.utils import _kb
 
 @tool
 async def advance_phase() -> dict:
-    """Advance the creation phase based on knowledge base completeness.
-
-    Checks the current phase and knowledge base state to determine if
-    the project is ready to advance to the next creation phase.
-    """
+    """推进创作阶段。根据知识库完整度判断是否可以进入下一阶段。"""
     project_id = get_project_id()
     if project_id is None:
         raise ValueError("project_id not set in tool context")
@@ -23,22 +23,21 @@ async def advance_phase() -> dict:
 
     kb = _kb()
 
-    # 读取当前阶段
-    db = SessionLocal()
+    # 1. 无锁读取当前阶段（仅用于判断，不持锁）
+    db_read = SessionLocal()
     try:
-        ws = db.query(WorkflowState).filter(
+        ws_read = db_read.query(WorkflowState).filter(
             WorkflowState.project_id == project_id
         ).first()
-        current_phase = ws.stage if ws else Phase.INCUBATION
+        current_phase = ws_read.stage if ws_read else Phase.INCUBATION
     finally:
-        db.close()
+        db_read.close()
 
-    # 检查知识库完整度（Store 返回 dict）
+    # 2. 检查知识库完整度（通过 KB facade，每次调用使用独立 session）
     outline = kb.outlines.get()
     characters = kb.characters.list_characters()
     world_setting = kb.world_setting.get()
     plot_blocks = kb.plots.list_plot_blocks()
-    foreshadowings = kb.foreshadowings.list_foreshadowings()
     timeline = kb.timelines.list_timeline()
 
     suggested_phase = current_phase
@@ -63,7 +62,6 @@ async def advance_phase() -> dict:
 
     elif current_phase == Phase.STRUCTURE:
         has_blocks = len(plot_blocks) >= 1
-        has_foreshadowing = len(foreshadowings) >= 1
         if has_blocks:
             suggested_phase = Phase.WRITING
             reason = "情节块已规划，可进入写作阶段"
@@ -84,20 +82,35 @@ async def advance_phase() -> dict:
     elif current_phase == Phase.REVISION:
         reason = "已在修订阶段"
 
-    # 如果可以推进，更新 DB
+    # 3. 如果可以推进，获取行锁并写入（最小化锁持有时间）
     advanced = suggested_phase != current_phase
     if advanced:
         db = SessionLocal()
         try:
             ws = db.query(WorkflowState).filter(
                 WorkflowState.project_id == project_id
-            ).first()
-            if ws:
+            ).with_for_update().first()
+
+            # 双重检查：获取锁后确认阶段未被并发推进
+            actual_phase = ws.stage if ws else Phase.INCUBATION
+            if actual_phase != current_phase:
+                db.rollback()
+                return {
+                    "current_phase": actual_phase,
+                    "suggested_phase": suggested_phase,
+                    "advanced": False,
+                    "reason": "并发推进检测：阶段已被其他请求更新",
+                }
+
+            if not ws:
+                ws = WorkflowState(project_id=project_id, stage=suggested_phase)
+                db.add(ws)
+            else:
                 ws.stage = suggested_phase
-                db.commit()
+            db.commit()
         except Exception as e:
             db.rollback()
-            return {"error": f"更新阶段失败: {e}"}
+            return {"error": f"推进阶段失败: {e}"}
         finally:
             db.close()
 

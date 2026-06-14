@@ -2,7 +2,7 @@
 
 from langchain_core.tools import tool
 
-from app.agents.tools.utils import _kb
+from app.agents.tools.utils import _kb, parse_json_param
 
 
 @tool
@@ -13,25 +13,20 @@ async def create_foreshadowing(
     expected_resolve_chapter: int | None = None,
     related_characters: str = "[]",
 ) -> dict:
-    """Create a new foreshadowing entry in the novel.
+    """在小说中创建新的伏笔条目。
 
-    Use when the user wants to plan or add a foreshadowing element
-    to their story. This directly writes to the knowledge base.
+    当用户需要埋设伏笔时使用。伏笔会在后续章节中被追踪和回收。
 
     Args:
-        content: Description of the foreshadowing element
-        level: Foreshadowing level - one of: hint (暗示), strengthened (强化), revealed (揭示)
-        planted_chapter: Chapter number where the foreshadowing is planted
-        expected_resolve_chapter: Chapter number where the foreshadowing is expected to be resolved
-        related_characters: JSON string list of related character names
+            content: 伏笔内容描述
+            level: Foreshadowing level - one of: hint (暗示), strengthened (强化), revealed (揭示)
+            planted_chapter: 埋设伏笔的章节号
+            expected_resolve_chapter: 预期回收伏笔的章节号
+            related_characters: JSON 字符串列表，关联角色名
     """
-    import json as _json
     kb = _kb()
 
-    try:
-        characters = _json.loads(related_characters) if isinstance(related_characters, str) else related_characters
-    except _json.JSONDecodeError:
-        characters = []
+    characters, characters_warn = parse_json_param(related_characters, [], "related_characters")
 
     data = {
         "content": content,

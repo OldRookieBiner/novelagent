@@ -10,14 +10,12 @@ from app.agents.token_budget import get_context_window
 
 @tool
 async def rewrite_chapter(chapter_number: int) -> dict:
-    """Rewrite a chapter based on its latest review feedback.
+    """基于最新审查反馈重写章节。
 
-    The chapter must have been reviewed first (review_feedback must exist).
-    Generates new content, saves it to the database, increments rewrite_count,
-    and clears the review state so it can be re-reviewed.
+    根据 review_chapter 的审查结果，对章节进行针对性修改。会保留旧版本的内容记录。
 
     Args:
-        chapter_number: The chapter number to rewrite (e.g., 1, 2, 3)
+            chapter_number: 要重写的章节号（如 1, 2, 3）
     """
     project_id = get_project_id()
     if project_id is None:

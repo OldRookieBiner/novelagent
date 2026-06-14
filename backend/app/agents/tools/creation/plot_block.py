@@ -2,7 +2,7 @@
 
 from langchain_core.tools import tool
 
-from app.agents.tools.utils import _kb
+from app.agents.tools.utils import _kb, parse_json_param
 
 
 @tool
@@ -15,37 +15,25 @@ async def create_plot_block(
     questions_to_answer: str = "[]",
     expected_mood: str = "",
 ) -> dict:
-    """Create a new plot block (story arc segment).
+    """创建新的情节块（故事弧线段）。
 
-    Use when the user wants to define a plot segment or story arc
-    covering a range of chapters.
+    当用户需要规划故事的情节弧线段时使用。情节块定义了某一章节范围内必须发生的事件和需要提出/回答的问题。
 
     Args:
-        title: Plot block title (e.g., "初入修仙界")
-        chapter_start: Starting chapter number
-        chapter_end: Ending chapter number
-        must_happen: JSON string list of events that must happen in this block
-        questions_to_raise: JSON string list of questions this block raises
-        questions_to_answer: JSON string list of questions this block should answer
-        expected_mood: Expected mood/tone for this block (e.g., "紧张悬疑", "温馨治愈")
+        title: 情节块标题
+        chapter_range: 章节范围（如 "1-5"）
+        must_happen: JSON 字符串列表，必须发生的事件
+        questions_to_raise: JSON 字符串列表，需要提出的问题
+        questions_to_answer: JSON 字符串列表，需要回答的问题
+        expected_mood: 预期情绪基调
     """
-    import json as _json
     kb = _kb()
 
-    try:
-        must = _json.loads(must_happen) if isinstance(must_happen, str) else must_happen
-    except _json.JSONDecodeError:
-        must = []
+    must, must_warn = parse_json_param(must_happen, [], "must_happen")
 
-    try:
-        raise_q = _json.loads(questions_to_raise) if isinstance(questions_to_raise, str) else questions_to_raise
-    except _json.JSONDecodeError:
-        raise_q = []
+    raise_q, raise_q_warn = parse_json_param(questions_to_raise, [], "questions_to_raise")
 
-    try:
-        answer_q = _json.loads(questions_to_answer) if isinstance(questions_to_answer, str) else questions_to_answer
-    except _json.JSONDecodeError:
-        answer_q = []
+    answer_q, answer_q_warn = parse_json_param(questions_to_answer, [], "questions_to_answer")
 
     data = {
         "title": title,

@@ -19,18 +19,15 @@ async def propose_setting_change(
     new_value: str,
     description: str,
 ) -> dict:
-    """Propose a change to a knowledge base setting.
+    """提议修改知识库中的设定。
 
-    Automatically triggers impact assessment. The change is NOT applied
-    immediately — it creates a SettingChange record with status="proposed"
-    and an impact report. The author must approve or abandon it.
+    当用户需要修改世界观、角色属性等已确立的设定时使用。自动评估变更对已有章节的影响，返回影响等级和受影响内容。
 
     Args:
-        target_type: What to change - "world_setting", "character",
-                     "foreshadowing", "style", "outline", "relation"
-        target_id: ID of the object to change
-        new_value: JSON string describing the new value
-        description: Natural language description of the proposed change
+        target_type: 修改对象类型 - "world_setting", "character", "foreshadowing", "style", "outline", "relation"
+        target_id: 修改对象的 ID
+        description: 变更内容的自然语言描述
+        new_value: 新值（JSON 字符串或普通字符串）
     """
     kb = _kb()
 
