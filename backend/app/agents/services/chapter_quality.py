@@ -359,7 +359,7 @@ class ChapterQuality:
         # 3. 调 LLM
         try:
             response = await self.llm.chat(
-                messages, temperature=NODE_TEMPERATURES["review"]
+                messages, temperature=NODE_TEMPERATURES["review"], max_tokens=8192
             )
             review_result = _parse_review_result(response)
             review_result["raw_response"] = response
