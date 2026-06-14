@@ -175,3 +175,31 @@ def _extract_times(text: str) -> list[str]:
     for p in patterns:
         times.extend(re.findall(p, text))
     return times
+
+
+def parse_json_param(value: str | list | dict, default, param_name: str = "") -> tuple:
+    """解析 JSON 字符串参数，返回 (解析结果, 警告信息)
+
+    如果 value 已经是目标类型（与 default 同类型），直接返回。
+    如果解析失败，返回 default 和警告信息。
+
+    Args:
+        value: 输入值（可能是 JSON 字符串或已是目标类型）
+        default: 解析失败时的默认返回值（同时作为类型参考）
+        param_name: 参数名（用于警告信息）
+    """
+    import json
+    if isinstance(value, type(default)):
+        return value, None
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, type(default)):
+                return parsed, None
+            warning = f"参数 {param_name} JSON 解析类型不匹配，使用默认值"
+            return default, warning
+        except json.JSONDecodeError as e:
+            warning = f"参数 {param_name} JSON 解析失败({e})，使用默认值"
+            return default, warning
+    warning = f"参数 {param_name} 类型不支持，使用默认值"
+    return default, warning
