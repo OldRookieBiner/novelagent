@@ -48,3 +48,19 @@ def get_user_id() -> int | None:
 
 def get_project_id() -> int | None:
     return _current_project_id.get()
+
+
+# 单次 SSE 请求内的工具结果缓存
+_current_tool_cache: ContextVar["ToolResultCache | None"] = ContextVar("tool_cache", default=None)
+
+
+def get_tool_cache():
+    """获取当前请求的工具缓存"""
+    from app.agents.tools.cache import ToolResultCache
+    cache = _current_tool_cache.get()
+    return cache
+
+
+def set_tool_cache(cache) -> None:
+    """设置当前请求的工具缓存"""
+    _current_tool_cache.set(cache)

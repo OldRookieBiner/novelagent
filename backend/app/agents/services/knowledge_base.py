@@ -134,21 +134,25 @@ class KnowledgeBaseService:
     def batch_read_for_index(self) -> dict:
         """单次 session 批量读取所有知识库数据，用于检索索引构建。
 
-        返回 dict（值已为 dict/list[dict]，非 ORM 对象）。
+        R18 修正：_read_all_with_session 只调用一次并缓存结果，
+        消除重复查询（plots 从 9 次降到 3 次，timelines 从 4 次降到 2 次）。
         """
         with self.session(readonly=True) as db:
+            # 每种 Store 的 _read_all_with_session 只调用一次
+            plots_data = self.plots._read_all_with_session(db)
+            timelines_data = self.timelines._read_all_with_session(db)
             return {
                 "world_setting": self.world_setting._read_with_session(db),
                 "characters": self.characters._read_all_characters_with_session(db),
                 "relations": self.characters._read_all_relations_with_session(db),
                 "style_constraints": self.styles._read_constraints_with_session(db),
-                "plot_blocks": self.plots._read_all_with_session(db).get("plot_blocks", []),
-                "plot_questions": self.plots._read_all_with_session(db).get("plot_questions", []),
-                "subplots": self.plots._read_all_with_session(db).get("subplots", []),
+                "plot_blocks": plots_data.get("plot_blocks", []),
+                "plot_questions": plots_data.get("plot_questions", []),
+                "subplots": plots_data.get("subplots", []),
                 "foreshadowings": self.foreshadowings._read_all_with_session(db),
-                "timeline": self.timelines._read_all_with_session(db).get("timeline", []),
+                "timeline": timelines_data.get("timeline", []),
                 "style_snapshots": [],  # 快照量大，单独加载
-                "scene_entries": self.timelines._read_all_with_session(db).get("scene_entries", []),
+                "scene_entries": timelines_data.get("scene_entries", []),
             }
 
     def batch_read_volume_for_index(self, volume_number: int) -> dict:
