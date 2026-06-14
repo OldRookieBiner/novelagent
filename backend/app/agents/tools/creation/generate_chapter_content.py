@@ -1,9 +1,13 @@
 """生成章节内容工具"""
 
+import logging
+
 from langchain_core.tools import tool
 
 from app.agents.tool_context import get_project_id
 from app.agents.tools.utils import _kb, parse_json_param
+
+logger = logging.getLogger(__name__)
 
 
 def _compute_style_snapshot(content: str) -> dict:
@@ -94,7 +98,6 @@ async def generate_chapter_content(
     from app.agents.services.knowledge_base import KnowledgeBaseService
 
     new_fs, new_fs_warn = parse_json_param(new_foreshadowings, [], "new_foreshadowings")
-
     reclaimed_ids, reclaimed_ids_warn = parse_json_param(reclaimed_foreshadowing_ids, [], "reclaimed_foreshadowing_ids")
 
     project_id = get_project_id()
@@ -109,11 +112,9 @@ async def generate_chapter_content(
                 "hint": "使用 generate_chapter_outline 工具生成大纲，或提醒用户确认大纲",
             }
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning("大纲确认状态检查失败: %s", e)
+        logger.warning("大纲确认状态检查失败: %s", e)
 
-    # 1. 保存章节正文（通过 OutlineStore 确保 ChapterOutline 存在，然后 ChapterStore 保存）
-    # 如果大纲不存在，先创建
+    # 1. 保存章节正文
     existing_co = kb.outlines.get_chapter_outline(chapter_number)
     if not existing_co:
         kb.outlines.create_chapter_outline({
@@ -124,8 +125,16 @@ async def generate_chapter_content(
     chapter_result = kb.chapters.save_content(chapter_number, content, word_count or len(content))
     existing_chapter = chapter_result.get("id") is not None
 
+    # 追踪步骤的警告列表
+    warnings = []
+    if new_fs_warn:
+        warnings.append({"step": "parse_new_foreshadowings", "error": new_fs_warn})
+    if reclaimed_ids_warn:
+        warnings.append({"step": "parse_reclaimed_ids", "error": reclaimed_ids_warn})
+
     # 2. 时间线
     timeline_created = False
+    timeline_error = None
     if timeline_summary:
         try:
             kb.timelines.create_timeline_entry({
@@ -138,11 +147,14 @@ async def generate_chapter_content(
                 "emotion_tag": emotion_tag or "",
             })
             timeline_created = True
-        except Exception:
-            pass
+        except Exception as e:
+            timeline_error = str(e)
+            logger.warning("时间线创建失败: %s", e)
+            warnings.append({"step": "timeline", "error": timeline_error})
 
     # 3. 创建新伏笔
     created_fs = []
+    new_foreshadowing_errors = []
     for fs_data in new_fs:
         try:
             f = kb.foreshadowings.create({
@@ -153,35 +165,52 @@ async def generate_chapter_content(
                 "related_characters": fs_data.get("related_characters", []),
             })
             created_fs.append({"id": f["id"], "content": (f.get("content") or "")[:60]})
-        except Exception:
-            pass
+        except Exception as e:
+            new_foreshadowing_errors.append({"data": fs_data, "error": str(e)})
+            logger.warning("伏笔创建失败: %s", e)
+    if new_foreshadowing_errors:
+        warnings.append({"step": "new_foreshadowings", "errors": new_foreshadowing_errors})
 
     # 4. 回收伏笔
+    reclaim_errors = []
     for fs_id in reclaimed_ids:
         try:
             kb.foreshadowings.update(fs_id, {"status": "reclaimed"})
-        except Exception:
-            pass
+        except Exception as e:
+            reclaim_errors.append({"foreshadowing_id": fs_id, "error": str(e)})
+            logger.warning("伏笔回收失败 (id=%s): %s", fs_id, e)
+    if reclaim_errors:
+        warnings.append({"step": "reclaim_foreshadowings", "errors": reclaim_errors})
 
     # 5. 风格快照
     style_snapshot_created = False
+    style_snapshot_error = None
     if content and content.strip():
         try:
             snapshot_data = _compute_style_snapshot(content)
             snapshot_data["chapter_number"] = chapter_number
             kb.styles.create_snapshot(snapshot_data)
             style_snapshot_created = True
-        except Exception:
-            pass
+        except Exception as e:
+            style_snapshot_error = str(e)
+            logger.warning("风格快照创建失败: %s", e)
+            warnings.append({"step": "style_snapshot", "error": style_snapshot_error})
 
-    return {
+    result = {
         "action": "created" if not existing_chapter else "updated",
         "chapter_number": chapter_number,
         "title": chapter_title,
         "word_count": word_count or len(content),
         "timeline_entry": timeline_created,
+        "timeline_error": timeline_error,
         "new_foreshadowings": len(created_fs),
-        "reclaimed_foreshadowings": len(reclaimed_ids),
+        "new_foreshadowing_errors": new_foreshadowing_errors,
+        "reclaimed_foreshadowings": len(reclaimed_ids) - len(reclaim_errors),
+        "reclaim_errors": reclaim_errors,
         "style_snapshot_created": style_snapshot_created,
+        "style_snapshot_error": style_snapshot_error,
         "message": f"第{chapter_number}章「{chapter_title}」已写入（{word_count or len(content)}字）",
     }
+    if warnings:
+        result["warnings"] = warnings
+    return result
