@@ -16,7 +16,7 @@ async def foreshadowing_check(current_chapter: int | None = None) -> dict:
     当用户需要了解伏笔的整体健康状况时使用。返回活跃伏笔数、待回收数、超期数和健康评分。
 
     Args:
-            current_chapter: Current chapter number (for overdue calculation).
+            current_chapter: 当前章节号（用于超期计算）
                              If not provided, no overdue check is performed.
     """
     kb = _kb()

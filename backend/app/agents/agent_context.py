@@ -41,11 +41,18 @@ def build_agent_context(
     current_chapter_number: int | None = None,
     max_tokens: int = 12000,
 ) -> dict:
-    """Build phase-aware project context for the agent system prompt.
+    """构建阶段感知的项目上下文。
 
-    Uses KnowledgeBaseService facade (Store 返回 dict)。
-    Returns a dict with context sections to be formatted by the caller.
+    通过 KnowledgeBaseService facade 读取数据，返回上下文字典供调用方格式化。
+    当 max_tokens <= 5000 时自动切换为轻量模式（只加载核心索引），
+    详细信息由 Agent 通过 knowledge_search 按需获取。
     """
+    # 小 token 预算自动切换为轻量模式
+    if max_tokens <= 5000:
+        return build_lightweight_context(
+            project_id, phase, current_chapter_number, max_tokens
+        )
+
     kb = KnowledgeBaseService(project_id)
     budget = BudgetTracker(max_tokens)
     context: dict = {}

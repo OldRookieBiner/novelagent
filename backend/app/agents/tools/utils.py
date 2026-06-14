@@ -10,9 +10,9 @@ from app.utils.text import tokenize_chinese
 
 
 def _kb() -> KnowledgeBaseService:
-    """Get KnowledgeBaseService for the current project context.
+    """获取当前项目上下文的 KnowledgeBaseService。
 
-    Raises ValueError if project_id is not set in tool_context.
+    如果 tool_context 中未设置 project_id，抛出 ValueError。
     """
     project_id = get_project_id()
     if project_id is None:
@@ -77,10 +77,9 @@ def _extract_keywords(old_value: dict, new_value: dict, description: str) -> lis
 def _grade_impact(
     affected_chapters: list, target_type: str, new_value: dict, old_value: dict
 ) -> tuple[str, str]:
-    """Grade the impact level of a proposed change.
+    """评估变更的影响等级。
 
-    Returns (level, detail) where level is one of:
-    none, minor, moderate, severe
+    返回 (level, detail)，level 取值：none, minor, moderate, severe
     """
     total_paragraphs = sum(len(ch.get("matching_paragraphs", [])) for ch in affected_chapters)
     total_chapters = len(affected_chapters)

@@ -19,12 +19,12 @@ async def create_relation(
     当用户需要定义角色之间的关系时使用。关系会随着情节推进而演变。
 
     Args:
-            character_a_id: ID of the first character
-            character_b_id: ID of the second character
+            character_a_id: 第一个角色的 ID
+            character_b_id: 第二个角色的 ID
             relation_type: Type of relationship - one of: 信任, 敌对, 感情, 合作, 利用, 陌生
             direction: Direction of the relationship - one of: 双向, 单向A→B, 单向B→A
-            current_status: Description of the current relationship status (optional)
-            trust_level: Trust level from 0 to 100, default 50
+            current_status: 当前关系状态描述（可选）
+            trust_level: 信任等级 0-100，默认 50
     """
     kb = _kb()
 

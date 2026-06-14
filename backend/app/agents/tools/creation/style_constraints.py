@@ -17,10 +17,10 @@ async def create_style_constraints(
     当用户需要定义写作风格规则时使用。包括禁忌词、禁止模式和抽象规则。
 
     Args:
-            style_anchor: Reference text snippet that embodies the desired style
-            taboo_words: JSON string list of forbidden words
-            forbidden_patterns: JSON string list of forbidden sentence patterns
-            abstract_rules: JSON string list of abstract style rules
+            style_anchor: 体现目标风格的参考文本片段
+            taboo_words: JSON 字符串列表，禁用词
+            forbidden_patterns: JSON 字符串列表，禁用句式
+            abstract_rules: JSON 字符串列表，抽象风格规则
     """
     kb = _kb()
 

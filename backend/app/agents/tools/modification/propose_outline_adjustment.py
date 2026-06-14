@@ -16,8 +16,8 @@ async def propose_outline_adjustment(
     当用户需要修改大纲、增删章节或调整情节走向时使用。自动评估变更对已有内容的影响，返回影响评估结果。
 
     Args:
-            description: Natural language description of the proposed adjustment
-            affected_plot_blocks: List of plot block IDs that would be affected
+            description: 调整内容的自然语言描述
+            affected_plot_blocks: 受影响的情节块 ID 列表
     """
     kb = _kb()
 

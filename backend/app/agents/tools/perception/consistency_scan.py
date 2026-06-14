@@ -105,7 +105,7 @@ async def consistency_scan(
                         ch_content = chapter["content"]
                         for rule in red_rules[:5]:
                             rule_text = rule if isinstance(rule, str) else rule.get("text", "")
-                            if rule_text and len(rule_text) > 2 and rule_text in ch_content:
+                            if rule_text and len(rule_text) >= 4 and rule_text in ch_content:
                                 issues.append({
                                     "type": "setting_reference",
                                     "chapters": [ch_num],

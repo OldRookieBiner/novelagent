@@ -24,17 +24,17 @@ async def create_character(
     当用户需要添加新角色到故事中时使用。创建后角色信息会写入知识库。
 
     Args:
-            name: Character name
+            name: 角色名
             role: Character role - one of: 主角, 核心反派, 重要配角, 配角
-            personality: Personality traits description
-            catchphrase: Character's catchphrase or typical speech pattern
-            habit_action: Character's habitual gesture or action
-            deep_fear: Character's deep-seated fear
-            core_motivation: Character's core motivation driving their actions
-            growth_arc: Character's growth arc / character development trajectory
-            appearance: Physical appearance description
-            backstory: Character's backstory
-            signature_item: Character's signature item or accessory
+            personality: 性格特征描述
+            catchphrase: 口头禅或典型语言风格
+            habit_action: 习惯动作或姿态
+            deep_fear: 深层恐惧
+            core_motivation: 驱动角色行动的核心动机
+            growth_arc: 成长弧线/角色发展轨迹
+            appearance: 外貌描写
+            backstory: 背景故事
+            signature_item: 标志性物品或配饰
     """
     kb = _kb()
 

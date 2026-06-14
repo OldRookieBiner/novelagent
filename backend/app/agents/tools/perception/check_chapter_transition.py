@@ -65,14 +65,19 @@ async def check_chapter_transition(chapter_number: int) -> dict:
     outline_chars_str = current_outline.get("characters", "")
     outline_names = set(_extract_names(outline_chars_str, kb)) if outline_chars_str else set()
 
-    # 2. 场景不连续检测
-    prev_scene = current_outline.get("scene", "")
-    if prev_closing and prev_scene:
-        scene_names = set(_extract_names(prev_scene, kb))
-        missing_chars = closing_names - scene_names
-        if missing_chars and len(closing_names) <= 3:
-            # 只有当上一章结尾角色很少（说明是关键场景）时才标记
-            pass  # 场景切换是正常的，不标记为问题
+    # 2. 场景切换检测
+    curr_scene = current_outline.get("scene", "")
+    if prev_closing and curr_scene:
+        scene_names = set(_extract_names(curr_scene, kb))
+        # 检测上一章结尾角色是否在当前场景中
+        missing_in_scene = closing_names - scene_names
+        if missing_in_scene and len(closing_names) <= 3:
+            issues.append({
+                "type": "scene_transition",
+                "detail": f"上一章结尾的角色 {missing_in_scene} 未出现在当前章场景「{curr_scene[:30]}」中",
+                "suggestion": f"建议在章节开头简短交代场景切换，或说明角色 {missing_in_scene} 的去向",
+                "severity": "info",
+            })
 
     # 3. 角色凭空变化检测（复用 closing_names 和 outline_names）
     if closing_names or outline_names:

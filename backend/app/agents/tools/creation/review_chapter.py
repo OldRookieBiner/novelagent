@@ -15,7 +15,7 @@ async def review_chapter(chapter_number: int) -> dict:
     对已完成章节进行多维度质量评估，包括情节连贯性、角色表现、文笔质量、节奏感、情感表达和整体评分。
 
     Args:
-            chapter_number: The chapter number to review (e.g., 1, 2, 3)
+            chapter_number: 要审核的章节号（如 1, 2, 3）
     """
     project_id = get_project_id()
     if project_id is None:

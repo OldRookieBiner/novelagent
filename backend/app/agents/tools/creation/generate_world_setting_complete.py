@@ -21,14 +21,14 @@ async def generate_world_setting_complete(
     当用户需要一次性创建完整世界观时使用。包括红色（不可违反）、黄色（重要参考）、绿色（可灵活调整）三级规则。
 
     Args:
-            core_concept: Core concept of the world
-            red_rules: JSON string list of unbreakable rules
-            yellow_rules: JSON string list of breakable-with-cost rules
-            green_rules: JSON string list of decorative rules
-            key_locations: JSON string list of key locations with descriptions
-            history: World history / backstory (optional)
-            social_structure: Social/political structure description (optional)
-            magic_system: Magic/power system description (optional)
+            core_concept: 世界观核心概念
+            red_rules: JSON 字符串列表，不可违反的规则
+            yellow_rules: JSON 字符串列表，可违反但有代价的规则
+            green_rules: JSON 字符串列表，装饰性规则
+            key_locations: JSON 字符串列表，关键地点及描述
+            history: 世界历史/背景故事（可选）
+            social_structure: 社会/政治结构描述（可选）
+            magic_system: 魔法/力量体系描述（可选）
     """
 
     red, red_warn = parse_json_param(red_rules, [], "red_rules")

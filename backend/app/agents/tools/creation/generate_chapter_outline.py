@@ -32,21 +32,21 @@ async def generate_chapter_outline(
     当用户需要为某一章创建写作大纲时使用。大纲包含场景、角色、情绪弧线等写作指导信息。
 
     Args:
-            chapter_number: Chapter number
-            title: Chapter title
-            scene: Scene setting
-            characters: Characters appearing in this chapter
-            plot: Key plot points
-            conflict: Main conflict
-            turning_point: Turning point
-            hook: Suspense hook at chapter end
-            transition: Transition to next chapter
-            ending: Chapter ending description
-            target_words: Target word count (default 3000)
-            opening_state: State at chapter opening
-            emotional_arc: Emotional trajectory
-            key_scenes: JSON string list of key scenes
-            pacing_note: Pacing instruction
+            chapter_number: 章节号
+            title: 章节标题
+            scene: 场景设定
+            characters: 出场角色
+            plot: 关键情节点
+            conflict: 主要冲突
+            turning_point: 转折点
+            hook: 章末悬念钩子
+            transition: 到下一章的过渡
+            ending: 章节结尾描写
+            target_words: 目标字数（默认 3000）
+            opening_state: 章节开场状态
+            emotional_arc: 情感轨迹
+            key_scenes: JSON 字符串列表，关键场景
+            pacing_note: 节奏指引
     """
     scenes, scenes_warn = parse_json_param(key_scenes, [], "key_scenes")
 

@@ -12,7 +12,7 @@ async def writer_block_assist(current_chapter: int) -> dict:
     当用户遇到写作困难或不知道如何继续时使用。基于当前情节状态和角色信息提供具体的写作建议。
 
     Args:
-            current_chapter: Current chapter number being worked on
+            current_chapter: 当前正在写作的章节号
     """
     kb = _kb()
 

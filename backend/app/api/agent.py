@@ -673,6 +673,7 @@ async def agent_chat(
             phase=phase,
             model_name=req.model_name,
             max_output_tokens=max_output_tokens,
+            project_id=project_id,
         )
     except ValueError as e:
         _release_busy_lock(project_id)

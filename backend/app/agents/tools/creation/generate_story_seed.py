@@ -19,11 +19,11 @@ async def generate_story_seed(
     故事种子是小说创作的起点，包含核心概念、主题和基本设定。通常在项目初始化时自动调用。
 
     Args:
-            seed_narrative: 300-500 word narrative
-            core_tension: The ultimate conflict/question
-            protagonist_archetype: Who the protagonist is
-            world_tone: World's unique texture
-            emotional_tone: How readers should feel
+            seed_narrative: 300-500 字的故事叙述
+            core_tension: 核心冲突/悬念
+            protagonist_archetype: 主角原型
+            world_tone: 世界独特质感
+            emotional_tone: 读者应有的情感体验
     """
     project_id = get_project_id()
     kb = _kb()
