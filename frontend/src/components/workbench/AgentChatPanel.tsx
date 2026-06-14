@@ -1,14 +1,15 @@
 // AgentChatPanel.tsx — Right panel: AI creation agent chat
 
-import { useState, useRef, useEffect, useCallback } from 'react'
-import { PanelRightClose, PanelRightOpen, Send, AlertTriangle, ShieldCheck, ChevronDown, ChevronRight, Loader2, CheckCircle2, GripVertical, Square } from 'lucide-react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
+import { PanelRightClose, PanelRightOpen, Send, AlertTriangle, ShieldCheck, ChevronDown, ChevronRight, Loader2, CheckCircle2, GripVertical, Square, History, Plus } from 'lucide-react'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
-import { sendAgentMessage, fetchConversation } from '@/lib/agentApi'
+import { sendAgentMessage, fetchConversation, createConversation } from '@/lib/agentApi'
 import { modelConfigsApi, settingsApi } from '@/lib/api'
 import type { AiMessage, AiMessageSegment, ImpactReport, AgentWarning } from '@/stores/workbenchStore'
 import type { ModelConfig, ModelItem } from '@/types'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { ConversationHistoryDialog } from './ConversationHistoryDialog'
 
 const PHASE_LABELS: Record<string, string> = {
   incubation: '创意孵化',
@@ -54,6 +55,7 @@ const TOOL_LABELS: Record<string, string> = {
   create_style_constraints: '创建风格约束',
   create_foreshadowing: '创建伏笔',
   create_plot_block: '创建情节块',
+  report_progress: '报告进度',
 }
 
 /** 判断 segments 中是否包含 agent_text 段（用于区分新/旧格式） */
@@ -162,17 +164,16 @@ function mergeToolGroups(
  * 新格式：segments 中有 agent_text 段，按 segments 顺序渲染
  * 旧格式：segments 中只有 tool 段，content 字段包含全部文本
  */
-function AssistantMessageContent({
+/** 内部实现：共享渲染逻辑 */
+function AssistantMessageContentInner({
   msg,
-  isLastAssistant,
-  isAgentSending,
+  isStreaming,
 }: {
   msg: AiMessage
-  isLastAssistant: boolean
-  isAgentSending: boolean
+  isStreaming: boolean
 })
 {
-  const showThinking = isLastAssistant && isAgentSending
+  const showThinking = isStreaming
   const useNewFormat = hasTextSegments(msg.segments)
 
   // 旧格式兼容：没有 agent_text segment 时，先渲染 content 再渲染 tool 段
@@ -269,6 +270,18 @@ function AssistantMessageContent({
             </div>
           )
         }
+        if (seg.type === 'progress')
+        {
+          const percent = (seg.data?.percent as number) || 0
+          return (
+            <div key={`prog-${i}`} className="mt-1.5 flex items-center gap-2">
+              <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                <div className="h-full bg-blue-400 rounded-full transition-all" style={{ width: `${percent}%` }} />
+              </div>
+              <span className="text-[10px] text-muted-foreground shrink-0">{seg.content}</span>
+            </div>
+          )
+        }
         // tool_group: 折叠的连续相同工具调用
         if ((seg as any).type === 'tool_group')
         {
@@ -320,6 +333,22 @@ function AssistantMessageContent({
   )
 }
 
+/** 已完成消息 — React.memo 有效（props 稳定） */
+const CompletedAssistantMessage = React.memo(function CompletedAssistantMessage({
+  msg,
+}: {
+  msg: AiMessage
+})
+{
+  return <AssistantMessageContentInner msg={msg} isStreaming={false} />
+})
+
+/** 流式中消息 — 不 memo */
+function StreamingAssistantMessage({ msg }: { msg: AiMessage })
+{
+  return <AssistantMessageContentInner msg={msg} isStreaming={true} />
+}
+
 /** 思考中指示器 */
 function ThinkingIndicator()
 {
@@ -351,6 +380,10 @@ export function AgentChatPanel() {
   } = useWorkbenchStore()
 
   const phase = useWorkbenchStore((s) => s.phase)
+  const { setActiveConversationId } = useWorkbenchStore()
+
+  // Task 3: 会话历史对话框状态
+  const [showConversationHistory, setShowConversationHistory] = useState(false)
 
   // 面板宽度状态
   const [panelWidth, setPanelWidth] = useState(400)
@@ -376,6 +409,18 @@ export function AgentChatPanel() {
   const abortRef = useRef<AbortController | null>(null)
   const modelSelectorRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Task 2: 滚动管理
+  const skipAutoScrollRef = useRef(false)
+  const isLoadingMoreRef = useRef(false)
+  const prevScrollHeightRef = useRef(0)
+
+  // Task 14: SSE 文本缓冲 — 合并高频 chunk 后统一更新
+  const textBufferRef = useRef<{
+    id: string
+    chunks: string[]
+    timer: ReturnType<typeof setTimeout> | null
+  }>({ id: '', chunks: [], timer: null })
 
   // 计算最小/最大宽度
   const minWidth = 400
@@ -422,9 +467,21 @@ export function AgentChatPanel() {
     }
   }, [isDragging, handleMouseMove, handleMouseUp])
 
-  // 自动滚动到底部
+  // 自动滚动到底部（加载历史消息时恢复位置而非滚底）
   useEffect(() => {
-    if (scrollRef.current) {
+    if (skipAutoScrollRef.current)
+    {
+      skipAutoScrollRef.current = false
+      if (scrollRef.current && prevScrollHeightRef.current > 0)
+      {
+        const newScrollHeight = scrollRef.current.scrollHeight
+        scrollRef.current.scrollTop = newScrollHeight - prevScrollHeightRef.current
+        prevScrollHeightRef.current = 0
+      }
+      return
+    }
+    if (scrollRef.current)
+    {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [aiMessages, pendingImpacts])
@@ -540,6 +597,120 @@ export function AgentChatPanel() {
     })
   }, [currentProjectId, setAiMessages])
 
+  // Task 2: 加载更多历史消息（向上滚动时触发）
+  const loadMoreMessages = useCallback(async () => {
+    if (!currentProjectId || aiMessages.length === 0) return
+    if (isLoadingMoreRef.current) return
+    const oldestId = aiMessages[0]?.id
+    if (!oldestId) return
+
+    isLoadingMoreRef.current = true
+    prevScrollHeightRef.current = scrollRef.current?.scrollHeight ?? 0
+
+    try
+    {
+      const res = await fetchConversation(currentProjectId, undefined, 30, parseInt(oldestId))
+      if (res.messages.length === 0) return
+
+      const older: AiMessage[] = res.messages.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        segments: (m.segments || []).map((s) => ({
+          type: (s.type as any) || "agent_text",
+          content: s.content || "",
+          data: s.data,
+        })),
+        timestamp: m.timestamp,
+      }))
+
+      const existingIds = new Set(aiMessages.map((m) => m.id))
+      const newMessages = older.filter((m) => !existingIds.has(m.id))
+      if (newMessages.length > 0)
+      {
+        skipAutoScrollRef.current = true
+        setAiMessages([...newMessages, ...aiMessages])
+      }
+    }
+    catch
+    {
+      // 静默失败
+    }
+    finally
+    {
+      isLoadingMoreRef.current = false
+    }
+  }, [currentProjectId, aiMessages, setAiMessages])
+
+  // Task 2: 检测滚动到顶部
+  const handleMessagesScroll = useCallback(() => {
+    if (!scrollRef.current) return
+    if (scrollRef.current.scrollTop < 50)
+    {
+      loadMoreMessages()
+    }
+  }, [loadMoreMessages])
+
+  // Task 14: flush 文本缓冲
+  const flushTextBuffer = useCallback(() => {
+    const buf = textBufferRef.current
+    if (!buf.chunks.length) return
+
+    const combined = buf.chunks.join('')
+    buf.chunks = []
+    buf.timer = null
+
+    updateAiMessage(buf.id, (m) => ({
+      ...m,
+      content: m.content + combined,
+      segments: [...m.segments, {
+        type: 'agent_text' as const,
+        content: combined,
+        data: undefined,
+      }],
+    }))
+  }, [updateAiMessage])
+
+  // Task 3: 切换会话（对话框已完成 activate，此处只加载消息）
+  const handleSwitchConversation = useCallback(async (conv: { id: number }) => {
+    if (!currentProjectId) return
+    setActiveConversationId(conv.id)
+    try
+    {
+      const res = await fetchConversation(currentProjectId, conv.id)
+      const loaded: AiMessage[] = res.messages.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        segments: (m.segments || []).map((s) => ({
+          type: (s.type as any) || "agent_text",
+          content: s.content || "",
+          data: s.data,
+        })),
+        timestamp: m.timestamp,
+      }))
+      setAiMessages(loaded)
+    }
+    catch
+    {
+      // 会话切换失败，保持当前消息
+    }
+  }, [currentProjectId, setActiveConversationId, setAiMessages])
+
+  // Task 3: 新建会话
+  const handleNewConversation = useCallback(async () => {
+    if (!currentProjectId || isAgentSending) return
+    try
+    {
+      const conv = await createConversation(currentProjectId)
+      setActiveConversationId(conv.id)
+      setAiMessages([])
+    }
+    catch
+    {
+      // 可能 busy lock 冲突或其他错误
+    }
+  }, [currentProjectId, isAgentSending, setActiveConversationId, setAiMessages])
 
   // 模型选择器 click-outside 关闭
   useEffect(() => {
@@ -614,6 +785,9 @@ export function AgentChatPanel() {
   const handleSend = useCallback(async () => {
     if (!input.trim() || !currentProjectId || isAgentSending) return
 
+    // 确保上一条消息的文本缓冲已刷新
+    flushTextBuffer()
+
     const userMsg: AiMessage = {
       id: crypto.randomUUID(),
       role: 'user',
@@ -644,19 +818,16 @@ export function AgentChatPanel() {
         currentProjectId,
         messageText,
         {
-          // 文本片段：同时追加到 content（兼容存储）和 segments（保持顺序）
+          // 文本片段：缓冲后批量更新（50ms 防抖）
           onAgentText: (content) => {
-            updateAiMessage(assistantMsg.id, (m) => ({
-              ...m,
-              content: m.content + content,
-              segments: [...m.segments, {
-                type: 'agent_text' as const,
-                content,
-                data: undefined,
-              }],
-            }))
+            const buf = textBufferRef.current
+            buf.id = assistantMsg.id
+            buf.chunks.push(content)
+            if (buf.timer) clearTimeout(buf.timer)
+            buf.timer = setTimeout(flushTextBuffer, 50)
           },
           onToolStart: (tool, args) => {
+            flushTextBuffer()
             updateAiMessage(assistantMsg.id, (m) => ({
               ...m,
               segments: [...m.segments, {
@@ -667,6 +838,7 @@ export function AgentChatPanel() {
             }))
           },
           onToolResult: (tool, result) => {
+            flushTextBuffer()
             updateAiMessage(assistantMsg.id, (m) => ({
               ...m,
               segments: [...m.segments, {
@@ -686,10 +858,26 @@ export function AgentChatPanel() {
           onWarning: (data) => {
             addAgentWarning(data as unknown as AgentWarning)
           },
+          onAgentProgress: (data) => {
+            flushTextBuffer()
+            updateAiMessage(assistantMsg.id, (m) => ({
+              ...m,
+              segments: [
+                ...m.segments.filter(s => s.type !== 'progress'),
+                {
+                  type: 'progress' as const,
+                  content: data.progress_message,
+                  data: { percent: data.progress_percent },
+                },
+              ],
+            }))
+          },
           onAgentDone: () => {
+            flushTextBuffer()
             incrementKnowledgeVersion()
           },
           onError: (error) => {
+            flushTextBuffer()
             updateAiMessage(assistantMsg.id, (m) => ({
               ...m,
               content: m.content || `错误：${error}`,
@@ -799,7 +987,23 @@ export function AgentChatPanel() {
           <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
             {PHASE_LABELS[phase] || '未知'}
           </span>
-          <div className={`w-1.5 h-1.5 rounded-full ml-auto ${isAgentSending ? 'bg-amber-500 animate-pulse' : 'bg-green-500'}`} />
+          <div className={`w-1.5 h-1.5 rounded-full ${isAgentSending ? 'bg-amber-500 animate-pulse' : 'bg-green-500'}`} />
+          <button
+            onClick={handleNewConversation}
+            disabled={isAgentSending}
+            className="p-1 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-30"
+            title="新建会话"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => setShowConversationHistory(true)}
+            className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+            title="会话历史"
+          >
+            <History className="h-3.5 w-3.5" />
+          </button>
+          <div className="ml-auto" />
           <button
             onClick={toggleAiSidebar}
             className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
@@ -886,7 +1090,7 @@ export function AgentChatPanel() {
         )}
 
         {/* Messages */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
+        <div ref={scrollRef} onScroll={handleMessagesScroll} className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
           {aiMessages.length === 0 && (
             <div className="text-center text-muted-foreground text-xs py-8">
               {PHASE_EMPTY_HINTS[phase] || '和智能体讨论你的创作想法'}
@@ -905,11 +1109,11 @@ export function AgentChatPanel() {
                 </div>
               ) : (
                 <div className="text-[11px] leading-relaxed text-foreground">
-                  <AssistantMessageContent
-                    msg={msg}
-                    isLastAssistant={msg.id === lastAssistantId}
-                    isAgentSending={isAgentSending}
-                  />
+                  {msg.id === lastAssistantId && isAgentSending ? (
+                    <StreamingAssistantMessage msg={msg} />
+                  ) : (
+                    <CompletedAssistantMessage msg={msg} />
+                  )}
                 </div>
               )}
             </div>
@@ -986,6 +1190,13 @@ export function AgentChatPanel() {
           </div>
         </div>
       </div>
+
+      <ConversationHistoryDialog
+        open={showConversationHistory}
+        onOpenChange={setShowConversationHistory}
+        onSwitchConversation={handleSwitchConversation}
+        isAgentSending={isAgentSending}
+      />
     </div>
   )
 }

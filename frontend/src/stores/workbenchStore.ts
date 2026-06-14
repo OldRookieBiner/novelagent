@@ -10,7 +10,7 @@ export type Phase = 'incubation' | 'structure' | 'writing' | 'revision'
 
 /** AI message content segment */
 export interface AiMessageSegment {
-  type: 'agent_text' | 'chunk' | 'review' | 'chapter_preview' | 'warning' | 'tool_start' | 'tool_result'
+  type: 'agent_text' | 'chunk' | 'review' | 'chapter_preview' | 'warning' | 'tool_start' | 'tool_result' | 'progress'
   content: string
   data?: Record<string, unknown>
 }

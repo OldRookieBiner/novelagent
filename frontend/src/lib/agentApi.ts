@@ -14,6 +14,7 @@ export interface AgentChatCallbacks {
   onChapterPreview?: (data: Record<string, unknown>) => void
   onReview?: (data: Record<string, unknown>) => void
   onAgentDone?: () => void
+  onAgentProgress?: (data: { progress_message: string; progress_percent: number }) => void
   onError?: (error: string) => void
 }
 
@@ -79,6 +80,9 @@ export async function sendAgentMessage(
           break
         case 'warning':
           callbacks.onWarning?.(payload)
+          break
+        case 'agent_progress':
+          callbacks.onAgentProgress?.(payload as { progress_message: string; progress_percent: number })
           break
         case 'agent_done':
           callbacks.onAgentDone?.()
