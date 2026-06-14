@@ -75,7 +75,7 @@ async def check_chapter_transition(chapter_number: int) -> dict:
             pass  # 场景切换是正常的，不标记为问题
 
     # 3. 角色凭空变化检测（复用 closing_names 和 outline_names）
-
+    if closing_names or outline_names:
         # 上一章结尾出现的角色在当前章大纲中消失
         disappeared = closing_names - outline_names
         if disappeared and len(disappeared) <= 3:
