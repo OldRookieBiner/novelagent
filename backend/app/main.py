@@ -24,6 +24,8 @@ from app.api.knowledge_status import router as knowledge_status_router
 from app.api.inspiration import router as inspiration_router
 from app.api.knowledge import router as knowledge_router
 from app.api.volumes import router as volumes_router
+from app.database import SessionLocal
+from app.models.project import Project
 from app.utils.logger import setup_logging, get_logger
 from app.utils.exceptions import (
     APIError,
@@ -92,6 +94,19 @@ async def lifespan(app: FastAPI):
 
     create_default_user()
     logger.info("Default user initialized")
+
+    # 释放启动时残留的 busy lock（进程崩溃后不会走 finally）
+    _startup_db = SessionLocal()
+    try:
+        stale = _startup_db.query(Project).filter(Project.is_busy == True).all()
+        for p in stale:
+            p.is_busy = False
+            p.busy_since = None
+            p.busy_by = None
+            logger.info(f"Released stale busy lock for project {p.id}")
+        _startup_db.commit()
+    finally:
+        _startup_db.close()
 
     yield
 

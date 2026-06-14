@@ -24,6 +24,7 @@ from app.agents.tools.assist import (
     suggest_foreshadowing,
     suggest_plot_twist,
     expand_world_setting,
+    report_progress,
 )
 from app.agents.tools.creation import (
     create_evolution_plan,
@@ -53,6 +54,7 @@ INCUBATION_TOOLS = [
     # 感知
     knowledge_search,
     progress_report,
+    report_progress,
     expand_world_setting,
     # 生成（直接内容创建）
     generate_outline,
@@ -78,6 +80,7 @@ STRUCTURE_TOOLS = [
     review_chapter,
     rewrite_chapter,
     progress_report,
+    report_progress,
     rhythm_analysis,
     # 创作辅助（孵化继承）
     expand_world_setting,
@@ -115,6 +118,7 @@ WRITING_TOOLS = [
     consistency_check,
     style_analysis,
     progress_report,
+    report_progress,
     rhythm_analysis,
     # 生成（主要写作工具）
     generate_chapter_outline,

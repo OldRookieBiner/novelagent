@@ -31,6 +31,7 @@ from app.agents.sse_events import (
     format_agent_tool_start,
     format_agent_tool_result,
     format_agent_done,
+    format_agent_progress,
     format_impact_assessment,
     format_warning,
     format_error_message,
@@ -255,48 +256,68 @@ async def stream_agent_events(
             elif kind == "on_tool_start":
                 tool_name = event.get("name", "")
                 tool_input = event.get("data", {}).get("input", {})
-                if accumulator is not None:
-                    accumulator.setdefault("actions", []).append({
-                        "tool": tool_name,
-                        "status": "running",
-                        "args": tool_input,
-                    })
-                    accumulator.setdefault("segments", []).append({
-                        "type": "tool_start",
-                        "content": tool_name,
-                        "data": {"tool": tool_name},
-                    })
-                yield format_agent_tool_start(tool_name, tool_input)
+                # 进度报告工具：不记录到 accumulator actions，不发 tool_start，只发 progress
+                if tool_name == "report_progress":
+                    if accumulator is not None:
+                        accumulator.setdefault("segments", []).append({
+                            "type": "progress",
+                            "content": str(tool_input.get("message", "")),
+                            "data": {"percent": tool_input.get("percent", 0)},
+                        })
+                    yield format_agent_progress(tool_name, tool_input)
+                else:
+                    if accumulator is not None:
+                        accumulator.setdefault("actions", []).append({
+                            "tool": tool_name,
+                            "status": "running",
+                            "args": tool_input,
+                        })
+                        accumulator.setdefault("segments", []).append({
+                            "type": "tool_start",
+                            "content": tool_name,
+                            "data": {"tool": tool_name},
+                        })
+                    yield format_agent_tool_start(tool_name, tool_input)
 
             elif kind == "on_tool_end":
                 tool_name = event.get("name", "")
                 tool_output = event.get("data", {}).get("output", {})
 
-                output_str = json.dumps(tool_output, ensure_ascii=False) if isinstance(tool_output, dict) else str(tool_output)
-                yield format_agent_tool_result(tool_name, {"output": output_str[:800]})
+                # 进度报告工具：只发 progress 事件，跳过 tool_result / actions
+                if tool_name == "report_progress" and isinstance(tool_output, dict):
+                    yield format_agent_progress(tool_name, tool_output)
+                    if accumulator is not None:
+                        accumulator.setdefault("segments", []).append({
+                            "type": "progress",
+                            "content": str(tool_output.get("progress_message", "")),
+                            "data": {"percent": tool_output.get("progress_percent", 0)},
+                        })
+                else:
+                    output_str = json.dumps(tool_output, ensure_ascii=False) if isinstance(tool_output, dict) else str(tool_output)
+                    yield format_agent_tool_result(tool_name, {"output": output_str[:800]})
 
-                if accumulator is not None:
-                    actions = accumulator.get("actions", [])
-                    for a in reversed(actions):
-                        if a["tool"] == tool_name and a.get("status") == "running":
-                            a["status"] = "done"
-                            a["result"] = tool_output if isinstance(tool_output, dict) else {"output": str(tool_output)}
-                            break
-                    accumulator.setdefault("segments", []).append({
-                        "type": "tool_result",
-                        "content": tool_name,
-                        "data": {"tool": tool_name},
-                    })
+                    if accumulator is not None:
+                        actions = accumulator.get("actions", [])
+                        for a in reversed(actions):
+                            if a["tool"] == tool_name and a.get("status") == "running":
+                                a["status"] = "done"
+                                a["result"] = tool_output if isinstance(tool_output, dict) else {"output": str(tool_output)}
+                                break
+                        accumulator.setdefault("segments", []).append({
+                            "type": "tool_result",
+                            "content": tool_name,
+                            "data": {"tool": tool_name},
+                        })
 
-                # Impact assessment tools: emit dedicated SSE event
-                if tool_name in IMPACT_TOOLS and isinstance(tool_output, dict):
-                    if tool_output.get("change_id"):
-                        yield format_impact_assessment(tool_output)
+                    # Impact assessment tools: emit dedicated SSE event
+                    if tool_name in IMPACT_TOOLS and isinstance(tool_output, dict):
+                        if tool_output.get("change_id"):
+                            yield format_impact_assessment(tool_output)
 
-                # Warning-producing tools: emit warning if flagged
-                if tool_name in WARNING_TOOLS and isinstance(tool_output, dict):
-                    if tool_output.get("warning"):
-                        yield format_warning(tool_name, {"message": tool_output["warning"]})
+                    # Warning-producing tools: emit warning if flagged
+                    if tool_name in WARNING_TOOLS and isinstance(tool_output, dict):
+                        if tool_output.get("warning"):
+                            yield format_warning(tool_name, {"message": tool_output["warning"]})
 
         yield format_agent_done()
 
@@ -641,6 +662,9 @@ async def agent_chat(
     messages.extend(truncated_history)
     messages.append({"role": "user", "content": req.message})
 
+    # 计算输出 token 上限：context_window × 80%，留 20% 给输入+估算误差
+    max_output_tokens = int(context_window * 0.8)
+
     # Create agent graph with phase-aware tools
     try:
         graph = create_agent_graph(
@@ -648,6 +672,7 @@ async def agent_chat(
             user_id=current_user.id,
             phase=phase,
             model_name=req.model_name,
+            max_output_tokens=max_output_tokens,
         )
     except ValueError as e:
         _release_busy_lock(project_id)
@@ -667,13 +692,18 @@ async def agent_chat(
                 graph, messages, project_id, conv.id, accumulator=acc
             ):
                 yield event
-            _save_assistant_message(
-                project_id,
-                content=acc.get("full", ""),
-                segments=acc.get("segments", []),
-                actions=acc.get("actions", []),
-            )
         finally:
+            # 无论正常完成还是中断，都尝试保存已有内容
+            if acc.get("full") or acc.get("segments"):
+                try:
+                    _save_assistant_message(
+                        project_id,
+                        content=acc.get("full", ""),
+                        segments=acc.get("segments", []),
+                        actions=acc.get("actions", []),
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to save assistant message: {e}")
             _release_busy_lock(project_id)
             reset_tool_context(context_tokens)
 

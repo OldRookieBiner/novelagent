@@ -59,6 +59,11 @@ def format_agent_done(message: str = "完成") -> str:
     """格式化 Agent 完成事件"""
     return f"event: agent_done\ndata: {json.dumps({'message': message}, ensure_ascii=False)}\n\n"
 
+def format_agent_progress(tool_name: str, data: dict) -> str:
+    """格式化 Agent 工具进度事件"""
+    payload = {"tool": tool_name, **data}
+    return f"event: agent_progress\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
 def format_ai_update(data: dict) -> str:
     """格式化 AI 更新事件"""
     return f"event: ai_update\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
