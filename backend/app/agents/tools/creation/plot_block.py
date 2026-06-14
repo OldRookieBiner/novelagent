@@ -2,7 +2,7 @@
 
 from langchain_core.tools import tool
 
-from app.agents.tools.utils import _kb
+from app.agents.tools.utils import _kb, parse_json_param
 
 
 @tool
@@ -29,23 +29,13 @@ async def create_plot_block(
         questions_to_answer: JSON string list of questions this block should answer
         expected_mood: Expected mood/tone for this block (e.g., "紧张悬疑", "温馨治愈")
     """
-    import json as _json
     kb = _kb()
 
-    try:
-        must = _json.loads(must_happen) if isinstance(must_happen, str) else must_happen
-    except _json.JSONDecodeError:
-        must = []
+    must, must_warn = parse_json_param(must_happen, [], "must_happen")
 
-    try:
-        raise_q = _json.loads(questions_to_raise) if isinstance(questions_to_raise, str) else questions_to_raise
-    except _json.JSONDecodeError:
-        raise_q = []
+    raise_q, raise_q_warn = parse_json_param(questions_to_raise, [], "questions_to_raise")
 
-    try:
-        answer_q = _json.loads(questions_to_answer) if isinstance(questions_to_answer, str) else questions_to_answer
-    except _json.JSONDecodeError:
-        answer_q = []
+    answer_q, answer_q_warn = parse_json_param(questions_to_answer, [], "questions_to_answer")
 
     data = {
         "title": title,

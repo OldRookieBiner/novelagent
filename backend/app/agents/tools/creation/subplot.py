@@ -2,7 +2,7 @@
 
 from langchain_core.tools import tool
 
-from app.agents.tools.utils import _kb
+from app.agents.tools.utils import _kb, parse_json_param
 
 
 @tool
@@ -27,13 +27,9 @@ async def create_subplot(
         planned_intersection_chapter: Chapter number where this subplot intersects with the main plot
         expected_resolution_chapter: Chapter number where this subplot resolves
     """
-    import json as _json
     kb = _kb()
 
-    try:
-        chars = _json.loads(characters) if isinstance(characters, str) else characters
-    except _json.JSONDecodeError:
-        chars = []
+    chars, chars_warn = parse_json_param(characters, [], "characters")
 
     data = {"name": name, "characters": chars, "current_status": current_status}
     if raised_in_chapter is not None:

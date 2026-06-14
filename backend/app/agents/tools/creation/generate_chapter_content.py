@@ -3,7 +3,7 @@
 from langchain_core.tools import tool
 
 from app.agents.tool_context import get_project_id
-from app.agents.tools.utils import _kb
+from app.agents.tools.utils import _kb, parse_json_param
 
 
 def _compute_style_snapshot(content: str) -> dict:
@@ -91,18 +91,11 @@ async def generate_chapter_content(
         emotion_score: Emotion score 1-5
         emotion_tag: Emotion tag
     """
-    import json as _json
     from app.agents.services.knowledge_base import KnowledgeBaseService
 
-    try:
-        new_fs = _json.loads(new_foreshadowings) if isinstance(new_foreshadowings, str) else new_foreshadowings
-    except _json.JSONDecodeError:
-        new_fs = []
+    new_fs, new_fs_warn = parse_json_param(new_foreshadowings, [], "new_foreshadowings")
 
-    try:
-        reclaimed_ids = _json.loads(reclaimed_foreshadowing_ids) if isinstance(reclaimed_foreshadowing_ids, str) else reclaimed_foreshadowing_ids
-    except _json.JSONDecodeError:
-        reclaimed_ids = []
+    reclaimed_ids, reclaimed_ids_warn = parse_json_param(reclaimed_foreshadowing_ids, [], "reclaimed_foreshadowing_ids")
 
     project_id = get_project_id()
     kb = KnowledgeBaseService(project_id)

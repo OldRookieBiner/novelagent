@@ -2,7 +2,7 @@
 
 from langchain_core.tools import tool
 
-from app.agents.tools.utils import _kb
+from app.agents.tools.utils import _kb, parse_json_param
 
 
 @tool
@@ -23,23 +23,13 @@ async def create_style_constraints(
         forbidden_patterns: JSON string list of forbidden sentence patterns
         abstract_rules: JSON string list of abstract style rules
     """
-    import json as _json
     kb = _kb()
 
-    try:
-        taboo = _json.loads(taboo_words) if isinstance(taboo_words, str) else taboo_words
-    except _json.JSONDecodeError:
-        taboo = []
+    taboo, taboo_warn = parse_json_param(taboo_words, [], "taboo_words")
 
-    try:
-        patterns = _json.loads(forbidden_patterns) if isinstance(forbidden_patterns, str) else forbidden_patterns
-    except _json.JSONDecodeError:
-        patterns = []
+    patterns, patterns_warn = parse_json_param(forbidden_patterns, [], "forbidden_patterns")
 
-    try:
-        rules = _json.loads(abstract_rules) if isinstance(abstract_rules, str) else abstract_rules
-    except _json.JSONDecodeError:
-        rules = []
+    rules, rules_warn = parse_json_param(abstract_rules, [], "abstract_rules")
 
     existing = kb.styles.get_constraints()
     if existing:

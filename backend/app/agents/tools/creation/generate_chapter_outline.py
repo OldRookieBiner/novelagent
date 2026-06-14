@@ -1,12 +1,10 @@
 """生成章节大纲工具"""
-
-import json as _json
 import logging
 
 from langchain_core.tools import tool
 
 from app.agents.tool_context import get_project_id
-from app.agents.tools.utils import _kb
+from app.agents.tools.utils import _kb, parse_json_param
 
 logger = logging.getLogger(__name__)
 
@@ -50,11 +48,7 @@ async def generate_chapter_outline(
         key_scenes: JSON string list of key scenes
         pacing_note: Pacing instruction
     """
-    try:
-        scenes = _json.loads(key_scenes) if isinstance(key_scenes, str) else key_scenes
-    except _json.JSONDecodeError:
-        logger.warning("key_scenes JSON 解析失败，使用空列表: %s", key_scenes[:100])
-        scenes = []
+    scenes, scenes_warn = parse_json_param(key_scenes, [], "key_scenes")
 
     project_id = get_project_id()
     kb = _kb()

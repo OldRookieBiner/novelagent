@@ -2,7 +2,7 @@
 
 from langchain_core.tools import tool
 
-from app.agents.tools.utils import _kb
+from app.agents.tools.utils import _kb, parse_json_param
 
 
 @tool
@@ -25,13 +25,9 @@ async def create_foreshadowing(
         expected_resolve_chapter: Chapter number where the foreshadowing is expected to be resolved
         related_characters: JSON string list of related character names
     """
-    import json as _json
     kb = _kb()
 
-    try:
-        characters = _json.loads(related_characters) if isinstance(related_characters, str) else related_characters
-    except _json.JSONDecodeError:
-        characters = []
+    characters, characters_warn = parse_json_param(related_characters, [], "related_characters")
 
     data = {
         "content": content,

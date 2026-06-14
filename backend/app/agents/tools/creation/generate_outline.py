@@ -29,23 +29,13 @@ async def generate_outline(
         characters: JSON string list of character names in the novel
         world_setting_summary: Brief summary of the world setting (optional)
     """
-    import json as _json
-    from app.agents.tools.utils import _kb
+    from app.agents.tools.utils import _kb, parse_json_param
 
-    try:
-        points = _json.loads(plot_points) if isinstance(plot_points, str) else plot_points
-    except _json.JSONDecodeError:
-        points = []
+    points, points_warn = parse_json_param(plot_points, [], "plot_points")
 
-    try:
-        curve = _json.loads(emotional_curve) if isinstance(emotional_curve, str) else emotional_curve
-    except _json.JSONDecodeError:
-        curve = []
+    curve, curve_warn = parse_json_param(emotional_curve, [], "emotional_curve")
 
-    try:
-        char_list = _json.loads(characters) if isinstance(characters, str) else characters
-    except _json.JSONDecodeError:
-        char_list = []
+    char_list, char_list_warn = parse_json_param(characters, [], "characters")
 
     kb = _kb()
     try:

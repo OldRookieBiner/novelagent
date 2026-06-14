@@ -2,7 +2,7 @@
 
 from langchain_core.tools import tool
 
-from app.agents.tools.utils import _kb
+from app.agents.tools.utils import _kb, parse_json_param
 
 
 @tool
@@ -31,27 +31,14 @@ async def generate_world_setting_complete(
         social_structure: Social/political structure description (optional)
         magic_system: Magic/power system description (optional)
     """
-    import json as _json
 
-    try:
-        red = _json.loads(red_rules) if isinstance(red_rules, str) else red_rules
-    except _json.JSONDecodeError:
-        red = []
+    red, red_warn = parse_json_param(red_rules, [], "red_rules")
 
-    try:
-        yellow = _json.loads(yellow_rules) if isinstance(yellow_rules, str) else yellow_rules
-    except _json.JSONDecodeError:
-        yellow = []
+    yellow, yellow_warn = parse_json_param(yellow_rules, [], "yellow_rules")
 
-    try:
-        green = _json.loads(green_rules) if isinstance(green_rules, str) else green_rules
-    except _json.JSONDecodeError:
-        green = []
+    green, green_warn = parse_json_param(green_rules, [], "green_rules")
 
-    try:
-        locations = _json.loads(key_locations) if isinstance(key_locations, str) else key_locations
-    except _json.JSONDecodeError:
-        locations = []
+    locations, locations_warn = parse_json_param(key_locations, [], "key_locations")
 
     kb = _kb()
 
