@@ -62,6 +62,55 @@
 
 ---
 
+## 前置任务：修复现有代码缺陷（R5/R6 审查发现）
+
+> 在 Phase 1 开始前修复两个已存在的 P0 级代码缺陷，防止后续任务在此基础上构建时引入更多问题。
+
+---
+
+### Task 0a: 修复 retrieval.py 缺少 import asyncio 和冗余自引用
+
+**Files:**
+- Modify: `backend/app/agents/services/retrieval.py`
+
+- [ ] **Step 1: 添加 `import asyncio` 到文件顶部**
+
+- [ ] **Step 2: 修正 `add_document_async` 中的冗余导入**
+
+将 `from app.agents.services.retrieval import add_chunk_to_index` 替换为直接调用当前模块的 `add_chunk_to_index` 函数（去掉 from ... import 自引用）。
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add backend/app/agents/services/retrieval.py
+git commit -m "fix(retrieval): add missing import asyncio and remove self-import"
+```
+
+---
+
+### Task 0b: 修复 retrieval.py 索引构建中引用 Character 模型不存在的字段
+
+**Files:**
+- Modify: `backend/app/agents/services/retrieval.py`
+
+- [ ] **Step 1: 修正 `_collect_documents_from_db` 和 `_collect_global_documents_from_db` 中的字段映射**
+
+将以下字段映射修正为与 Character 模型一致：
+- `core_conflict` → 删除（模型中不存在等价字段）
+- `character_arc` → `growth_arc`（模型中的实际字段名）
+- `knowledge_boundary` → `deep_fear`（作为内在约束的近似替代）
+- `speech_style` → `catchphrase`（作为语言特征的近似替代）
+- `dialogue_samples` → 删除（模型中不存在）
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add backend/app/agents/services/retrieval.py
+git commit -m "fix(retrieval): align index building with Character model fields"
+```
+
+---
+
 ## Phase 1: P0 数据安全与正确性
 
 ---
@@ -190,7 +239,7 @@ git commit -m "feat(tools): add parse_json_param for unified JSON string parsing
 
 ---
 
-### Task 2: 统一替换 13 个工具的 JSON 解析为 parse_json_param
+### Task 2: 统一替换 9 个工具的 JSON 解析为 parse_json_param
 
 **Files:**
 - Modify: `backend/app/agents/tools/creation/world_setting.py`
@@ -271,11 +320,9 @@ warnings = [w for w in [tiered_warn, loc_warn] if w]
 2 个 JSON 参数：`new_foreshadowings`, `reclaimed_foreshadowing_ids`。
 此文件的异常处理修改在 Task 4 中进行，此处只替换 JSON 解析部分。
 
-- [ ] **Step 10: 替换 `propose_setting_change.py`**
+- [ ] **Step 10: 确认 `propose_setting_change.py` 不替换**
 
-1 个 JSON 参数：`new_value`（默认值为 `{"value": new_value}`，需要特殊处理：parse_json_param 不适用此场景，保持原有逻辑但记录警告）。
-
-注意：`propose_setting_change.py` 的 `new_value` 解析逻辑不同——解析失败时保留原始字符串。此处不做替换，仅移除 `import json` 的冗余（它仍需用于其他处）。
+`propose_setting_change` 的 `new_value` 参数解析逻辑不同——解析失败时保留原始字符串构造 `{"value": new_value}`，不适用 `parse_json_param`。**保持原有逻辑不修改**。
 
 - [ ] **Step 11: 运行 agent_tools 测试**
 
@@ -452,8 +499,18 @@ git commit -m "fix(tools): merge advance_phase into single session with row lock
 
 **Files:**
 - Modify: `backend/app/agents/tools/creation/generate_chapter_content.py`
+- Modify: `backend/app/agents/services/stores/chapter_store.py`（R3 修正：`save_content` 返回 `is_new` 字段）
 
-- [ ] **Step 1: 重写异常处理逻辑**
+- [ ] **Step 1: 修正 ChapterStore.save_content 返回值（R3 修正）**
+
+在 `chapter_store.py` 的 `save_content` 方法中，返回结果新增 `is_new: bool` 字段：
+```python
+result = self._to_dict(chapter)
+result["chapter_number"] = chapter_number
+result["is_new"] = is_new_chapter  # 保存前通过查询判断
+```
+
+- [ ] **Step 2: 重写异常处理逻辑**
 
 将 4 处 `except Exception: pass` 替换为具体异常捕获 + warnings 追加：
 
@@ -532,7 +589,7 @@ async def generate_chapter_content(
         })
 
     chapter_result = kb.chapters.save_content(chapter_number, content, word_count or len(content))
-    existing_chapter = chapter_result.get("id") is not None
+    existing_chapter = chapter_result.get("is_new") is not True  # R3 修正：依赖 ChapterStore 返回的 is_new 字段
 
     # 2. 时间线
     timeline_created = False
@@ -600,7 +657,7 @@ async def generate_chapter_content(
             warnings.append({"step": "create_style_snapshot", "error": style_snapshot_error})
 
     result = {
-        "action": "created" if not existing_chapter else "updated",
+        "action": "created" if chapter_result.get("is_new") else "updated",  # R3 修正：基于 ChapterStore 返回的 is_new 字段
         "chapter_number": chapter_number,
         "title": chapter_title,
         "word_count": word_count or len(content),
@@ -815,19 +872,19 @@ from app.agents.tools.utils import _kb
 @tool
 async def update_character(
     character_id: int,
-    name: str = "",
-    role: str = "",
-    personality: str = "",
-    catchphrase: str = "",
-    habit_action: str = "",
-    deep_fear: str = "",
-    core_motivation: str = "",
-    growth_arc: str = "",
-    appearance: str = "",
-    backstory: str = "",
-    signature_item: str = "",
+    name: str | None = None,
+    role: str | None = None,
+    personality: str | None = None,
+    catchphrase: str | None = None,
+    habit_action: str | None = None,
+    deep_fear: str | None = None,
+    core_motivation: str | None = None,
+    growth_arc: str | None = None,
+    appearance: str | None = None,
+    backstory: str | None = None,
+    signature_item: str | None = None,
 ) -> dict:
-    """更新已有角色的属性。只修改传入的非空字段。
+    """更新已有角色的属性。只修改传入的非 None 字段（None 不修改，空字符串表示清空该字段）。
 
     当需要修改已有角色的任何属性时使用。未传入的字段保持不变。
 
@@ -1192,7 +1249,9 @@ async def update_foreshadowing(
     level: str = "",
     status: str = "",
     content: str = "",
+    appearance_count: int | None = None,
     expected_resolve_chapter: int | None = None,
+    resolved_chapter: int | None = None,
 ) -> dict:
     """更新伏笔状态或属性。用于推进伏笔等级或标记回收。
 
@@ -2495,16 +2554,23 @@ git commit -m "docs(tools): localize all tool docstrings to Chinese"
 - `batch_confirm_outlines` → STRUCTURE_TOOLS
 - `batch_update_foreshadowing_status` → WRITING_TOOLS
 
-- [ ] **Step 2: 运行测试**
+- [ ] **Step 2: 同步更新 `__init__.py` 导出（R4 审查修正）**
+
+更新以下文件的导出列表和注释：
+- `tools/__init__.py`：新增 `generate_chapter_outline`、`create_timeline_entry`、`report_progress` 的导入（当前缺失），更新工具计数注释
+- `tools/creation/__init__.py`：新增 update/delete/batch 工具导出，更新注释为"18个"
+- `tools/perception/__init__.py`：新增 `consistency_scan`、`check_chapter_transition` 导出
+
+- [ ] **Step 3: 运行测试**
 
 Run: `docker exec novelagent-backend-1 pytest tests/test_agent_tools.py -v`
 Expected: PASS
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add backend/app/agents/tools/registry.py
-git commit -m "feat(tools): register batch tools in registry"
+git add backend/app/agents/tools/registry.py backend/app/agents/tools/__init__.py backend/app/agents/tools/creation/__init__.py backend/app/agents/tools/perception/__init__.py
+git commit -m "feat(tools): register batch tools in registry and sync __init__ exports"
 ```
 
 ---
@@ -2704,7 +2770,7 @@ async def run_post_hooks(tool_name: str, tool_result: dict, project_id: int) -> 
             auto_results[hook_name] = result
         except Exception as e:
             logger.warning("Hook %s 执行失败: %s", hook_name, e)
-            auto_results[hook_name] = {"checked": False, "error": str(e)}
+            auto_results[hook_name] = {"checked": False, "error": str(e)}  # R17 修正：记录到 auto_check_results 而非静默吞异常
 
     tool_result["auto_check_results"] = auto_results
     return tool_result
@@ -2995,6 +3061,29 @@ git commit -m "feat(agent): add lightweight context builder for on-demand retrie
 
 ---
 
+### Task 33b: 优化 batch_read_for_index 消除重复查询（R12 审查修正）
+
+**Files:**
+- Modify: `backend/app/agents/services/knowledge_base.py`
+
+- [ ] **Step 1: 优化 `batch_read_for_index` 中的 `_read_all_with_session` 调用**
+
+当前 `self.plots._read_all_with_session(db)` 被调用后用 `.get()` 提取各字段，但每次调用都执行 3 次 query。修改为只调用一次并缓存结果：
+
+```python
+plots_data = self.plots._read_all_with_session(db)
+# 直接使用 plots_data 而非再次调用
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add backend/app/agents/services/knowledge_base.py
+git commit -m "perf(kb): eliminate duplicate queries in batch_read_for_index"
+```
+
+---
+
 ### Task 34: Phase 4 集成测试 + 全量验证
 
 **Files:** None (运行全部测试)
@@ -3053,12 +3142,16 @@ REVISION_TOOLS:    WRITING
 ## 依赖关系
 
 ```
-Phase 1 (P0) ─ 无外部依赖，可立即开始
+前置任务 ─ 修复现有代码缺陷（必须在 Phase 1 前完成）
+  Task 0a: retrieval.py 缺少 import asyncio（独立）
+  Task 0b: retrieval.py 索引构建字段映射错误（独立）
+
+Phase 1 (P0) ─ 依赖前置任务完成
   Task 1: parse_json_param
-  Task 2: 统一替换 JSON 解析（依赖 Task 1）
+  Task 2: 统一替换 9 个工具的 JSON 解析（依赖 Task 1）
   Task 3: advance_phase 事务合并（独立）
-  Task 4: generate_chapter_content 异常处理（独立，但 Task 2 先替换了 JSON 解析）
-  Task 5: 合并 report_progress（独立）
+  Task 4: generate_chapter_content 异常处理 + ChapterStore is_new 修正（独立，但 Task 2 先替换了 JSON 解析）
+  Task 5: 合并 report_progress（独立，注意同步→异步差异）
   Task 6: Phase 1 集成测试
 
 Phase 2 (P1) ─ 依赖 Phase 1 的 parse_json_param
