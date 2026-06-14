@@ -11,13 +11,13 @@ from app.agents.tools.utils import _kb, _mood_to_tension
 
 @tool
 async def rhythm_analysis(last_n_chapters: int = 10) -> dict:
-    """Analyze story rhythm — tension, emotion, pacing trends.
+    """分析故事节奏——张力、情绪、步调趋势。
 
-    Use when the user asks about pacing, whether recent chapters
-    feel flat, or whether the rhythm curve is monotone.
+    当用户询问节奏是否单调、最近章节是否平淡、或节奏曲线是否单调时使用。
+    返回节奏曲线、单调段检测、高潮/低谷分布，并提供可操作性建议。
 
     Args:
-        last_n_chapters: Number of recent chapters to analyze (default 10)
+        last_n_chapters: 分析最近多少章的节奏（默认 10）
     """
     kb = _kb()
     timeline = kb.timelines.list_timeline()

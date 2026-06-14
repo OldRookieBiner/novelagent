@@ -11,14 +11,13 @@ from app.agents.tools.utils import _kb
 
 @tool
 async def foreshadowing_check(current_chapter: int | None = None) -> dict:
-    """Check foreshadowing status — active, pending reclaim, overdue.
+    """检查伏笔状态——活跃、待回收、超期。
 
-    Use when the user asks about foreshadowing health, which foreshadowings
-    haven't been reclaimed, or whether any are overdue.
+    当用户需要了解伏笔的整体健康状况时使用。返回活跃伏笔数、待回收数、超期数和健康评分。
 
     Args:
-        current_chapter: Current chapter number (for overdue calculation).
-                         If not provided, no overdue check is performed.
+            current_chapter: Current chapter number (for overdue calculation).
+                             If not provided, no overdue check is performed.
     """
     kb = _kb()
 

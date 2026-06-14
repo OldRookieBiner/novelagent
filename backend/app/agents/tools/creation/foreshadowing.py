@@ -13,17 +13,16 @@ async def create_foreshadowing(
     expected_resolve_chapter: int | None = None,
     related_characters: str = "[]",
 ) -> dict:
-    """Create a new foreshadowing entry in the novel.
+    """在小说中创建新的伏笔条目。
 
-    Use when the user wants to plan or add a foreshadowing element
-    to their story. This directly writes to the knowledge base.
+    当用户需要埋设伏笔时使用。伏笔会在后续章节中被追踪和回收。
 
     Args:
-        content: Description of the foreshadowing element
-        level: Foreshadowing level - one of: hint (暗示), strengthened (强化), revealed (揭示)
-        planted_chapter: Chapter number where the foreshadowing is planted
-        expected_resolve_chapter: Chapter number where the foreshadowing is expected to be resolved
-        related_characters: JSON string list of related character names
+            content: Description of the foreshadowing element
+            level: Foreshadowing level - one of: hint (暗示), strengthened (强化), revealed (揭示)
+            planted_chapter: Chapter number where the foreshadowing is planted
+            expected_resolve_chapter: Chapter number where the foreshadowing is expected to be resolved
+            related_characters: JSON string list of related character names
     """
     kb = _kb()
 

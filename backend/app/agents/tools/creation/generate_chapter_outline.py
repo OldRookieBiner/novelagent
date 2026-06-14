@@ -27,26 +27,26 @@ async def generate_chapter_outline(
     key_scenes: str = "[]",
     pacing_note: str = "",
 ) -> dict:
-    """Generate or update the outline for a specific chapter.
+    """生成或更新特定章节的大纲。
 
-    Use this when the user asks to plan or outline a specific chapter BEFORE writing it.
+    当用户需要为某一章创建写作大纲时使用。大纲包含场景、角色、情绪弧线等写作指导信息。
 
     Args:
-        chapter_number: Chapter number
-        title: Chapter title
-        scene: Scene setting
-        characters: Characters appearing in this chapter
-        plot: Key plot points
-        conflict: Main conflict
-        turning_point: Turning point
-        hook: Suspense hook at chapter end
-        transition: Transition to next chapter
-        ending: Chapter ending description
-        target_words: Target word count (default 3000)
-        opening_state: State at chapter opening
-        emotional_arc: Emotional trajectory
-        key_scenes: JSON string list of key scenes
-        pacing_note: Pacing instruction
+            chapter_number: Chapter number
+            title: Chapter title
+            scene: Scene setting
+            characters: Characters appearing in this chapter
+            plot: Key plot points
+            conflict: Main conflict
+            turning_point: Turning point
+            hook: Suspense hook at chapter end
+            transition: Transition to next chapter
+            ending: Chapter ending description
+            target_words: Target word count (default 3000)
+            opening_state: State at chapter opening
+            emotional_arc: Emotional trajectory
+            key_scenes: JSON string list of key scenes
+            pacing_note: Pacing instruction
     """
     scenes, scenes_warn = parse_json_param(key_scenes, [], "key_scenes")
 

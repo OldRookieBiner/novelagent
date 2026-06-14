@@ -102,13 +102,17 @@ async def consistency_scan(
                 try:
                     chapter = kb.chapters.get_by_number(ch_num)
                     if chapter and chapter.get("content"):
-                        content = chapter["content"]
+                        ch_content = chapter["content"]
                         for rule in red_rules[:5]:
                             rule_text = rule if isinstance(rule, str) else rule.get("text", "")
-                            if rule_text and len(rule_text) > 2 and rule_text in content:
-                                # 章节引用了红色设定，检查是否有矛盾
-                                # 简单检查：如果红色设定包含"禁止"/"不可"但章节中有违反性描写
-                                pass  # 复杂矛盾需要 LLM，这里只做标记
+                            if rule_text and len(rule_text) > 2 and rule_text in ch_content:
+                                issues.append({
+                                    "type": "setting_reference",
+                                    "chapters": [ch_num],
+                                    "detail": f"第{ch_num}章引用了红色设定「{rule_text[:30]}」，请检查是否遵守",
+                                    "confidence": "low",
+                                    "rule_preview": rule_text[:60],
+                                })
                 except Exception:
                     pass
 

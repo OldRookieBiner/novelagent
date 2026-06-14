@@ -60,26 +60,21 @@ async def check_chapter_transition(chapter_number: int) -> dict:
                     "suggestion": f"建议在第{chapter_number}章开场加入从「{prev_emotion}」到新情绪的过渡描写",
                 })
 
+    # 预提取角色名（缓存，避免重复调用 KB 查询）
+    closing_names = set(_extract_names(prev_closing, kb)) if prev_closing else set()
+    outline_chars_str = current_outline.get("characters", "")
+    outline_names = set(_extract_names(outline_chars_str, kb)) if outline_chars_str else set()
+
     # 2. 场景不连续检测
     prev_scene = current_outline.get("scene", "")
     if prev_closing and prev_scene:
-        # 简单检查：如果上一章结尾提到了特定场景，当前章大纲场景是否有过渡
-        closing_names = set(_extract_names(prev_closing, kb))
-        outline_names = set(_extract_names(prev_scene, kb))
-        # 如果上一章结尾有角色但当前章大纲场景没有提及
-        missing_chars = closing_names - outline_names
+        scene_names = set(_extract_names(prev_scene, kb))
+        missing_chars = closing_names - scene_names
         if missing_chars and len(closing_names) <= 3:
             # 只有当上一章结尾角色很少（说明是关键场景）时才标记
             pass  # 场景切换是正常的，不标记为问题
 
-    # 3. 角色凭空变化检测
-    if prev_closing:
-        closing_names = set(_extract_names(prev_closing, kb))
-        outline_chars_str = current_outline.get("characters", "")
-        if outline_chars_str:
-            outline_names = set(_extract_names(outline_chars_str, kb))
-        else:
-            outline_names = set()
+    # 3. 角色凭空变化检测（复用 closing_names 和 outline_names）
 
         # 上一章结尾出现的角色在当前章大纲中消失
         disappeared = closing_names - outline_names

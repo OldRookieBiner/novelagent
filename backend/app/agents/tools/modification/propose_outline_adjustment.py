@@ -11,13 +11,13 @@ async def propose_outline_adjustment(
     description: str,
     affected_plot_blocks: list[int] | None = None,
 ) -> dict:
-    """Propose an adjustment to the story structure.
+    """提议调整故事结构。
 
-    Evaluates impact on foreshadowing, plot questions, and already-written chapters.
+    当用户需要修改大纲、增删章节或调整情节走向时使用。自动评估变更对已有内容的影响，返回影响评估结果。
 
     Args:
-        description: Natural language description of the proposed adjustment
-        affected_plot_blocks: List of plot block IDs that would be affected
+            description: Natural language description of the proposed adjustment
+            affected_plot_blocks: List of plot block IDs that would be affected
     """
     kb = _kb()
 

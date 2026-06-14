@@ -17,7 +17,7 @@ async def delete_plot_block(plot_block_id: int) -> dict:
     """
     kb = _kb()
 
-    # 获取情节块
+    # 通过 Store 层获取情节块
     blocks = kb.plots.list_plot_blocks()
     target = None
     for b in blocks:
@@ -28,22 +28,12 @@ async def delete_plot_block(plot_block_id: int) -> dict:
     if not target:
         return {"error": f"情节块 ID {plot_block_id} 不存在"}
 
-    # 安全检查：是否有未回答的问题
-    questions = kb.plots._read_all_with_session(None)
-    # 获取关联的问题
-    from app.database import SessionLocal
-    from app.models.plot import PlotQuestion
-    db = SessionLocal()
-    try:
-        pending_questions = db.query(PlotQuestion).filter(
-            PlotQuestion.plot_block_id == plot_block_id,
-            PlotQuestion.status == "pending",
-        ).all()
-    finally:
-        db.close()
+    # 安全检查：是否有未回答的问题（通过 Store 层查询，含 project_id 过滤）
+    all_questions = kb.plots.list_plot_questions(status="pending")
+    pending_questions = [q for q in all_questions if q.get("plot_block_id") == plot_block_id]
 
     if pending_questions:
-        question_ids = [q.id for q in pending_questions]
+        question_ids = [q["id"] for q in pending_questions]
         return {
             "error": f"情节块「{target.get('title', '')}」下有 {len(pending_questions)} 个未回答的问题，请先回答或迁移后再删除",
             "pending_question_ids": question_ids,

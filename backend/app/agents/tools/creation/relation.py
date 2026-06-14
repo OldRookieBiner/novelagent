@@ -14,18 +14,17 @@ async def create_relation(
     current_status: str = "",
     trust_level: int = 50,
 ) -> dict:
-    """Create a relationship between two characters.
+    """创建两个角色之间的关系。
 
-    Use when the user describes a relationship between characters they've created.
-    This directly writes to the knowledge base.
+    当用户需要定义角色之间的关系时使用。关系会随着情节推进而演变。
 
     Args:
-        character_a_id: ID of the first character
-        character_b_id: ID of the second character
-        relation_type: Type of relationship - one of: 信任, 敌对, 感情, 合作, 利用, 陌生
-        direction: Direction of the relationship - one of: 双向, 单向A→B, 单向B→A
-        current_status: Description of the current relationship status (optional)
-        trust_level: Trust level from 0 to 100, default 50
+            character_a_id: ID of the first character
+            character_b_id: ID of the second character
+            relation_type: Type of relationship - one of: 信任, 敌对, 感情, 合作, 利用, 陌生
+            direction: Direction of the relationship - one of: 双向, 单向A→B, 单向B→A
+            current_status: Description of the current relationship status (optional)
+            trust_level: Trust level from 0 to 100, default 50
     """
     kb = _kb()
 

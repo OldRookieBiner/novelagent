@@ -16,20 +16,19 @@ async def generate_world_setting_complete(
     social_structure: str = "",
     magic_system: str = "",
 ) -> dict:
-    """Generate and save a complete world setting with tiered rules.
+    """生成并保存完整的世界观设定，含分级规则。
 
-    Creates the full world setting in one call, including tiered rules,
-    key locations, and optional lore sections.
+    当用户需要一次性创建完整世界观时使用。包括红色（不可违反）、黄色（重要参考）、绿色（可灵活调整）三级规则。
 
     Args:
-        core_concept: Core concept of the world
-        red_rules: JSON string list of unbreakable rules
-        yellow_rules: JSON string list of breakable-with-cost rules
-        green_rules: JSON string list of decorative rules
-        key_locations: JSON string list of key locations with descriptions
-        history: World history / backstory (optional)
-        social_structure: Social/political structure description (optional)
-        magic_system: Magic/power system description (optional)
+            core_concept: Core concept of the world
+            red_rules: JSON string list of unbreakable rules
+            yellow_rules: JSON string list of breakable-with-cost rules
+            green_rules: JSON string list of decorative rules
+            key_locations: JSON string list of key locations with descriptions
+            history: World history / backstory (optional)
+            social_structure: Social/political structure description (optional)
+            magic_system: Magic/power system description (optional)
     """
 
     red, red_warn = parse_json_param(red_rules, [], "red_rules")

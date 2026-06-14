@@ -10,14 +10,14 @@ async def propose_chapter_rewrite(
     chapter_number: int,
     reason: str,
 ) -> dict:
-    """Propose rewriting a specific chapter.
+    """提议重写特定章节。
 
-    Marks the old version and creates a proposal. Does not rewrite
-    immediately — the author must approve.
+    当用户需要修改已完成章节的内容时使用。旧版本会被标记，不会直接覆盖。需要用户确认后才会执行实际重写。
 
     Args:
-        chapter_number: The chapter to rewrite
-        reason: Why the rewrite is needed (e.g., "审核不通过", "设定矛盾")
+        chapter_number: 要重写的章节号
+        reason: 重写原因
+        focus: 重写重点 - "plot", "character", "style", 或 "all"
     """
     kb = _kb()
     chapter = kb.chapters.get_by_number(chapter_number)

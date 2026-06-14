@@ -71,13 +71,13 @@ def _count_rhetoric(content: str) -> dict:
 
 @tool
 async def style_analysis(last_n_chapters: int = 10) -> dict:
-    """Analyze writing style trends and detect drift.
+    """分析写作风格趋势并检测风格漂移。
 
-    Use when the user asks about style consistency, dialogue ratio,
-    or whether recent chapters are drifting from the established style.
+    当用户询问风格一致性、对话比例、或最近章节是否偏离既定风格时使用。
+    返回整体风格统计、漂移检测、情感词密度和修辞分析，并提供可操作性建议。
 
     Args:
-        last_n_chapters: Number of recent chapters to analyze (default 10)
+        last_n_chapters: 分析最近多少章的风格（默认 10）
     """
     kb = _kb()
     snapshots = kb.styles.list_snapshots(last_n=last_n_chapters)

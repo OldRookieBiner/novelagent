@@ -8,13 +8,14 @@ from app.utils.text import tokenize_chinese
 
 @tool
 async def expand_world_setting(aspect: str, description: str) -> dict:
-    """Expand the world setting in a specific direction.
+    """在特定方向扩展世界观设定。
 
-    Automatically assesses impact of the expansion on existing content.
+    自动评估扩展对已有内容的影响，检查与红色设定的冲突。
+    扩展内容会写入知识库对应层级。
 
     Args:
-        aspect: What aspect to expand - "location", "rule", "culture", "history", "technology"
-        description: Natural language description of the expansion
+        aspect: 扩展方向 - "location"(地点), "rule"(规则), "culture"(文化), "history"(历史), "technology"(技术)
+        description: 扩展内容的自然语言描述
     """
     kb = _kb()
     ws = kb.world_setting.get()

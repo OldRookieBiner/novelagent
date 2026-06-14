@@ -74,26 +74,26 @@ async def generate_chapter_content(
     emotion_score: int = 3,
     emotion_tag: str = "",
 ) -> dict:
-    """Generate and save a complete chapter with all tracking data.
+    """生成并保存完整章节内容，同时更新追踪数据。
 
-    This is the primary tool for writing chapters. It creates the chapter content
-    and simultaneously updates timeline, foreshadowings, and style stats.
+    这是写作章节的主要工具。创建章节正文并同步更新时间线、伏笔和风格统计。
+    注意：追踪参数（伏笔、时间线、节奏评分）建议改用 record_chapter_meta 工具单独记录。
 
     Args:
-        chapter_number: Chapter number (e.g., 1)
-        chapter_title: Chapter title
-        content: Full chapter text content
-        summary: One-sentence chapter summary
-        word_count: Word/character count
-        status: Chapter status - "draft" or "complete"
-        scene_count: Number of scenes
-        new_foreshadowings: JSON string list of new foreshadowings
-        reclaimed_foreshadowing_ids: JSON string list of reclaimed foreshadowing IDs
-        timeline_summary: Summary entry for the timeline
-        rhythm_score: Rhythm score 1-5
-        tension_score: Tension score 1-5
-        emotion_score: Emotion score 1-5
-        emotion_tag: Emotion tag
+        chapter_number: 章节号（如 1）
+        chapter_title: 章节标题
+        content: 完整章节正文内容
+        summary: 一句话章节摘要
+        word_count: 字数统计
+        status: 章节状态 - "draft"(草稿) 或 "complete"(完稿)
+        scene_count: 场景数量
+        new_foreshadowings: (已废弃，请用 record_chapter_meta) JSON 字符串列表，本章新埋的伏笔
+        reclaimed_foreshadowing_ids: (已废弃，请用 record_chapter_meta) JSON 字符串列表，本章回收的伏笔 ID
+        timeline_summary: (已废弃，请用 record_chapter_meta) 时间线条目摘要
+        rhythm_score: (已废弃，请用 record_chapter_meta) 节奏评分 1-5
+        tension_score: (已废弃，请用 record_chapter_meta) 张力评分 1-5
+        emotion_score: (已废弃，请用 record_chapter_meta) 情感评分 1-5
+        emotion_tag: (已废弃，请用 record_chapter_meta) 情绪标签
     """
     from app.agents.services.knowledge_base import KnowledgeBaseService
 

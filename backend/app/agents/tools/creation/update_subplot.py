@@ -22,25 +22,13 @@ async def update_subplot(
     """
     kb = _kb()
 
-    # 获取当前值（通过 _read_all_with_session 获取全部后筛选）
-    all_plots_data = kb.plots._read_all_with_session(None)
-    subplots = all_plots_data.get("subplots", []) if all_plots_data else kb.plots.list_plot_blocks()
+    # 通过 Store 层获取当前值
+    subplots = kb.plots.list_subplots()
     before = None
-    # 使用独立查询获取 subplots
-    from app.database import SessionLocal
-    from app.models.plot import Subplot
-    db = SessionLocal()
-    try:
-        sp = db.query(Subplot).filter(Subplot.id == subplot_id).first()
-        if sp:
-            before = {
-                "id": sp.id,
-                "title": sp.title,
-                "status": sp.status,
-                "resolution": sp.resolution,
-            }
-    finally:
-        db.close()
+    for s in subplots:
+        if s["id"] == subplot_id:
+            before = s
+            break
 
     if not before:
         return {"error": f"支线 ID {subplot_id} 不存在"}

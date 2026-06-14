@@ -22,6 +22,17 @@ async def update_plot_question(
     """
     kb = _kb()
 
+    # 获取当前值用于对比
+    all_questions = kb.plots.list_plot_questions()
+    before = None
+    for q in all_questions:
+        if q["id"] == question_id:
+            before = q
+            break
+
+    if not before:
+        return {"error": f"问题链 ID {question_id} 不存在"}
+
     update_data = {}
     for field in ("question", "answer", "status"):
         value = locals()[field]
@@ -33,8 +44,16 @@ async def update_plot_question(
 
     updated = kb.plots.update_plot_question(question_id, update_data)
 
+    # 构建变更对比
+    changes = {}
+    for key, new_val in update_data.items():
+        old_val = before.get(key)
+        if old_val != new_val:
+            changes[key] = {"before": old_val, "after": new_val}
+
     return {
         "question_id": question_id,
-        "updated_fields": list(update_data.keys()),
-        "message": f"问题链 {question_id} 已更新",
+        "updated_fields": list(changes.keys()),
+        "changes": changes,
+        "message": f"问题链 {question_id} 已更新（{', '.join(changes.keys())}）",
     }

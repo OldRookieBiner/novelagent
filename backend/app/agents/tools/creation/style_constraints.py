@@ -12,16 +12,15 @@ async def create_style_constraints(
     forbidden_patterns: str = "[]",
     abstract_rules: str = "[]",
 ) -> dict:
-    """Create or update style constraints for the novel.
+    """创建或更新小说的风格约束。
 
-    Use when the user describes writing style requirements, forbidden words,
-    or style rules they want to enforce.
+    当用户需要定义写作风格规则时使用。包括禁忌词、禁止模式和抽象规则。
 
     Args:
-        style_anchor: Reference text snippet that embodies the desired style
-        taboo_words: JSON string list of forbidden words
-        forbidden_patterns: JSON string list of forbidden sentence patterns
-        abstract_rules: JSON string list of abstract style rules
+            style_anchor: Reference text snippet that embodies the desired style
+            taboo_words: JSON string list of forbidden words
+            forbidden_patterns: JSON string list of forbidden sentence patterns
+            abstract_rules: JSON string list of abstract style rules
     """
     kb = _kb()
 
