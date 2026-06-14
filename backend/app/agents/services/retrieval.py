@@ -165,16 +165,12 @@ def _collect_documents_from_db(project_id: int) -> tuple[list[str], list[dict]]:
             parts.append(f"定位：{char['role']}")
         if char.get("core_motivation"):
             parts.append(f"核心动机：{char['core_motivation']}")
-        if char.get("core_conflict"):
-            parts.append(f"核心冲突：{char['core_conflict']}")
-        if char.get("character_arc"):
-            parts.append(f"人物弧：{char['character_arc']}")
-        if char.get("knowledge_boundary"):
-            parts.append(f"知识边界：{char['knowledge_boundary']}")
-        if char.get("speech_style"):
-            parts.append(f"说话风格：{char['speech_style']}")
-        if char.get("dialogue_samples"):
-            parts.append(f"对话样本：{char['dialogue_samples']}")
+        if char.get("growth_arc"):
+            parts.append(f"人物弧：{char['growth_arc']}")
+        if char.get("deep_fear"):
+            parts.append(f"深层恐惧：{char['deep_fear']}")
+        if char.get("catchphrase"):
+            parts.append(f"口头禅：{char['catchphrase']}")
         _add("\n".join(parts), f"character/{char['name']}")
 
     # 3. 关系
@@ -525,14 +521,12 @@ def _collect_global_documents_from_db(project_id: int) -> tuple[list[str], list[
             parts.append(f"定位：{char['role']}")
         if char.get("core_motivation"):
             parts.append(f"核心动机：{char['core_motivation']}")
-        if char.get("core_conflict"):
-            parts.append(f"核心冲突：{char['core_conflict']}")
-        if char.get("character_arc"):
-            parts.append(f"人物弧：{char['character_arc']}")
-        if char.get("knowledge_boundary"):
-            parts.append(f"知识边界：{char['knowledge_boundary']}")
-        if char.get("speech_style"):
-            parts.append(f"说话风格：{char['speech_style']}")
+        if char.get("growth_arc"):
+            parts.append(f"人物弧：{char['growth_arc']}")
+        if char.get("deep_fear"):
+            parts.append(f"深层恐惧：{char['deep_fear']}")
+        if char.get("catchphrase"):
+            parts.append(f"口头禅：{char['catchphrase']}")
         _add("\n".join(parts), f"character/{char['name']}")
 
     # 3. 关系
@@ -792,12 +786,12 @@ def _keyword_fallback(project_id: int, query: str, top_k: int) -> list[dict]:
     # 搜索角色
     characters = kb.characters.list_characters()
     for char in characters:
-        char_text = f"{char['name']} {char.get('core_motivation', '')} {char.get('knowledge_boundary', '')} {char.get('speech_style', '')}"
+        char_text = f"{char['name']} {char.get('core_motivation', '')} {char.get('deep_fear', '')} {char.get('catchphrase', '')}"
         if any(kw in char_text for kw in query_lower.split()):
             results.append({
                 "score": 0.5,
                 "source": f"character/{char['name']}",
-                "text": f"角色：{char['name']}，核心动机：{char.get('core_motivation', '未设定')}，知识边界：{char.get('knowledge_boundary', '未设定')}",
+                "text": f"角色：{char['name']}，核心动机：{char.get('core_motivation', '未设定')}，深层恐惧：{char.get('deep_fear', '未设定')}",
             })
 
     # 搜索世界观
