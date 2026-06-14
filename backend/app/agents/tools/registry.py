@@ -1,8 +1,8 @@
 """工具注册表 — 按阶段注册可用工具
 
 模块级常量，确保阶段工具集合满足递进关系：
-INCUBATION_TOOLS ⊆ STRUCTURE_TOOLS ⊆ WRITING_TOOLS
-使用延迟导入避免循环依赖。
+INCUBATION_TOOLS ⊆ STRUCTURE_TOOLS ⊆ WRITING_TOOLS ⊆ REVISION_TOOLS
+使用列表拼接保证递进关系，新阶段只需添加增量工具。
 """
 
 # 延迟导入，避免循环依赖
@@ -10,6 +10,8 @@ from app.agents.tools.perception import (
     knowledge_search,
     foreshadowing_check,
     consistency_check,
+    consistency_scan,
+    check_chapter_transition,
     style_analysis,
     progress_report,
     rhythm_analysis,
@@ -44,21 +46,24 @@ from app.agents.tools.creation import (
     review_chapter,
     rewrite_chapter,
     advance_phase,
+    update_character,
+    update_plot_block,
+    update_subplot,
+    update_plot_question,
+    update_foreshadowing,
+    delete_plot_block,
+    record_chapter_meta,
 )
 
 # 孵化阶段可用工具（基础感知 + 内容创建）
 INCUBATION_TOOLS = [
-    # 阶段管理
     advance_phase,
-    # 感知
     knowledge_search,
     progress_report,
     expand_world_setting,
-    # 生成（直接内容创建）
     generate_outline,
     generate_story_seed,
     generate_world_setting_complete,
-    # 创写（直接写入）
     create_world_setting,
     create_character,
     create_relation,
@@ -67,82 +72,45 @@ INCUBATION_TOOLS = [
     create_foreshadowing,
 ]
 
-# 结构阶段可用工具（孵化全部 + 结构分析 + 情节构建）
-# 修复：确保 INCUBATION ⊆ STRUCTURE，补回孵化阶段的独有工具
-STRUCTURE_TOOLS = [
-    # 阶段管理
-    advance_phase,
-    # 感知（孵化 + 新增）
-    knowledge_search,
+# 结构阶段增量工具
+_STRUCTURE_EXTRA = [
     foreshadowing_check,
     review_chapter,
     rewrite_chapter,
-    progress_report,
     rhythm_analysis,
-    # 创作辅助（孵化继承）
-    expand_world_setting,
-    # 生成（孵化继承 + 结构生成）
-    generate_outline,
-    generate_chapter_outline,
-    generate_story_seed,
-    generate_world_setting_complete,
-    # 修改
-    propose_outline_adjustment,
-    # 创作辅助（新增）
     suggest_foreshadowing,
-    # 创写（孵化继承 + 结构相关）
-    create_world_setting,
-    create_style_constraints,
+    generate_chapter_outline,
+    propose_outline_adjustment,
     create_plot_block,
     create_plot_question,
     create_subplot,
-    create_foreshadowing,
-    create_character,
-    create_relation,
-    create_evolution_plan,
+    update_character,
+    update_plot_block,
+    update_plot_question,
+    delete_plot_block,
 ]
 
-# 写作阶段可用工具（全部工具）
-# 确保 STRUCTURE ⊆ WRITING
-WRITING_TOOLS = [
-    # 阶段管理
-    advance_phase,
-    # 感知（全部）
-    knowledge_search,
-    foreshadowing_check,
-    review_chapter,
-    rewrite_chapter,
+# 写作阶段增量工具
+_WRITING_EXTRA = [
     consistency_check,
+    consistency_scan,
+    check_chapter_transition,
     style_analysis,
-    progress_report,
-    rhythm_analysis,
-    # 生成（主要写作工具）
-    generate_chapter_outline,
     generate_chapter_content,
-    generate_outline,
-    generate_story_seed,
-    generate_world_setting_complete,
-    # 修改（全部）
     propose_setting_change,
-    propose_outline_adjustment,
     propose_chapter_rewrite,
-    # 创作辅助（全部）
     writer_block_assist,
-    suggest_foreshadowing,
     suggest_plot_twist,
-    expand_world_setting,
-    # 创写（全部）
-    create_world_setting,
-    create_character,
-    create_relation,
-    create_evolution_plan,
-    create_style_constraints,
-    create_subplot,
-    create_plot_question,
     create_timeline_entry,
-    create_foreshadowing,
-    create_plot_block,
+    record_chapter_meta,
+    update_subplot,
+    update_foreshadowing,
 ]
+
+# 递进构建
+STRUCTURE_TOOLS = INCUBATION_TOOLS + _STRUCTURE_EXTRA
+WRITING_TOOLS = STRUCTURE_TOOLS + _WRITING_EXTRA
+REVISION_TOOLS = WRITING_TOOLS
 
 # 全部工具（默认）
 AGENT_TOOLS = WRITING_TOOLS
