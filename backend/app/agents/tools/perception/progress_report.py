@@ -1,6 +1,7 @@
 """进度报告工具
 
 B6 增强：完稿时间预估 + 里程碑提醒。
+R2 修正：合并 report_progress 功能，新增 detail_level 参数。
 Store 返回 dict。
 """
 
@@ -10,11 +11,13 @@ from app.agents.tools.utils import _kb
 
 
 @tool
-async def progress_report() -> dict:
-    """Generate a writing progress report.
+async def progress_report(detail_level: str = "full") -> dict:
+    """生成写作进度报告。
 
-    Use when the user asks how far they've gotten, what's been written,
-    what's left, or the overall status of the novel.
+    brief 模式返回进度概要，full 模式返回完整统计和完稿预估。
+
+    Args:
+        detail_level: 报告详细度 - "brief"（概要）或 "full"（完整统计）
     """
     kb = _kb()
 
@@ -29,10 +32,18 @@ async def progress_report() -> dict:
     if outline:
         total_chapters = outline.get("chapter_count_confirmed") or outline.get("chapter_count_suggested") or 0
 
+    progress_percent = round(written_chapters / total_chapters * 100, 1) if total_chapters else 0
+
+    # brief 模式：仅返回进度概要
+    if detail_level == "brief":
+        return {
+            "progress_percent": progress_percent,
+            "progress_message": f"已完成 {written_chapters}/{total_chapters} 章（{progress_percent}%）",
+        }
+
+    # full 模式：完整统计
     active_foreshadowings = [f for f in foreshadowings if f.get("status") in ("active", "pending_reclaim")]
     reclaimed = [f for f in foreshadowings if f.get("status") == "reclaimed"]
-
-    progress_percent = round(written_chapters / total_chapters * 100, 1) if total_chapters else 0
 
     result = {
         "total_planned_chapters": total_chapters,
@@ -49,13 +60,12 @@ async def progress_report() -> dict:
         result["title"] = outline.get("title") or "未命名"
         result["summary"] = (outline.get("summary") or "")[:200]
 
-    # B6 增强：完稿时间预估
+    # 完稿时间预估
     if timeline and len(timeline) >= 2 and total_chapters > 0:
         recent_entries = timeline[:min(3, len(timeline))]
         if len(recent_entries) >= 2:
             dates = [t["created_at"] for t in recent_entries if t.get("created_at")]
             if len(dates) >= 2:
-                # 解析 ISO 日期字符串进行比较
                 from datetime import datetime
                 parsed_dates = []
                 for d in dates:
@@ -88,7 +98,7 @@ async def progress_report() -> dict:
                                 "note": f"基于最近 {chapters_in_span} 章、{span_days} 天写作节奏的粗略估算，置信度：{confidence}",
                             }
 
-    # B6 增强：里程碑提醒
+    # 里程碑提醒
     milestones = []
     milestone_thresholds = [10, 50, 90]
     for threshold in milestone_thresholds:
