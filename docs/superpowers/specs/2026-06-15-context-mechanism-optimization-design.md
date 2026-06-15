@@ -11,21 +11,21 @@
 NovelAgent 的上下文机制存在三条独立路径，彼此不协调：
 
 1. **`agent_context.py`**（`build_agent_context`）— Agent system prompt 的项目数据加载，阶段感知，逐项预算控制
-2. **`context_strategy.py`**（三种策略类）— 章节写作时的前文上下文组装，**从未被生产代码调用**
+2. **`context_strategy.py`**（三种策略类）— 章节写作时的前文上下文组装，**仅被 `chapter_quality.py` 品控服务调用，Agent 主路径未集成**
 3. **`knowledge_search` 工具** — 语义检索 + DB 降级查询，与预加载数据大量重叠
 
 具体问题：
 
 | # | 问题 | 影响 |
 |---|------|------|
-| 1 | `context_strategy.py` 是死代码 | 三种策略（Full/Hybrid/Summary）写了没用 |
-| 2 | 两条组装路径信息重叠 | `previous_chapter_closing` 与 Full 策略重复，角色数据预加载和检索重复 |
-| 3 | DB 查询碎片化 | WRITING 阶段 10+ 次 Store 调用 = 10+ 次 DB session |
+| 1 | `context_strategy.py` 未集成到 Agent 主上下文路径 | 三种策略（Full/Hybrid/Summary）仅在 `chapter_quality.py` 品控服务中使用，Agent 主路径的 `build_agent_context` 完全未调用，前文策略形同虚设 |
+| 2 | 预加载与检索数据重叠 | `previous_chapter_closing` 与 Full 策略潜在重复（当前两条路径未并行运行，集成后需去重）；角色精简索引预加载 + knowledge_search 返回全量，部分字段重叠 |
+| 3 | DB 查询碎片化 | WRITING 阶段 ~20 次 Store 调用（含 `validate_prerequisites` 内部 6+ 次），每次创建独立 DB session；`list_characters` 同一函数内被调用 2 次 |
 | 4 | 无跨请求缓存 | 同项目连续对话全量重建上下文 |
-| 5 | Token 预算硬编码 | `max_tokens=12000` 不随模型窗口调整 |
+| 5 | Token 预算硬编码，与 context_window 脱节 | `agent.py` 调用 `build_agent_context` 时未传 `max_tokens`，默认 12000；而 `get_context_window` 的结果（如 1M）已计算但未用于上下文构建，1M 窗口利用率仅 ~1.2% |
 | 6 | 轻量模式阈值硬编码 | `max_tokens <= 5000` 触发，不适配 1M 窗口 |
 | 7 | 估算精度偏低 | 中文 2 token/字过于保守 |
-| 8 | 预加载全量 + 检索也全量 | 信噪比低，LLM 注意力被噪音稀释 |
+| 8 | 精简预加载 + 全量检索，部分字段重叠 | 预加载已做字段裁剪（角色 name+role+motivation、伏笔 content[:60]），但 knowledge_search 降级路径返回全量数据，两者部分字段重叠；1M 窗口下信噪比成为瓶颈 |
 
 ---
 
@@ -137,18 +137,18 @@ agent.py → ProjectContextAssembler.build(context_window, phase, chapter_number
 
 ### 3.4 检索增强策略
 
-**问题：** `build_agent_context` 预加载大量数据，`knowledge_search` 又重复查一遍，Agent 拿到两份重叠信息。
+**问题：** `build_agent_context` 预加载精简版数据，`knowledge_search` 降级路径返回全量数据，两者部分字段重叠。
 
 **改进：**
 
 1. **预加载声明机制** — `ProjectContextAssembler` 构建完 context 后，生成 `_loaded_keys` 列表（如 `["world_setting", "characters_index", "style_constraints"]`），存入 `tool_context` 的 ContextVar
 
-2. **knowledge_search 感知已加载数据** — 搜索时先检查 `_loaded_keys`，如果目标数据已在 context 中，返回摘要指向而非重复输出全文：
-   ```
-   "world_setting 已在项目上下文中，无需重复检索。如需细节请指定子字段。"
-   ```
+2. **knowledge_search 仅用于去重判断，不截断检索结果** — `_loaded_keys` 的唯一用途是让 `knowledge_search` 在返回结果中附加提示信息，告知 Agent 该数据的精简版已在上下文中。**knowledge_search 始终返回完整结果**，不因已预加载而拒绝或截断输出。原因：
+   - knowledge_search 的核心价值是为 Agent 补充详情（如角色完整 backstory、特定章节正文），如果拒绝输出就违背了工具本意
+   - Agent 能自行判断上下文中已有信息，无需工具代为过滤
+   - 预加载是精简版（如角色 name+role+motivation），检索返回完整版，两者粒度不同，不算真正重复
 
-3. **深层检索入口** — Supplementary 级别数据（角色完整 backstory、某章正文），knowledge_search 返回完整内容。预加载只放了精简版，不冲突
+3. **深层检索入口** — Supplementary 级别数据（角色完整 backstory、某章正文），knowledge_search 返回完整内容。预加载只放了精简版，天然互补
 
 ### 3.5 前文策略与检索的协作
 
@@ -163,8 +163,8 @@ agent.py → ProjectContextAssembler.build(context_window, phase, chapter_number
 | 场景 | 处理方式 |
 |------|---------|
 | `previous_chapter_closing` 与 Full 策略重叠 | 前文策略为 Full 时，不单独加载 `previous_chapter_closing`（已被前文包含） |
-| 角色索引与 knowledge_search 查角色 | knowledge_search 检测到已在 `_loaded_keys` 中，返回精简版并提示"完整档案请用 knowledge_search 指定角色名" |
-| 风格约束重复出现 | 预加载放一次，工具调用结果不再重复输出 |
+| 角色索引与 knowledge_search 查角色 | knowledge_search 始终返回完整结果，在返回中附加提示"角色基础信息已在项目上下文中"供 Agent 参考，不截断不拒绝 |
+| 风格约束重复出现 | 预加载放一次，knowledge_search 返回时附加提示"已在项目上下文中"，不截断输出 |
 
 ---
 
@@ -172,7 +172,7 @@ agent.py → ProjectContextAssembler.build(context_window, phase, chapter_number
 
 ### 4.1 DB 批量读取
 
-**现状：** WRITING 阶段 10+ 次 Store 调用 = 10+ 次 DB session。
+**现状：** WRITING 阶段 ~20 次 Store 调用（16 次显式 kb 调用 + `validate_prerequisites` 内部 6+ 次），每次创建独立 DB session；`list_characters` 同一函数内被调用 2 次。
 
 **改进：** `ProjectContextAssembler` 使用单次 session 批量读取，然后在内存中按 phase + budget 裁剪。
 
@@ -195,7 +195,7 @@ project_data = _phase_filter(raw_data, phase, budget)  # 内存操作
 | 属性 | 规则 |
 |------|------|
 | 缓存层 | 进程内 LRU cache，key = `(project_id, data_type, version_tag)` |
-| version_tag | 每种数据类型维护递增版本号，写入操作时 +1，读取时比较 |
+| version_tag | 每种数据类型维护递增版本号，写入操作时 +1，读取时比较。通过 `_BaseStore._bump_version(data_type)` 统一入口管理，所有 Store 的写操作（create/update/delete）调用此方法触发版本递增，确保不遗漏 |
 | 缓存范围 | 世界观、角色索引、风格约束、大纲（变化频率低）。章节正文和伏笔状态不缓存 |
 | TTL | 60 秒自动过期 |
 | 失效 | 写入类工具执行后，主动使对应 data_type 缓存失效 |
@@ -221,6 +221,9 @@ project_data = _phase_filter(raw_data, phase, budget)  # 内存操作
   STRUCTURE:  history 40% / previous  0% / project_data 60%
   WRITING:    history 10% / previous 70% / project_data 20%
   REVISION:   history 20% / previous 40% / project_data 40%
+
+  注意：以上为默认比例，定义在 `constants.py` 的 `PHASE_BUDGET_RATIOS` 中，
+  可通过配置调整而非硬编码在 BudgetAllocator 类内。
 ```
 
 **1M 窗口 WRITING 示例（第 30 章）：**
@@ -281,11 +284,13 @@ WRITING 分配:
 
 配合 safety_margin 的 10%，总余量约 22%，足够覆盖估算误差。
 
+**注意：** DeepSeek V4 标称 1M 上下文窗口，但实际有效上下文可能受 KV cache 限制和注意力衰减影响低于标称值。BudgetAllocator 应以用户配置的 `context_window` 为准（`get_context_window` 返回值），而非假设模型一定能利用全部标称窗口。safety_margin 的 10% + 估算系数的保守性（1.2 倍）已为此留出缓冲。
+
 ### 4.5 性能优化量化预期
 
 | 指标 | 现状 | 优化后 |
 |------|------|--------|
-| WRITING 阶段 DB 连接数 | 10-12 次 | 1-2 次 |
+| WRITING 阶段 DB 连接数 | ~20 次 | 1-2 次 |
 | 同项目连续请求 DB 查询量 | 100% | 首次 100%，后续 ~30% |
 | 1M 模型下前文可用预算 | 固定 12K | 动态 ~581K |
 | 预算利用率（1M 模型） | ~1.2% | 预期 50-70% |
@@ -309,7 +314,7 @@ WRITING 分配:
 | `backend/app/agents/context_strategy.py` | 策略选择改为基于 token 预算动态判断，删除固定章节数阈值 |
 | `backend/app/agents/token_budget.py` | `estimate_tokens` 系数改为 0.72/0.36 |
 | `backend/app/agents/tool_context.py` | 新增 `_loaded_keys` ContextVar |
-| `backend/app/agents/tools/perception/knowledge_search.py` | 感知 `_loaded_keys`，避免重复输出已预加载数据 |
+| `backend/app/agents/tools/perception/knowledge_search.py` | 感知 `_loaded_keys`，在返回结果中附加"已在项目上下文中"提示，不截断不拒绝输出 |
 | `backend/app/agents/services/knowledge_base.py` | 新增 `batch_read_for_context()` 方法 |
 | `backend/app/api/agent.py` | 调用点从 `build_agent_context` 迁移到 `ProjectContextAssembler.build()`，适配新输出结构 |
 
