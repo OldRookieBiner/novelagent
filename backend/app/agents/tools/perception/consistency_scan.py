@@ -60,18 +60,53 @@ async def consistency_scan(
             if ch and tag:
                 emotion_by_chapter[ch] = tag
 
-        # 检测情绪跳跃：相邻章节情绪从极度负面到极度正面（或反之）
+        # F1: 检测情绪凝固（3+章相同情绪）+ 跳跃检测
+        sorted_chapters = sorted(emotion_by_chapter.keys())
+        
+        # 情绪凝固检测
+        if len(sorted_chapters) >= 3:
+            same_count = 1
+            start_ch = sorted_chapters[0]
+            for i in range(1, len(sorted_chapters)):
+                if emotion_by_chapter[sorted_chapters[i]] == emotion_by_chapter[sorted_chapters[i-1]]:
+                    same_count += 1
+                else:
+                    if same_count >= 3:
+                        issues.append({
+                            "type": "emotion_stagnation",
+                            "chapters": list(range(start_ch, sorted_chapters[i-1] + 1)),
+                            "detail": f"情绪凝固：第{start_ch}-{sorted_chapters[i-1]}章连续 {same_count} 章情绪相同「{emotion_by_chapter[start_ch]}」",
+                            "confidence": "medium",
+                        })
+                    same_count = 1
+                    start_ch = sorted_chapters[i]
+            # Check last run
+            if same_count >= 3:
+                issues.append({
+                    "type": "emotion_stagnation",
+                    "chapters": list(range(start_ch, sorted_chapters[-1] + 1)),
+                    "detail": f"情绪凝固：第{start_ch}-{sorted_chapters[-1]}章连续 {same_count} 章情绪相同「{emotion_by_chapter[start_ch]}」",
+                    "confidence": "medium",
+                })
+
+        # 情绪跳跃检测：负→正 和 正→负
         negative_tags = {"紧张", "悲痛", "恐惧", "绝望", "愤怒"}
         positive_tags = {"欢快", "温馨", "轻松", "平静", "释然"}
-        sorted_chapters = sorted(emotion_by_chapter.keys())
         for i in range(1, len(sorted_chapters)):
             prev_tag = emotion_by_chapter[sorted_chapters[i - 1]]
             curr_tag = emotion_by_chapter[sorted_chapters[i]]
             if prev_tag in negative_tags and curr_tag in positive_tags:
                 issues.append({
-                    "type": "character_emotion_jump",
+                    "type": "emotion_jump_negative_to_positive",
                     "chapters": [sorted_chapters[i - 1], sorted_chapters[i]],
-                    "detail": f"情绪跳跃：第{sorted_chapters[i-1]}章「{prev_tag}」→ 第{sorted_chapters[i]}章「{curr_tag}」",
+                    "detail": f"情绪跳跃(负→正)：第{sorted_chapters[i-1]}章「{prev_tag}」→ 第{sorted_chapters[i]}章「{curr_tag}」",
+                    "confidence": "medium",
+                })
+            elif prev_tag in positive_tags and curr_tag in negative_tags:
+                issues.append({
+                    "type": "emotion_jump_positive_to_negative",
+                    "chapters": [sorted_chapters[i - 1], sorted_chapters[i]],
+                    "detail": f"情绪跳跃(正→负)：第{sorted_chapters[i-1]}章「{prev_tag}」→ 第{sorted_chapters[i]}章「{curr_tag}」",
                     "confidence": "medium",
                 })
 
@@ -94,6 +129,44 @@ async def consistency_scan(
                 })
 
     # 3. 设定引用矛盾检测
+    # F3: 新增伏笔检查类型
+    if check_types in ("all", "foreshadowing"):
+        all_fs = kb.foreshadowings.list_foreshadowings()
+        for fs in all_fs:
+            planted = fs.get("planted_chapter")
+            expected = fs.get("expected_resolve_chapter")
+            status = fs.get("status")
+            
+            # 检查：提出章节 > 预期解决章节
+            if planted and expected and planted > expected:
+                issues.append({
+                    "type": "foreshadowing_impossible_timing",
+                    "chapters": [planted, expected],
+                    "detail": f"伏笔「{(fs.get('content') or '')[:30]}」提出章节{planted} > 预期解决章节{expected}",
+                    "confidence": "high",
+                })
+            
+            # 检查：active 状态但超期 5+ 章
+            if status == "active" and expected:
+                # Find latest written chapter
+                latest_ch = max((t.get("chapter_number", 0) for t in timeline), default=0)
+                if latest_ch - expected >= 5:
+                    issues.append({
+                        "type": "foreshadowing_overdue",
+                        "chapters": [planted, expected],
+                        "detail": f"伏笔「{(fs.get('content') or '')[:30]}」已超期{latest_ch - expected}章未回收",
+                        "confidence": "medium",
+                    })
+            
+            # 检查：reclaimed 状态但 resolved_chapter 为空
+            if status == "reclaimed" and not fs.get("resolved_chapter"):
+                issues.append({
+                    "type": "foreshadowing_missing_resolve_chapter",
+                    "chapters": [planted],
+                    "detail": f"伏笔「{(fs.get('content') or '')[:30]}」状态为reclaimed但未记录回收章节",
+                    "confidence": "low",
+                })
+
     if check_types in ("all", "setting") and ws:
         red_rules = (ws.get("tiered_settings") or {}).get("red", [])
         if red_rules and scan_chapter_numbers:
@@ -105,12 +178,13 @@ async def consistency_scan(
                         ch_content = chapter["content"]
                         for rule in red_rules[:5]:
                             rule_text = rule if isinstance(rule, str) else rule.get("text", "")
-                            if rule_text and len(rule_text) >= 4 and rule_text in ch_content:
+                            if rule_text and len(rule_text) >= 6 and rule_text in ch_content:
+                                # F2: confidence 区分 - 字符串匹配vs分词匹配
                                 issues.append({
                                     "type": "setting_reference",
                                     "chapters": [ch_num],
                                     "detail": f"第{ch_num}章引用了红色设定「{rule_text[:30]}」，请检查是否遵守",
-                                    "confidence": "low",
+                                    "confidence": "high",
                                     "rule_preview": rule_text[:60],
                                 })
                 except Exception:

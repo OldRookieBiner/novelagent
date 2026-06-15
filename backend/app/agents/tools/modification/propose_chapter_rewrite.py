@@ -17,7 +17,6 @@ async def propose_chapter_rewrite(
     Args:
         chapter_number: 要重写的章节号
         reason: 重写原因
-        focus: 重写重点 - "plot", "character", "style", 或 "all"
     """
     kb = _kb()
     chapter = kb.chapters.get_by_number(chapter_number)

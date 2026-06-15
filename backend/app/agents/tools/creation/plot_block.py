@@ -21,7 +21,8 @@ async def create_plot_block(
 
     Args:
         title: 情节块标题
-        chapter_range: 章节范围（如 "1-5"）
+        chapter_start: 起始章节号
+        chapter_end: 结束章节号
         must_happen: JSON 字符串列表，必须发生的事件
         questions_to_raise: JSON 字符串列表，需要提出的问题
         questions_to_answer: JSON 字符串列表，需要回答的问题
@@ -51,6 +52,7 @@ async def create_plot_block(
         "action": "created",
         "id": block["id"],
         "title": title,
-        "chapter_range": f"{chapter_start}-{chapter_end}",
+        "chapter_start": chapter_start,
+        "chapter_end": chapter_end,
         "message": f"情节块「{title}」已创建并写入知识库",
     }

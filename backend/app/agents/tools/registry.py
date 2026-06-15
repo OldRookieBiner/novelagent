@@ -16,6 +16,9 @@ from app.agents.tools.perception import (
     rhythm_analysis,
 )
 from app.agents.tools.modification import (
+    apply_change,
+    reject_change,
+    list_proposed_changes,
     propose_setting_change,
     propose_outline_adjustment,
     propose_chapter_rewrite,
@@ -90,6 +93,9 @@ _STRUCTURE_EXTRA = [
     update_plot_question,
     delete_plot_block,
     batch_confirm_outlines,
+    apply_change,
+    reject_change,
+    list_proposed_changes,
 ]
 
 # 写作阶段增量

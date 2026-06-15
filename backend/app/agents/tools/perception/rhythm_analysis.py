@@ -26,27 +26,40 @@ async def rhythm_analysis(last_n_chapters: int = 10) -> dict:
     if not recent:
         return {"has_data": False, "message": "尚无时间线数据，需要先写几章后才能分析节奏"}
 
-    # 检测单调段
+    # 检测单调段（正序遍历，只在序列结束时记录一次）
     monotone_sections = []
-    consecutive_same = 0
-    last_tag = None
+    consecutive_same = 1
     start_chapter = None
+    last_tag = None
+    prev_chapter = None
 
-    for entry in reversed(recent):
+    for entry in recent:
         tag = entry.get("emotion_tag")
         if tag and tag == last_tag:
             consecutive_same += 1
-            if consecutive_same >= 2:
+        else:
+            # 检测到断点，记录之前的单调段
+            if consecutive_same >= 3 and last_tag:
                 monotone_sections.append({
                     "start_chapter": start_chapter,
-                    "end_chapter": entry.get("chapter_number"),
-                    "emotion": tag,
-                    "length": consecutive_same + 1,
+                    "end_chapter": prev_chapter,
+                    "emotion": last_tag,
+                    "length": consecutive_same,
                 })
-        else:
-            consecutive_same = 0
+            # 开始新序列
+            consecutive_same = 1
             start_chapter = entry.get("chapter_number")
+        prev_chapter = entry.get("chapter_number")
         last_tag = tag
+
+    # 检查最后一段
+    if consecutive_same >= 3 and last_tag:
+        monotone_sections.append({
+            "start_chapter": start_chapter,
+            "end_chapter": prev_chapter,
+            "emotion": last_tag,
+            "length": consecutive_same,
+        })
 
     # 高潮/低谷分布
     peaks = []
@@ -119,7 +132,7 @@ async def rhythm_analysis(last_n_chapters: int = 10) -> dict:
         result["suggested_adjustments"] = suggested_adjustments
 
     if monotone_sections:
-        result["warning"] = f"检测到 {len(monotone_sections)} 段节奏单调区域，建议调整情绪节奏"
+        result["warning"] = f"检测到 {len(monotone_sections)} 段节奏单调区域（3+章相同情绪），建议调整情绪节奏"
     elif block_warnings:
         result["warning"] = f"检测到 {len(block_warnings)} 处节奏与预期偏差过大"
     return result

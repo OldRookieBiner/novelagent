@@ -43,18 +43,14 @@ async def delete_plot_block(plot_block_id: int) -> dict:
     # 安全检查：是否有活跃伏笔的预期回收章节在此范围内
     foreshadowings = kb.foreshadowings.list_foreshadowings()
     active_fs = [f for f in foreshadowings if f.get("status") in ("active", "pending_reclaim")]
-    chapter_range = target.get("chapter_range", "")
+    chapter_start = target.get("chapter_start")
+    chapter_end = target.get("chapter_end")
     affected_foreshadowings = []
-    if chapter_range and "-" in str(chapter_range):
-        try:
-            parts = str(chapter_range).split("-")
-            start, end = int(parts[0]), int(parts[1])
-            for f in active_fs:
-                expected = f.get("expected_resolve_chapter")
-                if expected and start <= expected <= end:
-                    affected_foreshadowings.append({"id": f["id"], "content": (f.get("content") or "")[:60]})
-        except (ValueError, IndexError):
-            pass
+    if chapter_start is not None and chapter_end is not None:
+        for f in active_fs:
+            expected = f.get("expected_resolve_chapter")
+            if expected and chapter_start <= expected <= chapter_end:
+                affected_foreshadowings.append({"id": f["id"], "content": (f.get("content") or "")[:60]})
 
     # 执行删除
     kb.plots.delete_plot_block(plot_block_id)

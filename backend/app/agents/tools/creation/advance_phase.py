@@ -2,6 +2,7 @@
 
 R20 修正：先通过 KB 读取完整度判断（KB 用独立 session，不需要行锁），
 判断完成后再获取行锁写入，最小化行锁持有时间。
+G1 增强：支持 direction=backward 进行阶段回退。
 """
 
 from langchain_core.tools import tool
@@ -11,8 +12,15 @@ from app.agents.tools.utils import _kb
 
 
 @tool
-async def advance_phase() -> dict:
-    """推进创作阶段。根据知识库完整度判断是否可以进入下一阶段。"""
+async def advance_phase(direction: str = "forward") -> dict:
+    """推进或回退创作阶段。
+
+    direction="forward"：根据知识库完整度判断是否可以进入下一阶段。
+    direction="backward"：回退到上一阶段（Writing→Structure，Structure→Incubation）。
+
+    Args:
+        direction: 方向 - "forward"(推进) 或 "backward"(回退)
+    """
     project_id = get_project_id()
     if project_id is None:
         raise ValueError("project_id not set in tool context")
@@ -23,6 +31,91 @@ async def advance_phase() -> dict:
 
     kb = _kb()
 
+    # 阶段标签（提前定义，G1 要求）
+    phase_labels = {
+        Phase.INCUBATION: "创意孵化",
+        Phase.STRUCTURE: "结构设计",
+        Phase.WRITING: "写作中",
+        Phase.REVISION: "修订中",
+    }
+
+    # G1: 回退逻辑
+    if direction == "backward":
+        # 回退映射
+        backward_map = {
+            Phase.WRITING: Phase.STRUCTURE,
+            Phase.STRUCTURE: Phase.INCUBATION,
+        }
+
+        # 1. 无锁读取当前阶段
+        db_read = SessionLocal()
+        try:
+            ws_read = db_read.query(WorkflowState).filter(
+                WorkflowState.project_id == project_id
+            ).first()
+            current_phase = ws_read.stage if ws_read else Phase.INCUBATION
+        finally:
+            db_read.close()
+
+        # 2. 检查是否可以回退
+        if current_phase not in backward_map:
+            return {
+                "current_phase": current_phase,
+                "suggested_phase": current_phase,
+                "advanced": False,
+                "direction": direction,
+                "reason": f"当前阶段「{phase_labels.get(current_phase, current_phase)}」不可回退",
+                "current_phase_label": phase_labels.get(current_phase, current_phase),
+                "suggested_phase_label": phase_labels.get(current_phase, current_phase),
+            }
+
+        suggested_phase = backward_map[current_phase]
+        reason = f"从「{phase_labels.get(current_phase, current_phase)}」回退到「{phase_labels.get(suggested_phase, suggested_phase)}」"
+
+        # 3. 获取行锁并写入
+        db = SessionLocal()
+        try:
+            ws = db.query(WorkflowState).filter(
+                WorkflowState.project_id == project_id
+            ).with_for_update().first()
+
+            actual_phase = ws.stage if ws else Phase.INCUBATION
+            if actual_phase != current_phase:
+                db.rollback()
+                return {
+                    "current_phase": actual_phase,
+                    "suggested_phase": suggested_phase,
+                    "advanced": False,
+                    "direction": direction,
+                    "reason": "并发更新检测：阶段已被其他请求更新",
+                    "current_phase_label": phase_labels.get(actual_phase, actual_phase),
+                    "suggested_phase_label": phase_labels.get(suggested_phase, suggested_phase),
+                }
+
+            if not ws:
+                ws = WorkflowState(project_id=project_id, stage=suggested_phase)
+                db.add(ws)
+            else:
+                ws.stage = suggested_phase
+            db.commit()
+            advanced = True
+        except Exception as e:
+            db.rollback()
+            return {"error": f"回退阶段失败: {e}"}
+        finally:
+            db.close()
+
+        return {
+            "current_phase": current_phase,
+            "suggested_phase": suggested_phase,
+            "advanced": advanced,
+            "direction": direction,
+            "reason": reason,
+            "current_phase_label": phase_labels.get(current_phase, current_phase),
+            "suggested_phase_label": phase_labels.get(suggested_phase, suggested_phase),
+        }
+
+    # 原有的推进逻辑 (direction == "forward")
     # 1. 无锁读取当前阶段（仅用于判断，不持锁）
     db_read = SessionLocal()
     try:
@@ -99,7 +192,10 @@ async def advance_phase() -> dict:
                     "current_phase": actual_phase,
                     "suggested_phase": suggested_phase,
                     "advanced": False,
+                    "direction": direction,
                     "reason": "并发推进检测：阶段已被其他请求更新",
+                    "current_phase_label": phase_labels.get(actual_phase, actual_phase),
+                    "suggested_phase_label": phase_labels.get(suggested_phase, suggested_phase),
                 }
 
             if not ws:
@@ -114,17 +210,11 @@ async def advance_phase() -> dict:
         finally:
             db.close()
 
-    phase_labels = {
-        Phase.INCUBATION: "创意孵化",
-        Phase.STRUCTURE: "结构设计",
-        Phase.WRITING: "写作中",
-        Phase.REVISION: "修订中",
-    }
-
     return {
         "current_phase": current_phase,
         "suggested_phase": suggested_phase,
         "advanced": advanced,
+        "direction": direction,
         "reason": reason,
         "current_phase_label": phase_labels.get(current_phase, current_phase),
         "suggested_phase_label": phase_labels.get(suggested_phase, suggested_phase),

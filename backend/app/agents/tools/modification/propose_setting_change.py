@@ -23,11 +23,15 @@ async def propose_setting_change(
 
     当用户需要修改世界观、角色属性等已确立的设定时使用。自动评估变更对已有章节的影响，返回影响等级和受影响内容。
 
+
+    Prerequisites:
+        - 目标对象（world_setting/character/foreshadowing 等）必须已存在
+
     Args:
         target_type: 修改对象类型 - "world_setting", "character", "foreshadowing", "style", "outline", "relation"
         target_id: 修改对象的 ID
-        description: 变更内容的自然语言描述
         new_value: 新值（JSON 字符串或普通字符串）
+        description: 变更内容的自然语言描述
     """
     kb = _kb()
 

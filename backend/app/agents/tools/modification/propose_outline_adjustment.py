@@ -16,8 +16,8 @@ async def propose_outline_adjustment(
     当用户需要修改大纲、增删章节或调整情节走向时使用。自动评估变更对已有内容的影响，返回影响评估结果。
 
     Args:
-            description: 调整内容的自然语言描述
-            affected_plot_blocks: 受影响的情节块 ID 列表
+        description: 调整内容的自然语言描述
+        affected_plot_blocks: 受影响的情节块 ID 列表
     """
     kb = _kb()
 
@@ -63,6 +63,18 @@ async def propose_outline_adjustment(
     if len(affected_blocks) > 2:
         impact_level = "severe"
 
+    # 格式化 chapter_range，处理 None 情况
+    affected_blocks_report = []
+    for b in affected_blocks:
+        cs = b.get("chapter_start")
+        ce = b.get("chapter_end")
+        chapter_range_str = f"{cs}-{ce}" if cs is not None and ce is not None else "未设定"
+        affected_blocks_report.append({
+            "id": b["id"],
+            "title": b.get("title", ""),
+            "chapter_range": chapter_range_str
+        })
+
     change = kb.changes.create({
         "target_type": "outline_adjustment",
         "target_id": 0,
@@ -72,10 +84,7 @@ async def propose_outline_adjustment(
         "status": "proposed",
         "impact_report": {
             "level": impact_level,
-            "affected_blocks": [
-                {"id": b["id"], "title": b.get("title", ""), "chapter_range": f"{b.get('chapter_start')}-{b.get('chapter_end')}"}
-                for b in affected_blocks
-            ],
+            "affected_blocks": affected_blocks_report,
             "affected_foreshadowings": affected_foreshadowings,
             "affected_questions": affected_questions,
         },

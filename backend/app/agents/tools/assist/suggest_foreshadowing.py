@@ -6,6 +6,14 @@
 from langchain_core.tools import tool
 
 from app.agents.tools.utils import _kb
+from app.utils.text import _jieba_available
+
+# J1: Stopwords for foreshadowing suggestion
+_SUGGEST_STOPWORDS = {
+    "的", "了", "在", "是", "我", "有", "和", "就", "不", "人",
+    "都", "一", "一个", "上", "也", "很", "到", "说", "要", "去",
+    "你", "会", "着", "没有", "看", "好", "自己", "这", "那", "吗",
+}
 
 
 @tool

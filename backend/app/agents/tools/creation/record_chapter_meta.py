@@ -26,6 +26,10 @@ async def record_chapter_meta(
     在 generate_chapter_content 保存章节正文后调用此工具补充追踪数据。
     也可以单独调用以补录遗漏的追踪数据。
 
+
+    Prerequisites:
+        - 章节内容必须已生成（使用 generate_chapter_content）
+
     Args:
         chapter_number: 章节号
         timeline_summary: 时间线摘要

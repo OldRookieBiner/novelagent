@@ -14,6 +14,11 @@ async def rewrite_chapter(chapter_number: int) -> dict:
 
     根据 review_chapter 的审查结果，对章节进行针对性修改。会保留旧版本的内容记录。
 
+
+    Prerequisites:
+        - 章节必须已存在
+        - 需要明确 rewrite_chapter 的具体修改方向
+
     Args:
             chapter_number: 要重写的章节号（如 1, 2, 3）
     """

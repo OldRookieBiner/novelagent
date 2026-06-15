@@ -31,6 +31,11 @@ async def generate_chapter_outline(
 
     当用户需要为某一章创建写作大纲时使用。大纲包含场景、角色、情绪弧线等写作指导信息。
 
+
+    Prerequisites:
+        - 世界观必须已创建
+        - 章节大纲前需要确认前序章节已完成
+
     Args:
             chapter_number: 章节号
             title: 章节标题

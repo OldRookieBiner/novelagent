@@ -14,6 +14,9 @@ from app.agents.tools.perception import (
 )
 # 修改工具
 from app.agents.tools.modification import (
+    apply_change,
+    reject_change,
+    list_proposed_changes,
     propose_setting_change,
     propose_outline_adjustment,
     propose_chapter_rewrite,

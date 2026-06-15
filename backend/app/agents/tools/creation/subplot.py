@@ -20,9 +20,11 @@ async def create_subplot(
 
     Args:
         name: 支线名称
-        description: 支线描述
-        characters: JSON 字符串列表，参与角色名
-        plot_block_id: 关联的情节块 ID
+        characters: JSON 字符串列表，参与角色名（默认 []）
+        current_status: 支线状态 - "developing"(发展中), "active"(活跃), "resolved"(已解决), "abandoned"(已废弃)（默认 developing）
+        raised_in_chapter: 支线提出的章节号（可选）
+        planned_intersection_chapter: 计划与主线交汇的章节号（可选）
+        expected_resolution_chapter: 预期解决的章节号（可选）
     """
     kb = _kb()
 

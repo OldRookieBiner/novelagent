@@ -265,21 +265,108 @@ def _load_writing_context(kb: KnowledgeBaseService, budget: BudgetTracker, conte
 
 
 def _load_revision_context(kb: KnowledgeBaseService, budget: BudgetTracker, context: dict):
-    chars = kb.characters.list_characters()
-    context["characters"] = chars
-    foreshadowings = kb.foreshadowings.list_foreshadowings()
-    context["foreshadowings"] = foreshadowings
-    questions = kb.plots.list_plot_questions()
-    context["plot_questions"] = questions
-    subplots = kb.plots.list_subplots()
-    context["subplots"] = subplots
-    timeline = kb.timelines.list_timeline()
-    context["timeline"] = timeline
-    style = kb.styles.get_constraints()
-    if style:
-        context["style_constraints"] = style
-    snapshots = kb.styles.list_snapshots()
-    context["style_snapshots"] = snapshots
+    """修订阶段上下文加载 - 使用 BudgetTracker 逐项控制"""
+    import json
+
+    # 1. world_setting 精简版：core_concept + red_settings + key_locations
+    ws_tokens = estimate_tokens("world_setting")
+    if budget.can_add(ws_tokens):
+        ws = kb.world_setting.get()
+        if ws:
+            ws_mini = {
+                "core_concept": ws.get("core_concept", ""),
+                "red_settings": (ws.get("tiered_settings") or {}).get("red", []),
+                "key_locations": ws.get("key_locations", []),
+            }
+            ws_json = json.dumps(ws_mini, ensure_ascii=False)
+            if budget.can_add(estimate_tokens(ws_json)):
+                context["world_setting"] = ws_mini
+                budget.add(estimate_tokens(ws_json))
+
+    # 2. characters 索引模式：id + name + role（不含 backstory）
+    chars_tokens = estimate_tokens("characters")
+    if budget.can_add(chars_tokens):
+        chars = kb.characters.list_characters()
+        chars_index = [{"id": c["id"], "name": c["name"], "role": c.get("role", "")} for c in chars]
+        chars_json = json.dumps(chars_index, ensure_ascii=False)
+        if budget.can_add(estimate_tokens(chars_json)):
+            context["characters"] = chars_index
+            budget.add(estimate_tokens(chars_json))
+
+    # 3. foreshadowings 精简：id + content[:60] + status + planted_chapter + expected_resolve_chapter
+    fs_tokens = estimate_tokens("foreshadowings")
+    if budget.can_add(fs_tokens):
+        foreshadowings = kb.foreshadowings.list_foreshadowings()
+        fs_mini = [
+            {
+                "id": f["id"],
+                "content": (f.get("content") or "")[:60],
+                "status": f.get("status"),
+                "planted_chapter": f.get("planted_chapter"),
+                "expected_resolve_chapter": f.get("expected_resolve_chapter"),
+            }
+            for f in foreshadowings
+        ]
+        fs_json = json.dumps(fs_mini, ensure_ascii=False)
+        if budget.can_add(estimate_tokens(fs_json)):
+            context["foreshadowings"] = fs_mini
+            budget.add(estimate_tokens(fs_json))
+
+    # 4. timeline 最近 20 章摘要
+    tl_tokens = estimate_tokens("timeline")
+    if budget.can_add(tl_tokens):
+        timeline = kb.timelines.list_timeline()
+        recent_timeline = timeline[:20] if len(timeline) > 20 else timeline
+        tl_mini = [
+            {
+                "chapter_number": t.get("chapter_number"),
+                "summary": (t.get("summary") or "")[:80],
+                "emotion_tag": t.get("emotion_tag"),
+            }
+            for t in recent_timeline
+        ]
+        tl_json = json.dumps(tl_mini, ensure_ascii=False)
+        if budget.can_add(estimate_tokens(tl_json)):
+            context["timeline"] = tl_mini
+            budget.add(estimate_tokens(tl_json))
+
+    # 5. plot_questions 只加载 pending 状态
+    pq_tokens = estimate_tokens("plot_questions")
+    if budget.can_add(pq_tokens):
+        questions = kb.plots.list_plot_questions(status="pending")
+        pq_json = json.dumps(questions, ensure_ascii=False)
+        if budget.can_add(estimate_tokens(pq_json)):
+            context["plot_questions"] = questions
+            budget.add(estimate_tokens(pq_json))
+
+    # 6. subplots 只加载非 abandoned 状态
+    sub_tokens = estimate_tokens("subplots")
+    if budget.can_add(sub_tokens):
+        all_subplots = kb.plots.list_subplots()
+        active_subplots = [s for s in all_subplots if s.get("current_status") != "abandoned"]
+        sub_json = json.dumps(active_subplots, ensure_ascii=False)
+        if budget.can_add(estimate_tokens(sub_json)):
+            context["subplots"] = active_subplots
+            budget.add(estimate_tokens(sub_json))
+
+    # 7. style_snapshots 只加载最近 10 条
+    ss_tokens = estimate_tokens("style_snapshots")
+    if budget.can_add(ss_tokens):
+        snapshots = kb.styles.list_snapshots(last_n=10)
+        ss_json = json.dumps(snapshots, ensure_ascii=False)
+        if budget.can_add(estimate_tokens(ss_json)):
+            context["style_snapshots"] = snapshots
+            budget.add(estimate_tokens(ss_json))
+
+    # 8. style_constraints 保留（走预算检查）
+    style_tokens = estimate_tokens("style_constraints")
+    if budget.can_add(style_tokens):
+        style = kb.styles.get_constraints()
+        if style:
+            style_json = json.dumps(style, ensure_ascii=False)
+            if budget.can_add(estimate_tokens(style_json)):
+                context["style_constraints"] = style
+                budget.add(estimate_tokens(style_json))
 
 
 def build_lightweight_context(

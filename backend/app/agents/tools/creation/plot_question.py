@@ -16,10 +16,9 @@ async def create_plot_question(
     当用户需要为情节块添加需要提出或回答的问题时使用。问题链帮助追踪情节中需要解决的悬念。
 
     Args:
-        plot_block_id: 所属情节块 ID
-        question: 问题内容
-        question_type: 问题类型 - "raise"(提出), "answer"(回答)
-        raised_in_chapter: 提出问题的章节号
+        question_text: 问题内容
+        raised_in_chapter: 提出问题的章节号（可选）
+        plot_block_id: 所属情节块 ID（可选）
     """
     kb = _kb()
 

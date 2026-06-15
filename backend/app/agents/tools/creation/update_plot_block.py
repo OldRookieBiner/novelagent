@@ -9,7 +9,8 @@ from app.agents.tools.utils import _kb
 async def update_plot_block(
     plot_block_id: int,
     title: str | None = None,
-    chapter_range: str | None = None,
+    chapter_start: int | None = None,
+    chapter_end: int | None = None,
     must_happen: str | None = None,
     questions_to_raise: str | None = None,
     questions_to_answer: str | None = None,
@@ -20,7 +21,8 @@ async def update_plot_block(
     Args:
         plot_block_id: 情节块 ID
         title: 情节块标题
-        chapter_range: 章节范围（如 "1-5"）
+        chapter_start: 起始章节号
+        chapter_end: 结束章节号
         must_happen: JSON 字符串列表，必须发生的事件
         questions_to_raise: JSON 字符串列表，需要提出的问题
         questions_to_answer: JSON 字符串列表，需要回答的问题
@@ -43,7 +45,7 @@ async def update_plot_block(
 
     # 构建更新数据
     update_data = {}
-    for field in ("title", "chapter_range", "completion_summary"):
+    for field in ("title", "chapter_start", "chapter_end", "completion_summary"):
         value = locals()[field]
         if value is not None:
             update_data[field] = value
