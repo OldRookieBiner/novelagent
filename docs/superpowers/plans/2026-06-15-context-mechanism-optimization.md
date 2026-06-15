@@ -31,8 +31,6 @@
 | `backend/tests/test_agent_context.py` | ProjectContextAssembler 集成测试 | 新增 |
 
 ---
-
-
 ### Task 1: Token 估算系数更新
 
 **Files:**
@@ -91,8 +89,6 @@ Expected: ALL PASS（策略测试内部用 estimate_tokens 计算预算截断，
 git add backend/app/agents/token_budget.py backend/tests/test_token_budget.py
 git commit -m "feat(token_budget): 更新估算系数为 DeepSeek V4 × 1.2 (0.72/0.36)"
 ```
-
-
 ### Task 2: PHASE_BUDGET_RATIOS 常量 + BudgetAllocator
 
 **Files:**
@@ -123,8 +119,6 @@ PHASE_BUDGET_RATIOS = {
 import pytest
 from app.agents.budget_allocator import BudgetAllocator, BudgetAllocation
 from app.agents.constants import Phase
-
-
 class TestBudgetAllocator:
     def test_writing_1m_window(self):
         """1M 窗口 WRITING 阶段预算分配"""
@@ -198,8 +192,6 @@ Expected: FAIL — ModuleNotFoundError
 from dataclasses import dataclass
 
 from app.agents.constants import PHASE_BUDGET_RATIOS
-
-
 @dataclass(frozen=True)
 class BudgetAllocation:
     """预算分配结果"""
@@ -211,8 +203,6 @@ class BudgetAllocation:
     project_data_budget: int
     context_window: int
     phase: str
-
-
 class BudgetAllocator:
     """根据 context_window + phase 分配 token 预算
 
@@ -277,8 +267,6 @@ Expected: ALL PASS
 git add backend/app/agents/constants.py backend/app/agents/budget_allocator.py backend/tests/test_budget_allocator.py
 git commit -m "feat(budget): 新增 PHASE_BUDGET_RATIOS 常量和 BudgetAllocator"
 ```
-
-
 ### Task 3: 跨请求缓存 (ContextCache)
 
 **Files:**
@@ -296,8 +284,6 @@ import threading
 # 类级别版本号注册表：data_type -> 版本号
 _version_registry: dict[str, int] = {}
 _version_lock = threading.Lock()
-
-
 class _BaseStore:
     # ... 现有代码 ...
 
@@ -323,8 +309,6 @@ class _BaseStore:
 import time
 import pytest
 from app.agents.context_cache import ContextCache
-
-
 class TestContextCache:
     def test_cache_miss_returns_none(self):
         """缓存未命中返回 None"""
@@ -409,8 +393,6 @@ from typing import Any
 
 # 不缓存的数据类型（变化频率高或数据量过大）
 _UNCACHEABLE_TYPES = frozenset({"chapters", "foreshadowing_status", "chapter_outlines"})
-
-
 class ContextCache:
     """跨请求 LRU 缓存"""
 
@@ -472,8 +454,6 @@ class ContextCache:
             return
         oldest_key = min(self._store, key=lambda k: self._store[k][1])
         del self._store[oldest_key]
-
-
 # 全局单例
 context_cache = ContextCache()
 ```
@@ -489,8 +469,6 @@ Expected: ALL PASS
 git add backend/app/agents/services/stores/base.py backend/app/agents/context_cache.py backend/tests/test_context_cache.py
 git commit -m "feat(cache): 新增 ContextCache 跨请求缓存和 _bump_version 版本管理"
 ```
-
-
 ### Task 4: batch_read_for_context()
 
 **Files:**
@@ -546,7 +524,7 @@ git commit -m "feat(cache): 新增 ContextCache 跨请求缓存和 _bump_version
                 "subplots": plots_data.get("subplots", []),
                 "foreshadowings": self.foreshadowings._read_all_with_session(db),
                 "timeline": timelines_data.get("timeline", []),
-                "style_snapshots": [],
+                "style_snapshots": self.styles._read_snapshots_with_session(db, last_n=10),
                 "chapters": chapters,
                 "changes": changes,
                 "previous_closing": previous_closing,
@@ -613,16 +591,38 @@ git commit -m "feat(cache): 新增 ContextCache 跨请求缓存和 _bump_version
         return self._to_dict_list(objs)
 ```
 
+对于 `style_store.py`，需要新增 `_read_snapshots_with_session`：
+
+```python
+    def _read_snapshots_with_session(self, db, last_n: int = 10) -> list[dict]:
+        """单次 session 内批量读取最近 N 条风格快照"""
+        objs = db.query(StyleSnapshot).filter(
+            StyleSnapshot.project_id == self.project_id
+        ).order_by(StyleSnapshot.id.desc()).limit(last_n).all()
+        return self._to_dict_list(objs)
+```
+
 对于 `chapter_store.py`，需要新增 `_read_all_with_session` 和 `_read_by_number_with_session`：
 
 ```python
-    def _read_by_number_with_session(self, db: Session, chapter_number: int) -> dict | None:
-        """单次 session 内按章节号读取"""
-        obj = db.query(Chapter).filter(
-            Chapter.project_id == self.project_id,
-            Chapter.chapter_number == chapter_number,
+    def _read_by_number_with_session(self, db, chapter_number: int) -> dict | None:
+        """单次 session 内按章节号读取（需 JOIN ChapterOutline）"""
+        co = db.query(ChapterOutline).filter(
+            ChapterOutline.project_id == self.project_id,
+            ChapterOutline.chapter_number == chapter_number,
         ).first()
-        return self._to_dict(obj)
+        if not co:
+            return None
+        chapter = db.query(Chapter).filter(
+            Chapter.chapter_outline_id == co.id
+        ).first()
+        if not chapter:
+            return None
+        result = self._to_dict(chapter)
+        result["chapter_number"] = chapter_number
+        result["title"] = co.title
+        return result
+
 ```
 
 - [ ] **Step 3: 运行现有测试确认无回归**
@@ -633,11 +633,9 @@ Expected: ALL PASS — 新增方法不影响现有逻辑
 - [ ] **Step 4: Commit**
 
 ```bash
-git add backend/app/agents/services/knowledge_base.py backend/app/agents/services/stores/chapter_store.py backend/app/agents/services/stores/outline_store.py backend/app/agents/services/stores/change_store.py
+git add backend/app/agents/services/knowledge_base.py backend/app/agents/services/stores/chapter_store.py backend/app/agents/services/stores/outline_store.py backend/app/agents/services/stores/change_store.py backend/app/agents/services/stores/style_store.py
 git commit -m "feat(kb): 新增 batch_read_for_context 和 Store _read_all_with_session 方法"
 ```
-
-
 ### Task 5: context_strategy 动态策略选择
 
 **Files:**
@@ -834,8 +832,6 @@ Expected: ALL PASS
 git add backend/app/agents/context_strategy.py backend/tests/test_context_strategy.py
 git commit -m "feat(context_strategy): 新增 select_strategy 基于 token 预算动态选择策略"
 ```
-
-
 ### Task 6: _loaded_keys ContextVar
 
 **Files:**
@@ -850,13 +846,9 @@ git commit -m "feat(context_strategy): 新增 select_strategy 基于 token 预�
 # 值为 list[str]，如 ["world_setting", "characters_index", "style_constraints"]
 # knowledge_search 据此附加提示信息，但不截断输出
 _current_loaded_keys: ContextVar[list[str] | None] = ContextVar("loaded_keys", default=None)
-
-
 def set_loaded_keys(keys: list[str]) -> None:
     """设置当前请求的预加载数据类型列表"""
     _current_loaded_keys.set(keys)
-
-
 def get_loaded_keys() -> list[str] | None:
     """获取当前请求的预加载数据类型列表"""
     return _current_loaded_keys.get()
@@ -896,8 +888,6 @@ Expected: ALL PASS
 git add backend/app/agents/tool_context.py
 git commit -m "feat(tool_context): 新增 _loaded_keys ContextVar 用于预加载数据声明"
 ```
-
-
 ### Task 7: ProjectContextAssembler 重构
 
 **Files:**
@@ -916,8 +906,6 @@ import pytest
 from unittest.mock import patch, MagicMock
 from app.agents.agent_context import ProjectContextAssembler
 from app.agents.constants import Phase
-
-
 class TestProjectContextAssembler:
     def _mock_kb(self):
         """创建 mock KnowledgeBaseService"""
@@ -1049,8 +1037,6 @@ from app.agents.context_strategy import select_strategy
 from app.agents.services.stores.base import _BaseStore
 
 logger = logging.getLogger(__name__)
-
-
 class BudgetTracker:
     """Token budget tracker — 逐项控制预算"""
 
@@ -1066,12 +1052,8 @@ class BudgetTracker:
 
     def remaining(self) -> int:
         return max(0, self.max - self.used)
-
-
 # 轻量模式阈值：context_window 的 5% 以下触发
 _LIGHTWEIGHT_RATIO = 0.05
-
-
 class ProjectContextAssembler:
     """统一上下文组装器
 
@@ -1229,6 +1211,14 @@ class ProjectContextAssembler:
                 budget.add(estimate_tokens(data_json))
 
     def _load_structure_data(self, raw: dict, budget: BudgetTracker, ctx: dict):
+        # 大纲全文
+        outline = raw.get("outline")
+        if outline:
+            tokens = estimate_tokens(json.dumps(outline, ensure_ascii=False))
+            if budget.can_add(tokens):
+                ctx["outline"] = outline
+                budget.add(tokens)
+
         # 角色索引
         chars = raw.get("characters", [])
         char_list = []
@@ -1263,6 +1253,14 @@ class ProjectContextAssembler:
         ctx["foreshadowings"] = fs_mini
 
     def _load_writing_data(self, raw: dict, budget: BudgetTracker, ctx: dict, chapter_number: int | None):
+        # 大纲全文
+        outline = raw.get("outline")
+        if outline:
+            tokens = estimate_tokens(json.dumps(outline, ensure_ascii=False))
+            if budget.can_add(tokens):
+                ctx["outline"] = outline
+                budget.add(tokens)
+
         # 角色索引（含 personality[:100]）
         chars = raw.get("characters", [])
         char_list = []
@@ -1470,6 +1468,14 @@ class ProjectContextAssembler:
         return {"blocked": blocked, "warnings": warnings, "validated": True}
 
     def _load_revision_data(self, raw: dict, budget: BudgetTracker, ctx: dict):
+        # 大纲全文
+        outline = raw.get("outline")
+        if outline:
+            tokens = estimate_tokens(json.dumps(outline, ensure_ascii=False))
+            if budget.can_add(tokens):
+                ctx["outline"] = outline
+                budget.add(tokens)
+
         # 世界观精简版
         ws = raw.get("world_setting")
         if ws:
@@ -1510,6 +1516,30 @@ class ProjectContextAssembler:
             tokens = estimate_tokens(json.dumps(style, ensure_ascii=False))
             if budget.can_add(tokens):
                 ctx["style_constraints"] = style
+                budget.add(tokens)
+
+        # 待决情节问题（仅 pending 状态）
+        questions = [q for q in raw.get("plot_questions", []) if q.get("status") == "pending"]
+        if questions:
+            tokens = estimate_tokens(json.dumps(questions, ensure_ascii=False))
+            if budget.can_add(tokens):
+                ctx["plot_questions"] = questions
+                budget.add(tokens)
+
+        # 支线状态（排除已废弃）
+        active_subplots = [s for s in raw.get("subplots", []) if s.get("current_status") != "abandoned"]
+        if active_subplots:
+            tokens = estimate_tokens(json.dumps(active_subplots, ensure_ascii=False))
+            if budget.can_add(tokens):
+                ctx["subplots"] = active_subplots
+                budget.add(tokens)
+
+        # 风格快照（最近 10 条）
+        snapshots = raw.get("style_snapshots", [])
+        if snapshots:
+            tokens = estimate_tokens(json.dumps(snapshots, ensure_ascii=False))
+            if budget.can_add(tokens):
+                ctx["style_snapshots"] = snapshots
                 budget.add(tokens)
 
     def _load_previous_context(
@@ -1603,8 +1633,6 @@ class ProjectContextAssembler:
             "_budget_max": budget.max,
             "_mode": "lightweight",
         }
-
-
 # ========== 向后兼容 ==========
 
 def build_agent_context(
@@ -1655,8 +1683,6 @@ Expected: ALL PASS
 git add backend/app/agents/agent_context.py backend/tests/test_agent_context.py
 git commit -m "refactor(agent_context): 重构为 ProjectContextAssembler 统一上下文组装"
 ```
-
-
 ### Task 8: agent.py 调用点迁移
 
 **Files:**
@@ -1792,8 +1818,6 @@ Expected: ALL PASS
 git add backend/app/api/agent.py
 git commit -m "refactor(agent): 迁移调用点到 ProjectContextAssembler，传递 context_window"
 ```
-
-
 ### Task 9: knowledge_search 感知 _loaded_keys
 
 **Files:**
@@ -1838,8 +1862,6 @@ Expected: ALL PASS
 git add backend/app/agents/tools/perception/knowledge_search.py
 git commit -m "feat(knowledge_search): 感知 _loaded_keys 附加预加载提示"
 ```
-
-
 ### Task 10: 去重规则 + Store 写操作 _bump_version
 
 **Files:**
@@ -1897,8 +1919,6 @@ Expected: ALL PASS
 git add backend/app/agents/agent_context.py backend/app/agents/services/stores/world_setting_store.py backend/app/agents/services/stores/character_store.py backend/app/agents/services/stores/style_store.py backend/app/agents/services/stores/outline_store.py
 git commit -m "feat: 去重 previous_chapter_closing + Store 写操作 _bump_version"
 ```
-
-
 ### Task 11: 端到端验证 + 清理
 
 **Files:**
@@ -1973,8 +1993,6 @@ docker compose restart backend
 git add -A
 git commit -m "test: 端到端验证通过"
 ```
-
-
 ---
 
 ## 审查修正记录
@@ -1998,3 +2016,17 @@ git commit -m "test: 端到端验证通过"
 | R10 | 不验证 project_data + previous_text 总量是否超 context_window | Task 7 | 在 `build()` 返回前增加总量检查，超限时自动压缩 Important 数据 |
 | R11 | `_load_writing_data` 伏笔逻辑错误：`status="overdue"` 不是有效状态 | Task 7 | 修正伏笔过滤逻辑，与源码 `list_pending()`/`list_overdue()` 对齐 |
 | R12 | `_load_with_cache` 缓存命中数据未覆盖 batch_read 结果 | Task 7 | 始终走 batch_read，但缓存命中数据覆盖 raw 中的对应字段 |
+
+---
+
+## 第二轮审查修正（N1-N4）
+
+> 日期：2026-06-16
+> 对照源码 `agent_context.py`、`knowledge_base.py`、各 Store 文件，二次验证优化项
+
+| # | 问题 | 严重度 | 修正位置 | 修正内容 |
+|---|------|--------|---------|---------|
+| N1 | `_load_revision_data` 缺失 `plot_questions`（pending）、`subplots`（non-abandoned）、`style_snapshots`（最近 10 条）— 源码 `_load_revision_context` 有 8 字段，plan 只有 5 字段 | HIGH | Task 7 `_load_revision_data` | 补充 3 个缺失字段，与源码对齐 |
+| N2 | `_load_structure_data`、`_load_writing_data`、`_load_revision_data` 缺失 `outline` 加载 — 源码 `build_agent_context` 始终在阶段分发前加载完整 `outline` | HIGH | Task 7 各 `_load_*_data` 方法 | 在 STRUCTURE/WRITING/REVISION 的 `_load_*_data` 开头加载完整 `outline`；INCUBATION 保持精简版 `outline_index` |
+| N3 | `_load_incubation_data` 加载精简 `outline_index` 而源码加载完整 `outline` | INFO | 无需修改 | 设计差异，非 bug：INCUBATION 极简模式与 spec §3.3 一致 |
+| N4 | `batch_read_for_context` 返回 `style_snapshots: []` 空列表，REVISION 阶段无法获取风格快照 | MEDIUM | Task 4 | 新增 `StyleStore._read_snapshots_with_session(db, last_n=10)` 方法，`batch_read_for_context` 调用该方法返回真实数据 |

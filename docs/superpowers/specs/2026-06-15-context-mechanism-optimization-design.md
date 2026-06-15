@@ -116,23 +116,23 @@ agent.py → ProjectContextAssembler.build(context_window, phase, chapter_number
 ### 3.3 按阶段的具体预加载策略
 
 **INCUBATION — 极简：**
-- Critical：大纲标题、故事种子摘要
+- Critical：大纲标题+章数+摘要（outline_index）、故事种子摘要
 - Important：无（此阶段在创建数据，不需要读大量已有数据）
 - Supplementary：用户主动提问时通过 knowledge_search 查
 
 **STRUCTURE — 结构视野：**
-- Critical：大纲全文、风格约束
+- Critical：大纲全文（outline）、风格约束
 - Important：角色索引（name + role + motivation）、情节块列表、伏笔概览
 - Supplementary：角色详情、关系图谱、世界观数据
 
 **WRITING — 精准执行：**
-- Critical：当前章节大纲（全字段）、上一章结尾 500 字、🔴设定、风格约束、待回收/逾期伏笔、当前情节块
+- Critical：大纲全文（outline）、当前章节大纲（全字段）、上一章结尾 500 字、🔴设定、风格约束、待回收/逾期伏笔、当前情节块
 - Important：角色索引（name + role + motivation + personality[:100]）、世界观数据（core_concept + red_settings + key_locations）、近 N 章前文（由 context_strategy 决定）
 - Supplementary：关系演变规划（当前章触发的除外，属于 Critical）、远章正文、时间线
 
 **REVISION — 全局审查：**
-- Critical：风格约束、🔴设定
-- Important：角色索引、伏笔概览、时间线近 20 章、情节块、支线状态
+- Critical：大纲全文（outline）、风格约束、🔴设定
+- Important：角色索引、伏笔概览、时间线近 20 章、情节块、支线状态、待决情节问题（pending）、风格快照（最近 10 条）
 - Supplementary：角色完整档案、跨卷追踪数据
 
 ### 3.4 检索增强策略
@@ -414,3 +414,14 @@ if total > context_window - allocation.output_budget - allocation.safety_margin:
     # 自动压缩：从 Important 数据开始裁剪
     ...
 ```
+
+---
+
+### 8.3 第二轮审查修正（N1-N4）
+
+| # | 问题 | 严重度 | 修正 |
+|---|------|--------|------|
+| N1 | `_load_revision_data` 缺失 `plot_questions`（pending）、`subplots`（non-abandoned）、`style_snapshots`（最近 10 条）— 源码有 8 字段，plan 只有 5 字段 | HIGH | 补充 3 个缺失字段到 plan Task 7 `_load_revision_data`，与源码 `_load_revision_context` 对齐 |
+| N2 | `_load_structure_data`、`_load_writing_data`、`_load_revision_data` 缺失 `outline` 加载 — 源码 `build_agent_context` 始终在阶段分发前加载完整 `outline` | HIGH | 在每个 `_load_*_data` 方法开头加载 `outline`（INCUBATION 仍为精简版 `outline_index`；其余阶段加载完整 `outline`）；§3.3 各阶段 Critical 项补充"大纲" |
+| N3 | `_load_incubation_data` 加载精简 `outline_index` 而源码加载完整 `outline` — 设计差异，非 bug | INFO | 保持设计意图：INCUBATION 极简模式只需索引，与 spec §3.3 一致 |
+| N4 | `batch_read_for_context` 返回 `style_snapshots: []` 空列表，REVISION 阶段无法获取风格快照 | MEDIUM | 新增 `StyleStore._read_snapshots_with_session(db, last_n=10)` 方法，`batch_read_for_context` 调用该方法返回真实数据 |
