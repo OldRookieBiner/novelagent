@@ -64,3 +64,16 @@ def get_tool_cache():
 def set_tool_cache(cache) -> None:
     """设置当前请求的工具缓存"""
     _current_tool_cache.set(cache)
+
+# 预加载数据声明 — knowledge_search 感知上下文中已有哪些数据
+_loaded_keys: ContextVar[list[str]] = ContextVar("loaded_keys", default=[])
+
+
+def set_loaded_keys(keys: list[str]) -> None:
+    """设置当前请求的预加载数据类型列表"""
+    _loaded_keys.set(keys)
+
+
+def get_loaded_keys() -> list[str]:
+    """获取当前请求的预加载数据类型列表"""
+    return _loaded_keys.get()
