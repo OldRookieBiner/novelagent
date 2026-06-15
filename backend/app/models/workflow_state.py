@@ -17,7 +17,8 @@ class WorkflowState(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     project_id = Column(
-        Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+        Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False,
+        unique=True
     )
 
     # 创作阶段（Phase enum 值：incubation/structure/writing/revision）

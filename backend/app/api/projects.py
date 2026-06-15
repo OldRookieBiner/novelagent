@@ -10,7 +10,6 @@ from app.models.user import User
 from app.models.project import Project
 from app.models.outline import Outline, ChapterOutline
 from app.models.chapter import Chapter
-from app.models.workflow_state import WorkflowState
 from app.schemas.project import (
     ProjectCreate,
     ProjectUpdate,
@@ -111,9 +110,8 @@ async def create_project(
         outline = Outline(project_id=project.id)
         db.add(outline)
 
-        # 创建工作流状态
-        workflow_state = WorkflowState(project_id=project.id)
-        db.add(workflow_state)
+        # 创建工作流状态（使用 upsert 保证唯一性）
+        workflow_state = get_or_create_workflow_state(db, project.id)
 
         db.commit()
         db.refresh(project)
@@ -262,8 +260,7 @@ async def initialize_project(
         outline = Outline(project_id=project.id)
         db.add(outline)
 
-        workflow_state = WorkflowState(project_id=project.id)
-        db.add(workflow_state)
+        workflow_state = get_or_create_workflow_state(db, project.id)
 
         db.commit()
         db.refresh(project)

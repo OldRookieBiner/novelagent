@@ -325,11 +325,20 @@ class ChapterQuality:
     内部完成 KB 读取、上下文组装、LLM 调用、结果解析、DB 写入。
     """
 
-    def __init__(self, project_id: int, llm, context_window: int = DEFAULT_CONTEXT_WINDOW):
+    def __init__(
+        self,
+        project_id: int,
+        llm,
+        context_window: int = DEFAULT_CONTEXT_WINDOW,
+        review_max_tokens: int = 8192,
+        rewrite_max_tokens: int = 16384,
+    ):
         self.project_id = project_id
         self.kb = KnowledgeBaseService(project_id)
         self.llm = llm
         self.context_window = context_window
+        self.review_max_tokens = review_max_tokens
+        self.rewrite_max_tokens = rewrite_max_tokens
 
     async def review(self, chapter_number: int, strictness: str = "standard") -> dict:
         """审核章节质量
@@ -359,7 +368,7 @@ class ChapterQuality:
         # 3. 调 LLM
         try:
             response = await self.llm.chat(
-                messages, temperature=NODE_TEMPERATURES["review"], max_tokens=8192
+                messages, temperature=NODE_TEMPERATURES["review"], max_tokens=self.review_max_tokens
             )
             review_result = _parse_review_result(response)
             review_result["raw_response"] = response
@@ -428,9 +437,31 @@ class ChapterQuality:
             response = await self.llm.chat(
                 messages,
                 temperature=NODE_TEMPERATURES["rewrite"],
-                max_tokens=16384,
+                max_tokens=self.rewrite_max_tokens,
             )
             new_content = _clean_chapter_content(response)
+            
+            # 截断检测：启发式方法
+            if new_content:
+                # 检查是否以省略号结尾或最后一句不完整
+                stripped = new_content.strip()
+                ends_incomplete = (
+                    stripped.endswith("...") or 
+                    stripped.endswith("……") or
+                    (len(stripped) > 100 and not stripped.endswith(("。", "！", "？", "」", '"')))
+                )
+                if ends_incomplete:
+                    logger.warning(
+                        "rewrite_chapter LLM 输出疑似被截断（max_tokens=%d），内容长度=%d",
+                        self.rewrite_max_tokens,
+                        len(new_content),
+                    )
+                    return {
+                        "error": f"重写输出疑似被截断（max_tokens={self.rewrite_max_tokens}），"
+                                 f"请减少目标字数或增加 max_tokens 后重试",
+                        "chapter_number": chapter_number,
+                        "partial_content_length": len(new_content),
+                    }
         except Exception as e:
             return {"error": f"重写 LLM 调用失败: {e}"}
 

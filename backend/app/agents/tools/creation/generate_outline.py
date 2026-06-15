@@ -25,6 +25,7 @@ async def generate_outline(
         plot_points: JSON 字符串列表，关键情节节点
         emotional_curve: JSON 字符串列表，情感曲线
         characters: JSON 字符串列表，主要角色概要
+        world_setting_summary: 世界观概要摘要（可选，追加到大纲摘要末尾）
     """
     from app.agents.tools.utils import _kb, parse_json_param
 
@@ -35,10 +36,16 @@ async def generate_outline(
     char_list, char_list_warn = parse_json_param(characters, [], "characters")
 
     kb = _kb()
+
+    # 追加 world_setting_summary 到 summary（如果提供了）
+    final_summary = summary
+    if world_setting_summary:
+        final_summary = f"{summary}\n\n世界观概要：{world_setting_summary}"
+
     try:
         result = kb.outlines.upsert({
             "title": title,
-            "summary": summary,
+            "summary": final_summary,
             "chapter_count_suggested": chapter_count,
             "chapter_count_confirmed": chapter_count,
             "plot_points": points,

@@ -185,26 +185,23 @@ class TestAdvancePhaseLogic:
 
 
 class TestWorkflowStateStage:
-    """测试 WorkflowState 的 stage 字段操作"""
+    """测试 WorkflowState 的 stage 字段操作
+
+    使用 get_or_create_workflow_state 创建，确保与 unique 约束一致。
+    """
 
     def test_default_stage_is_incubation(self, db):
         """默认 stage 为 incubation"""
-        from app.models.workflow_state import WorkflowState
-        from app.models.workflow_state import WorkflowState
-        ws = WorkflowState(project_id=1)
-        db.add(ws)
+        from app.utils.workflow import get_or_create_workflow_state
+        ws = get_or_create_workflow_state(db, 1)
         db.commit()
-        db.refresh(ws)
         assert ws.stage == "incubation"
 
     def test_stage_can_be_updated(self, db):
         """stage 可以被更新为其他阶段"""
-        from app.models.workflow_state import WorkflowState
-        from app.models.workflow_state import WorkflowState
-        ws = WorkflowState(project_id=1)
-        db.add(ws)
+        from app.utils.workflow import get_or_create_workflow_state
+        ws = get_or_create_workflow_state(db, 1)
         db.commit()
-        db.refresh(ws)
         ws.stage = Phase.STRUCTURE.value
         assert ws.stage == "structure"
         ws.stage = Phase.WRITING.value

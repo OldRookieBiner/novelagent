@@ -32,5 +32,12 @@ async def rewrite_chapter(chapter_number: int) -> dict:
         return {"error": f"Cannot resolve LLM config: {e}"}
 
     context_window = get_context_window()
-    cq = ChapterQuality(project_id, llm, context_window=context_window)
+    # rewrite 输出是完整章节，需要较大 max_tokens
+    # 保留 context_window 的 1/3 给输出，但至少 8K
+    rewrite_max_tokens = max(8192, context_window // 3) if context_window else 16384
+    cq = ChapterQuality(
+        project_id, llm,
+        context_window=context_window,
+        rewrite_max_tokens=rewrite_max_tokens,
+    )
     return await cq.rewrite(chapter_number)

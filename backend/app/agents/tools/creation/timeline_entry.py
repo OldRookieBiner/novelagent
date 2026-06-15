@@ -30,6 +30,16 @@ async def create_timeline_entry(
     """
     kb = _kb()
 
+    # 去重检查：如果该章已有时间线条目，返回提示而非重复创建
+    existing = kb.timelines.get_by_chapter_number(chapter_number)
+    if existing:
+        return {
+            "action": "skipped",
+            "chapter_number": chapter_number,
+            "message": f"第{chapter_number}章已有时间线条目（ID: {existing['id']}），如需更新请使用 record_chapter_meta",
+            "existing_id": existing["id"],
+        }
+
     data = {"chapter_number": chapter_number, "summary": summary}
     if causal_chain:
         data["causal_chain"] = causal_chain

@@ -27,5 +27,11 @@ async def review_chapter(chapter_number: int) -> dict:
         return {"error": f"Cannot resolve LLM config: {e}"}
 
     context_window = get_context_window()
-    cq = ChapterQuality(project_id, llm, context_window=context_window)
+    # review 输出是结构化 JSON，8K 通常足够；但根据 context_window 动态调整
+    review_max_tokens = min(8192, context_window // 4) if context_window else 8192
+    cq = ChapterQuality(
+        project_id, llm,
+        context_window=context_window,
+        review_max_tokens=review_max_tokens,
+    )
     return await cq.review(chapter_number)

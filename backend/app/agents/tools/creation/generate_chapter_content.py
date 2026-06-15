@@ -88,7 +88,11 @@ async def generate_chapter_content(
                 "hint": "使用 generate_chapter_outline 工具生成大纲，或提醒用户确认大纲",
             }
     except Exception as e:
-        logger.warning("大纲确认状态检查失败: %s", e)
+        logger.error("大纲确认状态检查异常: %s", e)
+        return {
+            "error": f"大纲确认状态检查失败（数据库异常），为安全起见阻止写入: {e}",
+            "hint": "请稍后重试，或联系管理员检查数据库状态",
+        }
 
     # 1. 保存章节正文
     existing_co = kb.outlines.get_chapter_outline(chapter_number)
