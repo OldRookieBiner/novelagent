@@ -11,17 +11,18 @@ _CJK_RE = re.compile(r'[一-龥]')
 
 
 def estimate_tokens(text: str) -> int:
-    """估算中文文本的 token 数（保守估计）
+    """估算文本的 token 数
 
-    中文约 1.5-2 token/字，取 2 保守估算。
-    英文约 0.25-0.5 token/char，取 0.5 估算。
+    基于 DeepSeek V4 分词器参数，保守系数 1.2：
+    中文约 0.6 token/字 × 1.2 = 0.72 token/字
+    英文约 0.3 token/char × 1.2 = 0.36 token/char
     非空文本最少返回 1，避免 0 值导致上下文策略误判为无内容。
     """
     if not text:
         return 0
     chinese_chars = len(_CJK_RE.findall(text))
     other_chars = len(text) - chinese_chars
-    return max(int(chinese_chars * 2 + other_chars * 0.5), 1)
+    return max(int(chinese_chars * 0.72 + other_chars * 0.36), 1)
 
 
 def get_context_window(model_config=None, model_name: str | None = None) -> int:

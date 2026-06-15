@@ -9,7 +9,7 @@ from app.agents.token_budget import (
 def test_estimate_tokens_chinese():
     text = "你好世界"  # 4 个中文字
     result = estimate_tokens(text)
-    assert result == 4 * 2  # 8
+    assert result == max(int(4 * 0.72), 1)  # 2
 
 
 def test_estimate_tokens_mixed():
