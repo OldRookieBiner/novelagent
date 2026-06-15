@@ -9,7 +9,7 @@ C1 增强：降级路径 token 预算控制 + 关系匹配优化。
 
 from langchain_core.tools import tool
 
-from app.agents.tool_context import get_project_id
+from app.agents.tool_context import get_project_id, get_loaded_keys
 from app.agents.services.retrieval import RetrievalService
 from app.agents.tools.utils import _kb
 from app.agents.token_budget import estimate_tokens
@@ -171,6 +171,22 @@ async def knowledge_search(query: str, target: str = "all") -> dict:
                 results["relation_matches"] = relation_matches
 
     filtered = {k: v for k, v in results.items() if v}
+
+    # 感知预加载数据：附加提示信息，不截断不拒绝输出
+    loaded_keys = get_loaded_keys()
+    if loaded_keys and filtered:
+        preloaded_in_result = []
+        key_mapping = {
+            "world_setting": "world_setting",
+            "characters": "characters",
+            "style_constraints": "style_constraints",
+        }
+        for ctx_key, result_key in key_mapping.items():
+            if ctx_key in loaded_keys and result_key in filtered:
+                preloaded_in_result.append(result_key)
+        if preloaded_in_result:
+            filtered["_preloaded_hint"] = f"以下数据的基础信息已在项目上下文中预加载：{', '.join(preloaded_in_result)}。此处返回完整版本供参考。"
+
     if truncated:
         filtered["truncated"] = True
     if not filtered:
