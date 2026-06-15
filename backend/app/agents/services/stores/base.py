@@ -5,6 +5,7 @@
 """
 
 import logging
+import threading
 from contextlib import contextmanager
 from typing import Optional
 
@@ -18,6 +19,11 @@ logger = logging.getLogger(__name__)
 _EXCLUDED_COLUMNS = {"created_at", "updated_at"}
 
 
+
+# 类级别版本号注册表：data_type -> 版本号
+_version_registry: dict[str, int] = {}
+_version_lock = threading.Lock()
+
 class _BaseStore:
     """知识库实体存储基类
 
@@ -28,6 +34,19 @@ class _BaseStore:
 
     def __init__(self, project_id: int):
         self.project_id = project_id
+
+
+    @classmethod
+    def _bump_version(cls, data_type: str) -> None:
+        """写入操作后调用，使对应数据类型的缓存失效"""
+        with _version_lock:
+            _version_registry[data_type] = _version_registry.get(data_type, 0) + 1
+
+    @classmethod
+    def get_version(cls, data_type: str) -> int:
+        """获取数据类型的当前版本号"""
+        with _version_lock:
+            return _version_registry.get(data_type, 0)
 
     # ========== Session 管理 ==========
 
