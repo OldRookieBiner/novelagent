@@ -27,6 +27,7 @@ class OutlineStore(_BaseStore):
 
     def update(self, data: dict) -> dict:
         """更新大纲（单实例，不需要传 id）"""
+        modified = False
         with self.session() as db:
             obj = db.query(Outline).filter(
                 Outline.project_id == self.project_id
@@ -35,9 +36,13 @@ class OutlineStore(_BaseStore):
                 raise ValueError(f"Outline not found for project {self.project_id}")
             for key, value in data.items():
                 setattr(obj, key, value)
+            modified = True
             db.flush()
             db.refresh(obj)
-            return self._to_dict(obj)
+            result = self._to_dict(obj)
+        if modified:
+            self._bump_version("outline")
+        return result
 
     def upsert(self, data: dict) -> dict:
         """创建或更新大纲（单实例 upsert，用于初始化流程）"""
@@ -53,7 +58,9 @@ class OutlineStore(_BaseStore):
                 db.add(obj)
             db.flush()
             db.refresh(obj)
-            return self._to_dict(obj)
+            result = self._to_dict(obj)
+        self._bump_version("outline")
+        return result
 
     # --- ChapterOutline ---
 

@@ -25,10 +25,13 @@ class WorldSettingStore(_BaseStore):
             db.add(obj)
             db.flush()
             db.refresh(obj)
-            return self._to_dict(obj)
+            result = self._to_dict(obj)
+        self._bump_version("world_setting")
+        return result
 
     def update(self, data: dict) -> dict:
         """更新世界观（单实例，不需要传 id）"""
+        modified = False
         with self.session() as db:
             obj = db.query(WorldSetting).filter(
                 WorldSetting.project_id == self.project_id
@@ -37,12 +40,17 @@ class WorldSettingStore(_BaseStore):
                 raise ValueError(f"WorldSetting not found for project {self.project_id}")
             for key, value in data.items():
                 setattr(obj, key, value)
+            modified = True
             db.flush()
             db.refresh(obj)
-            return self._to_dict(obj)
+            result = self._to_dict(obj)
+        if modified:
+            self._bump_version("world_setting")
+        return result
 
     def update_by_id(self, setting_id: int, data: dict) -> dict:
         """按 id 更新（供 API 端点和 impact decision 使用）"""
+        modified = False
         with self.session() as db:
             obj = db.query(WorldSetting).filter(
                 WorldSetting.id == setting_id,
@@ -52,9 +60,13 @@ class WorldSettingStore(_BaseStore):
                 raise ValueError(f"WorldSetting {setting_id} not found")
             for key, value in data.items():
                 setattr(obj, key, value)
+            modified = True
             db.flush()
             db.refresh(obj)
-            return self._to_dict(obj)
+            result = self._to_dict(obj)
+        if modified:
+            self._bump_version("world_setting")
+        return result
 
     # --- 内部方法 ---
 

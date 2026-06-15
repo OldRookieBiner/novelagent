@@ -28,10 +28,13 @@ class StyleStore(_BaseStore):
             db.add(obj)
             db.flush()
             db.refresh(obj)
-            return self._to_dict(obj)
+            result = self._to_dict(obj)
+        self._bump_version("style_constraints")
+        return result
 
     def update_constraints(self, data: dict) -> dict:
         """更新风格约束（单实例，不需要传 id）"""
+        modified = False
         with self.session() as db:
             obj = db.query(StyleConstraints).filter(
                 StyleConstraints.project_id == self.project_id
@@ -40,12 +43,17 @@ class StyleStore(_BaseStore):
                 raise ValueError(f"StyleConstraints not found for project {self.project_id}")
             for key, value in data.items():
                 setattr(obj, key, value)
+            modified = True
             db.flush()
             db.refresh(obj)
-            return self._to_dict(obj)
+            result = self._to_dict(obj)
+        if modified:
+            self._bump_version("style_constraints")
+        return result
 
     def update_constraints_by_id(self, constraints_id: int, data: dict) -> dict:
         """按 id 更新（供 API 端点和 impact decision 使用）"""
+        modified = False
         with self.session() as db:
             obj = db.query(StyleConstraints).filter(
                 StyleConstraints.id == constraints_id,
@@ -55,9 +63,13 @@ class StyleStore(_BaseStore):
                 raise ValueError(f"StyleConstraints {constraints_id} not found")
             for key, value in data.items():
                 setattr(obj, key, value)
+            modified = True
             db.flush()
             db.refresh(obj)
-            return self._to_dict(obj)
+            result = self._to_dict(obj)
+        if modified:
+            self._bump_version("style_constraints")
+        return result
 
     # --- StyleSnapshot ---
 

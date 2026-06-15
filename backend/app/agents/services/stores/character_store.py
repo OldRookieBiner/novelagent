@@ -35,10 +35,13 @@ class CharacterStore(_BaseStore):
             db.add(obj)
             db.flush()
             db.refresh(obj)
-            return self._to_dict(obj)
+            result = self._to_dict(obj)
+        self._bump_version("characters")
+        return result
 
     def update_character(self, character_id: int, data: dict) -> dict:
         """更新角色（直接字段更新，用于 impact decision 的 apply）"""
+        modified = False
         with self.session() as db:
             obj = db.query(Character).filter(
                 Character.id == character_id,
@@ -48,9 +51,13 @@ class CharacterStore(_BaseStore):
                 raise ValueError(f"Character {character_id} not found")
             for key, value in data.items():
                 setattr(obj, key, value)
+            modified = True
             db.flush()
             db.refresh(obj)
-            return self._to_dict(obj)
+            result = self._to_dict(obj)
+        if modified:
+            self._bump_version("characters")
+        return result
 
     # --- Relation ---
 
