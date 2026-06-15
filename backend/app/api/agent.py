@@ -22,9 +22,9 @@ from app.agents.agent_graph import create_agent_graph
 from app.agents.prompts import AGENT_SYSTEM_PROMPT
 from app.models.workflow_state import WorkflowState
 from app.agents.constants import Phase
-from app.agents.agent_context import build_agent_context
+from app.agents.agent_context import ProjectContextAssembler
 from app.agents.token_budget import get_context_window, estimate_tokens
-from app.agents.tool_context import set_tool_context, reset_tool_context
+from app.agents.tool_context import set_tool_context, reset_tool_context, set_loaded_keys
 from app.agents.services.knowledge_base import KnowledgeBaseService
 from app.agents.sse_events import (
     format_agent_text,
@@ -594,18 +594,20 @@ async def agent_chat(
         ).first()
     context_window = get_context_window(model_config, req.model_name)
 
-    # Build phase-aware project context
-    context = build_agent_context(
-        project_id,
+    # Build phase-aware project context via ProjectContextAssembler
+    assembler = ProjectContextAssembler(project_id)
+    context_result = assembler.build(
+        context_window=context_window,
         phase=phase,
         current_chapter_number=req.current_chapter_number,
     )
 
-    # Format context block for system prompt
-    context_block = json.dumps(context, ensure_ascii=False, default=str)
+    # 分离 project_data 和 previous_text
+    project_data_block = json.dumps(context_result["project_data"], ensure_ascii=False, default=str)
+    previous_text = context_result.get("previous_text", "")
 
     # Build prerequisites warning text
-    prereq = context.get("prerequisites", {})
+    prereq = context_result.get("project_data", {}).get("prerequisites", {})
     if prereq.get("blocked"):
         blocked_items = "\n".join([f"- {item['message']}" for item in prereq["blocked"]])
         context_prerequisites_warning = f"""⚠️ 当前无法生成正文，存在以下阻断问题：
@@ -623,32 +625,37 @@ async def agent_chat(
     else:
         context_prerequisites_warning = ""
 
+    # previous_text 独立段落
+    previous_section = ""
+    if previous_text:
+        previous_section = f"\n\n## 前文上下文\n\n{previous_text}"
+
     # Build system message
     phase_label = PHASE_LABELS.get(phase, "未知阶段")
     system_content = AGENT_SYSTEM_PROMPT.format(
         phase_label=phase_label,
         project_name=project.name,
-        context_block=context_block,
+        context_block=project_data_block,
         context_prerequisites_warning=context_prerequisites_warning,
-    )
+    ) + previous_section
 
     # Calculate history budget and truncate
     system_used = estimate_tokens(system_content)
     history_budget = int(context_window * 0.7) - system_used
     if history_budget <= 0:
         # 系统消息占用过多 —— 压缩上下文为精简版
-        slim_context = {
-            k: v for k, v in context.items()
+        slim_data = {
+            k: v for k, v in context_result.get("project_data", {}).items()
             if k in ("outline", "style_constraints", "current_plot_block",
                       "pending_foreshadowings", "overdue_foreshadowings")
         }
-        slim_block = json.dumps(slim_context, ensure_ascii=False, default=str)
+        slim_block = json.dumps(slim_data, ensure_ascii=False, default=str)
         system_content = AGENT_SYSTEM_PROMPT.format(
             phase_label=phase_label,
             project_name=project.name,
             context_block=slim_block,
             context_prerequisites_warning=context_prerequisites_warning,
-        )
+        ) + previous_section
         system_used = estimate_tokens(system_content)
         # 至少保留当前消息 4 倍的预算给历史
         min_history = estimate_tokens(req.message) * 4
@@ -685,6 +692,11 @@ async def agent_chat(
         user_id=current_user.id,
         project_id=project_id,
     )
+
+    # 设置预加载数据声明
+    loaded_keys = context_result.get("loaded_keys", [])
+    if loaded_keys:
+        set_loaded_keys(loaded_keys)
 
     async def _stream_with_cleanup():
         acc: dict = {}
