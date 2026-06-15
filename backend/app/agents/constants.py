@@ -120,3 +120,13 @@ class Phase(str, Enum):
 # 默认章节数（大纲未指定时使用）
 DEFAULT_CHAPTER_COUNT = 20
 
+
+# ========== 预算分配比例 ==========
+# 按 Phase 分配 context_window 剩余预算（扣除 output/safety/system 固定项后）
+# 格式: (history_ratio, previous_text_ratio, project_data_ratio)
+PHASE_BUDGET_RATIOS = {
+    Phase.INCUBATION.value: (0.60, 0.00, 0.40),
+    Phase.STRUCTURE.value:  (0.40, 0.00, 0.60),
+    Phase.WRITING.value:    (0.10, 0.70, 0.20),
+    Phase.REVISION.value:   (0.20, 0.40, 0.40),
+}
