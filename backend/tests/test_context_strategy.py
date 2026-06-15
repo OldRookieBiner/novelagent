@@ -333,3 +333,51 @@ class TestSummaryContentStrategy:
         # 章节摘要不重复
         assert "第一章摘要" not in result
         assert "第二章摘要" not in result
+
+
+class TestSelectStrategy:
+    def test_user_override_fulltext(self):
+        """用户指定 fulltext 时直接返回 Fulltext"""
+        from app.agents.context_strategy import select_strategy
+        strategy = select_strategy([], 1, 1000, strategy_name="fulltext")
+        assert isinstance(strategy, FulltextContentStrategy)
+
+    def test_user_override_hybrid(self):
+        """用户指定 hybrid 时直接返回 Hybrid"""
+        from app.agents.context_strategy import select_strategy
+        strategy = select_strategy([], 1, 1000, strategy_name="hybrid")
+        assert isinstance(strategy, HybridContentStrategy)
+
+    def test_user_override_summary(self):
+        """用户指定 summary 时直接返回 Summary"""
+        from app.agents.context_strategy import select_strategy
+        strategy = select_strategy([], 1, 1000, strategy_name="summary")
+        assert isinstance(strategy, SummaryContentStrategy)
+
+    def test_budget_enough_returns_fulltext(self):
+        """预算充足时返回 Fulltext"""
+        from app.agents.context_strategy import select_strategy
+        chapters = [{"chapter_number": 1, "content": "短"}]
+        strategy = select_strategy(chapters, 2, 100000)
+        assert isinstance(strategy, FulltextContentStrategy)
+
+    def test_budget_limited_with_outlines_returns_hybrid(self):
+        """预算有限 + 有 chapter_outlines → Hybrid"""
+        from app.agents.context_strategy import select_strategy
+        chapters = [{"chapter_number": i, "content": "中" * 1000} for i in range(1, 10)]
+        outlines = [{"chapter_number": i, "title": f"第{i}章"} for i in range(1, 10)]
+        strategy = select_strategy(chapters, 10, 3000, chapter_outlines=outlines)
+        assert isinstance(strategy, HybridContentStrategy)
+
+    def test_budget_limited_no_outlines_returns_summary(self):
+        """预算有限 + 无 chapter_outlines → Summary"""
+        from app.agents.context_strategy import select_strategy
+        chapters = [{"chapter_number": i, "content": "中" * 1000} for i in range(1, 10)]
+        strategy = select_strategy(chapters, 10, 3000)
+        assert isinstance(strategy, SummaryContentStrategy)
+
+    def test_empty_chapters_returns_fulltext(self):
+        """无前文章节时返回 Fulltext（全文策略会输出"没有前文"）"""
+        from app.agents.context_strategy import select_strategy
+        strategy = select_strategy([], 1, 10000)
+        assert isinstance(strategy, FulltextContentStrategy)

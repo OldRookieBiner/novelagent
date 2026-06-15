@@ -311,3 +311,52 @@ def get_context_strategy(target_words: int, strategy_name: str | None = None) ->
         return _STRATEGY_MAP[strategy_name]()
     # 回退：当前默认全文策略
     return FulltextContentStrategy()
+
+
+def select_strategy(
+    written_chapters: list[dict],
+    current_chapter: int,
+    token_budget: int,
+    strategy_name: str | None = None,
+    chapter_outlines: list[dict] | None = None,
+) -> ContextStrategy:
+    """基于 token 预算动态选择上下文策略
+
+    选择逻辑：
+    - Full：全部已写章节 token 总量 ≤ 前文预算 80% → 放得下就全放
+    - Hybrid：Full 放不下时自动降级 → 近章全文 + 远章大纲概要
+    - Summary：Hybrid 也放不下时降级 → 近章全文 + 当前弧摘要 + 前弧摘要
+
+    用户手动覆盖保留：明确指定 fulltext / hybrid / summary 时按用户选择走。
+
+    Args:
+        written_chapters: 已写章节列表（含 content）
+        current_chapter: 当前章节号
+        token_budget: 前文上下文可用的 token 预算
+        strategy_name: 用户手动指定的策略名（优先级最高）
+        chapter_outlines: 章节大纲列表（Hybrid 策略使用）
+    """
+    # 用户手动覆盖
+    if strategy_name and strategy_name in _STRATEGY_MAP:
+        return _STRATEGY_MAP[strategy_name]()
+
+    # 动态策略选择：估算全部前文 token 量
+    total_tokens = 0
+    for ch in written_chapters:
+        ch_num = ch.get("chapter_number", 0)
+        if ch_num >= current_chapter:
+            continue
+        content = ch.get("content", "")
+        if content:
+            total_tokens += estimate_tokens(content)
+
+    # 预算充足（80% 阈值）→ Full
+    if total_tokens <= token_budget * 0.8:
+        return FulltextContentStrategy()
+
+    # 预算有限但有 chapter_outlines → Hybrid
+    if chapter_outlines:
+        return HybridContentStrategy()
+
+    # 极端情况 → Summary
+    return SummaryContentStrategy()
