@@ -128,6 +128,10 @@ class TestProjectContextAssembler:
     def test_lightweight_mode_small_window(self, MockKB):
         """极小窗口触发轻量模式"""
         mock_kb = _mock_kb()
+        # 轻量模式调用直接 KB 方法，需要 mock 这些方法返回真实数据
+        mock_kb.outlines.get.return_value = {"title": "测试小说", "chapter_count_confirmed": 10, "summary": "测试摘要"}
+        mock_kb.characters.list_characters.return_value = [{"id": 1, "name": "张三", "role": "主角"}]
+        mock_kb.world_setting.get.return_value = {"core_concept": "魔法", "tiered_settings": {"red": ["禁止施法"]}}
         MockKB.return_value = mock_kb
         assembler = ProjectContextAssembler(project_id=1)
         result = assembler.build(
