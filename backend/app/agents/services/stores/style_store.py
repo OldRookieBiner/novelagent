@@ -92,3 +92,11 @@ class StyleStore(_BaseStore):
         db.flush()
         db.refresh(obj)
         return self._to_dict(obj)
+
+    def _read_snapshots_with_session(self, db, last_n: int = 10) -> list[dict]:
+        """单次 session 内批量读取最近 N 条风格快照"""
+        from app.models.style_snapshot import StyleSnapshot
+        objs = db.query(StyleSnapshot).filter(
+            StyleSnapshot.project_id == self.project_id
+        ).order_by(StyleSnapshot.id.desc()).limit(last_n).all()
+        return self._to_dict_list(objs)

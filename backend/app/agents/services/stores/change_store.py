@@ -53,3 +53,11 @@ class ChangeStore(_BaseStore):
             db.flush()
             db.refresh(obj)
             return self._to_dict(obj)
+
+    def _read_all_with_session(self, db) -> list[dict]:
+        """单次 session 内批量读取全部变更记录"""
+        from app.models.setting_change import SettingChange
+        objs = db.query(SettingChange).filter(
+            SettingChange.project_id == self.project_id
+        ).order_by(SettingChange.id.desc()).all()
+        return self._to_dict_list(objs)

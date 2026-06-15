@@ -227,3 +227,52 @@ class ChapterStore(_BaseStore):
         if chapter_number:
             result["chapter_number"] = chapter_number
         return result
+
+    def _read_all_with_session(self, db) -> list[dict]:
+        """单次 session 内批量读取全部章节（含 chapter_number 和 title）
+
+        Chapter 模型没有 project_id，需通过 ChapterOutline JOIN 查询。
+        """
+        from app.models.chapter import Chapter as ChapterModel
+        from app.models.outline import ChapterOutline
+
+        results = []
+        outlines = db.query(ChapterOutline).filter(
+            ChapterOutline.project_id == self.project_id,
+        ).order_by(ChapterOutline.chapter_number).all()
+
+        outline_ids = [co.id for co in outlines]
+        chapters_map = {}
+        if outline_ids:
+            chapters = db.query(ChapterModel).filter(
+                ChapterModel.chapter_outline_id.in_(outline_ids),
+            ).all()
+            chapters_map = {ch.chapter_outline_id: ch for ch in chapters}
+
+        for co in outlines:
+            chapter = chapters_map.get(co.id)
+            if chapter:
+                result = self._to_dict(chapter)
+                result["chapter_number"] = co.chapter_number
+                result["title"] = co.title
+                results.append(result)
+
+        return results
+
+    def _read_by_number_with_session(self, db, chapter_number: int) -> dict | None:
+        """单次 session 内按章节号读取（需 JOIN ChapterOutline）"""
+        co = db.query(ChapterOutline).filter(
+            ChapterOutline.project_id == self.project_id,
+            ChapterOutline.chapter_number == chapter_number,
+        ).first()
+        if not co:
+            return None
+        chapter = db.query(Chapter).filter(
+            Chapter.chapter_outline_id == co.id
+        ).first()
+        if not chapter:
+            return None
+        result = self._to_dict(chapter)
+        result["chapter_number"] = chapter_number
+        result["title"] = co.title
+        return result

@@ -364,3 +364,55 @@ class KnowledgeBaseService:
     def search_chapters_for_references(self, keywords: list[str], max_chapters: int = 50) -> list[dict]:
         """搜索包含关键词的章节段落（跨 ChapterOutline + Chapter 联合查询）"""
         return self.chapters.search_references(keywords, max_chapters)
+
+    def batch_read_for_context(self, current_chapter_number: int | None = None) -> dict:
+        """单次 session 批量读取上下文构建所需的全部数据
+
+        与 batch_read_for_index 的区别：
+        - 包含章节正文（index 版本不含，太长）
+        - 包含上一章结尾片段
+        - 包含变更记录
+        - 包含章节大纲（index 版本不含）
+        - 不包含场景清单（index 版本需要）
+        """
+        with self.session(readonly=True) as db:
+            plots_data = self.plots._read_all_with_session(db)
+            timelines_data = self.timelines._read_all_with_session(db)
+
+            # 章节：含正文
+            chapters = self.chapters._read_all_with_session(db)
+
+            # 章节大纲
+            chapter_outlines = self.outlines._read_chapter_outlines_with_session(db)
+
+            # 变更记录
+            changes = self.changes._read_all_with_session(db)
+
+            # 上一章结尾
+            previous_closing = None
+            if current_chapter_number and current_chapter_number > 1:
+                prev = self.chapters._read_by_number_with_session(db, current_chapter_number - 1)
+                if prev and prev.get("content"):
+                    content = prev["content"]
+                    previous_closing = content[-500:] if len(content) > 500 else content
+
+            # 风格快照（最近 10 条）
+            style_snapshots = self.styles._read_snapshots_with_session(db, last_n=10)
+
+            return {
+                "world_setting": self.world_setting._read_with_session(db),
+                "characters": self.characters._read_all_characters_with_session(db),
+                "relations": self.characters._read_all_relations_with_session(db),
+                "style_constraints": self.styles._read_constraints_with_session(db),
+                "outline": self.outlines._read_with_session(db),
+                "chapter_outlines": chapter_outlines,
+                "plot_blocks": plots_data.get("plot_blocks", []),
+                "plot_questions": plots_data.get("plot_questions", []),
+                "subplots": plots_data.get("subplots", []),
+                "foreshadowings": self.foreshadowings._read_all_with_session(db),
+                "timeline": timelines_data.get("timeline", []),
+                "style_snapshots": style_snapshots,
+                "chapters": chapters,
+                "changes": changes,
+                "previous_closing": previous_closing,
+            }
