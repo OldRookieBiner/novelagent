@@ -356,3 +356,61 @@ WRITING 分配:
   - `test_token_budget.py` — 新估算系数验证
 - **集成测试**：Step 7 完成后，完整 Agent 请求的上下文组装验证
 - **回归测试**：现有 `test_agent_tools.py`、`test_context_strategy.py` 必须通过
+
+---
+
+## 8. 审查修正记录
+
+> 日期：2026-06-16
+> 范围：对照源码审查 spec 和 plan 的正确性，修复所有发现的问题
+
+### 8.1 发现的问题及修正
+
+| # | 问题 | 严重度 | 修正 |
+|---|------|--------|------|
+| R1 | `batch_read_for_context` 中 `outline_store` 的方法名应为 `_read_chapter_outlines_with_session`，plan 中错误写为 `_read_all_outlines_with_session` | HIGH | 修正 plan 中方法名 |
+| R2 | `chapter_store.py` 没有 `_read_all_with_session` 方法（Chapter 模型没有 `project_id` 列，需通过 ChapterOutline JOIN 查询），plan 直接引用了不存在的方法 | HIGH | plan Task 4 Step 2 需新增此方法，且查询逻辑需 JOIN ChapterOutline |
+| R3 | `change_store.py` 没有 `_read_all_with_session` 方法 | MEDIUM | plan Task 4 Step 2 需新增此方法 |
+| R4 | `batch_read_for_context` 用 `hasattr` 静默降级 — 违反"不打补丁"原则 | MEDIUM | 移除 `hasattr`，改为 Task 4 保证方法存在后直接调用，缺少则抛异常 |
+| R5 | `_load_writing_data` 缺失 4 个 WRITING 阶段数据：`recent_decisions`、`questions_for_chapter`、`recent_timeline`、`relation_evolution_cues` | HIGH | 补充缺失字段到 plan Task 7 `_load_writing_data` |
+| R6 | `_load_writing_data` 仍调用 `self.kb.validate_prerequisites()` — 破坏批量读取的 DB 连接数优化（~6+ 次独立 session） | HIGH | `validate_prerequisites` 应接收 `raw_data` 参数，从批量数据中校验而非再次查 DB |
+| R7 | `build_agent_context` 向后兼容包装器用 `max_tokens * 8` 魔数映射 `context_window` | HIGH | 改为接受显式 `context_window` 参数，从 `get_context_window()` 取值传入 |
+| R8 | ContextCache 定义了全局单例但 plan 的 `ProjectContextAssembler` 未实际使用 | MEDIUM | 在 `_load_phase_data` 中接入缓存：先查缓存，miss 时走 batch_read 后写缓存 |
+| R9 | `_bump_version` 在 `session()` 块之后调用，commit 失败时仍递增版本号 | LOW | 移到 session 块内部，commit 之后再 bump（在 try/finally 中处理） |
+| R10 | `BudgetTracker` 不验证 project_data + previous_text 总量是否超 context_window | MEDIUM | 在 `build()` 返回前增加总量检查，超限时自动压缩 Important 数据 |
+| R11 | `_load_writing_data` 伏笔逻辑错误：`status="overdue"` 不是有效状态，overdue 是从 `expected_resolve_chapter < current_chapter` 计算得出 | HIGH | 修正伏笔过滤逻辑：pending = `status="pending_reclaim"`，overdue = `status in ("active", "pending_reclaim") and expected_resolve_chapter < chapter_number` |
+| R12 | `_load_with_cache` 即使全部缓存命中也走 batch_read_for_context | MEDIUM | 始终走 batch_read（需不可缓存数据如 chapters/timeline），但缓存命中数据覆盖 batch_read 结果 |
+
+### 8.2 修正详述
+
+**R6: validate_prerequisites 从批量数据校验**
+
+当前 `validate_prerequisites` 在 `KnowledgeBaseService` 上，内部调用 6+ 个 Store 方法（每个创建独立 session）。重构后应提供两种模式：
+
+1. `validate_prerequisites_from_raw(raw_data, chapter_number)` — 从批量读取结果校验，不创建新 session
+2. `validate_prerequisites(chapter_number)` — 原有方法保持不变，供非批量路径调用
+
+`ProjectContextAssembler._load_writing_data` 使用模式 1，从 `raw_data` 提取校验所需的各项数据。
+
+**R7: 向后兼容包装器修正**
+
+`chapter_quality.py` 不调用 `build_agent_context`（它直接用 `KnowledgeBaseService` + `context_strategy`），所以向后兼容的调用方只有 `agent.py`。但 `agent.py` 在 Task 8 会被迁移到 `ProjectContextAssembler`，因此 `build_agent_context` 的向后兼容包装器只需要满足一个要求：**在 Task 7 和 Task 8 之间（过渡期）不 break**。
+
+最佳方案：`build_agent_context` 接受 `context_window` 参数，默认值从 `get_context_window()` 获取（不再用 `max_tokens * 8` 魔数）。`max_tokens` 参数保留但标记为 deprecated。
+
+**R8: ContextCache 接入**
+
+在 `ProjectContextAssembler.build()` 中：
+1. 对可缓存数据类型（world_setting, characters, style_constraints, outline），先查 `context_cache.get()`
+2. 缓存 miss 时走 `batch_read_for_context()`，然后对可缓存类型写入 `context_cache.set()`
+3. version_tag 通过 `_BaseStore.get_version()` 获取
+
+**R10: 总量超窗口保护**
+
+在 `build()` 返回前：
+```python
+total = estimate_tokens(json.dumps(project_data)) + estimate_tokens(previous_text)
+if total > context_window - allocation.output_budget - allocation.safety_margin:
+    # 自动压缩：从 Important 数据开始裁剪
+    ...
+```

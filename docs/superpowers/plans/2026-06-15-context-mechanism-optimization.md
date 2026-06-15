@@ -518,13 +518,13 @@ git commit -m "feat(cache): 新增 ContextCache 跨请求缓存和 _bump_version
             timelines_data = self.timelines._read_all_with_session(db)
 
             # 章节：含正文
-            chapters = self.chapters._read_all_with_session(db) if hasattr(self.chapters, '_read_all_with_session') else []
+            chapters = self.chapters._read_all_with_session(db)
 
             # 章节大纲
-            chapter_outlines = self.outlines._read_all_outlines_with_session(db) if hasattr(self.outlines, '_read_all_outlines_with_session') else []
+            chapter_outlines = self.outlines._read_chapter_outlines_with_session(db)
 
             # 变更记录
-            changes = self.changes._read_all_with_session(db) if hasattr(self.changes, '_read_all_with_session') else []
+            changes = self.changes._read_all_with_session(db)
 
             # 上一章结尾
             previous_closing = None
@@ -558,18 +558,42 @@ git commit -m "feat(cache): 新增 ContextCache 跨请求缓存和 _bump_version
 检查各 Store 是否已有 `_read_all_with_session` 方法（`chapter_store.py`、`outline_store.py`、`change_store.py`）。如没有，在各 Store 中新增。典型模式：
 
 ```python
-    def _read_all_with_session(self, db: Session) -> list[dict]:
-        """单次 session 内批量读取全部章节"""
-        objs = db.query(Chapter).filter(
-            Chapter.project_id == self.project_id
-        ).order_by(Chapter.chapter_number).all()
-        return self._to_dict_list(objs)
+    def _read_all_with_session(self, db) -> list[dict]:
+        """单次 session 内批量读取全部章节（含 chapter_number 和 title）
+
+        Chapter 模型没有 project_id，需通过 ChapterOutline JOIN 查询。
+        """
+        from app.models.chapter import Chapter as ChapterModel
+        from app.models.outline import ChapterOutline
+
+        results = []
+        outlines = db.query(ChapterOutline).filter(
+            ChapterOutline.project_id == self.project_id,
+        ).order_by(ChapterOutline.chapter_number).all()
+
+        outline_ids = [co.id for co in outlines]
+        chapters_map = {}
+        if outline_ids:
+            chapters = db.query(ChapterModel).filter(
+                ChapterModel.chapter_outline_id.in_(outline_ids),
+            ).all()
+            chapters_map = {ch.chapter_outline_id: ch for ch in chapters}
+
+        for co in outlines:
+            chapter = chapters_map.get(co.id)
+            if chapter:
+                result = self._to_dict(chapter)
+                result["chapter_number"] = co.chapter_number
+                result["title"] = co.title
+                results.append(result)
+
+        return results
 ```
 
-对于 `outline_store.py`，需要新增 `_read_all_outlines_with_session`：
+对于 `outline_store.py`，需要新增 `_read_chapter_outlines_with_session`：
 
 ```python
-    def _read_all_outlines_with_session(self, db: Session) -> list[dict]:
+    def _read_chapter_outlines_with_session(self, db: Session) -> list[dict]:
         """单次 session 内批量读取全部章节大纲"""
         objs = db.query(ChapterOutline).filter(
             ChapterOutline.project_id == self.project_id
@@ -577,7 +601,19 @@ git commit -m "feat(cache): 新增 ContextCache 跨请求缓存和 _bump_version
         return self._to_dict_list(objs)
 ```
 
-对于 `chapter_store.py`，需要新增 `_read_by_number_with_session`：
+对于 `change_store.py`，需要新增 `_read_all_with_session`：
+
+```python
+    def _read_all_with_session(self, db) -> list[dict]:
+        """单次 session 内批量读取全部变更记录"""
+        from app.models.setting_change import SettingChange
+        objs = db.query(SettingChange).filter(
+            SettingChange.project_id == self.project_id
+        ).order_by(SettingChange.id.desc()).all()
+        return self._to_dict_list(objs)
+```
+
+对于 `chapter_store.py`，需要新增 `_read_all_with_session` 和 `_read_by_number_with_session`：
 
 ```python
     def _read_by_number_with_session(self, db: Session, chapter_number: int) -> dict | None:
@@ -1049,6 +1085,48 @@ class ProjectContextAssembler:
         self.project_id = project_id
         self.kb = KnowledgeBaseService(project_id)
 
+    # 可缓存的数据类型
+    _CACHEABLE_TYPES = {"world_setting", "characters", "relations", "style_constraints", "outline"}
+
+    def _load_with_cache(self, current_chapter_number: int | None) -> dict:
+        """加载数据，可缓存类型优先查缓存，miss 时走批量读取后写缓存
+
+        缓存策略：
+        - 先查缓存，记录命中/未命中的数据类型
+        - 走一次 batch_read_for_context（始终需要不可缓存数据如 chapters/timeline）
+        - 对未命中类型写入缓存
+        - 用缓存命中数据覆盖 batch_read 结果（缓存基于 version_tag，
+          命中说明数据未变化，可安全覆盖）
+        """
+        from app.agents.services.stores.base import _BaseStore
+
+        # 尝试从缓存命中
+        cached_data = {}
+        cache_miss_types = []
+        for data_type in self._CACHEABLE_TYPES:
+            version = _BaseStore.get_version(data_type)
+            cached = context_cache.get(self.project_id, data_type, version)
+            if cached is not None:
+                cached_data[data_type] = cached
+            else:
+                cache_miss_types.append(data_type)
+
+        # 始终需要 batch_read（不可缓存数据如 chapters/timeline 每次都需最新值）
+        raw = self.kb.batch_read_for_context(current_chapter_number)
+
+        # 对未命中类型写入缓存
+        for data_type in cache_miss_types:
+            if data_type in raw and raw[data_type] is not None:
+                version = _BaseStore.get_version(data_type)
+                context_cache.set(self.project_id, data_type, version, raw[data_type])
+
+        # 用缓存命中数据覆盖 batch_read 结果
+        # 缓存命中意味着 version_tag 未变 → 数据与 DB 一致，可直接使用
+        for data_type, cached_value in cached_data.items():
+            raw[data_type] = cached_value
+
+        return raw
+
     def build(
         self,
         context_window: int,
@@ -1072,8 +1150,8 @@ class ProjectContextAssembler:
         if context_window <= 4096 or allocation.project_data_budget <= 2000:
             return self._build_lightweight(context_window, phase, current_chapter_number)
 
-        # 批量读取数据
-        raw_data = self.kb.batch_read_for_context(current_chapter_number)
+        # 尝试从缓存获取可缓存数据，miss 时走批量读取
+        raw_data = self._load_with_cache(current_chapter_number)
 
         # 加载项目数据
         project_data = self._load_phase_data(raw_data, phase, allocation, current_chapter_number)
@@ -1083,14 +1161,36 @@ class ProjectContextAssembler:
             raw_data, phase, allocation, current_chapter_number, strategy_name,
         )
 
-        # 去重：Full 策略时不单独加载 previous_chapter_closing
+        # 去重：如果 previous_text 非空（包含前文章节），则 project_data 中不需要 previous_chapter_closing
+        if previous_text and "previous_chapter_closing" in project_data:
+            del project_data["previous_chapter_closing"]
+
+        # 总量溢出保护：project_data + previous_text 不超过 context_window 扣除固定项
+        max_total = context_window - allocation.output_budget - allocation.safety_margin - allocation.system_prompt_budget
+        project_data_str = json.dumps(project_data, ensure_ascii=False, default=str)
+        total_used = estimate_tokens(project_data_str) + estimate_tokens(previous_text)
+        if total_used > max_total:
+            # 自动压缩：按 Important → Critical 反序裁剪（保留 Critical 数据）
+            compressible_keys = [k for k in list(project_data.keys())[::-1]
+                                 if k not in ("current_chapter_outline", "style_constraints", "prerequisites")]
+            for key in compressible_keys:
+                if total_used <= max_total:
+                    break
+                removed = project_data.pop(key, None)
+                if removed is not None:
+                    removed_str = json.dumps(removed, ensure_ascii=False, default=str)
+                    total_used -= estimate_tokens(removed_str)
+            # 重新计算
+            project_data_str = json.dumps(project_data, ensure_ascii=False, default=str)
+            total_used = estimate_tokens(project_data_str) + estimate_tokens(previous_text)
+
         loaded_keys = list(project_data.keys())
 
         return {
             "project_data": project_data,
             "previous_text": previous_text,
             "loaded_keys": loaded_keys,
-            "_budget_used": allocation.project_data_budget,  # 粗略估算
+            "_budget_used": estimate_tokens(json.dumps(project_data, ensure_ascii=False, default=str)),
             "_budget_max": context_window,
         }
 
@@ -1183,11 +1283,18 @@ class ProjectContextAssembler:
                 ctx["world_setting"] = data
                 budget.add(tokens)
 
-        # 伏笔
+        # 伏笔：pending_reclaim 和 overdue 需要从批量数据中计算
         all_fs = raw.get("foreshadowings", [])
-        pending = [f for f in all_fs if f.get("status") in ("planted", "overdue")]
-        ctx["pending_foreshadowings"] = [{"id": f["id"], "content": (f.get("content") or "")[:60], "expected_resolve_chapter": f.get("expected_resolve_chapter")} for f in pending if f.get("status") == "planted"]
-        ctx["overdue_foreshadowings"] = [{"id": f["id"], "content": (f.get("content") or "")[:60], "expected_resolve_chapter": f.get("expected_resolve_chapter")} for f in pending if f.get("status") == "overdue"]
+        # pending_reclaim 状态的伏笔（对应旧版 kb.foreshadowings.list_pending()）
+        pending_fs = [f for f in all_fs if f.get("status") == "pending_reclaim"]
+        ctx["pending_foreshadowings"] = [{"id": f["id"], "content": (f.get("content") or "")[:60], "expected_resolve_chapter": f.get("expected_resolve_chapter")} for f in pending_fs]
+        # overdue：active 或 pending_reclaim 且 expected_resolve_chapter < 当前章节
+        # 对应旧版 kb.foreshadowings.list_overdue(chapter_number)
+        if chapter_number:
+            overdue_fs = [f for f in all_fs
+                          if f.get("status") in ("active", "pending_reclaim")
+                          and (f.get("expected_resolve_chapter") or 999999) < chapter_number]
+            ctx["overdue_foreshadowings"] = [{"id": f["id"], "content": (f.get("content") or "")[:60], "expected_resolve_chapter": f.get("expected_resolve_chapter")} for f in overdue_fs]
 
         # 风格约束
         style = raw.get("style_constraints")
@@ -1226,9 +1333,141 @@ class ProjectContextAssembler:
                     ctx["current_plot_block"] = {"title": b.get("title"), "expected_mood": b.get("expected_mood"), "must_happen": b.get("must_happen") or []}
                     break
 
-        # 前置条件校验（使用 kb 直接调用，因为需要最新状态）
-        prereq = self.kb.validate_prerequisites(chapter_number)
+        # 最近的变更决策
+        changes = raw.get("changes", [])
+        applied = [c for c in changes if c.get("status") == "applied"]
+        if applied:
+            decision_list = []
+            for d in applied[:5]:
+                decision_list.append({
+                    "target_type": d.get("target_type"),
+                    "decision": d.get("author_decision", "unknown"),
+                    "summary": (d.get("description") or "")[:80],
+                })
+            decision_json = json.dumps(decision_list, ensure_ascii=False)
+            decision_tokens = estimate_tokens(decision_json)
+            if budget.can_add(decision_tokens):
+                ctx["recent_decisions"] = decision_list
+                budget.add(decision_tokens)
+
+        # 当前章的情节问题
+        if chapter_number:
+            questions = raw.get("plot_questions", [])
+            chapter_qs = [q for q in questions if q.get("chapter_number") == chapter_number]
+            ctx["questions_for_chapter"] = [
+                {"id": q["id"], "question": (q.get("question_text") or "")[:60]}
+                for q in chapter_qs
+            ]
+
+        # 时间线最近 5 条
+        timeline = raw.get("timeline", [])
+        if timeline:
+            recent = timeline[:5]
+            ctx["recent_timeline"] = [
+                {"chapter": t.get("chapter_number"), "summary": (t.get("summary") or "")[:80], "emotion_tag": t.get("emotion_tag")}
+                for t in recent
+            ]
+
+        # 关系演变规划
+        if chapter_number:
+            relations = raw.get("relations", [])
+            # 从 raw_data 中的 plot 数据提取 evolution plans
+            # 注意：batch_read_for_context 未包含 evolution_plans 数据
+            # 此处产生 1 次额外 DB 查询（对比旧版 ~20 次，已大幅减少）
+            # 未来优化：在 CharacterStore 新增 _read_evolution_plans_with_session(db)，
+            # 并在 batch_read_for_context 中调用，可完全消除额外查询
+            pending_plans = self.kb.characters.list_evolution_plans_triggering_at(chapter_number)
+            if pending_plans:
+                evolution_cues = []
+                rel_map = {r["id"]: r for r in relations}
+                char_list = raw.get("characters", [])
+                char_map = {c["id"]: c["name"] for c in char_list}
+                for plan in pending_plans:
+                    rel = rel_map.get(plan.get("relation_id"), {})
+                    char_a_name = char_map.get(rel.get("character_a_id"), "?")
+                    char_b_name = char_map.get(rel.get("character_b_id"), "?")
+                    cue = (
+                        f"第{plan.get('trigger_chapter')}章，{char_a_name}和{char_b_name}的关系将发生变化："
+                        f"{plan.get('status_before') or '待定'} → {plan.get('status_after', '未知')}，"
+                        f"信任度 {plan.get('trust_before') or 50} → {plan.get('trust_after') or 50}。"
+                        f"事件：{plan.get('event_description', '')}"
+                    )
+                    evolution_cues.append(cue)
+                cues_json = json.dumps(evolution_cues, ensure_ascii=False)
+                cues_tokens = estimate_tokens(cues_json)
+                if budget.can_add(cues_tokens):
+                    ctx["relation_evolution_cues"] = evolution_cues
+                    budget.add(cues_tokens)
+
+        # 前置条件校验（从批量数据中校验，避免额外 DB 查询）
+        prereq = self._validate_prerequisites_from_raw(raw, chapter_number)
         ctx["prerequisites"] = prereq
+
+    def _validate_prerequisites_from_raw(self, raw: dict, chapter_number: int | None) -> dict:
+        """从批量读取结果校验前置条件，避免额外 DB 查询
+
+        与 kb.validate_prerequisites 逻辑一致，但数据来源为 raw_data 而非独立 DB 查询。
+        """
+        blocked = []
+        warnings = []
+
+        # 1. 章节大纲
+        if chapter_number:
+            outlines = raw.get("chapter_outlines", [])
+            co = next((o for o in outlines if o.get("chapter_number") == chapter_number), None)
+            if not co:
+                blocked.append({"type": "chapter_outline_missing", "chapter": chapter_number,
+                                "message": f"第{chapter_number}章大纲不存在", "severity": "error"})
+            elif not co.get("confirmed"):
+                blocked.append({"type": "outline_unconfirmed", "chapter": chapter_number,
+                                "message": f"第{chapter_number}章大纲尚未确认", "severity": "error"})
+
+        # 2. 角色
+        chars = raw.get("characters", [])
+        if not chars:
+            blocked.append({"type": "character_missing", "message": "项目中没有任何角色", "severity": "error"})
+
+        # 3. 世界观
+        ws = raw.get("world_setting")
+        if not ws or not ws.get("core_concept"):
+            blocked.append({"type": "world_setting_missing", "message": "项目世界观尚未完善", "severity": "error"})
+
+        # 4. 伏笔
+        fs_list = raw.get("foreshadowings", [])
+        if not fs_list:
+            warnings.append({"type": "foreshadowing_empty", "message": "当前无伏笔记录", "severity": "warning"})
+
+        # 5. 风格约束
+        style = raw.get("style_constraints")
+        if not style:
+            warnings.append({"type": "style_constraints_missing", "message": "尚未设置风格约束", "severity": "warning"})
+
+        # 6. 情节块
+        blocks = raw.get("plot_blocks", [])
+        if not blocks:
+            warnings.append({"type": "plot_block_empty", "message": "尚未创建情节块", "severity": "warning"})
+
+        # 7. 上一章结尾
+        if chapter_number and chapter_number > 1:
+            closing = raw.get("previous_closing")
+            if not closing:
+                warnings.append({"type": "previous_chapter_empty", "chapter": chapter_number - 1,
+                                 "message": f"第{chapter_number - 1}章尚无正文", "severity": "warning"})
+
+        # 8. 关系演变（简化检查，不额外查 DB）
+        # relations 数据已在 raw 中，但 evolution plans 需额外查询
+        # 此处只做简单提示
+        relations = raw.get("relations", [])
+        has_plans = any(r.get("plans") for r in relations if isinstance(r.get("plans"), list) and r["plans"])
+        if not has_plans:
+            warnings.append({"type": "relation_evolution_empty", "message": "尚未创建关系演变规划", "severity": "warning"})
+
+        # 9. 时间线
+        timeline = raw.get("timeline", [])
+        if not timeline:
+            warnings.append({"type": "timeline_empty", "message": "尚未创建时间线记录", "severity": "warning"})
+
+        return {"blocked": blocked, "warnings": warnings, "validated": True}
 
     def _load_revision_data(self, raw: dict, budget: BudgetTracker, ctx: dict):
         # 世界观精简版
@@ -1373,14 +1612,21 @@ def build_agent_context(
     phase: str = "incubation",
     current_chapter_number: int | None = None,
     max_tokens: int = 12000,
+    context_window: int | None = None,
 ) -> dict:
-    """向后兼容入口 — chapter_quality.py 等调用方暂不迁移
+    """向后兼容入口 — agent.py 过渡期使用
 
-    内部委托给 ProjectContextAssembler，将 max_tokens 映射为 context_window。
+    Args:
+        context_window: 模型上下文窗口大小。优先使用此参数。
+            如未提供，使用 get_context_window() 获取。
+        max_tokens: 已废弃，仅当 context_window 未提供时用作 fallback。
     """
+    from app.agents.token_budget import get_context_window as _get_context_window
+    window = context_window or _get_context_window()
+
     assembler = ProjectContextAssembler(project_id)
     result = assembler.build(
-        context_window=max_tokens * 8,  # 粗略映射：max_tokens 占约 12% 的窗口
+        context_window=window,
         phase=phase,
         current_chapter_number=current_chapter_number,
     )
@@ -1600,28 +1846,9 @@ git commit -m "feat(knowledge_search): 感知 _loaded_keys 附加预加载提示
 - Modify: `backend/app/agents/agent_context.py` — Full 策略去重 previous_chapter_closing
 - Modify: Store 写操作调用 `_bump_version`
 
-- [ ] **Step 1: 在 ProjectContextAssembler.build() 中实现去重逻辑**
+- [ ] **Step 1: 去重逻辑已在 Task 7 的 build() 中实现**
 
-在 `_load_writing_data` 返回后、构建返回值之前，检查策略类型并去重：
-
-在 `build()` 方法中，`_load_previous_context` 调用之后添加：
-
-```python
-        # 去重：Full 策略时，previous_chapter_closing 已被 previous_text 包含
-        from app.agents.context_strategy import FulltextContentStrategy
-        if isinstance(strategy, FulltextContentStrategy) if 'strategy' in dir() else False:
-            project_data.pop("previous_chapter_closing", None)
-```
-
-实际上更简洁的做法是：在 `_load_previous_context` 返回后检查是否包含前文章节，如果包含则移除 `previous_chapter_closing`。修改 `build()` 方法：
-
-```python
-        # 去重：如果 previous_text 非空（包含前文章节），则 project_data 中不需要 previous_chapter_closing
-        if previous_text and "previous_chapter_closing" in project_data:
-            del project_data["previous_chapter_closing"]
-```
-
-这个规则更简单且正确：只要 `previous_text` 非空，说明前文已通过 context_strategy 加载，`previous_chapter_closing` 自然被包含。
+去重规则：如果 `previous_text` 非空，则 `project_data` 中的 `previous_chapter_closing` 已被前文包含，自动删除。此逻辑已在 Task 7 的 `build()` 方法中实现，无需重复添加。
 
 - [ ] **Step 2: 在 Store 写操作中调用 _bump_version**
 
@@ -1638,6 +1865,7 @@ git commit -m "feat(knowledge_search): 感知 _loaded_keys 附加预加载提示
 
 ```python
     def update_by_id(self, setting_id: int, data: dict) -> dict | None:
+        modified = False
         with self.session() as db:
             obj = db.query(WorldSetting).filter(
                 WorldSetting.id == setting_id,
@@ -1647,7 +1875,12 @@ git commit -m "feat(knowledge_search): 感知 _loaded_keys 附加预加载提示
                 for key, value in data.items():
                     if hasattr(obj, key):
                         setattr(obj, key, value)
-        self._bump_version("world_setting")
+                modified = True
+        # 仅在实际发生写入时 bump version
+        # session() 的 __exit__ 在无异常时 commit，异常时 rollback 并 re-raise
+        # 因此 _bump_version 只在 commit 成功后执行
+        if modified:
+            self._bump_version("world_setting")
         return self.get()
 ```
 
@@ -1741,3 +1974,27 @@ git add -A
 git commit -m "test: 端到端验证通过"
 ```
 
+
+---
+
+## 审查修正记录
+
+> 日期：2026-06-16
+> 对照源码审查所有优化项的正确性，修复发现的问题
+
+### 修正摘要
+
+| # | 问题 | 修正位置 | 修正内容 |
+|---|------|---------|---------|
+| R1 | `outline_store._read_all_outlines_with_session` 方法名错误 | Task 4 | 改为 `_read_chapter_outlines_with_session`（与实际方法名一致） |
+| R2 | `chapter_store._read_all_with_session` 不存在，且 Chapter 模型无 `project_id` 列 | Task 4 Step 2 | 新增此方法，使用 JOIN ChapterOutline 查询 |
+| R3 | `change_store._read_all_with_session` 不存在 | Task 4 Step 2 | 新增此方法 |
+| R4 | `batch_read_for_context` 用 `hasattr` 静默降级 | Task 4 Step 1 | 移除 `hasattr`，改为 Task 4 Step 2 保证方法存在后直接调用，缺少则抛异常（符合"不打补丁"原则） |
+| R5 | `_load_writing_data` 缺失 `recent_decisions`、`questions_for_chapter`、`recent_timeline`、`relation_evolution_cues` | Task 7 | 补充所有缺失字段，与源码 `_load_writing_context` 对齐 |
+| R6 | `_load_writing_data` 调用 `self.kb.validate_prerequisites()` 破坏批量读取优化 | Task 7 | 新增 `_validate_prerequisites_from_raw()` 方法，从批量数据校验，不创建新 DB session |
+| R7 | `build_agent_context` 向后兼容包装器用 `max_tokens * 8` 魔数 | Task 7 | 改为接受 `context_window` 参数，默认从 `get_context_window()` 获取 |
+| R8 | ContextCache 定义但未在 ProjectContextAssembler 中使用 | Task 7 | 新增 `_load_with_cache()` 方法，缓存可缓存数据类型 |
+| R9 | `_bump_version` 在无实际写入时仍递增 | Task 10 | 增加 `modified` 标志，仅在实际写入数据时才 bump version |
+| R10 | 不验证 project_data + previous_text 总量是否超 context_window | Task 7 | 在 `build()` 返回前增加总量检查，超限时自动压缩 Important 数据 |
+| R11 | `_load_writing_data` 伏笔逻辑错误：`status="overdue"` 不是有效状态 | Task 7 | 修正伏笔过滤逻辑，与源码 `list_pending()`/`list_overdue()` 对齐 |
+| R12 | `_load_with_cache` 缓存命中数据未覆盖 batch_read 结果 | Task 7 | 始终走 batch_read，但缓存命中数据覆盖 raw 中的对应字段 |
