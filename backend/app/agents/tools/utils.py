@@ -206,3 +206,24 @@ def parse_json_param(value: str | list | dict, default, param_name: str = "") ->
             return default, warning
     warning = f"参数 {param_name} 类型不支持，使用默认值"
     return default, warning
+
+
+def _truncate_result(data, max_items: int = 5, max_str_len: int = 100):
+    """递归截短工具返回值中的列表和长字符串。
+
+    用于预算紧张时压缩感知工具输出，节省上下文空间。
+    列表截到 max_items 项，字符串截到 max_str_len 字符。
+    """
+    if isinstance(data, dict):
+        return {
+            k: _truncate_result(v, max_items, max_str_len)
+            for k, v in data.items()
+        }
+    if isinstance(data, list):
+        truncated = [_truncate_result(item, max_items, max_str_len) for item in data[:max_items]]
+        if len(data) > max_items:
+            truncated.append(f"... 还有 {len(data) - max_items} 项")
+        return truncated
+    if isinstance(data, str) and len(data) > max_str_len:
+        return data[:max_str_len] + "..."
+    return data

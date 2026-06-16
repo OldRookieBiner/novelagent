@@ -185,3 +185,50 @@ class TestCostTier:
     def test_unknown_tool_defaults_to_db(self):
         from app.agents.tools.registry import get_cost_tier
         assert get_cost_tier("nonexistent_tool") == "db"
+
+
+class TestTruncateResult:
+    """感知工具输出截短测试"""
+
+    def test_truncate_dict_with_list(self):
+        from app.agents.tools.utils import _truncate_result
+        data = {"items": list(range(10)), "name": "test"}
+        result = _truncate_result(data, max_items=3, max_str_len=100)
+        # 前3项 + 1项提示
+        assert result["items"][:3] == [0, 1, 2]
+        assert result["items"][-1] == "... 还有 7 项"
+        assert result["name"] == "test"
+
+    def test_truncate_dict_with_long_string(self):
+        from app.agents.tools.utils import _truncate_result
+        data = {"text": "a" * 200}
+        result = _truncate_result(data, max_items=5, max_str_len=50)
+        # 截短到 max_str_len 字符 + "..."
+        assert result["text"] == "a" * 50 + "..."
+        assert result["text"].endswith("...")
+
+    def test_truncate_nested_dict(self):
+        from app.agents.tools.utils import _truncate_result
+        data = {"outer": {"inner_list": [1, 2, 3, 4, 5], "inner_str": "hello"}}
+        result = _truncate_result(data, max_items=2, max_str_len=100)
+        assert result["outer"]["inner_list"][:2] == [1, 2]
+        assert result["outer"]["inner_str"] == "hello"
+
+    def test_truncate_list_directly(self):
+        from app.agents.tools.utils import _truncate_result
+        data = [1, 2, 3, 4, 5, 6, 7]
+        result = _truncate_result(data, max_items=3, max_str_len=100)
+        # 前3项 + 1项提示
+        assert result[:3] == [1, 2, 3]
+        assert result[-1] == "... 还有 4 项"
+
+    def test_truncate_short_data_unchanged(self):
+        from app.agents.tools.utils import _truncate_result
+        data = {"items": [1, 2], "name": "hi"}
+        result = _truncate_result(data, max_items=5, max_str_len=100)
+        assert result == data
+
+    def test_truncate_non_collection_passthrough(self):
+        from app.agents.tools.utils import _truncate_result
+        assert _truncate_result(42, max_items=5, max_str_len=100) == 42
+        assert _truncate_result(None, max_items=5, max_str_len=100) is None
