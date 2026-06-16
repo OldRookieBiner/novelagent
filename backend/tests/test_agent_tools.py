@@ -409,3 +409,32 @@ class TestSuggestWritingDirection:
         }))
         assert result.get("focus") == "twist"
         assert "suggestions" in result
+
+
+class TestCostControlMechanisms:
+    """成本控制机制测试"""
+
+    def test_llm_call_counter_default(self):
+        from app.agents.tool_context import get_llm_call_count, reset_llm_call_count
+        reset_llm_call_count()
+        assert get_llm_call_count() == 0
+
+    def test_llm_call_counter_increment(self):
+        from app.agents.tool_context import increment_llm_call_count, get_llm_call_count, reset_llm_call_count
+        reset_llm_call_count()
+        increment_llm_call_count()
+        assert get_llm_call_count() == 1
+        increment_llm_call_count()
+        assert get_llm_call_count() == 2
+        reset_llm_call_count()
+        assert get_llm_call_count() == 0
+
+    def test_budget_tracker_contextvar(self):
+        from app.agents.tool_context import set_budget_tracker, get_budget_tracker
+        from app.agents.agent_context import BudgetTracker
+        tracker = BudgetTracker(max_tokens=5000)
+        set_budget_tracker(tracker)
+        assert get_budget_tracker() is tracker
+        assert get_budget_tracker().max == 5000
+        # 清理
+        set_budget_tracker(None)

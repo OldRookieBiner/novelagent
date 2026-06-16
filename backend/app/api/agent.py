@@ -22,9 +22,9 @@ from app.agents.agent_graph import create_agent_graph
 from app.agents.prompts import AGENT_SYSTEM_PROMPT
 from app.models.workflow_state import WorkflowState
 from app.agents.constants import Phase
-from app.agents.agent_context import ProjectContextAssembler
+from app.agents.agent_context import ProjectContextAssembler, BudgetTracker
 from app.agents.token_budget import get_context_window, estimate_tokens
-from app.agents.tool_context import set_tool_context, reset_tool_context, set_loaded_keys
+from app.agents.tool_context import set_tool_context, reset_tool_context, set_loaded_keys, set_budget_tracker
 from app.agents.services.knowledge_base import KnowledgeBaseService
 from app.agents.sse_events import (
     format_agent_text,
@@ -693,6 +693,9 @@ async def agent_chat(
         project_id=project_id,
     )
 
+    # 初始化请求级 BudgetTracker（使用实际 context_window）
+    set_budget_tracker(BudgetTracker(max_tokens=context_window))
+
     # 设置预加载数据声明
     loaded_keys = context_result.get("loaded_keys", [])
     if loaded_keys:
@@ -719,6 +722,7 @@ async def agent_chat(
                     logger.error(f"Failed to save assistant message: {e}")
             _release_busy_lock(project_id)
             reset_tool_context(context_tokens)
+            set_budget_tracker(None)
 
     return StreamingResponse(
         _stream_with_cleanup(),

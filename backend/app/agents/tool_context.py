@@ -77,3 +77,39 @@ def set_loaded_keys(keys: list[str]) -> None:
 def get_loaded_keys() -> list[str]:
     """获取当前请求的预加载数据类型列表"""
     return _loaded_keys.get()
+
+
+# 单次 SSE 请求内的 LLM 工具调用计数器
+_llm_call_count: ContextVar[int] = ContextVar("llm_call_count", default=0)
+
+
+def get_llm_call_count() -> int:
+    """获取当前请求的 LLM 工具调用计数"""
+    return _llm_call_count.get()
+
+
+def increment_llm_call_count() -> int:
+    """递增 LLM 工具调用计数，返回递增后的值"""
+    current = _llm_call_count.get()
+    new_val = current + 1
+    _llm_call_count.set(new_val)
+    return new_val
+
+
+def reset_llm_call_count() -> None:
+    """重置 LLM 工具调用计数（每次 SSE 请求开始时调用）"""
+    _llm_call_count.set(0)
+
+
+# 请求级 BudgetTracker（用于成本控制）
+_current_budget_tracker: ContextVar = ContextVar("budget_tracker", default=None)
+
+
+def get_budget_tracker():
+    """获取当前请求的 BudgetTracker"""
+    return _current_budget_tracker.get()
+
+
+def set_budget_tracker(tracker) -> None:
+    """设置当前请求的 BudgetTracker"""
+    _current_budget_tracker.set(tracker)
