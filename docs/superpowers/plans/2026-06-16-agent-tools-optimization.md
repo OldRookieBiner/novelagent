@@ -350,9 +350,7 @@ class TestConsistencyScanMerge:
         mock_kb_fn.return_value = self._make_mock_kb()
         from app.agents.tools.perception.consistency_scan import consistency_scan
         import asyncio
-        result = asyncio.get_event_loop().run_until_complete(
-            consistency_scan.ainvoke({"mode": "full"})
-        )
+        result = asyncio.run(consistency_scan(mode="full"))
         assert "issues" in result
         assert result["mode"] == "full"
 
@@ -361,9 +359,7 @@ class TestConsistencyScanMerge:
         mock_kb_fn.return_value = self._make_mock_kb()
         from app.agents.tools.perception.consistency_scan import consistency_scan
         import asyncio
-        result = asyncio.get_event_loop().run_until_complete(
-            consistency_scan.ainvoke({"mode": "transition", "chapter_number": 2})
-        )
+        result = asyncio.run(consistency_scan(mode="transition", chapter_number=2))
         assert "issues" in result
         assert result["mode"] == "transition"
 
@@ -372,9 +368,7 @@ class TestConsistencyScanMerge:
         mock_kb_fn.return_value = self._make_mock_kb()
         from app.agents.tools.perception.consistency_scan import consistency_scan
         import asyncio
-        result = asyncio.get_event_loop().run_until_complete(
-            consistency_scan.ainvoke({"mode": "compare", "chapter_a": 1, "chapter_b": 2})
-        )
+        result = asyncio.run(consistency_scan(mode="compare", chapter_a=1, chapter_b=2))
         assert "issues" in result
         assert result["mode"] == "compare"
 ```
@@ -433,6 +427,9 @@ async def consistency_scan(
         chapter_b: [compare] 第二个章节号
         aspect: [compare] 检查方面 - "character", "timeline", "setting", 或 "all"
     """
+    if mode not in ("full", "transition", "compare"):
+        return {"error": f"mode 必须是 full/transition/compare 之一，收到: {mode}"}
+
     if mode == "transition":
         return await _scan_transition(chapter_number)
     elif mode == "compare":
@@ -855,9 +852,7 @@ class TestUpdateForeshadowingMerge:
         mock_kb_fn.return_value = mock_kb
         from app.agents.tools.creation.update_foreshadowing import update_foreshadowing
         import asyncio
-        result = asyncio.get_event_loop().run_until_complete(
-            update_foreshadowing.ainvoke({"foreshadowing_id": 1, "status": "pending_reclaim"})
-        )
+        result = asyncio.run(update_foreshadowing(foreshadowing_id=1, status="pending_reclaim"))
         assert "updated_fields" in result
 
     @patch("app.agents.tools.creation.update_foreshadowing._kb")
@@ -868,13 +863,7 @@ class TestUpdateForeshadowingMerge:
         mock_kb_fn.return_value = mock_kb
         from app.agents.tools.creation.update_foreshadowing import update_foreshadowing
         import asyncio
-        result = asyncio.get_event_loop().run_until_complete(
-            update_foreshadowing.ainvoke({
-                "foreshadowing_ids": "[1,2,3]",
-                "status": "reclaimed",
-                "resolved_chapter": 5,
-            })
-        )
+        result = asyncio.run(update_foreshadowing(foreshadowing_ids="[1,2,3]", status="reclaimed", resolved_chapter=5))
         assert "batch_result" in result
 
     @patch("app.agents.tools.creation.update_foreshadowing._kb")
@@ -883,13 +872,7 @@ class TestUpdateForeshadowingMerge:
         mock_kb_fn.return_value = mock_kb
         from app.agents.tools.creation.update_foreshadowing import update_foreshadowing
         import asyncio
-        result = asyncio.get_event_loop().run_until_complete(
-            update_foreshadowing.ainvoke({
-                "foreshadowing_id": 1,
-                "foreshadowing_ids": "[1,2,3]",
-                "status": "reclaimed",
-            })
-        )
+        result = asyncio.run(update_foreshadowing(foreshadowing_id=1, foreshadowing_ids="[1,2,3]", status="reclaimed"))
         assert "error" in result
 ```
 
@@ -1027,7 +1010,7 @@ async def update_foreshadowing(
 修改 `backend/app/agents/tools/creation/__init__.py`，移除 `batch_update_foreshadowing_status` 的导入：
 
 ```python
-"""创作工具（23个）— 直接写入知识库"""
+"""创作工具（24个）— 直接写入知识库"""
 
 from .world_setting import create_world_setting
 from .character import create_character
@@ -1099,12 +1082,7 @@ class TestGenerateChapterOutlineMerge:
         mock_kb_fn.return_value = mock_kb
         from app.agents.tools.creation.generate_chapter_outline import generate_chapter_outline
         import asyncio
-        result = asyncio.get_event_loop().run_until_complete(
-            generate_chapter_outline.ainvoke({
-                "chapter_number": 1,
-                "title": "测试章节",
-            })
-        )
+        result = asyncio.run(generate_chapter_outline(chapter_number=1, title="测试章节"))
         assert result["action"] in ("created", "updated")
 
     @patch("app.agents.tools.creation.generate_chapter_outline._kb")
@@ -1117,13 +1095,7 @@ class TestGenerateChapterOutlineMerge:
         mock_kb_fn.return_value = mock_kb
         from app.agents.tools.creation.generate_chapter_outline import generate_chapter_outline
         import asyncio
-        result = asyncio.get_event_loop().run_until_complete(
-            generate_chapter_outline.ainvoke({
-                "chapter_number": 0,
-                "title": "",
-                "batch_chapter_numbers": "[1,2,3]",
-            })
-        )
+        result = asyncio.run(generate_chapter_outline(chapter_number=0, title="", batch_chapter_numbers="[1,2,3]"))
         assert "batch_result" in result
 ```
 
@@ -1387,9 +1359,7 @@ class TestSuggestWritingDirection:
         mock_kb_fn.return_value = self._make_mock_kb()
         from app.agents.tools.assist.suggest_writing_direction import suggest_writing_direction
         import asyncio
-        result = asyncio.get_event_loop().run_until_complete(
-            suggest_writing_direction.ainvoke({"current_chapter": 3, "focus": "foreshadowing"})
-        )
+        result = asyncio.run(suggest_writing_direction(current_chapter=3, focus="foreshadowing"))
         assert result["focus"] == "foreshadowing"
         assert len(result["suggestions"]) > 0
 
@@ -1398,9 +1368,7 @@ class TestSuggestWritingDirection:
         mock_kb_fn.return_value = self._make_mock_kb()
         from app.agents.tools.assist.suggest_writing_direction import suggest_writing_direction
         import asyncio
-        result = asyncio.get_event_loop().run_until_complete(
-            suggest_writing_direction.ainvoke({"current_chapter": 3, "focus": "twist"})
-        )
+        result = asyncio.run(suggest_writing_direction(current_chapter=3, focus="twist"))
         assert result["focus"] == "twist"
         assert len(result["suggestions"]) > 0
 
@@ -1409,9 +1377,7 @@ class TestSuggestWritingDirection:
         mock_kb_fn.return_value = self._make_mock_kb()
         from app.agents.tools.assist.suggest_writing_direction import suggest_writing_direction
         import asyncio
-        result = asyncio.get_event_loop().run_until_complete(
-            suggest_writing_direction.ainvoke({"current_chapter": 3, "focus": "block"})
-        )
+        result = asyncio.run(suggest_writing_direction(current_chapter=3, focus="block"))
         assert result["focus"] == "block"
         assert len(result["suggestions"]) > 0
 
@@ -1420,9 +1386,7 @@ class TestSuggestWritingDirection:
         mock_kb_fn.return_value = self._make_mock_kb()
         from app.agents.tools.assist.suggest_writing_direction import suggest_writing_direction
         import asyncio
-        result = asyncio.get_event_loop().run_until_complete(
-            suggest_writing_direction.ainvoke({"current_chapter": 3, "focus": "auto"})
-        )
+        result = asyncio.run(suggest_writing_direction(current_chapter=3, focus="auto"))
         assert result["focus"] == "auto"
         assert len(result["suggestions"]) > 0
 
@@ -1442,12 +1406,7 @@ class TestExpandWorldSettingFix:
         mock_kb_fn.return_value = mock_kb
         from app.agents.tools.assist.expand_world_setting import expand_world_setting
         import asyncio
-        result = asyncio.get_event_loop().run_until_complete(
-            expand_world_setting.ainvoke({
-                "aspect": "rule",
-                "description": "逆转魔法效果",
-            })
-        )
+        result = asyncio.run(expand_world_setting(aspect="rule", description="逆转魔法效果"))
         assert result["impact_level"] == "severe"
         assert "change_id" not in result
         assert "请调用 propose_setting_change" in result.get("suggestion", "") or "变更提议" in result.get("suggestion", "")
@@ -2360,6 +2319,25 @@ class TestTruncateResult:
         assert _truncate_result(None, max_items=5, max_str_len=100) is None
 ```
 
+- [ ] **Step 7.5: 更新前端 TOOL_LABELS**
+
+修改 `frontend/src/components/workbench/AgentChatPanel.tsx` 中的 `TOOL_LABELS`：
+
+移除已删除的工具名：
+```typescript
+// 删除以下条目
+consistency_check: '一致性检查',
+writer_block_assist: '卡文辅助',
+suggest_foreshadowing: '建议伏笔',
+suggest_plot_twist: '建议情节转折',
+```
+
+新增合并后的工具名：
+```typescript
+consistency_scan: '一致性扫描',
+suggest_writing_direction: '建议写作方向',
+```
+
 - [ ] **Step 8: 运行完整测试确认通过**
 
 Run: `docker exec novelagent-backend-1 pytest tests/test_agent_tools.py -v`
@@ -2384,7 +2362,8 @@ git commit -m "refactor(workflow): update registry, exports, and tests for tool 
 
 **Files:**
 - Modify: `backend/app/agents/agent_graph.py`
-- Modify: `backend/app/agents/tool_context.py` — 新增 LLM 调用计数器 contextvar
+- Modify: `backend/app/agents/tool_context.py` — 新增 LLM 调用计数器 contextvar + BudgetTracker contextvar
+- Modify: `backend/app/api/agent.py` — SSE 端点初始化 BudgetTracker
 - Test: `backend/tests/test_agent_tools.py`
 
 这是核心的成本控制任务，在 wrapper 中集成三种机制。
@@ -2450,6 +2429,34 @@ def reset_llm_call_count() -> None:
 Run: `docker exec novelagent-backend-1 pytest tests/test_agent_tools.py::TestCostControlMechanisms -v`
 Expected: PASS
 
+- [ ] **Step 4.5: 在 SSE 端点初始化 BudgetTracker**
+
+在 `backend/app/api/agent.py` 中，`set_tool_context` 调用之后添加 BudgetTracker 初始化。
+
+找到以下代码：
+```python
+    context_tokens = set_tool_context(
+        model_config_id=req.model_config_id,
+        user_id=current_user.id,
+        project_id=project_id,
+    )
+```
+
+在其后添加：
+```python
+    # 初始化请求级 BudgetTracker（使用实际 context_window）
+    from app.agents.agent_context import BudgetTracker
+    from app.agents.tool_context import set_budget_tracker
+    set_budget_tracker(BudgetTracker(max_tokens=context_window))
+```
+
+在 `_stream_with_cleanup` 的 finally 块末尾添加清理：
+```python
+            # 清理 BudgetTracker
+            from app.agents.tool_context import set_budget_tracker
+            set_budget_tracker(None)
+```
+
 - [ ] **Step 5: 更新 agent_graph.py 的 wrapper**
 
 替换 `backend/app/agents/agent_graph.py` 中 `_wrap_tool_with_hooks_and_cache` 函数和 `create_agent_graph` 函数：
@@ -2468,6 +2475,7 @@ def _wrap_tool_with_hooks_and_cache(tool):
     """
     from app.agents.tools.registry import get_cost_tier
     from app.agents.tools.utils import _truncate_result
+    from app.agents.tool_context import get_budget_tracker
 
     original_fn = tool.coroutine if hasattr(tool, 'coroutine') else None
     if original_fn is None:
@@ -2485,10 +2493,8 @@ def _wrap_tool_with_hooks_and_cache(tool):
 
         # ---- 成本控制 1: BudgetTracker 降级 ----
         if cost_tier == "llm":
-            cache = get_tool_cache()
-            if cache and hasattr(cache, '_budget_tracker'):
-                bt = cache._budget_tracker
-                if bt and bt.should_throttle_llm_tool():
+            bt = get_budget_tracker()
+            if bt and bt.should_throttle_llm_tool():
                     return {
                         "skipped": True,
                         "reason": "Token 预算不足（剩余 < 20%），建议先使用感知工具收集信息",
@@ -2522,18 +2528,14 @@ def _wrap_tool_with_hooks_and_cache(tool):
 
         # ---- 成本控制 3: 感知工具输出截短 ----
         if is_perception and isinstance(result, dict) and "error" not in result:
-            cache = get_tool_cache()
-            if cache and hasattr(cache, '_budget_tracker'):
-                bt = cache._budget_tracker
-                if bt and bt.should_throttle_llm_tool():
+            bt = get_budget_tracker()
+            if bt and bt.should_throttle_llm_tool():
                     result = _truncate_result(result, max_items=5, max_str_len=100)
 
         # ---- LLM 工具 token 消耗追踪 ----
         if cost_tier == "llm" and isinstance(result, dict):
-            cache = get_tool_cache()
-            if cache and hasattr(cache, '_budget_tracker'):
-                bt = cache._budget_tracker
-                if bt and "token_usage" in result:
+            bt = get_budget_tracker()
+            if bt and "token_usage" in result:
                     try:
                         bt.llm_tool_tokens_used += result["token_usage"].get("total_tokens", 0)
                     except (TypeError, AttributeError):
@@ -2736,12 +2738,8 @@ if cost_tier == "llm" and isinstance(result, dict):
     cache = ToolResultCache()
     set_tool_cache(cache)
 
-    # 初始化请求级 BudgetTracker（默认 12000 token，实际由 SSE 端点覆盖）
-    from app.agents.agent_context import BudgetTracker
-    from app.agents.tool_context import set_budget_tracker, reset_llm_call_count
-    set_budget_tracker(BudgetTracker(max_tokens=12000))
-
     # 重置 LLM 调用计数器
+    from app.agents.tool_context import reset_llm_call_count
     reset_llm_call_count()
 ```
 
@@ -2785,7 +2783,7 @@ from .consistency_scan import consistency_scan
 **creation/__init__.py**（合并 Task 5/6 的部分更新 + 移除 timeline_entry）：
 
 ```python
-"""创作工具（23个）— 直接写入知识库"""
+"""创作工具（24个）— 直接写入知识库"""
 
 from .world_setting import create_world_setting
 from .character import create_character
@@ -2822,3 +2820,73 @@ from .record_chapter_meta import record_chapter_meta
 from .suggest_writing_direction import suggest_writing_direction
 from .expand_world_setting import expand_world_setting
 ```
+
+---
+
+## 审查修复记录
+
+以下问题在审查中发现并已在 plan 中修正。此记录用于追溯。
+
+### 修复 1: 前端 TOOL_LABELS 未更新（严重 — 用户体验缺陷）
+
+**问题**: `frontend/src/components/workbench/AgentChatPanel.tsx` 的 `TOOL_LABELS` 包含已删除工具名，缺少新增工具名。前端会回退显示原始工具名（如 `consistency_scan` 而非 `一致性扫描`）。
+
+**修复**: 在 Task 8 中新增 Step 更新前端 TOOL_LABELS。需要：
+- 移除: `consistency_check`、`writer_block_assist`、`suggest_foreshadowing`、`suggest_plot_twist`
+- 新增: `consistency_scan: '一致性扫描'`、`suggest_writing_direction: '建议写作方向'`
+
+### 修复 2: creation/__init__.py 工具数量注释错误
+
+**问题**: Plan 中 docstring 写 "23个"，实际 27-3=24。
+
+**修复**: 已修正为 "24个"。
+
+### 修复 3: BudgetTracker 初始化位置错误（严重 — 架构缺陷）
+
+**问题**: Plan 在 `create_agent_graph` 中用硬编码 12000 初始化 BudgetTracker，但 `context_window` 在 SSE 端点中已知。BudgetTracker 的生命周期应与 ToolResultCache 相同——都在 SSE 请求级别。`create_agent_graph` 只是构建图，不应决定 BudgetTracker 的值。
+
+**修复**: 
+1. 已从 `create_agent_graph` 移除 BudgetTracker 初始化
+2. 在 `api/agent.py` SSE 端点中，`set_tool_context` 之后调用 `set_budget_tracker(BudgetTracker(max_tokens=context_window))`
+
+**需要额外修改**: `backend/app/api/agent.py` — 在 Task 9 中新增 Step。
+
+在 `api/agent.py` 的 SSE 端点中，`set_tool_context` 调用之后、`_stream_with_cleanup` 之前，添加：
+
+```python
+    # 初始化请求级 BudgetTracker（使用实际 context_window）
+    from app.agents.agent_context import BudgetTracker
+    from app.agents.tool_context import set_budget_tracker
+    set_budget_tracker(BudgetTracker(max_tokens=context_window))
+```
+
+同时，在 `_stream_with_cleanup` 的 finally 块中添加清理：
+
+```python
+            # 清理 BudgetTracker
+            from app.agents.tool_context import set_budget_tracker
+            set_budget_tracker(None)
+```
+
+### 修复 4: async 测试使用已弃用 API
+
+**问题**: `asyncio.get_event_loop().run_until_complete(tool.ainvoke({...}))` 在 Python 3.12+ 已弃用。且 `ainvoke` 传入 dict 与直接调用工具函数的关键字参数不匹配。
+
+**修复**: 已将所有 async 工具测试改为 `asyncio.run(tool_name(kwargs...))`，使用关键字参数直接调用。
+
+### 修复 5: 缺少 consistency_scan mode 参数校验
+
+**问题**: mode 参数接受任意字符串，不校验是否为 "full"/"transition"/"compare"。Agent 传入 "fuill"（typo）会静默 fallback 到 full。
+
+**修复**: 已在 consistency_scan 函数开头加入 mode 校验：
+
+```python
+if mode not in ("full", "transition", "compare"):
+    return {"error": f"mode 必须是 full/transition/compare 之一，收到: {mode}"}
+```
+
+### 修复 6: agent_graph.py wrapper 中 import 位置
+
+**问题**: `get_budget_tracker` 等放在 `wrapped_fn` 内部每次调用时 import。
+
+**修复**: 已将 `get_budget_tracker` import 移到 `_wrap_tool_with_hooks_and_cache` 函数顶部，与 `get_cost_tier` 和 `_truncate_result` 同级。
