@@ -24,7 +24,6 @@ from app.agents.tools import (
     create_evolution_plan,
     create_subplot,
     create_plot_question,
-    create_timeline_entry,
     create_style_constraints,
     create_foreshadowing,
     create_plot_block,

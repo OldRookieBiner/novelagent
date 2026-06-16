@@ -32,7 +32,6 @@ from app.agents.tools.creation import (
     create_relation,
     create_subplot,
     create_plot_question,
-    create_timeline_entry,
     create_style_constraints,
     create_foreshadowing,
     create_plot_block,

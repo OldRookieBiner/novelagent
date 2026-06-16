@@ -1,5 +1,6 @@
-"""记录章节追踪元数据工具
+"""记录章节追踪元数据工具（合并版）
 
+合并原 record_chapter_meta 和 create_timeline_entry。
 从 generate_chapter_content 拆分出来的追踪数据记录功能。
 R24 修正：使用 TimelineStore.get_by_chapter_number + update_timeline_entry 实现 upsert。
 """

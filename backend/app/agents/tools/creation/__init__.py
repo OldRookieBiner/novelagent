@@ -5,7 +5,6 @@ from .character import create_character
 from .relation import create_relation
 from .subplot import create_subplot
 from .plot_question import create_plot_question
-from .timeline_entry import create_timeline_entry
 from .style_constraints import create_style_constraints
 from .foreshadowing import create_foreshadowing
 from .plot_block import create_plot_block

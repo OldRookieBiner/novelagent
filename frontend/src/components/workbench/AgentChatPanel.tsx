@@ -30,7 +30,6 @@ const TOOL_LABELS: Record<string, string> = {
   // Perception
   knowledge_search: '搜索知识库',
   foreshadowing_check: '检查伏笔状态',
-  consistency_check: '一致性检查',
   style_analysis: '风格分析',
   progress_report: '生成进度报告',
   rhythm_analysis: '节奏分析',
@@ -44,11 +43,10 @@ const TOOL_LABELS: Record<string, string> = {
   propose_outline_adjustment: '评估结构调整影响',
   propose_chapter_rewrite: '评估重写影响',
   // Creation assist
-  writer_block_assist: '卡文辅助',
-  suggest_foreshadowing: '建议伏笔',
-  suggest_plot_twist: '建议情节转折',
   advance_phase: '推进阶段',
   expand_world_setting: '扩展世界观',
+  consistency_scan: '一致性扫描',
+  suggest_writing_direction: '建议写作方向',
   // Creation
   create_world_setting: '创建世界观',
   create_character: '创建角色',
