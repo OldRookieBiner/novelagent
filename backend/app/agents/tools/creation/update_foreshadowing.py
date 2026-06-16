@@ -37,9 +37,20 @@ async def update_foreshadowing(
     """
     kb = _kb()
 
-    # 批量模式
+    # 解析 foreshadowing_ids（提前解析，用于冲突检查和模式判断）
+    parsed_ids = None
     if foreshadowing_ids:
-        return _batch_update(kb, foreshadowing_ids, status, resolved_chapter)
+        parsed_ids, ids_warn = parse_json_param(foreshadowing_ids, [], "foreshadowing_ids")
+        if ids_warn:
+            return {"error": f"foreshadowing_ids 参数解析失败: {ids_warn}"}
+
+    # 双参数冲突检查：只有解析后的列表非空才算批量模式
+    if foreshadowing_id and parsed_ids:
+        return {"error": "不能同时提供 foreshadowing_id 和 foreshadowing_ids，请选择单条或批量模式"}
+
+    # 批量模式
+    if parsed_ids:
+        return _batch_update(kb, parsed_ids, status, resolved_chapter)
 
     # 单条模式
     if not foreshadowing_id:
@@ -76,12 +87,8 @@ async def update_foreshadowing(
     }
 
 
-def _batch_update(kb, foreshadowing_ids: str, status: str | None, resolved_chapter: int | None) -> dict:
+def _batch_update(kb, ids: list, status: str | None, resolved_chapter: int | None) -> dict:
     """批量更新伏笔状态"""
-    ids, warn = parse_json_param(foreshadowing_ids, [], "foreshadowing_ids")
-    if warn:
-        return {"error": f"foreshadowing_ids 参数解析失败: {warn}"}
-
     if not ids:
         return {"error": "foreshadowing_ids 不能为空"}
 

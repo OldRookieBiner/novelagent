@@ -5,7 +5,7 @@
   - "block"：克服写作瓶颈
   - "foreshadowing"：伏笔放置建议
   - "twist"：情节反转建议
-  - "auto"：自动选择最紧迫的方向（默认）
+  - "auto"：返回所有三类建议的合并摘要（默认）
 """
 
 from langchain_core.tools import tool
@@ -24,7 +24,7 @@ async def suggest_writing_direction(
     - focus="block"：克服写作瓶颈，提供 2-3 个写作方向
     - focus="foreshadowing"：基于情节和伏笔状态，建议伏笔放置位置
     - focus="twist"：基于节奏曲线和角色弧线，建议情节反转方向
-    - focus="auto"：自动选择最紧迫的方向（默认）
+    - focus="auto"：返回所有三类建议的合并摘要（默认）
 
     Args:
         current_chapter: 当前章节号
@@ -34,7 +34,7 @@ async def suggest_writing_direction(
         return {"error": f"focus 必须是 block/foreshadowing/twist/auto 之一，收到: {focus}"}
 
     if focus == "auto":
-        focus = _auto_select_focus(current_chapter)
+        return await _suggest_auto(current_chapter)
 
     if focus == "block":
         return await _suggest_block(current_chapter)
@@ -63,6 +63,52 @@ def _auto_select_focus(current_chapter: int) -> str:
     except Exception:
         return "block"
 
+
+async def _suggest_auto(current_chapter: int) -> dict:
+    """auto 模式：返回所有三类建议的合并摘要"""
+    block_result = await _suggest_block(current_chapter)
+    foreshadowing_result = await _suggest_foreshadowing(current_chapter)
+    twist_result = await _suggest_twist(current_chapter)
+
+    # 确定优先方向（供 Agent 参考）
+    priority = _auto_select_focus(current_chapter)
+
+    return {
+        "focus": "auto",
+        "current_chapter": current_chapter,
+        "priority": priority,
+        "priority_reason": _priority_reason(current_chapter, priority),
+        "block_suggestions": block_result.get("suggestions", []),
+        "foreshadowing_suggestions": foreshadowing_result.get("suggestions", []),
+        "twist_suggestions": twist_result.get("suggestions", []),
+        "summary": {
+            "pending_foreshadowings": block_result.get("pending_foreshadowings", 0),
+            "pending_questions": block_result.get("pending_questions", 0),
+            "active_foreshadowings": foreshadowing_result.get("active_foreshadowings", 0),
+            "avg_recent_tension": twist_result.get("avg_recent_tension", 0),
+        },
+        "message": f"综合建议：优先关注「{priority}」方向",
+    }
+
+
+def _priority_reason(current_chapter: int, priority: str) -> str:
+    """返回优先方向的判断理由"""
+    try:
+        kb = _kb()
+        if priority == "foreshadowing":
+            overdue = kb.foreshadowings.list_overdue(current_chapter)
+            return f"存在 {len(overdue)} 个超期伏笔需要回收"
+        elif priority == "twist":
+            timeline = kb.timelines.list_timeline()
+            if timeline:
+                recent = timeline[:5]
+                avg_tension = sum(t.get("tension_score", 3) for t in recent) / max(len(recent), 1)
+                return f"最近章节平均张力 {avg_tension:.1f}，建议加入转折"
+            return "节奏偏低，建议加入转折"
+        else:
+            return "暂无紧迫的伏笔或节奏问题，可自由发挥"
+    except Exception:
+        return "默认建议"
 
 async def _suggest_block(current_chapter: int) -> dict:
     """克服写作瓶颈（原 writer_block_assist 逻辑）"""

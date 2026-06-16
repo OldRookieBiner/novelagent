@@ -438,3 +438,73 @@ class TestCostControlMechanisms:
         assert get_budget_tracker().max == 5000
         # 清理
         set_budget_tracker(None)
+
+
+class TestSuggestWritingDirectionAuto:
+    """suggest_writing_direction auto 模式返回三类合并摘要"""
+
+    @patch("app.agents.tools.assist.suggest_writing_direction._kb")
+    def test_auto_mode_returns_merged_summary(self, mock_kb_fn):
+        """auto 模式应返回三类建议的合并摘要，而非只选一个方向"""
+        mock_kb = MagicMock()
+        mock_kb.foreshadowings.list_pending.return_value = []
+        mock_kb.foreshadowings.list_overdue.return_value = []
+        mock_kb.foreshadowings.list_foreshadowings.return_value = []
+        mock_kb.plots.get_questions_for_chapter.return_value = []
+        mock_kb.plots.get_current_plot_block.return_value = None
+        mock_kb.timelines.list_timeline.return_value = []
+        mock_kb.characters.list_characters.return_value = []
+        mock_kb_fn.return_value = mock_kb
+        from app.agents.tools.assist.suggest_writing_direction import suggest_writing_direction
+        import asyncio
+        result = asyncio.run(suggest_writing_direction.ainvoke({
+            "current_chapter": 5,
+            "focus": "auto",
+        }))
+        assert result.get("focus") == "auto"
+        # auto 模式应返回三类建议的合并摘要
+        assert "block_suggestions" in result
+        assert "foreshadowing_suggestions" in result
+        assert "twist_suggestions" in result
+        assert "priority" in result
+        assert "priority_reason" in result
+
+    @patch("app.agents.tools.assist.suggest_writing_direction._kb")
+    def test_auto_mode_priority_foreshadowing_when_overdue(self, mock_kb_fn):
+        """有超期伏笔时优先方向应为 foreshadowing"""
+        mock_kb = MagicMock()
+        mock_kb.foreshadowings.list_pending.return_value = []
+        mock_kb.foreshadowings.list_overdue.return_value = [{"id": 1, "content": "超期伏笔"}]
+        mock_kb.foreshadowings.list_foreshadowings.return_value = [{"id": 1, "status": "active"}]
+        mock_kb.plots.get_questions_for_chapter.return_value = []
+        mock_kb.plots.get_current_plot_block.return_value = {"title": "测试", "chapter_start": 1, "chapter_end": 10, "questions_to_raise": []}
+        mock_kb.timelines.list_timeline.return_value = []
+        mock_kb.characters.list_characters.return_value = []
+        mock_kb.chapters.get_by_number.return_value = None
+        mock_kb_fn.return_value = mock_kb
+        from app.agents.tools.assist.suggest_writing_direction import suggest_writing_direction
+        import asyncio
+        result = asyncio.run(suggest_writing_direction.ainvoke({
+            "current_chapter": 5,
+            "focus": "auto",
+        }))
+        assert result.get("priority") == "foreshadowing"
+
+
+class TestUpdateForeshadowingConflict:
+    """update_foreshadowing 双参数冲突检查"""
+
+    @patch("app.agents.tools.creation.update_foreshadowing._kb")
+    def test_both_ids_returns_error(self, mock_kb_fn):
+        """同时提供 foreshadowing_id 和 foreshadowing_ids 应返回参数冲突提示"""
+        mock_kb = MagicMock()
+        mock_kb_fn.return_value = mock_kb
+        from app.agents.tools.creation.update_foreshadowing import update_foreshadowing
+        import asyncio
+        result = asyncio.run(update_foreshadowing.ainvoke({
+            "foreshadowing_id": 1,
+            "foreshadowing_ids": "[2, 3]",
+            "status": "reclaimed",
+        }))
+        assert "error" in result
+        assert "不能同时" in result["error"]

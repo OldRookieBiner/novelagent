@@ -87,6 +87,7 @@ _STRUCTURE_EXTRA = [
     apply_change,
     reject_change,
     list_proposed_changes,
+    suggest_writing_direction,
 ]
 
 # 写作阶段增量
@@ -99,7 +100,6 @@ _WRITING_EXTRA = [
     record_chapter_meta,
     update_subplot,
     update_foreshadowing,
-    suggest_writing_direction,
 ]
 
 STRUCTURE_TOOLS = INCUBATION_TOOLS + _STRUCTURE_EXTRA

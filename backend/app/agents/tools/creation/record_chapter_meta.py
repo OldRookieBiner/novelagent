@@ -26,6 +26,7 @@ async def record_chapter_meta(
 
     在 generate_chapter_content 保存章节正文后调用此工具补充追踪数据。
     也可以单独调用以补录遗漏的追踪数据。
+    这是记录章节追踪数据的唯一入口（含时间线 upsert）。
 
 
     Prerequisites:

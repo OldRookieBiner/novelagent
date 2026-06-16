@@ -1388,7 +1388,12 @@ class TestSuggestWritingDirection:
         import asyncio
         result = asyncio.run(suggest_writing_direction(current_chapter=3, focus="auto"))
         assert result["focus"] == "auto"
-        assert len(result["suggestions"]) > 0
+        # auto 模式始终返回三类合并摘要
+        assert "block_suggestions" in result
+        assert "foreshadowing_suggestions" in result
+        assert "twist_suggestions" in result
+        assert "priority" in result
+        assert "priority_reason" in result
 
 
 class TestExpandWorldSettingFix:
@@ -1454,11 +1459,11 @@ async def suggest_writing_direction(
     - foreshadowing：伏笔建议，分析情节块和未追踪的神秘元素
     - twist：反转建议，分析角色动机冲突和读者预期
     - block：卡壳辅助，基于伏笔和问题链提供具体写作方向
-    - auto：智能选择，有超期伏笔优先伏笔，张力低优先反转，否则返回合并摘要
+    - auto：返回所有三类建议的合并摘要，并标注最紧迫的方向（默认）
 
     Args:
         current_chapter: 当前章节号
-        focus: 建议焦点 - "foreshadowing"(伏笔), "twist"(反转), "block"(卡壳辅助), "auto"(智能选择)
+        focus: 建议焦点 - "foreshadowing"(伏笔), "twist"(反转), "block"(卡壳辅助), "auto"(合并摘要)
     """
     kb = _kb()
 
@@ -1679,52 +1684,68 @@ async def _suggest_block(kb, current_chapter: int) -> dict:
 
 
 async def _suggest_auto(kb, current_chapter: int) -> dict:
-    """智能选择模式：有超期伏笔优先伏笔，张力低优先反转，否则返回合并摘要"""
-    overdue = kb.foreshadowings.list_overdue(current_chapter)
-    timeline = kb.timelines.list_timeline()
-    recent_tension = []
-    if timeline:
-        for t in timeline[:5]:
-            if t.get("tension_score"):
-                recent_tension.append(t["tension_score"])
-    avg_tension = sum(recent_tension) / max(len(recent_tension), 1) if recent_tension else 3
-
-    # 有超期伏笔 → 伏笔建议
-    if overdue:
-        result = await _suggest_foreshadowing(kb, current_chapter)
-        result["auto_reason"] = "检测到超期伏笔，优先建议伏笔方向"
-        return result
-
-    # 张力低 → 反转建议
-    if avg_tension < 3:
-        result = await _suggest_twist(kb, current_chapter)
-        result["auto_reason"] = f"最近平均张力 {avg_tension:.1f} 偏低，优先建议反转方向"
-        return result
-
-    # 否则返回三类合并摘要
-    fs_result = await _suggest_foreshadowing(kb, current_chapter)
-    twist_result = await _suggest_twist(kb, current_chapter)
+    """auto 模式：返回所有三类建议的合并摘要，并标注最紧迫的方向"""
     block_result = await _suggest_block(kb, current_chapter)
+    foreshadowing_result = await _suggest_foreshadowing(kb, current_chapter)
+    twist_result = await _suggest_twist(kb, current_chapter)
 
-    merged = []
-    for s in (fs_result.get("suggestions") or [])[:2]:
-        s["source"] = "foreshadowing"
-        merged.append(s)
-    for s in (twist_result.get("suggestions") or [])[:2]:
-        s["source"] = "twist"
-        merged.append(s)
-    for s in (block_result.get("suggestions") or [])[:2]:
-        s["source"] = "block"
-        merged.append(s)
+    # 确定优先方向（供 Agent 参考）
+    priority = _auto_select_priority(kb, current_chapter)
 
     return {
         "focus": "auto",
-        "auto_reason": "无紧迫问题，返回三类方向的合并摘要",
         "current_chapter": current_chapter,
-        "suggestions": merged,
-        "foreshadowing_count": fs_result.get("active_foreshadowings", 0),
-        "avg_tension": round(avg_tension, 1),
+        "priority": priority,
+        "priority_reason": _priority_reason(kb, current_chapter, priority),
+        "block_suggestions": block_result.get("suggestions", []),
+        "foreshadowing_suggestions": foreshadowing_result.get("suggestions", []),
+        "twist_suggestions": twist_result.get("suggestions", []),
+        "summary": {
+            "pending_foreshadowings": block_result.get("pending_foreshadowings", 0),
+            "pending_questions": block_result.get("pending_questions", 0),
+            "active_foreshadowings": foreshadowing_result.get("active_foreshadowings", 0),
+            "avg_recent_tension": twist_result.get("avg_recent_tension", 0),
+        },
+        "message": f"综合建议：优先关注「{priority}」方向",
     }
+
+
+def _auto_select_priority(kb, current_chapter: int) -> str:
+    """确定最紧迫的建议方向"""
+    try:
+        overdue = kb.foreshadowings.list_overdue(current_chapter)
+        if overdue:
+            return "foreshadowing"
+
+        timeline = kb.timelines.list_timeline()
+        if timeline:
+            recent = timeline[:5]
+            avg_tension = sum(t.get("tension_score", 3) for t in recent) / max(len(recent), 1)
+            if avg_tension < 2.5:
+                return "twist"
+
+        return "block"
+    except Exception:
+        return "block"
+
+
+def _priority_reason(kb, current_chapter: int, priority: str) -> str:
+    """返回优先方向的判断理由"""
+    try:
+        if priority == "foreshadowing":
+            overdue = kb.foreshadowings.list_overdue(current_chapter)
+            return f"存在 {len(overdue)} 个超期伏笔需要回收"
+        elif priority == "twist":
+            timeline = kb.timelines.list_timeline()
+            if timeline:
+                recent = timeline[:5]
+                avg_tension = sum(t.get("tension_score", 3) for t in recent) / max(len(recent), 1)
+                return f"最近章节平均张力 {avg_tension:.1f}，建议加入转折"
+            return "节奏偏低，建议加入转折"
+        else:
+            return "暂无紧迫的伏笔或节奏问题，可自由发挥"
+    except Exception:
+        return "默认建议"
 ```
 
 - [ ] **Step 4: 修复 expand_world_setting.py**
