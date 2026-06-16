@@ -64,10 +64,12 @@ class ProjectDetailResponse(ProjectResponse):
     chapter_count: int = 0
     completed_chapters: int = 0
     progress_percentage: float = 0.0
+    is_completed: bool = False
+    is_busy: bool = False
 
 
 class ProjectListResponse(BaseModel):
     """Project 列表响应 Schema"""
 
-    projects: List[ProjectResponse]
+    projects: List[ProjectDetailResponse]
     total: int
