@@ -121,3 +121,20 @@ WRITING_TOOLS = STRUCTURE_TOOLS + _WRITING_EXTRA
 REVISION_TOOLS = WRITING_TOOLS
 
 AGENT_TOOLS = WRITING_TOOLS
+
+
+# 工具元数据分类 — 仅程序化使用，不注入 system prompt
+TOOL_COST_TIER = {
+    "review_chapter": "llm",
+    "rewrite_chapter": "llm",
+    "consistency_scan": "rule",
+    "rhythm_analysis": "rule",
+    "style_analysis": "rule",
+    "foreshadowing_check": "rule",
+    "progress_report": "rule",
+}
+
+
+def get_cost_tier(tool_name: str) -> str:
+    """查询工具的 cost_tier，未标注默认 db"""
+    return TOOL_COST_TIER.get(tool_name, "db")

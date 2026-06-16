@@ -160,3 +160,28 @@ class TestBudgetTrackerEnhancement:
         from app.agents.agent_context import BudgetTracker
         tracker = BudgetTracker(max_tokens=0)
         assert not tracker.should_throttle_llm_tool()
+
+
+class TestCostTier:
+    """工具元数据分类测试"""
+
+    def test_llm_tools_have_cost_tier(self):
+        from app.agents.tools.registry import TOOL_COST_TIER, get_cost_tier
+        assert get_cost_tier("review_chapter") == "llm"
+        assert get_cost_tier("rewrite_chapter") == "llm"
+
+    def test_rule_tools_have_cost_tier(self):
+        from app.agents.tools.registry import get_cost_tier
+        for name in ("consistency_scan", "rhythm_analysis", "style_analysis",
+                     "foreshadowing_check", "progress_report"):
+            assert get_cost_tier(name) == "rule", f"{name} should be rule"
+
+    def test_db_tools_default(self):
+        from app.agents.tools.registry import get_cost_tier
+        assert get_cost_tier("knowledge_search") == "db"
+        assert get_cost_tier("create_character") == "db"
+        assert get_cost_tier("generate_chapter_content") == "db"
+
+    def test_unknown_tool_defaults_to_db(self):
+        from app.agents.tools.registry import get_cost_tier
+        assert get_cost_tier("nonexistent_tool") == "db"
