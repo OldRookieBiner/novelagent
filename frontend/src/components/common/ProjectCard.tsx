@@ -14,10 +14,9 @@ export default function ProjectCard({ project, onDelete }: ProjectCardProps)
 {
   const isCompleted = project.is_completed
 
-  // 当前章节：有章节时显示章节号，否则显示 "—"
+  // 当前章节：有章节号时显示，否则显示 "—"
   const currentChapter = project.workflow_state?.current_chapter ?? 0
-  const hasChapters = project.chapter_count > 0
-  const chapterDisplay = hasChapters && currentChapter > 0
+  const chapterDisplay = currentChapter > 0
     ? `第 ${currentChapter} 章`
     : '—'
 
