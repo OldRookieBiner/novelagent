@@ -29,22 +29,27 @@ export function ProjectCardSkeleton()
 {
   return (
     <div className="border-2 border-border rounded-lg bg-card p-4">
-      <div className="flex justify-between items-start gap-2 mb-3">
+      {/* 标题 + 状态标签 */}
+      <div className="flex justify-between items-start gap-2 mb-4">
         <Skeleton className="h-5 w-28" />
         <Skeleton className="h-5 w-16 rounded-full" />
       </div>
-      <div className="flex items-center gap-3 mb-3">
-        <Skeleton className="h-3 w-16" />
-        <Skeleton className="h-3 w-12" />
-        <Skeleton className="h-3 w-16" />
-      </div>
-      <div className="mb-3 space-y-1">
+      {/* 信息行 */}
+      <div className="flex flex-col gap-2 mb-4">
         <div className="flex justify-between">
-          <Skeleton className="h-3 w-10" />
           <Skeleton className="h-3 w-8" />
+          <Skeleton className="h-5 w-20" />
         </div>
-        <Skeleton className="h-1.5 w-full rounded-full" />
+        <div className="flex justify-between">
+          <Skeleton className="h-3 w-8" />
+          <Skeleton className="h-4 w-14" />
+        </div>
+        <div className="flex justify-between">
+          <Skeleton className="h-3 w-8" />
+          <Skeleton className="h-4 w-24" />
+        </div>
       </div>
+      {/* 按钮 */}
       <div className="flex gap-2">
         <Skeleton className="h-8 flex-1 rounded-md" />
         <Skeleton className="h-8 w-14 rounded-md" />
