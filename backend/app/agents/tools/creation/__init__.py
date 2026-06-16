@@ -27,4 +27,3 @@ from .update_foreshadowing import update_foreshadowing
 from .delete_plot_block import delete_plot_block
 from .record_chapter_meta import record_chapter_meta
 from .batch_confirm_outlines import batch_confirm_outlines
-from .batch_update_foreshadowing_status import batch_update_foreshadowing_status

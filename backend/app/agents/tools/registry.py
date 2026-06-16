@@ -54,7 +54,6 @@ from app.agents.tools.creation import (
     delete_plot_block,
     record_chapter_meta,
     batch_confirm_outlines,
-    batch_update_foreshadowing_status,
 )
 
 # 孵化阶段
@@ -109,7 +108,6 @@ _WRITING_EXTRA = [
     record_chapter_meta,
     update_subplot,
     update_foreshadowing,
-    batch_update_foreshadowing_status,
 ]
 
 STRUCTURE_TOOLS = INCUBATION_TOOLS + _STRUCTURE_EXTRA
