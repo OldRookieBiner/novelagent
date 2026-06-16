@@ -55,6 +55,8 @@ export interface ProjectDetail extends Project {
   chapter_count: number
   completed_chapters: number
   progress_percentage: number
+  is_completed: boolean
+  is_busy: boolean
 }
 
 export interface ProjectListResponse {
