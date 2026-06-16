@@ -49,6 +49,9 @@ def get_project_detail(project: Project, db: Session) -> ProjectDetailResponse:
         (completed_chapters / chapter_count * 100) if chapter_count > 0 else 0
     )
 
+    # 已完结：有章节且全部审核通过（防止无章节的新项目误判）
+    is_completed = chapter_count > 0 and completed_chapters == chapter_count
+
     # 获取工作流状态
     workflow_state = get_or_create_workflow_state(db, project.id)
 
@@ -64,6 +67,8 @@ def get_project_detail(project: Project, db: Session) -> ProjectDetailResponse:
         chapter_count=chapter_count,
         completed_chapters=completed_chapters,
         progress_percentage=round(progress_percentage, 1),
+        is_completed=is_completed,
+        is_busy=project.is_busy,
     )
 
 
