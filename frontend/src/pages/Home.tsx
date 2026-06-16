@@ -1,5 +1,5 @@
 // frontend/src/pages/Home.tsx
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import Header from '@/components/layout/Header'
@@ -31,6 +31,9 @@ export default function Home()
 
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
 
+  const isAuthenticatedRef = useRef(isAuthenticated)
+  isAuthenticatedRef.current = isAuthenticated
+
   const fetchProjects = async () =>
   {
     setError(null)
@@ -50,9 +53,21 @@ export default function Home()
 
   useEffect(() =>
   {
-    if (isAuthenticated)
+    if (!isAuthenticated) return
+
+    fetchProjects()
+
+    const handleVisibilityChange = () =>
     {
-      fetchProjects()
+      if (document.visibilityState === 'visible' && isAuthenticatedRef.current)
+      {
+        fetchProjects()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () =>
+    {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [isAuthenticated])
 
@@ -61,7 +76,7 @@ export default function Home()
     try
     {
       await projectsApi.delete(id)
-      setProjects(projects.filter(p => p.id !== id))
+      setProjects(prev => prev.filter(p => p.id !== id))
       setDeleteTarget(null)
     } catch (err)
     {
