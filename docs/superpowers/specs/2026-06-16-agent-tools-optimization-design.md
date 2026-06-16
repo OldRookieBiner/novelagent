@@ -94,7 +94,7 @@ async def suggest_writing_direction(
 - `focus="foreshadowing"` → 原 `suggest_foreshadowing` 的伏笔建议逻辑
 - `focus="twist"` → 原 `suggest_plot_twist` 的反转建议逻辑
 - `focus="block"` → 原 `writer_block_assist` 的卡壳辅助逻辑
-- `focus="auto"` → 智能选择：有超期伏笔优先建议伏笔，张力低优先建议反转，否则综合输出
+- `focus="auto"` → 智能选择：有超期伏笔优先建议伏笔，张力低优先建议反转，否则返回所有三类建议的合并摘要
 
 - **新增**：`assist/suggest_writing_direction.py`
 - **移除**：`assist/suggest_foreshadowing.py`、`assist/suggest_plot_twist.py`、`assist/writer_block_assist.py`
