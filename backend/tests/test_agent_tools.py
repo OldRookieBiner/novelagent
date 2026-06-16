@@ -134,3 +134,29 @@ class TestPhaseSubsetRelation:
             names = [t.name for t in tools]
             dupes = [n for n in names if names.count(n) > 1]
             assert not dupes, f"{name} 有重复工具: {dupes}"
+
+
+class TestBudgetTrackerEnhancement:
+    """BudgetTracker 增强功能测试"""
+
+    def test_llm_tool_tokens_used_default_zero(self):
+        from app.agents.agent_context import BudgetTracker
+        tracker = BudgetTracker(max_tokens=10000)
+        assert tracker.llm_tool_tokens_used == 0
+
+    def test_should_throttle_below_threshold(self):
+        from app.agents.agent_context import BudgetTracker
+        tracker = BudgetTracker(max_tokens=10000)
+        tracker.used = 7000  # 30% 剩余
+        assert not tracker.should_throttle_llm_tool()
+
+    def test_should_throttle_at_threshold(self):
+        from app.agents.agent_context import BudgetTracker
+        tracker = BudgetTracker(max_tokens=10000)
+        tracker.used = 8200  # 18% 剩余
+        assert tracker.should_throttle_llm_tool()
+
+    def test_should_throttle_max_zero(self):
+        from app.agents.agent_context import BudgetTracker
+        tracker = BudgetTracker(max_tokens=0)
+        assert not tracker.should_throttle_llm_tool()

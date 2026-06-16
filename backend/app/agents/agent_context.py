@@ -26,6 +26,7 @@ class BudgetTracker:
     def __init__(self, max_tokens: int):
         self.max = max_tokens
         self.used = 0
+        self.llm_tool_tokens_used = 0
 
     def can_add(self, tokens: int) -> bool:
         return self.used + tokens <= self.max
@@ -35,6 +36,13 @@ class BudgetTracker:
 
     def remaining(self) -> int:
         return max(0, self.max - self.used)
+
+    def should_throttle_llm_tool(self) -> bool:
+        """当剩余预算 < 20% 时，建议节流 LLM 工具"""
+        if self.max <= 0:
+            return False
+        remaining = 1 - (self.used / self.max)
+        return remaining < 0.2
 
 
 class ProjectContextAssembler:
