@@ -23,7 +23,9 @@
 
 ### 1.2 LLM 调用成本不可控
 
-4 个工具（`review_chapter`、`rewrite_chapter`、`generate_story_seed`、`generate_world_setting_complete`）在内部调用 LLM，但签名和 docstring 与纯 KB 工具无区别。Agent 无法感知调用成本，可能在单轮中连续消耗大量 token。
+2 个工具（`review_chapter`、`rewrite_chapter`）在内部调用 LLM，但签名和 docstring 与纯 KB 工具无区别。Agent 无法感知调用成本，可能在单轮中连续消耗大量 token。
+
+> **注意**：`generate_story_seed` 和 `generate_world_setting_complete` 虽然函数名含 generate，但实际只做 KB 写入，不调用 LLM。`initialization.py` 中有同名函数调 LLM，但那是独立的初始化流程，不是 Agent 工具。
 
 ### 1.3 控制流重叠
 
@@ -113,8 +115,8 @@ async def suggest_writing_direction(
 
 | cost_tier | 含义 | 典型工具 |
 |-----------|------|----------|
-| `llm` | 调用 LLM，产生 token 开销 | `review_chapter`, `rewrite_chapter`, `generate_story_seed`, `generate_world_setting_complete` |
-| `db` | 读写知识库，无 LLM 开销 | 所有 create/update/delete 工具, `knowledge_search`, `progress_report` 等 |
+| `llm` | 调用 LLM，产生 token 开销 | `review_chapter`, `rewrite_chapter` |
+| `db` | 读写知识库，无 LLM 开销 | 所有 create/update/delete 工具, `knowledge_search`, `progress_report`, `generate_story_seed`, `generate_world_setting_complete` 等 |
 | `rule` | 纯规则计算，只读 KB | `consistency_scan`, `rhythm_analysis`, `style_analysis`, `foreshadowing_check` |
 
 ### 4.2 标注方式
@@ -125,8 +127,6 @@ async def suggest_writing_direction(
 TOOL_COST_TIER = {
     "review_chapter": "llm",
     "rewrite_chapter": "llm",
-    "generate_story_seed": "llm",
-    "generate_world_setting_complete": "llm",
     "consistency_scan": "rule",
     "rhythm_analysis": "rule",
     "style_analysis": "rule",
@@ -164,7 +164,7 @@ def get_cost_tier(tool_name: str) -> str:
   ```
 - 每次 SSE 请求重置计数器
 
-阈值依据：`review_chapter` + `rewrite_chapter` 是典型配对（2 次），再加 1 次余量。超过 3 次几乎一定是 Agent 在反复尝试。
+阈值依据：当前仅 2 个 LLM 工具（`review_chapter` + `rewrite_chapter`），典型配对是 review 后 rewrite（2 次），再加 1 次余量。超过 3 次几乎一定是 Agent 在反复尝试。未来新增 LLM 工具时应重新评估此阈值。
 
 ### 5.2 BudgetTracker 集成的动态降级
 
@@ -172,15 +172,18 @@ def get_cost_tier(tool_name: str) -> str:
 
 ```python
 class BudgetTracker:
-    llm_tool_tokens_used: int = 0  # LLM 工具消耗的 token 总量
+    # 已有字段：max, used
+    llm_tool_tokens_used: int = 0  # 新增：LLM 工具消耗的 token 总量
 
     def should_throttle_llm_tool(self) -> bool:
         """当剩余预算 < 20% 时，建议节流"""
-        if self.total_budget <= 0:
+        if self.max <= 0:
             return False
-        remaining = 1 - (self.tokens_used / self.total_budget)
+        remaining = 1 - (self.used / self.max)
         return remaining < 0.2
 ```
+
+> **注意**：BudgetTracker 的字段名为 `max` 和 `used`（非 `total_budget` / `tokens_used`）。`llm_tool_tokens_used` 为新增字段，用于追踪 LLM 工具的 token 消耗。
 
 LLM 工具执行前检查：预算不足时返回 `skipped` 提示。
 
@@ -194,6 +197,8 @@ if budget_tracker.should_throttle_llm_tool() and is_perception:
 ```
 
 `_truncate_result` 递归遍历 dict/list，列表截到 `max_items` 项，字符串截到 `max_str_len` 字符。
+
+此函数定义在 `tools/utils.py`，与 `parse_json_param` 等共享工具函数同级。
 
 ### 5.4 三个机制的优先级
 
@@ -284,7 +289,9 @@ is_perception = tool_name in (
 | 修改 | `perception/__init__.py`（移除 `consistency_check` / `check_chapter_transition` 导出） |
 | 修改 | `creation/__init__.py`（移除 `create_timeline_entry` / `batch_update_foreshadowing_status` / `batch_confirm_outlines` 导出） |
 | 修改 | `assist/__init__.py`（移除旧工具导出，加 `suggest_writing_direction`） |
-| 修改 | `tools/__init__.py`（如有引用则同步更新） |
+| 修改 | `tools/__init__.py`（移除被合并工具的导出） |
+| 修改 | `agents/agent_tools.py`（向后兼容层，移除被合并工具的导入） |
+| 修改 | `tests/test_agent_tools.py`（更新导入和工具名断言） |
 
 **结果**：43 → 35 个工具
 
