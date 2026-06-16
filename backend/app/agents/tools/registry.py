@@ -22,9 +22,7 @@ from app.agents.tools.modification import (
     propose_chapter_rewrite,
 )
 from app.agents.tools.assist import (
-    writer_block_assist,
-    suggest_foreshadowing,
-    suggest_plot_twist,
+    suggest_writing_direction,
     expand_world_setting,
 )
 from app.agents.tools.creation import (
@@ -78,7 +76,6 @@ _STRUCTURE_EXTRA = [
     review_chapter,
     rewrite_chapter,
     rhythm_analysis,
-    suggest_foreshadowing,
     generate_chapter_outline,
     propose_outline_adjustment,
     create_plot_block,
@@ -100,12 +97,11 @@ _WRITING_EXTRA = [
     generate_chapter_content,
     propose_setting_change,
     propose_chapter_rewrite,
-    writer_block_assist,
-    suggest_plot_twist,
     create_timeline_entry,
     record_chapter_meta,
     update_subplot,
     update_foreshadowing,
+    suggest_writing_direction,
 ]
 
 STRUCTURE_TOOLS = INCUBATION_TOOLS + _STRUCTURE_EXTRA

@@ -22,9 +22,7 @@ from app.agents.tools.modification import (
 )
 # 创作辅助
 from app.agents.tools.assist import (
-    writer_block_assist,
-    suggest_foreshadowing,
-    suggest_plot_twist,
+    suggest_writing_direction,
     expand_world_setting,
 )
 # 创作工具

@@ -11,7 +11,7 @@ async def expand_world_setting(aspect: str, description: str) -> dict:
     """在特定方向扩展世界观设定。
 
     自动评估扩展对已有内容的影响，检查与红色设定的冲突。
-    扩展内容会写入知识库对应层级，或在冲突严重时创建变更提议。
+    扩展内容会写入知识库对应层级。冲突严重时返回冲突信息，需调用 propose_setting_change 创建变更提议。
 
     Prerequisites:
         - 世界观必须已创建
@@ -47,22 +47,8 @@ async def expand_world_setting(aspect: str, description: str) -> dict:
     if affected and impact_level != "severe":
         impact_level = "minor"
 
-    # E4 增强：严重冲突时走变更提议流程，而非直接写入
+    # 严重冲突时返回冲突信息，提示 Agent 调用 propose_setting_change
     if impact_level == "severe":
-        change = kb.changes.create({
-            "target_type": "world_setting",
-            "target_id": ws.get("id", 0),
-            "old_value": {"tiered_settings": tiered},
-            "new_value": {"tiered_settings": tiered, "new_extension": {aspect: description}},
-            "description": f"扩展世界观 [{aspect}]: {description}",
-            "status": "proposed",
-            "impact_report": {
-                "level": "severe",
-                "contradictions": contradictions,
-                "affected_chapters": len(affected),
-                "note": "扩展与红色设定冲突，需用户确认",
-            },
-        })
         return {
             "aspect": aspect,
             "description": description,
@@ -70,8 +56,7 @@ async def expand_world_setting(aspect: str, description: str) -> dict:
             "impact_detail": impact_detail,
             "affected_chapters": len(affected),
             "contradictions": contradictions,
-            "change_id": change.get("id"),
-            "suggestion": "严重冲突已创建变更提议，请先解决冲突后再扩展",
+            "suggestion": "扩展与红色设定冲突，请调用 propose_setting_change 工具创建变更提议，由用户审批后再扩展",
             "requires_approval": True,
         }
 

@@ -15,9 +15,6 @@ from app.agents.tools import (
     propose_setting_change,
     propose_outline_adjustment,
     propose_chapter_rewrite,
-    writer_block_assist,
-    suggest_foreshadowing,
-    suggest_plot_twist,
     expand_world_setting,
     AGENT_TOOLS,
     INCUBATION_TOOLS,
@@ -60,7 +57,7 @@ class TestToolRegistration:
 
     def test_creation_assist_tools_are_present(self):
         names = [t.name for t in WRITING_TOOLS]
-        for expected in ["writer_block_assist", "suggest_foreshadowing", "suggest_plot_twist", "expand_world_setting"]:
+        for expected in ["suggest_writing_direction", "expand_world_setting"]:
             assert expected in names, f"Missing creation assist tool: {expected}"
 
 
@@ -363,3 +360,52 @@ class TestGenerateChapterOutlineMerge:
         }))
         assert result["action"] == "created"
         assert result["chapter_number"] == 1
+
+
+class TestSuggestWritingDirection:
+    """suggest_writing_direction 合并后三种 focus 模式测试"""
+
+    def test_focus_invalid_returns_error(self):
+        from app.agents.tools.assist.suggest_writing_direction import suggest_writing_direction
+        import asyncio
+        result = asyncio.run(suggest_writing_direction.ainvoke({
+            "current_chapter": 1,
+            "focus": "invalid",
+        }))
+        assert "error" in result
+
+    @patch("app.agents.tools.assist.suggest_writing_direction._kb")
+    def test_focus_block_mode(self, mock_kb_fn):
+        mock_kb = MagicMock()
+        mock_kb.foreshadowings.list_pending.return_value = []
+        mock_kb.foreshadowings.list_overdue.return_value = []
+        mock_kb.plots.get_questions_for_chapter.return_value = []
+        mock_kb.plots.get_current_plot_block.return_value = None
+        mock_kb_fn.return_value = mock_kb
+        from app.agents.tools.assist.suggest_writing_direction import suggest_writing_direction
+        import asyncio
+        result = asyncio.run(suggest_writing_direction.ainvoke({
+            "current_chapter": 1,
+            "focus": "block",
+        }))
+        assert result.get("focus") == "block"
+        assert "suggestions" in result
+
+    @patch("app.agents.tools.assist.suggest_writing_direction._kb")
+    def test_focus_twist_mode(self, mock_kb_fn):
+        mock_kb = MagicMock()
+        mock_kb.timelines.list_timeline.return_value = [
+            {"chapter_number": 1, "tension_score": 2},
+        ]
+        mock_kb.foreshadowings.list_foreshadowings.return_value = []
+        mock_kb.characters.list_characters.return_value = []
+        mock_kb.plots.get_current_plot_block.return_value = None
+        mock_kb_fn.return_value = mock_kb
+        from app.agents.tools.assist.suggest_writing_direction import suggest_writing_direction
+        import asyncio
+        result = asyncio.run(suggest_writing_direction.ainvoke({
+            "current_chapter": 1,
+            "focus": "twist",
+        }))
+        assert result.get("focus") == "twist"
+        assert "suggestions" in result
