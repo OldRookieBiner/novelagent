@@ -53,7 +53,6 @@ from app.agents.tools.creation import (
     update_foreshadowing,
     delete_plot_block,
     record_chapter_meta,
-    batch_confirm_outlines,
 )
 
 # 孵化阶段
@@ -89,7 +88,6 @@ _STRUCTURE_EXTRA = [
     update_plot_block,
     update_plot_question,
     delete_plot_block,
-    batch_confirm_outlines,
     apply_change,
     reject_change,
     list_proposed_changes,

@@ -26,4 +26,3 @@ from .update_plot_question import update_plot_question
 from .update_foreshadowing import update_foreshadowing
 from .delete_plot_block import delete_plot_block
 from .record_chapter_meta import record_chapter_meta
-from .batch_confirm_outlines import batch_confirm_outlines

@@ -325,3 +325,41 @@ class TestUpdateForeshadowingMerge:
             "level": "strengthened",
         }))
         assert "foreshadowing_id" in result or "updated_fields" in result
+
+
+class TestGenerateChapterOutlineMerge:
+    """generate_chapter_outline 合并后批量确认模式测试"""
+
+    @patch("app.agents.tools.creation.generate_chapter_outline._kb")
+    def test_batch_confirm_mode(self, mock_kb_fn):
+        """batch_chapter_numbers 参数触发批量确认"""
+        mock_kb = MagicMock()
+        mock_kb.outlines.get_chapter_outline.side_effect = lambda n: (
+            {"chapter_number": n, "confirmed": False} if n in [1, 2] else None
+        )
+        mock_kb.outlines.update_chapter_outline.return_value = None
+        mock_kb_fn.return_value = mock_kb
+        from app.agents.tools.creation.generate_chapter_outline import generate_chapter_outline
+        import asyncio
+        result = asyncio.run(generate_chapter_outline.ainvoke({
+            "batch_chapter_numbers": "[1, 2, 3]",
+            "chapter_number": 0,
+            "title": "",
+        }))
+        assert "confirmed" in result or "total_confirmed" in result
+
+    @patch("app.agents.tools.creation.generate_chapter_outline._kb")
+    def test_single_outline_mode_unchanged(self, mock_kb_fn):
+        """单条大纲生成仍然正常"""
+        mock_kb = MagicMock()
+        mock_kb.outlines.get_chapter_outline.return_value = None
+        mock_kb.outlines.create_chapter_outline.return_value = {"id": 1}
+        mock_kb_fn.return_value = mock_kb
+        from app.agents.tools.creation.generate_chapter_outline import generate_chapter_outline
+        import asyncio
+        result = asyncio.run(generate_chapter_outline.ainvoke({
+            "chapter_number": 1,
+            "title": "测试章节",
+        }))
+        assert result["action"] == "created"
+        assert result["chapter_number"] == 1
