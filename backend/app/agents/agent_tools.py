@@ -8,7 +8,6 @@ from app.agents.tools import (
     # 感知工具
     knowledge_search,
     foreshadowing_check,
-    consistency_check,
     style_analysis,
     progress_report,
     rhythm_analysis,

@@ -72,8 +72,8 @@ def _wrap_tool_with_hooks_and_cache(tool):
 
     tool_name = tool.name
     is_perception = tool_name in (
-        "knowledge_search", "foreshadowing_check", "consistency_check",
-        "consistency_scan", "check_chapter_transition", "style_analysis",
+        "knowledge_search", "foreshadowing_check",
+        "consistency_scan", "style_analysis",
         "rhythm_analysis", "progress_report",
     )
 
@@ -102,10 +102,9 @@ def _wrap_tool_with_hooks_and_cache(tool):
             if cache:
                 # 写入操作使所有感知缓存失效
                 cache.invalidate_by_prefix([
-                    "knowledge_search:", "consistency_check:",
-                    "consistency_scan:", "style_analysis:",
-                    "rhythm_analysis:", "progress_report:",
-                    "foreshadowing_check:", "check_chapter_transition:",
+                    "knowledge_search:", "consistency_scan:",
+                    "style_analysis:", "rhythm_analysis:",
+                    "progress_report:", "foreshadowing_check:",
                 ])
 
         # Post-hooks（仅注册了 hook 的工具）

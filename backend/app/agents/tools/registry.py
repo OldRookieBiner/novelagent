@@ -8,9 +8,7 @@ INCUBATION_TOOLS ⊆ STRUCTURE_TOOLS ⊆ WRITING_TOOLS ⊆ REVISION_TOOLS
 from app.agents.tools.perception import (
     knowledge_search,
     foreshadowing_check,
-    consistency_check,
     consistency_scan,
-    check_chapter_transition,
     style_analysis,
     progress_report,
     rhythm_analysis,
@@ -100,9 +98,7 @@ _STRUCTURE_EXTRA = [
 
 # 写作阶段增量
 _WRITING_EXTRA = [
-    consistency_check,
     consistency_scan,
-    check_chapter_transition,
     style_analysis,
     generate_chapter_content,
     propose_setting_change,

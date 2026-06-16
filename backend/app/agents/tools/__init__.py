@@ -7,7 +7,6 @@
 from app.agents.tools.perception import (
     knowledge_search,
     foreshadowing_check,
-    consistency_check,
     style_analysis,
     progress_report,
     rhythm_analysis,

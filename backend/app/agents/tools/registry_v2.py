@@ -11,7 +11,7 @@ from app.agents.constants import Phase
 
 
 # 大型项目额外启用的工具名
-_LARGE_PROJECT_TOOL_NAMES = {"consistency_scan", "check_chapter_transition"}
+_LARGE_PROJECT_TOOL_NAMES = {"consistency_scan"}
 
 # 小型项目排除的工具名
 _SMALL_PROJECT_EXCLUDE_NAMES = {"rhythm_analysis"}

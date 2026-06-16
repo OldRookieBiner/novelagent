@@ -9,7 +9,6 @@ from unittest.mock import patch, MagicMock
 from app.agents.tools import (
     knowledge_search,
     foreshadowing_check,
-    consistency_check,
     style_analysis,
     progress_report,
     rhythm_analysis,
@@ -50,7 +49,7 @@ class TestToolRegistration:
 
     def test_perception_tools_are_present(self):
         names = [t.name for t in WRITING_TOOLS]
-        for expected in ["knowledge_search", "foreshadowing_check", "consistency_check",
+        for expected in ["knowledge_search", "foreshadowing_check", "consistency_scan",
                          "style_analysis", "progress_report", "rhythm_analysis"]:
             assert expected in names, f"Missing perception tool: {expected}"
 
@@ -232,3 +231,62 @@ class TestTruncateResult:
         from app.agents.tools.utils import _truncate_result
         assert _truncate_result(42, max_items=5, max_str_len=100) == 42
         assert _truncate_result(None, max_items=5, max_str_len=100) is None
+
+
+class TestConsistencyScanMerge:
+    """consistency_scan 合并后三种模式测试"""
+
+    def _make_mock_kb(self):
+        """构建模拟 KB 对象"""
+        kb = MagicMock()
+        kb.timelines.list_timeline.return_value = [
+            {"chapter_number": 1, "summary": "开场", "emotion_tag": "平静", "tension_score": 2},
+            {"chapter_number": 2, "summary": "冲突", "emotion_tag": "紧张", "tension_score": 4},
+            {"chapter_number": 3, "summary": "转折", "emotion_tag": "绝望", "tension_score": 5},
+            {"chapter_number": 4, "summary": "缓和", "emotion_tag": "温馨", "tension_score": 2},
+        ]
+        kb.characters.list_characters.return_value = [
+            {"id": 1, "name": "张三", "role": "主角", "core_motivation": "复仇", "deep_fear": "被遗弃"},
+        ]
+        kb.world_setting.get.return_value = {
+            "tiered_settings": {"red": ["魔法不可逆转"]},
+        }
+        kb.foreshadowings.list_foreshadowings.return_value = []
+        kb.chapters.get_by_number.return_value = {"content": "测试内容"}
+        kb.outlines.get_chapter_outline.return_value = {
+            "scene": "城市", "characters": "张三", "emotional_arc": "平静→紧张",
+        }
+        return kb
+
+    @patch("app.agents.tools.perception.consistency_scan._kb")
+    def test_mode_full_returns_issues(self, mock_kb_fn):
+        mock_kb_fn.return_value = self._make_mock_kb()
+        from app.agents.tools.perception.consistency_scan import consistency_scan
+        import asyncio
+        result = asyncio.run(consistency_scan.ainvoke({"mode": "full"}))
+        assert "issues" in result
+        assert result["mode"] == "full"
+
+    @patch("app.agents.tools.perception.consistency_scan._kb")
+    def test_mode_transition_checks_chapter(self, mock_kb_fn):
+        mock_kb_fn.return_value = self._make_mock_kb()
+        from app.agents.tools.perception.consistency_scan import consistency_scan
+        import asyncio
+        result = asyncio.run(consistency_scan.ainvoke({"mode": "transition", "chapter_number": 2}))
+        assert "issues" in result
+        assert result["mode"] == "transition"
+
+    @patch("app.agents.tools.perception.consistency_scan._kb")
+    def test_mode_compare_checks_cross_analysis(self, mock_kb_fn):
+        mock_kb_fn.return_value = self._make_mock_kb()
+        from app.agents.tools.perception.consistency_scan import consistency_scan
+        import asyncio
+        result = asyncio.run(consistency_scan.ainvoke({"mode": "compare", "chapter_a": 1, "chapter_b": 2}))
+        assert "issues" in result
+        assert result["mode"] == "compare"
+
+    def test_mode_invalid_returns_error(self):
+        from app.agents.tools.perception.consistency_scan import consistency_scan
+        import asyncio
+        result = asyncio.run(consistency_scan.ainvoke({"mode": "invalid"}))
+        assert "error" in result
