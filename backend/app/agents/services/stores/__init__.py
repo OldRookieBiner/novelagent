@@ -15,6 +15,7 @@ from app.agents.services.stores.timeline_store import TimelineStore
 from app.agents.services.stores.volume_store import VolumeStore
 from app.agents.services.stores.chapter_store import ChapterStore
 from app.agents.services.stores.change_store import ChangeStore
+from app.agents.services.stores.workflow_store import WorkflowStore
 
 __all__ = [
     "_BaseStore",
@@ -28,4 +29,5 @@ __all__ = [
     "VolumeStore",
     "ChapterStore",
     "ChangeStore",
+    "WorkflowStore",
 ]

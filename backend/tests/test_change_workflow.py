@@ -193,8 +193,8 @@ class TestPhantomParameterFixVerification:
 
     def test_update_subplot_params_match_model(self):
         """update_subplot 参数名应与 Subplot 模型列名一致"""
-        from app.agents.tools.creation.update_subplot import update_subplot
-        param_names = self._get_tool_param_names(update_subplot)
+        from app.agents.tools.creation.subplot import create_subplot
+        param_names = self._get_tool_param_names(create_subplot)
         # 确认幻影参数已修复：不应包含 title/status/resolution
         assert "title" not in param_names, "update_subplot 不应有 title 参数（应为 name）"
         assert "status" not in param_names, "update_subplot 不应有 status 参数（应为 current_status）"
@@ -206,8 +206,8 @@ class TestPhantomParameterFixVerification:
 
     def test_update_plot_question_params_match_model(self):
         """update_plot_question 参数名应与 PlotQuestion 模型列名一致"""
-        from app.agents.tools.creation.update_plot_question import update_plot_question
-        param_names = self._get_tool_param_names(update_plot_question)
+        from app.agents.tools.creation.plot_question import create_plot_question
+        param_names = self._get_tool_param_names(create_plot_question)
         # 确认幻影参数已修复
         assert "question" not in param_names, "update_plot_question 不应有 question 参数（应为 question_text）"
         assert "answer" not in param_names, "update_plot_question 不应有 answer 参数（应为 answered_in_chapter）"
@@ -217,8 +217,8 @@ class TestPhantomParameterFixVerification:
 
     def test_update_plot_block_no_chapter_range(self):
         """update_plot_block 不应有 chapter_range 参数"""
-        from app.agents.tools.creation.update_plot_block import update_plot_block
-        param_names = self._get_tool_param_names(update_plot_block)
+        from app.agents.tools.creation.plot_block import create_plot_block
+        param_names = self._get_tool_param_names(create_plot_block)
         assert "chapter_range" not in param_names, "update_plot_block 不应有 chapter_range 参数"
         assert "chapter_start" in param_names
         assert "chapter_end" in param_names
