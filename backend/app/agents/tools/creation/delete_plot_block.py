@@ -17,13 +17,8 @@ async def delete_plot_block(plot_block_id: int) -> dict:
     """
     kb = _kb()
 
-    # 通过 Store 层获取情节块
-    blocks = kb.plots.list_plot_blocks()
-    target = None
-    for b in blocks:
-        if b["id"] == plot_block_id:
-            target = b
-            break
+    # 通过 Store 层直接查询
+    target = kb.plots.get_plot_block_by_id(plot_block_id)
 
     if not target:
         return {"error": f"情节块 ID {plot_block_id} 不存在"}
@@ -37,7 +32,7 @@ async def delete_plot_block(plot_block_id: int) -> dict:
         return {
             "error": f"情节块「{target.get('title', '')}」下有 {len(pending_questions)} 个未回答的问题，请先回答或迁移后再删除",
             "pending_question_ids": question_ids,
-            "hint": "使用 update_plot_question 工具将问题标记为已回答，或将问题迁移到其他情节块",
+            "hint": "使用 create_plot_question(question_id=...) 工具将问题标记为已回答，或将问题迁移到其他情节块",
         }
 
     # 安全检查：是否有活跃伏笔的预期回收章节在此范围内
