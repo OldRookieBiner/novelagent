@@ -470,12 +470,12 @@ async def advance_phase(direction: str = "forward") -> dict:
 
     kb = _kb()
 
-    # 阶段标签
+    # 阶段标签: 使用字符串 key 与 current_phase 类型一致
     phase_labels = {
-        Phase.INCUBATION: "创意孵化",
-        Phase.STRUCTURE: "结构设计",
-        Phase.WRITING: "写作中",
-        Phase.REVISION: "修订中",
+        "incubation": "创意孵化",
+        "structure": "结构设计",
+        "writing": "写作中",
+        "revision": "修订中",
     }
 
     # 1. 读取当前阶段
@@ -483,9 +483,10 @@ async def advance_phase(direction: str = "forward") -> dict:
 
     # 2. 计算目标阶段（逻辑不变，仍在工具层）
     if direction == "backward":
+        # 使用字符串 key/value, 与 WorkflowStore.advance() 保持一致
         backward_map = {
-            Phase.WRITING: Phase.STRUCTURE,
-            Phase.STRUCTURE: Phase.INCUBATION,
+            "writing": "structure",
+            "structure": "incubation",
         }
         if current_phase not in backward_map:
             return {
