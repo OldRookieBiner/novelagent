@@ -71,8 +71,8 @@ async def create_character(
 ) -> dict:
     """创建新角色或更新已有角色。提供 character_id 时为更新模式。
 
-    - character_id=0（默认）：创建新角色
-    - character_id>0：更新指定 ID 的角色，None 值字段不修改
+    - character_id=0（默认）：创建新角色（name 和 role 必填）
+    - character_id>0：更新指定 ID 的角色，空字符串字段不修改
     """
     kb = _kb()
 
@@ -105,6 +105,10 @@ async def create_character(
         }
     else:
         # --- 创建路径（与原 create_character 逻辑一致）---
+        # 校验必填字段
+        if not name or not role:
+            return {"error": "创建角色时 name 和 role 为必填字段"}
+
         data = {"name": name, "role": role}
         for key, val in [
             ("personality", personality), ("catchphrase", catchphrase),
@@ -125,28 +129,45 @@ async def create_character(
         }
 ```
 
-### create_foreshadowing 的批量模式保留
+**必填字段校验规则**：合并后所有字段都需给默认值（LangChain `@tool` 的限制），但 create 路径仍需校验原有必填字段。各工具的必填字段如下：
 
-`update_foreshadowing` 有 `foreshadowing_ids` 批量更新功能。合并后 `create_foreshadowing` 需同时支持：
+| 工具 | create 路径必填字段 |
+|---|---|
+| `create_character` | `name`, `role` |
+| `create_foreshadowing` | `content` |
+| `create_plot_block` | `title`, `chapter_start`, `chapter_end` |
+| `create_subplot` | `name` |
+| `create_plot_question` | `question_text` |
 
-- `foreshadowing_id > 0`：单条更新
-- `foreshadowing_ids` 非空：批量更新状态
-- 两者都不提供：创建新伏笔
+### create_foreshadowing 的三模式路由
 
-三种模式的互斥逻辑与原 `update_foreshadowing` 一致。
+`update_foreshadowing` 有批量更新功能，合并后 `create_foreshadowing` 需同时支持三种模式。判断规则（按优先级）：
+
+1. `foreshadowing_id > 0` 且 `foreshadowing_ids` 非空 → 返回错误："不能同时提供 foreshadowing_id 和 foreshadowing_ids"
+2. `foreshadowing_id > 0` → 单条更新模式
+3. `foreshadowing_ids` 非空 → 批量更新模式
+4. 都为空 → 创建新伏笔（`content` 必填）
+
+### 工具代码中硬编码工具名的引用
+
+以下文件在代码/hint 文本中引用了 `update_*` 工具名，需同步更新：
+
+- `delete_plot_block.py`：hint 文本 `"使用 update_plot_question 工具"` → 改为 `"使用 create_plot_question(question_id=...) 工具"`
+- 全局扫描 `rg "update_character|update_foreshadowing|update_plot_block|update_subplot|update_plot_question" backend/` 确认无遗漏
 
 ### registry.py 变化
 
 - 删除 5 个 `update_*` 的 import：`update_character`、`update_foreshadowing`、`update_plot_block`、`update_subplot`、`update_plot_question`
 - `_STRUCTURE_EXTRA` 和 `_WRITING_EXTRA` 中移除上述 5 个条目
+- `creation/__init__.py` 中移除上述 5 个 import
 - `AGENT_TOOLS = WRITING_TOOLS` 无需改动（列表已自动不包含被删的 import）
 
 ### 下游影响
 
-- **前端**：不受影响（走 REST API）
+- **前端 AgentChatPanel.tsx**：工具名→中文标签映射表需更新。移除 `update_character: '更新角色'` 等 5 条，新增逻辑——当 `create_*` 工具返回含 `updated_fields` 或 `changes` 时，前端显示"更新角色"而非"创建角色"
 - **知识库数据**：底层 Store 方法调用不变
 - **SSE 事件流**：不受影响
-- **后端测试**：`test_agent_tools.py` 等需更新工具名引用
+- **后端测试**：`test_agent_tools.py` 和 `test_change_workflow.py` 需更新 import 路径和工具名引用
 - **Agent 行为**：从"选 create 还是 update"变为"填不填 id"，docstring 需清晰说明
 
 ### 工具数变化
@@ -159,7 +180,7 @@ async def create_character(
 
 ### 问题
 
-4 个更新路径（合并进 create 后）先用 `list_*()` 获取全量数据再遍历找目标 ID。当实体数量多时，每次更新都加载全部同类实体，是性能问题也是局部性问题。
+5 个更新路径中有 4 个先用 `list_*()` 获取全量数据再遍历找目标 ID（foreshadowing 已使用 `get()` 无此问题）。当实体数量多时，每次更新都加载全部同类实体，是性能问题也是局部性问题。
 
 ### Store 现有方法盘点
 
@@ -199,6 +220,8 @@ def build_changes_diff(before: dict, update_data: dict) -> dict:
     """对比 before 和 update_data，返回 {field: {before, after}} 格式的变更记录。
 
     只包含实际发生变化的字段（before[key] != update_data[key]）。
+    依赖 SQLAlchemy JSON 列的自动反序列化，before 和 update_data 中的
+    list/dict 类型可直接用 != 比较（比较元素值而非引用）。
     """
     changes = {}
     for key, new_val in update_data.items():
@@ -302,6 +325,7 @@ class WorkflowStore(_BaseStore):
 
         返回 Phase enum 的 value 字符串，如 "incubation"。
         不存在时创建默认行（Phase.INCUBATION）。
+        内部调用 get_or_create_workflow_state 复用现有 upsert 逻辑。
         """
 
     def advance(
@@ -325,6 +349,12 @@ class WorkflowStore(_BaseStore):
             }
         """
 ```
+
+### WorkflowStore 内部实现要点
+
+- `get_current_phase()` 和 `advance()` 都使用 `self.session()` 管理 DB session，与现有 Store 模式一致
+- 内部调用 `from app.utils.workflow import get_or_create_workflow_state` 复用 PostgreSQL/SQLite 兼容的 upsert 逻辑，不重新实现
+- `advance()` 中的行锁逻辑：在 `self.session()` 内使用 `db.refresh(ws, with_for_update=True)` 获取行锁后，校验 `expected_current` 与实际阶段是否一致，一致则写入，不一致则返回 `conflict=True`
 
 ### advance_phase 工具简化
 
@@ -427,8 +457,7 @@ class KnowledgeBaseService:
 
 - P2：consistency_scan 拆分、批量确认拆分、JSON 参数装饰器
 - P3：knowledge_search 降级路径重构、auto 模式优化、review/rewrite 返回值文档化、registry_v2 缓存项目章节数
-- 前端改动
-- REST API 变更
+- 前端 REST API 变更
 - 数据库模型变更
 
 ---
@@ -438,8 +467,11 @@ class KnowledgeBaseService:
 | 风险 | 缓解措施 |
 |------|----------|
 | 合并后 Agent 不理解"填 id 则更新"的模式 | 更新 docstring，在工具描述首行说明双模式 |
+| 合并后 create 路径缺少必填校验，Agent 创建无名角色 | create 路径加必填字段校验，缺则返回 error |
+| 前端 AgentChatPanel 工具名映射过期 | 同步更新映射表，基于返回值判断显示"创建"还是"更新" |
+| 工具代码中硬编码的 update_* 工具名引用（如 delete_plot_block 的 hint） | 全局扫描并更新所有引用 |
 | Store 新增 `get_by_id` 方法遗漏 project_id 过滤 | 遵循 _BaseStore 模式，所有查询都带 project_id 条件 |
-| WorkflowStore 并发逻辑与现有行为不一致 | 保留行锁 + 乐观锁双保障，迁移后跑 advance_phase 相关测试验证 |
+| WorkflowStore 并发逻辑与现有行为不一致 | 复用 get_or_create_workflow_state，保留行锁 + 乐观锁双保障，迁移后跑 advance_phase 相关测试验证 |
 | 删除 update_* 工具后旧测试失败 | 先更新测试，再删除工具文件 |
 
 ---
@@ -448,8 +480,11 @@ class KnowledgeBaseService:
 
 1. 工具数从 33 降至 28，所有 update_* 工具已删除
 2. 合并后的 create 工具 create 路径和 update 路径行为与原工具等价
-3. 4 个更新路径不再使用 `list_*()` 遍历，改为 `get_by_id()` 直接查询
-4. 感知/写入工具名只在 `registry.py` 定义一次，`agent_graph.py` 和 `hooks.py` 引用常量
-5. `advance_phase` 不再直接操作 `SessionLocal()`，通过 `kb.workflows` 调用
-6. `docker exec novelagent-backend-1 pytest -v` 全部通过
-7. 前端功能不受影响
+3. create 路径保留必填字段校验（name/role 等），缺失时返回 error
+4. 4 个更新路径不再使用 `list_*()` 遍历，改为 `get_by_id()` 直接查询
+5. 感知/写入工具名只在 `registry.py` 定义一次，`agent_graph.py` 和 `hooks.py` 引用常量
+6. `advance_phase` 不再直接操作 `SessionLocal()`，通过 `kb.workflows` 调用
+7. 前端 `AgentChatPanel.tsx` 工具名映射已更新
+8. `delete_plot_block.py` 等 hint 文本中不再引用已删除的 update_* 工具名
+9. `docker exec novelagent-backend-1 pytest -v` 全部通过
+10. 前端功能不受影响
