@@ -16,7 +16,9 @@ async def generate_story_seed(
 ) -> dict:
     """生成并保存故事种子文档。
 
-    故事种子是小说创作的起点，包含核心概念、主题和基本设定。通常在项目初始化时自动调用。
+    故事种子是小说创作的起点，包含核心概念、主题和基本设定。
+    通常在项目初始化时自动调用，但 Agent 也可以手动调用以更新或补充故事种子。
+    当用户提供了新的创意方向、需要重新定义故事核心时，可以手动调用此工具更新种子。
 
     Args:
             seed_narrative: 300-500 字的故事叙述
@@ -24,6 +26,12 @@ async def generate_story_seed(
             protagonist_archetype: 主角原型
             world_tone: 世界独特质感
             emotional_tone: 读者应有的情感体验
+
+    Returns:
+        dict:
+            - action (str): 操作类型 - "created"
+            - seed_length (int): 故事叙述字数
+            - message (str): 操作结果描述
     """
     project_id = get_project_id()
     kb = _kb()

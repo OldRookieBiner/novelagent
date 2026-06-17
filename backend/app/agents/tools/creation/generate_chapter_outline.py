@@ -38,22 +38,32 @@ async def generate_chapter_outline(
     - 提供batch_chapter_numbers时：批量确认指定章节的大纲（如 "[1,2,3]"）
 
     Args:
-        chapter_number: 章节号（单条模式）
-        title: 章节标题（单条模式）
-        scene: 场景设定
-        characters: 出场角色
-        plot: 关键情节点
-        conflict: 主要冲突
-        turning_point: 转折点
-        hook: 章末悬念钩子
-        transition: 到下一章的过渡
-        ending: 章节结尾描写
-        target_words: 目标字数（默认 3000）
-        opening_state: 章节开场状态
-        emotional_arc: 情感轨迹
-        key_scenes: JSON 字符串列表，关键场景
-        pacing_note: 节奏指引
-        batch_chapter_numbers: JSON 字符串列表，批量确认的章节号（如 "[1,2,3]"）
+        chapter_number: [必填·单条模式] 章节号
+        title: [必填·单条模式] 章节标题
+        scene: [可选] 场景设定
+        characters: [可选] 出场角色
+        plot: [可选] 关键情节点
+        conflict: [可选] 主要冲突
+        turning_point: [可选] 转折点
+        hook: [可选] 章末悬念钩子
+        transition: [可选] 到下一章的过渡
+        ending: [可选] 章节结尾描写
+        target_words: [可选] 目标字数（默认 3000）
+        opening_state: [可选] 章节开场状态
+        emotional_arc: [可选] 情感轨迹
+        key_scenes: [可选] JSON 字符串列表，关键场景
+        pacing_note: [可选] 节奏指引
+        batch_chapter_numbers: [可选·批量确认模式] JSON 字符串列表，批量确认的章节号（如 "[1,2,3]"）；提供此参数时忽略其他参数
+
+    Returns:
+        dict:
+            - action (str): 操作类型 - "created"(新建) / "updated"(更新) / 批量确认时无此字段
+            - chapter_number (int): 章节号
+            - title (str): 章节标题
+            - confirmed (bool): 确认状态
+            - message (str): 操作结果描述
+            - error (str, optional): 出错时的错误信息
+            - 批量确认时返回额外字段: confirmed/already_confirmed/not_found 列表
     """
     # 批量确认模式
     if batch_chapter_numbers:

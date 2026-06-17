@@ -18,7 +18,6 @@ from .rewrite_chapter import rewrite_chapter
 from .advance_phase import advance_phase
 from .evolution_plan import create_evolution_plan
 # 更新/删除工具
-from .update_character import update_character
 from .update_plot_block import update_plot_block
 from .update_subplot import update_subplot
 from .update_plot_question import update_plot_question

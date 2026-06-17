@@ -76,6 +76,18 @@ async def generate_chapter_content(
         chapter_title: 章节标题
         content: 完整章节正文内容
         word_count: 字数统计（可选，默认自动计算）
+
+    Returns:
+        dict:
+            - action (str): 操作类型 - "created"(新建) 或 "updated"(更新)
+            - chapter_number (int): 章节号
+            - title (str): 章节标题
+            - word_count (int): 字数
+            - style_snapshot_created (bool): 风格快照是否创建成功
+            - style_snapshot_error (str, optional): 风格快照创建失败原因
+            - message (str): 操作结果描述
+            - error (str, optional): 出错时的错误信息
+            - hint (str, optional): 出错时的建议操作
     """
     kb = _kb()
 

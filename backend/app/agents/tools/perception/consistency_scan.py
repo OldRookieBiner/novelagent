@@ -41,6 +41,16 @@ async def consistency_scan(
         chapter_a: [compare] 第一个章节号
         chapter_b: [compare] 第二个章节号
         aspect: [compare] 检查方面 - "character", "timeline", "setting", 或 "all"
+
+    Returns:
+        dict:
+            - mode (str): 扫描模式 - "full" / "transition" / "compare"
+            - issues_found (int): 发现的问题数量
+            - issues (list): 问题列表，每个问题含 type/detail/suggestion 等字段
+            - message (str): 扫描结果描述
+            - truncated (bool, optional): 结果是否因数量过多截断
+            - error (str, optional): 出错时的错误信息
+            - 不同模式返回额外字段：full 模式含 scan_chapters, transition 模式含 prev_closing_preview 等
     """
     if mode not in ("full", "transition", "compare"):
         return {"error": f"mode 必须是 full/transition/compare 之一，收到: {mode}"}
