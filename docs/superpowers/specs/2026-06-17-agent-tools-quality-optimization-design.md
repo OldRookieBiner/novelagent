@@ -56,13 +56,13 @@
 
 | 参数类别 | 默认值 | create 路径过滤 | update 路径过滤 | 说明 |
 |---|---|---|---|---|
-| 必填字段（name, role, content, title 等） | 无默认值 | — | `if v is not None` | create 路径不传则报错 |
+| 必填字段（name, role, content, title 等） | `None` | `if not v` 校验 | `if v is not None` | create 路径不传则报错；update 路径 None 不修改 |
 | create/update 共有的可选字符串字段 | `None` | `if val:` (falsy 过滤) | `if v is not None` | `None` = 不填/不修改，`""` = 清空字段 |
 | create/update 共有的可选整数字段 | `None` | `if v is not None` | `if v is not None` | `None` = 不填/不修改 |
 | 仅 update 路径有的字段 | `None` | 不纳入 create data | `if v is not None` | create 路径忽略这些字段 |
 | JSON 字符串参数（must_happen, characters, related_characters 等） | `None` | `or "[]"` 兜底解析 | `if v is not None` | `None`=不修改，`"[]"`=清空，非空 JSON=正常解析 |
 
-**为什么不用 `""` 默认值**：原 `update_character` docstring 明确说 "None 表示不修改，传入具体值则更新。要清空字段需传入空字符串"。如果默认值用 `""`，update 路径的 `if v is not None` 不会过滤 `""`，当 Agent 只传 `character_id=5` 而不传 `name` 时，`name=""` 会被写入 DB，清空角色名——这是 bug。
+**为什么必填字段也用 `None` 默认值**：如果必填字段用 `""` 默认值，update 路径的 `if v is not None` 不会过滤 `""`。当 Agent 只传 `character_id=5` 而不传 `name` 时，`name=""` 会被写入 DB，清空角色名——这是 bug。用 `None` 默认值后，create 路径 `if not name` 仍然正确（`None` 是 falsy），update 路径 `if v is not None` 正确过滤未传字段。如需在 update 路径清空必填字段，传入 `""`。
 
 **create 路径兼容性**：原 create 工具用 `if val:` 过滤 falsy 值（`""` 和 `None` 都是 falsy），所以 `None` 默认值对 create 路径完全兼容。`personality: str | None = None` + `if personality:` 的效果与原 `personality: str = ""` + `if val:` 完全一致。
 
@@ -76,8 +76,8 @@
 @tool
 async def create_character(
     character_id: int = 0,  # 非零时为更新模式
-    name: str = "",         # 必填（create 路径校验）
-    role: str = "",         # 必填（create 路径校验）
+    name: str | None = None,  # create 路径必填
+    role: str | None = None,  # create 路径必填
     personality: str | None = None,
     catchphrase: str | None = None,
     habit_action: str | None = None,
@@ -155,7 +155,7 @@ async def create_character(
 @tool
 async def create_plot_block(
     plot_block_id: int = 0,       # 非零时更新
-    title: str = "",              # 必填（create 路径校验）
+    title: str | None = None,     # create 路径必填
     chapter_start: int | None = None,  # 必填（create 路径校验）
     chapter_end: int | None = None,    # 必填（create 路径校验）
     must_happen: str | None = None,
@@ -175,7 +175,7 @@ async def create_plot_block(
 async def create_foreshadowing(
     foreshadowing_id: int = 0,
     foreshadowing_ids: str = "",  # 批量更新模式
-    content: str = "",            # create 路径必填
+    content: str | None = None,   # create 路径必填
     level: str | None = None,
     planted_chapter: int | None = None,
     expected_resolve_chapter: int | None = None,
@@ -193,7 +193,7 @@ async def create_foreshadowing(
 @tool
 async def create_subplot(
     subplot_id: int = 0,
-    name: str = "",               # create 路径必填
+    name: str | None = None,      # create 路径必填
     characters: str | None = None,  # create 路径用 or "[]" 兜底
     current_status: str | None = None,  # create 默认 "developing"，update 时 None 不修改
     raised_in_chapter: int | None = None,
@@ -208,7 +208,7 @@ async def create_subplot(
 @tool
 async def create_plot_question(
     question_id: int = 0,
-    question_text: str = "",      # create 路径必填
+    question_text: str | None = None,  # create 路径必填
     raised_in_chapter: int | None = None,
     plot_block_id: int | None = None,
     # 以下仅 update 路径

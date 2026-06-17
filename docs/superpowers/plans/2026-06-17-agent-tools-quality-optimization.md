@@ -398,8 +398,8 @@ from app.agents.tools.utils import _kb, build_changes_diff
 @tool
 async def create_character(
     character_id: int = 0,
-    name: str = "",
-    role: str = "",
+    name: str | None = None,
+    role: str | None = None,
     personality: str | None = None,
     catchphrase: str | None = None,
     habit_action: str | None = None,
@@ -600,7 +600,7 @@ from app.agents.tools.utils import _kb, build_changes_diff
 @tool
 async def create_plot_question(
     question_id: int = 0,
-    question_text: str = "",
+    question_text: str | None = None,
     raised_in_chapter: int | None = None,
     plot_block_id: int | None = None,
     # 以下仅 update 路径
@@ -766,7 +766,7 @@ from app.agents.tools.utils import _kb, build_changes_diff, parse_json_param
 @tool
 async def create_subplot(
     subplot_id: int = 0,
-    name: str = "",
+    name: str | None = None,
     characters: str | None = None,
     current_status: str | None = None,
     raised_in_chapter: int | None = None,
@@ -931,7 +931,7 @@ from app.agents.tools.utils import _kb, parse_json_param
 @tool
 async def create_plot_block(
     plot_block_id: int = 0,
-    title: str = "",
+    title: str | None = None,
     chapter_start: int | None = None,
     chapter_end: int | None = None,
     must_happen: str | None = None,
@@ -1145,7 +1145,7 @@ from app.agents.tools.utils import _kb, build_changes_diff, parse_json_param
 async def create_foreshadowing(
     foreshadowing_id: int = 0,
     foreshadowing_ids: str = "",
-    content: str = "",
+    content: str | None = None,
     level: str | None = None,
     planted_chapter: int | None = None,
     expected_resolve_chapter: int | None = None,
