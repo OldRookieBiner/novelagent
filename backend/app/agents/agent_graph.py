@@ -13,7 +13,7 @@ from app.agents.tools import INCUBATION_TOOLS, STRUCTURE_TOOLS, WRITING_TOOLS
 from app.agents.tools.registry_v2 import ToolRegistry
 from app.agents.tools.hooks import run_post_hooks
 from app.agents.tools.cache import ToolResultCache
-from app.agents.tools.registry import get_cost_tier
+from app.agents.tools.registry import get_cost_tier, PERCEPTION_TOOL_NAMES
 from app.agents.tools.utils import _truncate_result
 from app.agents.tool_context import (
     get_project_id, get_tool_cache, set_tool_cache,
@@ -78,11 +78,7 @@ def _wrap_tool_with_hooks_and_cache(tool):
         return tool
 
     tool_name = tool.name
-    is_perception = tool_name in (
-        "knowledge_search", "foreshadowing_check",
-        "consistency_scan", "style_analysis",
-        "rhythm_analysis", "progress_report",
-    )
+    is_perception = tool_name in PERCEPTION_TOOL_NAMES
 
     async def wrapped_fn(*args, **kwargs):
         cost_tier = get_cost_tier(tool_name)
@@ -145,11 +141,7 @@ def _wrap_tool_with_hooks_and_cache(tool):
         if not is_perception and isinstance(result, dict) and "error" not in result:
             cache = get_tool_cache()
             if cache:
-                cache.invalidate_by_prefix([
-                    "knowledge_search:", "consistency_scan:",
-                    "style_analysis:", "rhythm_analysis:",
-                    "progress_report:", "foreshadowing_check:",
-                ])
+                cache.invalidate_by_prefix([f"{name}:" for name in PERCEPTION_TOOL_NAMES])
 
         # ---- Post-hooks ----
         if isinstance(result, dict) and "error" not in result:

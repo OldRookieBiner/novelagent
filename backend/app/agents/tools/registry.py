@@ -98,6 +98,19 @@ REVISION_TOOLS = WRITING_TOOLS
 
 AGENT_TOOLS = WRITING_TOOLS
 
+# 感知工具名集合 — 用于缓存/hooks/成本控制的统一判定
+PERCEPTION_TOOL_NAMES = frozenset({
+    "knowledge_search", "foreshadowing_check",
+    "consistency_scan", "style_analysis",
+    "rhythm_analysis", "progress_report",
+})
+
+# 写入工具名集合 — 执行后使感知缓存失效
+WRITING_TOOL_NAMES = frozenset({
+    name for name in (t.name for t in WRITING_TOOLS)
+    if name not in PERCEPTION_TOOL_NAMES
+})
+
 
 # 工具元数据分类 — 仅程序化使用，不注入 system prompt
 TOOL_COST_TIER = {
