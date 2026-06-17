@@ -30,10 +30,12 @@ def _get_current_value(kb: KnowledgeBaseService, target_type: str, target_id: in
         if obj and obj.get("id") == target_id:
             return obj
     elif target_type == "character":
-        chars = kb.characters.list_characters()
-        for c in chars:
-            if c["id"] == target_id:
-                return c
+        char = kb.characters.get_character(target_id)
+        if char:
+            return char
+        # relation 分支暂保留 list 遍历:
+        # 1) 关系数量通常很少, N+1 影响小; 2) CharacterStore 无 get_relation(id)
+        # 后续如需优化可新增 CharacterStore.get_relation(id)
     elif target_type == "foreshadowing":
         f = kb.foreshadowings.get(target_id)
         if f:
@@ -206,6 +208,25 @@ def parse_json_param(value: str | list | dict, default, param_name: str = "") ->
             return default, warning
     warning = f"参数 {param_name} 类型不支持，使用默认值"
     return default, warning
+
+
+def build_changes_diff(before: dict, update_data: dict) -> dict:
+    """对比 before 和 update_data, 返回 {field: {before, after}} 格式的变更记录.
+
+    只包含实际发生变化的字段(before[key] != update_data[key]).
+
+    前置条件: 调用方应确保 update_data 中不含 None 值(由 if v is not None 过滤),
+    如果 update_data 残留 None 值, before 中对应的非 None 值将被记录为变更.
+
+    依赖 SQLAlchemy JSON 列的自动反序列化, before 和 update_data 中的
+    list/dict 类型可直接用 != 比较(比较元素值而非引用).
+    """
+    changes = {}
+    for key, new_val in update_data.items():
+        old_val = before.get(key)
+        if old_val != new_val:
+            changes[key] = {"before": old_val, "after": new_val}
+    return changes
 
 
 def _truncate_result(data, max_items: int = 5, max_str_len: int = 100):
