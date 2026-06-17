@@ -43,7 +43,6 @@ from app.agents.tools.creation import (
     review_chapter,
     rewrite_chapter,
     advance_phase,
-    update_foreshadowing,
     delete_plot_block,
     record_chapter_meta,
 )
@@ -91,7 +90,6 @@ _WRITING_EXTRA = [
     propose_setting_change,
     propose_chapter_rewrite,
     record_chapter_meta,
-    update_foreshadowing,
 ]
 
 STRUCTURE_TOOLS = INCUBATION_TOOLS + _STRUCTURE_EXTRA

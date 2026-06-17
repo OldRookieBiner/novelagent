@@ -292,32 +292,32 @@ class TestConsistencyScanMerge:
 class TestUpdateForeshadowingMerge:
     """update_foreshadowing 合并后批量模式测试"""
 
-    @patch("app.agents.tools.creation.update_foreshadowing._kb")
+    @patch("app.agents.tools.creation.foreshadowing._kb")
     def test_batch_mode_with_ids(self, mock_kb_fn):
         """foreshadowing_ids 参数触发批量更新"""
         mock_kb = MagicMock()
         mock_kb.foreshadowings.get.return_value = {"id": 1, "status": "active"}
         mock_kb.foreshadowings.update.return_value = {"id": 1, "status": "reclaimed"}
         mock_kb_fn.return_value = mock_kb
-        from app.agents.tools.creation.update_foreshadowing import update_foreshadowing
+        from app.agents.tools.creation.foreshadowing import create_foreshadowing
         import asyncio
-        result = asyncio.run(update_foreshadowing.ainvoke({
+        result = asyncio.run(create_foreshadowing.ainvoke({
             "foreshadowing_ids": "[1, 2, 3]",
             "status": "reclaimed",
             "resolved_chapter": 5,
         }))
         assert "updated" in result or "total_updated" in result
 
-    @patch("app.agents.tools.creation.update_foreshadowing._kb")
+    @patch("app.agents.tools.creation.foreshadowing._kb")
     def test_single_mode_unchanged(self, mock_kb_fn):
         """foreshadowing_id 单条更新仍然正常"""
         mock_kb = MagicMock()
         mock_kb.foreshadowings.get.return_value = {"id": 1, "status": "active", "level": "hint"}
         mock_kb.foreshadowings.update.return_value = {"id": 1, "status": "active", "level": "strengthened"}
         mock_kb_fn.return_value = mock_kb
-        from app.agents.tools.creation.update_foreshadowing import update_foreshadowing
+        from app.agents.tools.creation.foreshadowing import create_foreshadowing
         import asyncio
-        result = asyncio.run(update_foreshadowing.ainvoke({
+        result = asyncio.run(create_foreshadowing.ainvoke({
             "foreshadowing_id": 1,
             "level": "strengthened",
         }))
@@ -494,14 +494,14 @@ class TestSuggestWritingDirectionAuto:
 class TestUpdateForeshadowingConflict:
     """update_foreshadowing 双参数冲突检查"""
 
-    @patch("app.agents.tools.creation.update_foreshadowing._kb")
+    @patch("app.agents.tools.creation.foreshadowing._kb")
     def test_both_ids_returns_error(self, mock_kb_fn):
         """同时提供 foreshadowing_id 和 foreshadowing_ids 应返回参数冲突提示"""
         mock_kb = MagicMock()
         mock_kb_fn.return_value = mock_kb
-        from app.agents.tools.creation.update_foreshadowing import update_foreshadowing
+        from app.agents.tools.creation.foreshadowing import create_foreshadowing
         import asyncio
-        result = asyncio.run(update_foreshadowing.ainvoke({
+        result = asyncio.run(create_foreshadowing.ainvoke({
             "foreshadowing_id": 1,
             "foreshadowing_ids": "[2, 3]",
             "status": "reclaimed",
