@@ -3,6 +3,7 @@
 > 日期：2026-06-17
 > 范围：P0+P1，共 4 项优化
 > 目标：减少工具数量、消除 N+1 查询、集中硬编码常量、封装 DB session
+> v2：第二轮审查后修正 7 处问题
 
 ---
 
@@ -49,6 +50,23 @@
 
 注：`create_relation`、`create_evolution_plan`、`create_world_setting`、`generate_world_setting_complete` 均无独立 update 工具，不涉及合并。
 
+### 参数默认值规则（第二轮审查修正）
+
+合并后的工具参数默认值必须与原 `update_*` 工具保持一致，使用 `None` 而非 `""`：
+
+| 参数类别 | 默认值 | create 路径过滤 | update 路径过滤 | 说明 |
+|---|---|---|---|---|
+| 必填字段（name, role, content, title 等） | 无默认值 | — | `if v is not None` | create 路径不传则报错 |
+| create/update 共有的可选字符串字段 | `None` | `if val:` (falsy 过滤) | `if v is not None` | `None` = 不填/不修改，`""` = 清空字段 |
+| create/update 共有的可选整数字段 | `None` | `if v is not None` | `if v is not None` | `None` = 不填/不修改 |
+| 仅 update 路径有的字段 | `None` | 不纳入 create data | `if v is not None` | create 路径忽略这些字段 |
+
+**为什么不用 `""` 默认值**：原 `update_character` docstring 明确说 "None 表示不修改，传入具体值则更新。要清空字段需传入空字符串"。如果默认值用 `""`，update 路径的 `if v is not None` 不会过滤 `""`，当 Agent 只传 `character_id=5` 而不传 `name` 时，`name=""` 会被写入 DB，清空角色名——这是 bug。
+
+**create 路径兼容性**：原 create 工具用 `if val:` 过滤 falsy 值（`""` 和 `None` 都是 falsy），所以 `None` 默认值对 create 路径完全兼容。`personality: str | None = None` + `if personality:` 的效果与原 `personality: str = ""` + `if val:` 完全一致。
+
+**`current_status` 特殊处理**：原 `create_subplot` 有 `current_status: str = "developing"`（创建时默认值），合并后改为 `current_status: str | None = None`。create 路径中 `current_status = current_status or "developing"` 保证创建时默认 "developing"；update 路径 `None` 不修改。
+
 ### 合并后 create 工具的内部路由逻辑
 
 以 `create_character` 为例：
@@ -56,29 +74,29 @@
 ```python
 @tool
 async def create_character(
-    character_id: int = 0,  # 新增：非零时为更新模式
-    name: str = "",
-    role: str = "",
-    personality: str = "",
-    catchphrase: str = "",
-    habit_action: str = "",
-    deep_fear: str = "",
-    core_motivation: str = "",
-    growth_arc: str = "",
-    appearance: str = "",
-    backstory: str = "",
-    signature_item: str = "",
+    character_id: int = 0,  # 非零时为更新模式
+    name: str = "",         # 必填（create 路径校验）
+    role: str = "",         # 必填（create 路径校验）
+    personality: str | None = None,
+    catchphrase: str | None = None,
+    habit_action: str | None = None,
+    deep_fear: str | None = None,
+    core_motivation: str | None = None,
+    growth_arc: str | None = None,
+    appearance: str | None = None,
+    backstory: str | None = None,
+    signature_item: str | None = None,
 ) -> dict:
     """创建新角色或更新已有角色。提供 character_id 时为更新模式。
 
     - character_id=0（默认）：创建新角色（name 和 role 必填）
-    - character_id>0：更新指定 ID 的角色，空字符串字段不修改
+    - character_id>0：更新指定 ID 的角色。None 表示不修改，空字符串 "" 表示清空字段
     """
     kb = _kb()
 
     if character_id:
         # --- 更新路径 ---
-        before = kb.characters.get_by_id(character_id)
+        before = kb.characters.get_character(character_id)
         if not before:
             return {"error": f"角色 ID {character_id} 不存在"}
 
@@ -104,8 +122,7 @@ async def create_character(
             "message": f"角色「{updated.get('name')}」已更新 {len(changes)} 个字段",
         }
     else:
-        # --- 创建路径（与原 create_character 逻辑一致）---
-        # 校验必填字段
+        # --- 创建路径 ---
         if not name or not role:
             return {"error": "创建角色时 name 和 role 为必填字段"}
 
@@ -117,7 +134,7 @@ async def create_character(
             ("appearance", appearance), ("backstory", backstory),
             ("signature_item", signature_item),
         ]:
-            if val:
+            if val:  # falsy 过滤：None 和 "" 都不会写入
                 data[key] = val
         char = kb.characters.create_character(data)
         return {
@@ -129,15 +146,85 @@ async def create_character(
         }
 ```
 
-**必填字段校验规则**：合并后所有字段都需给默认值（LangChain `@tool` 的限制），但 create 路径仍需校验原有必填字段。各工具的必填字段如下：
+### 各工具完整参数签名
 
-| 工具 | create 路径必填字段 |
-|---|---|
-| `create_character` | `name`, `role` |
-| `create_foreshadowing` | `content` |
-| `create_plot_block` | `title`, `chapter_start`, `chapter_end` |
-| `create_subplot` | `name` |
-| `create_plot_question` | `question_text` |
+**create_plot_block**：
+
+```python
+@tool
+async def create_plot_block(
+    plot_block_id: int = 0,       # 非零时更新
+    title: str = "",              # 必填（create 路径校验）
+    chapter_start: int | None = None,  # 必填（create 路径校验）
+    chapter_end: int | None = None,    # 必填（create 路径校验）
+    must_happen: str = "[]",
+    questions_to_raise: str = "[]",
+    questions_to_answer: str = "[]",
+    expected_mood: str | None = None,
+    completion_summary: str | None = None,  # 仅 update 路径
+) -> dict:
+```
+
+注：`must_happen`/`questions_to_raise`/`questions_to_answer` 保留 `""` / `"[]"` 默认值，因为它们是 JSON 字符串参数，语义与普通字符串不同。原 create 和 update 都用 `parse_json_param` 处理。update 路径中 `None` 表示不修改，`"[]"` 表示清空列表。create 路径中 `"[]"` 解析为空列表。
+
+**create_foreshadowing**：
+
+```python
+@tool
+async def create_foreshadowing(
+    foreshadowing_id: int = 0,
+    foreshadowing_ids: str = "",  # 批量更新模式
+    content: str = "",            # create 路径必填
+    level: str | None = None,
+    planted_chapter: int | None = None,
+    expected_resolve_chapter: int | None = None,
+    related_characters: str = "[]",
+    # 以下仅 update 路径
+    status: str | None = None,
+    appearance_count: int | None = None,
+    resolved_chapter: int | None = None,
+) -> dict:
+```
+
+**create_subplot**：
+
+```python
+@tool
+async def create_subplot(
+    subplot_id: int = 0,
+    name: str = "",               # create 路径必填
+    characters: str = "[]",
+    current_status: str | None = None,  # create 默认 "developing"，update 时 None 不修改
+    raised_in_chapter: int | None = None,
+    planned_intersection_chapter: int | None = None,
+    expected_resolution_chapter: int | None = None,
+) -> dict:
+```
+
+**create_plot_question**：
+
+```python
+@tool
+async def create_plot_question(
+    question_id: int = 0,
+    question_text: str = "",      # create 路径必填
+    raised_in_chapter: int | None = None,
+    plot_block_id: int | None = None,
+    # 以下仅 update 路径
+    answered_in_chapter: int | None = None,
+    status: str | None = None,
+) -> dict:
+```
+
+### 必填字段校验规则
+
+| 工具 | create 路径必填字段 | 校验条件 |
+|---|---|---|
+| `create_character` | `name`, `role` | `if not name or not role` |
+| `create_foreshadowing` | `content` | `if not content` |
+| `create_plot_block` | `title`, `chapter_start`, `chapter_end` | `if not title or chapter_start is None or chapter_end is None` |
+| `create_subplot` | `name` | `if not name` |
+| `create_plot_question` | `question_text` | `if not question_text` |
 
 ### create_foreshadowing 的三模式路由
 
@@ -153,7 +240,7 @@ async def create_character(
 以下文件在代码/hint 文本中引用了 `update_*` 工具名，需同步更新：
 
 - `delete_plot_block.py`：hint 文本 `"使用 update_plot_question 工具"` → 改为 `"使用 create_plot_question(question_id=...) 工具"`
-- 全局扫描 `rg "update_character|update_foreshadowing|update_plot_block|update_subplot|update_plot_question" backend/` 确认无遗漏
+- 全局扫描 `rg "update_character|update_foreshadowing|update_plot_block|update_subplot|update_plot_question" backend/app/agents/tools/` 确认无遗漏（注意：`api/` 和 `services/` 下的同名函数是 REST API 端点和 Store 方法，不属于 Agent 工具，不受影响）
 
 ### registry.py 变化
 
@@ -161,10 +248,13 @@ async def create_character(
 - `_STRUCTURE_EXTRA` 和 `_WRITING_EXTRA` 中移除上述 5 个条目
 - `creation/__init__.py` 中移除上述 5 个 import
 - `AGENT_TOOLS = WRITING_TOOLS` 无需改动（列表已自动不包含被删的 import）
+- `registry_v2.py` 引用 `WRITING_TOOLS` 列表，删除后列表自动更新，无需额外修改
 
 ### 下游影响
 
 - **前端 AgentChatPanel.tsx**：工具名→中文标签映射表需更新。移除 `update_character: '更新角色'` 等 5 条，新增逻辑——当 `create_*` 工具返回含 `updated_fields` 或 `changes` 时，前端显示"更新角色"而非"创建角色"
+- **REST API 层**（`api/characters.py`、`api/knowledge.py`）：**不受影响**。这些 `update_character`/`update_plot_block` 等是 REST API 端点函数名，与 Agent 工具无关
+- **Store 方法层**（`kb.characters.update_character()` 等）：**不受影响**。底层 Store 方法名不变，Agent 工具层只是调用方
 - **知识库数据**：底层 Store 方法调用不变
 - **SSE 事件流**：不受影响
 - **后端测试**：`test_agent_tools.py` 和 `test_change_workflow.py` 需更新 import 路径和工具名引用
@@ -182,11 +272,13 @@ async def create_character(
 
 5 个更新路径中有 4 个先用 `list_*()` 获取全量数据再遍历找目标 ID（foreshadowing 已使用 `get()` 无此问题）。当实体数量多时，每次更新都加载全部同类实体，是性能问题也是局部性问题。
 
-### Store 现有方法盘点
+此外，`utils.py` 的 `_get_current_value()` 和 `delete_plot_block.py` 也有同类 N+1 问题，一并消除。
+
+### Store 现有方法盘点（第二轮审查修正）
 
 | Store | 已有 `get_by_id` 类方法 | 需补的方法 |
 |---|---|---|
-| CharacterStore | ❌ | `get_by_id(id: int) -> dict | None` |
+| CharacterStore | ✅ 已有 `get_character(id)` | 无需补 |
 | PlotStore | ❌ | `get_plot_block_by_id(id)` / `get_subplot_by_id(id)` / `get_plot_question_by_id(id)` |
 | ForeshadowingStore | ✅ 已有 `get(id)` | 无需补 |
 | StyleStore | ✅ 已有 `get_constraints()`（单例） | 无需补 |
@@ -194,10 +286,6 @@ async def create_character(
 ### 新增 Store 方法签名
 
 ```python
-# CharacterStore
-def get_by_id(self, id: int) -> dict | None:
-    """按 ID 获取单个角色，不存在返回 None"""
-
 # PlotStore
 def get_plot_block_by_id(self, id: int) -> dict | None:
     """按 ID 获取单个情节块，不存在返回 None"""
@@ -209,7 +297,7 @@ def get_plot_question_by_id(self, id: int) -> dict | None:
     """按 ID 获取单个问题，不存在返回 None"""
 ```
 
-内部实现：`SessionLocal()` + `db.get(Model, id)` + `project_id` 过滤，与现有 Store 方法模式一致。返回 `dict`（通过 `_to_dict` 转换），不存在返回 `None`。
+内部实现：`self.session(readonly=True)` + `db.query(Model).filter(Model.id == id, Model.project_id == self.project_id).first()` + `_to_dict`，与现有 Store 方法模式一致。返回 `dict`，不存在返回 `None`。
 
 ### `build_changes_diff` 提取
 
@@ -220,6 +308,10 @@ def build_changes_diff(before: dict, update_data: dict) -> dict:
     """对比 before 和 update_data，返回 {field: {before, after}} 格式的变更记录。
 
     只包含实际发生变化的字段（before[key] != update_data[key]）。
+
+    前置条件：调用方应确保 update_data 中不含 None 值（由 if v is not None 过滤），
+    如果 update_data 残留 None 值，before 中对应的非 None 值将被记录为变更。
+
     依赖 SQLAlchemy JSON 列的自动反序列化，before 和 update_data 中的
     list/dict 类型可直接用 != 比较（比较元素值而非引用）。
     """
@@ -231,18 +323,19 @@ def build_changes_diff(before: dict, update_data: dict) -> dict:
     return changes
 ```
 
-### 合并后 create 工具的更新路径替换
+### N+1 消除范围（第二轮审查扩展）
 
-```python
-# 旧：N+1 查询
-chars = kb.characters.list_characters()
-for c in chars:
-    if c["id"] == character_id:
-        before = c
+| 位置 | 旧代码 | 新代码 |
+|---|---|---|
+| 合并后 create_character 更新路径 | `kb.characters.list_characters()` 遍历 | `kb.characters.get_character(id)` |
+| 合并后 create_plot_block 更新路径 | `kb.plots.list_plot_blocks()` 遍历 | `kb.plots.get_plot_block_by_id(id)` |
+| 合并后 create_subplot 更新路径 | `kb.plots.list_subplots()` 遍历 | `kb.plots.get_subplot_by_id(id)` |
+| 合并后 create_plot_question 更新路径 | `kb.plots.list_plot_questions()` 遍历 | `kb.plots.get_plot_question_by_id(id)` |
+| `utils.py` `_get_current_value` character 分支 | `kb.characters.list_characters()` 遍历 | `kb.characters.get_character(id)` |
+| `utils.py` `_get_current_value` relation 分支 | `kb.characters.list_relations()` 遍历 | 新增 `CharacterStore.get_relation(id)` 或保留遍历（relation 数量通常少） |
+| `delete_plot_block.py` | `kb.plots.list_plot_blocks()` 遍历 | `kb.plots.get_plot_block_by_id(id)` |
 
-# 新：直接查询
-before = kb.characters.get_by_id(character_id)
-```
+注：`_get_current_value` 的 relation 分支暂保留遍历（关系数量通常很少，且 CharacterStore 无 `get_relation(id)` 方法，为最小改动不新增方法）。
 
 ---
 
@@ -355,6 +448,7 @@ class WorkflowStore(_BaseStore):
 - `get_current_phase()` 和 `advance()` 都使用 `self.session()` 管理 DB session，与现有 Store 模式一致
 - 内部调用 `from app.utils.workflow import get_or_create_workflow_state` 复用 PostgreSQL/SQLite 兼容的 upsert 逻辑，不重新实现
 - `advance()` 中的行锁逻辑：在 `self.session()` 内使用 `db.refresh(ws, with_for_update=True)` 获取行锁后，校验 `expected_current` 与实际阶段是否一致，一致则写入，不一致则返回 `conflict=True`
+- `advance()` 中写操作需要持锁写入，不能用 `self.session()` 的自动 commit，需在 `self.session()` 内手动 commit（与 `advance_phase.py` 现有行为一致：获取行锁 → 校验 → 写入 → commit → 释放锁）
 
 ### advance_phase 工具简化
 
@@ -447,9 +541,27 @@ class KnowledgeBaseService:
         self.workflows = WorkflowStore(project_id)
 ```
 
+### stores/__init__.py 变化
+
+```python
+from app.agents.services.stores.workflow_store import WorkflowStore
+
+__all__ = [
+    ...,
+    "WorkflowStore",
+]
+```
+
 ### 并发安全
 
 `WorkflowStore.advance()` 内部使用 `with_for_update=True` 行锁 + `expected_current` 乐观锁双重保障，与当前 `advance_phase` 的并发控制逻辑等价。
+
+### 注意：WorkflowStore.advance() 的 session 管理差异
+
+`_BaseStore.session()` 上下文管理器在正常退出时自动 commit，异常时 rollback。但 `advance()` 需要"获取行锁 → 校验 → 写入 → commit"的精确控制。实现时需注意：
+
+- 校验失败时不应 commit，但也不应 raise（而是返回 `conflict=True`）
+- 方案：在 `self.session()` 内部手动控制，校验失败时 `db.rollback()` 后返回结果（不 raise），session 上下文管理器在 finally 中 close
 
 ---
 
@@ -468,11 +580,14 @@ class KnowledgeBaseService:
 |------|----------|
 | 合并后 Agent 不理解"填 id 则更新"的模式 | 更新 docstring，在工具描述首行说明双模式 |
 | 合并后 create 路径缺少必填校验，Agent 创建无名角色 | create 路径加必填字段校验，缺则返回 error |
+| 参数默认值 `None` 导致 create 路径类型不安全 | create 路径用 `if val:` 过滤（None/"" 都是 falsy），行为与原 create 工具一致 |
 | 前端 AgentChatPanel 工具名映射过期 | 同步更新映射表，基于返回值判断显示"创建"还是"更新" |
 | 工具代码中硬编码的 update_* 工具名引用（如 delete_plot_block 的 hint） | 全局扫描并更新所有引用 |
 | Store 新增 `get_by_id` 方法遗漏 project_id 过滤 | 遵循 _BaseStore 模式，所有查询都带 project_id 条件 |
 | WorkflowStore 并发逻辑与现有行为不一致 | 复用 get_or_create_workflow_state，保留行锁 + 乐观锁双保障，迁移后跑 advance_phase 相关测试验证 |
+| WorkflowStore.advance() 的 session 管理与 _BaseStore 默认行为不同 | advance() 内部手动控制 commit/rollback，校验失败不 raise 只返回 conflict |
 | 删除 update_* 工具后旧测试失败 | 先更新测试，再删除工具文件 |
+| REST API 层 update_* 函数名误改 | 明确 API 层（`api/`）和 Store 方法名不在合并范围 |
 
 ---
 
@@ -481,10 +596,12 @@ class KnowledgeBaseService:
 1. 工具数从 33 降至 28，所有 update_* 工具已删除
 2. 合并后的 create 工具 create 路径和 update 路径行为与原工具等价
 3. create 路径保留必填字段校验（name/role 等），缺失时返回 error
-4. 4 个更新路径不再使用 `list_*()` 遍历，改为 `get_by_id()` 直接查询
-5. 感知/写入工具名只在 `registry.py` 定义一次，`agent_graph.py` 和 `hooks.py` 引用常量
-6. `advance_phase` 不再直接操作 `SessionLocal()`，通过 `kb.workflows` 调用
-7. 前端 `AgentChatPanel.tsx` 工具名映射已更新
-8. `delete_plot_block.py` 等 hint 文本中不再引用已删除的 update_* 工具名
-9. `docker exec novelagent-backend-1 pytest -v` 全部通过
-10. 前端功能不受影响
+4. update 路径参数默认 `None`，`None` 不修改，`""` 清空字段（与原 update 工具一致）
+5. 所有 N+1 查询位置（含 `_get_current_value` 和 `delete_plot_block`）改为 `get_by_id()` 直接查询
+6. 感知/写入工具名只在 `registry.py` 定义一次，`agent_graph.py` 引用常量
+7. `advance_phase` 不再直接操作 `SessionLocal()`，通过 `kb.workflows` 调用
+8. 前端 `AgentChatPanel.tsx` 工具名映射已更新
+9. `delete_plot_block.py` 等 hint 文本中不再引用已删除的 update_* 工具名
+10. REST API 层和 Store 方法名不变
+11. `docker exec novelagent-backend-1 pytest -v` 全部通过
+12. 前端功能不受影响
