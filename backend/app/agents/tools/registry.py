@@ -44,7 +44,6 @@ from app.agents.tools.creation import (
     rewrite_chapter,
     advance_phase,
     update_plot_block,
-    update_subplot,
     update_foreshadowing,
     delete_plot_block,
     record_chapter_meta,
@@ -94,7 +93,6 @@ _WRITING_EXTRA = [
     propose_setting_change,
     propose_chapter_rewrite,
     record_chapter_meta,
-    update_subplot,
     update_foreshadowing,
 ]
 
