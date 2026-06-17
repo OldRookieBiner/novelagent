@@ -598,7 +598,7 @@ __all__ = [
 1. 工具数从 33 降至 28，所有 update_* 工具已删除
 2. 合并后的 create 工具 create 路径和 update 路径行为与原工具等价
 3. create 路径保留必填字段校验（name/role 等），缺失时返回 error
-4. update 路径参数默认 `None`，`None` 不修改，`""` 清空字段（与原 update 工具一致）
+4. update 路径参数默认 `None`，`None` 不修改；普通字符串 `""` 清空字段；JSON 参数 `"[]"` 清空列表（与原 update 工具一致）
 5. 所有 N+1 查询位置（含 `_get_current_value` 和 `delete_plot_block`）改为 `get_by_id()` 直接查询
 6. 感知/写入工具名只在 `registry.py` 定义一次，`agent_graph.py` 引用常量
 7. `advance_phase` 不再直接操作 `SessionLocal()`，通过 `kb.workflows` 调用
