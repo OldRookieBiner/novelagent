@@ -61,6 +61,15 @@ class PlotStore(_BaseStore):
                 raise ValueError(f"PlotBlock {block_id} not found")
             db.delete(obj)
 
+    def get_plot_block_by_id(self, id: int) -> Optional[dict]:
+        """按 ID 获取单个情节块, 不存在返回 None"""
+        with self.session(readonly=True) as db:
+            obj = db.query(PlotBlock).filter(
+                PlotBlock.id == id,
+                PlotBlock.project_id == self.project_id,
+            ).first()
+            return self._to_dict(obj)
+
     # --- PlotQuestion ---
 
     def list_plot_questions(self, status: Optional[str] = None) -> list[dict]:
@@ -103,6 +112,15 @@ class PlotStore(_BaseStore):
             db.refresh(obj)
             return self._to_dict(obj)
 
+    def get_plot_question_by_id(self, id: int) -> Optional[dict]:
+        """按 ID 获取单个问题, 不存在返回 None"""
+        with self.session(readonly=True) as db:
+            obj = db.query(PlotQuestion).filter(
+                PlotQuestion.id == id,
+                PlotQuestion.project_id == self.project_id,
+            ).first()
+            return self._to_dict(obj)
+
     # --- Subplot ---
 
     def list_subplots(self) -> list[dict]:
@@ -143,6 +161,15 @@ class PlotStore(_BaseStore):
             if not obj:
                 raise ValueError(f"Subplot {subplot_id} not found")
             db.delete(obj)
+
+    def get_subplot_by_id(self, id: int) -> Optional[dict]:
+        """按 ID 获取单个支线, 不存在返回 None"""
+        with self.session(readonly=True) as db:
+            obj = db.query(Subplot).filter(
+                Subplot.id == id,
+                Subplot.project_id == self.project_id,
+            ).first()
+            return self._to_dict(obj)
 
     # --- 内部方法 ---
 
