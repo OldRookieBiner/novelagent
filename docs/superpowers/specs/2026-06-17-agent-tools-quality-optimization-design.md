@@ -60,6 +60,7 @@
 | create/update 共有的可选字符串字段 | `None` | `if val:` (falsy 过滤) | `if v is not None` | `None` = 不填/不修改，`""` = 清空字段 |
 | create/update 共有的可选整数字段 | `None` | `if v is not None` | `if v is not None` | `None` = 不填/不修改 |
 | 仅 update 路径有的字段 | `None` | 不纳入 create data | `if v is not None` | create 路径忽略这些字段 |
+| JSON 字符串参数（must_happen, characters, related_characters 等） | `None` | `or "[]"` 兜底解析 | `if v is not None` | `None`=不修改，`"[]"`=清空，非空 JSON=正常解析 |
 
 **为什么不用 `""` 默认值**：原 `update_character` docstring 明确说 "None 表示不修改，传入具体值则更新。要清空字段需传入空字符串"。如果默认值用 `""`，update 路径的 `if v is not None` 不会过滤 `""`，当 Agent 只传 `character_id=5` 而不传 `name` 时，`name=""` 会被写入 DB，清空角色名——这是 bug。
 
@@ -157,15 +158,15 @@ async def create_plot_block(
     title: str = "",              # 必填（create 路径校验）
     chapter_start: int | None = None,  # 必填（create 路径校验）
     chapter_end: int | None = None,    # 必填（create 路径校验）
-    must_happen: str = "[]",
-    questions_to_raise: str = "[]",
-    questions_to_answer: str = "[]",
+    must_happen: str | None = None,
+    questions_to_raise: str | None = None,
+    questions_to_answer: str | None = None,
     expected_mood: str | None = None,
     completion_summary: str | None = None,  # 仅 update 路径
 ) -> dict:
 ```
 
-注：`must_happen`/`questions_to_raise`/`questions_to_answer` 保留 `""` / `"[]"` 默认值，因为它们是 JSON 字符串参数，语义与普通字符串不同。原 create 和 update 都用 `parse_json_param` 处理。update 路径中 `None` 表示不修改，`"[]"` 表示清空列表。create 路径中 `"[]"` 解析为空列表。
+注：`must_happen`/`questions_to_raise`/`questions_to_answer` 改为 `None` 默认值，与普通字符串字段规则一致。`"[]"` 默认值会导致 update 路径无法区分"Agent 没传"和"Agent 想清空"——当 Agent 只传 `plot_block_id=5` 时，`must_happen="[]"` 非 None 会被误处理为清空操作。create 路径用 `or "[]"` 兜底保证空列表默认值。update 路径用 `if v is not None` 过滤，`None` 不修改，`"[]"` 解析为空列表（清空），非空 JSON 正常解析。
 
 **create_foreshadowing**：
 
@@ -178,7 +179,7 @@ async def create_foreshadowing(
     level: str | None = None,
     planted_chapter: int | None = None,
     expected_resolve_chapter: int | None = None,
-    related_characters: str = "[]",
+    related_characters: str | None = None,  # create 路径用 or "[]" 兜底
     # 以下仅 update 路径
     status: str | None = None,
     appearance_count: int | None = None,
@@ -193,7 +194,7 @@ async def create_foreshadowing(
 async def create_subplot(
     subplot_id: int = 0,
     name: str = "",               # create 路径必填
-    characters: str = "[]",
+    characters: str | None = None,  # create 路径用 or "[]" 兜底
     current_status: str | None = None,  # create 默认 "developing"，update 时 None 不修改
     raised_in_chapter: int | None = None,
     planned_intersection_chapter: int | None = None,

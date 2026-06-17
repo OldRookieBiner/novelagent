@@ -16,7 +16,9 @@
 - 后端改 Python 源码后需 `docker compose restart backend`
 - 前端改 TS 源码后需 `docker compose build --no-cache frontend && docker compose up -d frontend`
 - 测试：`docker exec novelagent-backend-1 pytest -v`
-- 参数默认值规则：update 路径可选字段默认 `None`，create 路径用 `if val:` 过滤，update 路径用 `if v is not None` 过滤
+- 参数默认值规则：
+  - 普通字符串/整数字段：update 路径可选字段默认 `None`，create 路径用 `if val:` 过滤，update 路径用 `if v is not None` 过滤
+  - JSON 字符串参数（must_happen, questions_to_*, characters, related_characters 等）：同样默认 `None`，create 路径用 `or "[]"` 兜底，update 路径用 `if v is not None` 过滤。禁止用 `"[]"` 默认值——`"[]"` 非 None 会导致 update 路径无法区分"Agent 没传"和"Agent 想清空"
 - REST API 层 (`api/`) 和 Store 方法名不在合并范围，不受影响
 - 禁止打补丁式修复——发现 bug 定位根因
 
@@ -278,6 +280,9 @@ def build_changes_diff(before: dict, update_data: dict) -> dict:
         char = kb.characters.get_character(target_id)
         if char:
             return char
+    # relation 分支暂保留 list 遍历:
+    # 1) 关系数量通常很少, N+1 影响小; 2) CharacterStore 无 get_relation(id)
+    # 后续如需优化可新增 CharacterStore.get_relation(id)
 ```
 
 - [ ] **Step 5: 运行测试确认通过**
@@ -762,7 +767,7 @@ from app.agents.tools.utils import _kb, build_changes_diff, parse_json_param
 async def create_subplot(
     subplot_id: int = 0,
     name: str = "",
-    characters: str = "[]",
+    characters: str | None = None,
     current_status: str | None = None,
     raised_in_chapter: int | None = None,
     planned_intersection_chapter: int | None = None,
@@ -814,8 +819,10 @@ async def create_subplot(
         if not name:
             return {"error": "创建支线时 name 为必填字段"}
 
-        chars, chars_warn = parse_json_param(characters, [], "characters")
+        chars, chars_warn = parse_json_param(characters or "[]", [], "characters")
 
+        # 注意: Subplot 模型 current_status 默认值是 "hint", 但工具层统一用 "developing"
+        # 这是已有不一致, create 路径始终用 "developing" 覆盖模型默认值, 不在本次修复范围
         effective_status = current_status or "developing"
         data = {"name": name, "characters": chars, "current_status": effective_status}
         if raised_in_chapter is not None:
@@ -927,9 +934,9 @@ async def create_plot_block(
     title: str = "",
     chapter_start: int | None = None,
     chapter_end: int | None = None,
-    must_happen: str = "[]",
-    questions_to_raise: str = "[]",
-    questions_to_answer: str = "[]",
+    must_happen: str | None = None,
+    questions_to_raise: str | None = None,
+    questions_to_answer: str | None = None,
     expected_mood: str | None = None,
     completion_summary: str | None = None,
 ) -> dict:
@@ -965,31 +972,24 @@ async def create_plot_block(
             if value is not None:
                 update_data[field] = value
 
-        # 处理 JSON 参数
-        if must_happen is not None and must_happen != "[]":
+        # 处理 JSON 参数: None = 不修改, 非 None = 解析后写入(含 "[]" 清空)
+        if must_happen is not None:
             parsed, warn = parse_json_param(must_happen, [], "must_happen")
             update_data["must_happen"] = parsed
             if warn:
                 warnings.append(warn)
-        elif must_happen == "[]":
-            # 空列表传入 = 清空 must_happen
-            update_data["must_happen"] = []
 
-        if questions_to_raise is not None and questions_to_raise != "[]":
+        if questions_to_raise is not None:
             parsed, warn = parse_json_param(questions_to_raise, [], "questions_to_raise")
             update_data["questions_to_raise"] = parsed
             if warn:
                 warnings.append(warn)
-        elif questions_to_raise == "[]":
-            update_data["questions_to_raise"] = []
 
-        if questions_to_answer is not None and questions_to_answer != "[]":
+        if questions_to_answer is not None:
             parsed, warn = parse_json_param(questions_to_answer, [], "questions_to_answer")
             update_data["questions_to_answer"] = parsed
             if warn:
                 warnings.append(warn)
-        elif questions_to_answer == "[]":
-            update_data["questions_to_answer"] = []
 
         if not update_data:
             return {"message": "无字段需要更新", "plot_block_id": plot_block_id}
@@ -1010,9 +1010,9 @@ async def create_plot_block(
         if not title or chapter_start is None or chapter_end is None:
             return {"error": "创建情节块时 title, chapter_start, chapter_end 为必填字段"}
 
-        must, must_warn = parse_json_param(must_happen, [], "must_happen")
-        raise_q, raise_q_warn = parse_json_param(questions_to_raise, [], "questions_to_raise")
-        answer_q, answer_q_warn = parse_json_param(questions_to_answer, [], "questions_to_answer")
+        must, must_warn = parse_json_param(must_happen or "[]", [], "must_happen")
+        raise_q, raise_q_warn = parse_json_param(questions_to_raise or "[]", [], "questions_to_raise")
+        answer_q, answer_q_warn = parse_json_param(questions_to_answer or "[]", [], "questions_to_answer")
 
         data = {
             "title": title,
@@ -1149,7 +1149,7 @@ async def create_foreshadowing(
     level: str | None = None,
     planted_chapter: int | None = None,
     expected_resolve_chapter: int | None = None,
-    related_characters: str = "[]",
+    related_characters: str | None = None,
     # 以下仅 update 路径
     status: str | None = None,
     appearance_count: int | None = None,
@@ -1220,7 +1220,7 @@ async def create_foreshadowing(
     if not content:
         return {"error": "创建伏笔时 content 为必填字段"}
 
-    characters, characters_warn = parse_json_param(related_characters, [], "related_characters")
+    characters, characters_warn = parse_json_param(related_characters or "[]", [], "related_characters")
 
     data = {
         "content": content,
@@ -1594,8 +1594,11 @@ class WorkflowStore(_BaseStore):
             actual_phase = ws.stage
 
             if expected_current is not None and actual_phase != expected_current:
-                # 并发冲突, 回滚但不 raise
+                # 并发冲突: rollback 后显式 commit 空事务
+                # 原因: self.session() 正常退出时会 db.commit()
+                # rollback 后的 commit 是 no-op, 但语义更清晰
                 db.rollback()
+                db.commit()
                 return {
                     "current_phase": actual_phase,
                     "new_phase": actual_phase,
@@ -1605,17 +1608,21 @@ class WorkflowStore(_BaseStore):
 
             # 计算目标阶段
             current_phase = actual_phase
+            # 使用字符串 key/value 而非 Phase 枚举
+            # 原因: ws.stage 从 DB 读出是纯字符串, 返回值也应为字符串
+            # Phase(str, Enum) 虽然字符串可匹配枚举 key, 但 new_phase 会是枚举值
+            # 导致返回值中 current_phase/suggested_phase 类型不一致
             if direction == "forward":
                 forward_map = {
-                    Phase.INCUBATION: Phase.STRUCTURE,
-                    Phase.STRUCTURE: Phase.WRITING,
-                    Phase.WRITING: Phase.REVISION,
+                    "incubation": "structure",
+                    "structure": "writing",
+                    "writing": "revision",
                 }
                 new_phase = forward_map.get(current_phase, current_phase)
             else:
                 backward_map = {
-                    Phase.WRITING: Phase.STRUCTURE,
-                    Phase.STRUCTURE: Phase.INCUBATION,
+                    "writing": "structure",
+                    "structure": "incubation",
                 }
                 new_phase = backward_map.get(current_phase, current_phase)
 
@@ -1702,9 +1709,10 @@ async def advance_phase(direction: str = "forward") -> dict:
 
     # 2. 计算目标阶段(逻辑不变, 仍在工具层)
     if direction == "backward":
+        # 使用字符串 key/value 而非 Phase 枚举, 与 WorkflowStore.advance() 保持一致
         backward_map = {
-            Phase.WRITING: Phase.STRUCTURE,
-            Phase.STRUCTURE: Phase.INCUBATION,
+            "writing": "structure",
+            "structure": "incubation",
         }
         if current_phase not in backward_map:
             return {
@@ -1842,7 +1850,11 @@ git commit -m "refactor(workflow): create WorkflowStore and simplify advance_pha
 在映射表下方添加辅助函数：
 
 ```typescript
-/** 根据 create_* 工具的返回值判断显示"创建"还是"更新" */
+/** 根据 create_* 工具的返回值判断显示"创建"还是"更新"
+ *  注意: result 在工具调用开始时不可用(此时显示"创建xxx"),
+ *  工具完成后需更新标签为"更新xxx"(基于返回值中的 updated_fields/changes).
+ *  调用方需在 SSE 流的 tool_result 事件中重新调用此函数更新标签.
+ */
 function getToolLabel(toolName: string, result?: Record<string, unknown>): string
 {
   const baseLabels: Record<string, string> = {
