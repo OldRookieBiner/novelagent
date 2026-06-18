@@ -13,11 +13,10 @@ interface StructureTabProps {
   projectId: number
 }
 
-type StructureSection = 'plot_blocks' | 'questions' | 'subplots'
+type StructureSection = 'plot_blocks' | 'subplots'
 
 const SECTIONS: { key: StructureSection; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: 'plot_blocks', label: '情节块', icon: BoxSelect },
-  { key: 'questions', label: '问题链', icon: GitBranch },
   { key: 'subplots', label: '支线网络', icon: Network },
 ]
 
@@ -62,10 +61,8 @@ export function StructureTab({ projectId }: StructureTabProps) {
     switch (activeSection) {
       case 'plot_blocks':
         return <PlotBlocksView data={plotBlocks} loading={loading} projectId={projectId} onUpdate={loadStructure} />
-      case 'questions':
-        return <QuestionsView data={plotBlocks} loading={loading} />
       case 'subplots':
-        return <SubplotsView data={subplots} loading={loading} projectId={projectId} onUpdate={loadStructure} />
+        return <SubplotsView data={subplots} loading={loading} projectId={projectId} onUpdate={loadStructure} plotBlocks={plotBlocks} />
       default:
         return null
     }
@@ -168,9 +165,23 @@ function PlotBlocksView({ data, loading, projectId, onUpdate }: { data: PlotBloc
 
   if (loading) return <LoadingSkeleton />
 
+  // 问题链统计：所有情节块的回答/提出问题汇总
+  const totalToAnswer = data.reduce((sum, b) => sum + (b.questions_to_answer?.length || 0), 0)
+  const totalToRaise = data.reduce((sum, b) => sum + (b.questions_to_raise?.length || 0), 0)
+  const totalQuestions = totalToAnswer + totalToRaise
+
   return (
     <div className="space-y-4">
-      <h3 className="text-sm font-semibold">情节块</h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold">情节块</h3>
+        {totalQuestions > 0 && (
+          <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+            <span>问题总数 <span className="text-foreground font-medium">{totalQuestions}</span></span>
+            <span className="text-emerald-600">回答 {totalToAnswer}</span>
+            <span className="text-amber-600">提出 {totalToRaise}</span>
+          </div>
+        )}
+      </div>
       {data.map((block, index) => (
         <div key={block.id} className="border rounded-lg p-4 space-y-2">
           <div className="flex items-center gap-2">
@@ -282,47 +293,8 @@ function PlotBlocksView({ data, loading, projectId, onUpdate }: { data: PlotBloc
   )
 }
 
-// ========== 问题链视图 ==========
-function QuestionsView({ data, loading }: { data: PlotBlock[]; loading: boolean }) {
-  if (loading) return <LoadingSkeleton />
-  if (!data?.length) return <EmptyState label="问题链将随情节块一起生成" />
-
-  const questions: { text: string; type: 'answer' | 'raise'; blockTitle: string }[] = []
-  for (const block of data) {
-    for (const q of block.questions_to_answer || []) {
-      questions.push({ text: q, type: 'answer', blockTitle: block.title })
-    }
-    for (const q of block.questions_to_raise || []) {
-      questions.push({ text: q, type: 'raise', blockTitle: block.title })
-    }
-  }
-
-  if (!questions.length) return <EmptyState label="问题链将随情节块一起生成" />
-
-  return (
-    <div className="space-y-3">
-      <h3 className="text-sm font-semibold">问题链</h3>
-      {questions.map((q, i) => (
-        <div key={i} className="flex items-start gap-2 border-l-2 pl-3 py-1"
-          style={{ borderColor: q.type === 'answer' ? '#22c55e' : '#f59e0b' }}>
-          <span className={cn(
-            'text-[10px] px-1.5 py-0.5 rounded shrink-0',
-            q.type === 'answer' ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'
-          )}>
-            {q.type === 'answer' ? '回答' : '提出'}
-          </span>
-          <div className="flex-1">
-            <div className="text-xs">{q.text}</div>
-            <div className="text-[10px] text-muted-foreground">{q.blockTitle}</div>
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
 // ========== 支线网络视图 ==========
-function SubplotsView({ data, loading, projectId, onUpdate }: { data: Subplot[]; loading: boolean; projectId: number; onUpdate: () => void }) {
+function SubplotsView({ data, loading, projectId, onUpdate, plotBlocks }: { data: Subplot[]; loading: boolean; projectId: number; onUpdate: () => void; plotBlocks: PlotBlock[] }) {
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editName, setEditName] = useState('')
@@ -471,6 +443,30 @@ function SubplotsView({ data, loading, projectId, onUpdate }: { data: Subplot[];
                 <span>解决: 第{subplot.expected_resolution_chapter}章</span>
               )}
             </div>
+
+            {/* 涉及情节块 — 交叉引用 */}
+            {(() => {
+              const targetChapters = [
+                subplot.raised_in_chapter,
+                subplot.planned_intersection_chapter,
+                subplot.expected_resolution_chapter,
+              ].filter((ch): ch is number => typeof ch === 'number')
+              if (!targetChapters.length || !plotBlocks.length) return null
+              const relatedBlocks = plotBlocks.filter((b) => {
+                const start = b.chapter_start ?? 0
+                const end = b.chapter_end ?? Number.MAX_SAFE_INTEGER
+                return targetChapters.some((ch) => ch >= start && ch <= end)
+              })
+              if (!relatedBlocks.length) return null
+              return (
+                <div className="text-[10px] text-muted-foreground">
+                  涉及情节块:{' '}
+                  {relatedBlocks
+                    .map((b) => `「${b.title}」(第${b.chapter_start}${b.chapter_end ? `-${b.chapter_end}` : '+'}章)`)
+                    .join(' · ')}
+                </div>
+              )
+            })()}
           </div>
         )
       })}
@@ -480,15 +476,6 @@ function SubplotsView({ data, loading, projectId, onUpdate }: { data: Subplot[];
 
 
 // ========== 通用组件 ==========
-function EmptyState({ label }: { label: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-16 text-muted-foreground text-xs">
-      <GitBranch className="h-8 w-8 mb-3 text-muted-foreground/30" />
-      <p>{label}</p>
-    </div>
-  )
-}
-
 function LoadingSkeleton() {
   return (
     <div className="space-y-3">

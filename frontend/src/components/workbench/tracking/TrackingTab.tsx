@@ -443,10 +443,12 @@ function StyleTrackView({ data, loading }: { data: StyleSnapshot[]; loading: boo
     { key: 'avg_sentence_length', label: '平均句长' },
     { key: 'avg_paragraph_length', label: '平均段长' },
     { key: 'paragraph_count', label: '段落数' },
+    { key: 'ai_marker_density', label: 'AI 味密度' },
+    { key: 'sentence_variety', label: '句长变异性' },
   ]
   const stats: Record<string, { mean: number; std: number }> = {}
   for (const { key } of metrics) {
-    const vals = data.map((d) => d[key] as number)
+    const vals = data.map((d) => (d[key] as number | undefined) ?? 0)
     const mean = vals.reduce((a, b) => a + b, 0) / vals.length
     const std = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length)
     stats[key] = { mean, std }
@@ -473,16 +475,22 @@ function StyleTrackView({ data, loading }: { data: StyleSnapshot[]; loading: boo
               <th className="text-right py-1.5 px-2 text-muted-foreground">平均段长</th>
               <th className="text-right py-1.5 px-2 text-muted-foreground">对话占比</th>
               <th className="text-right py-1.5 px-2 text-muted-foreground">平均句长</th>
+              <th className="text-right py-1.5 px-2 text-muted-foreground">AI 味密度</th>
+              <th className="text-right py-1.5 px-2 text-muted-foreground">句长变异性</th>
               <th className="text-center py-1.5 px-2 text-muted-foreground">偏差</th>
             </tr>
           </thead>
           <tbody>
             {data.map((snapshot) => {
+              const aiMarker = snapshot.ai_marker_density ?? 0
+              const sentenceVar = snapshot.sentence_variety ?? 0
               const deviantMetrics: string[] = []
               if (isDeviant('paragraph_count', snapshot.paragraph_count)) deviantMetrics.push('段落数')
               if (isDeviant('avg_paragraph_length', snapshot.avg_paragraph_length)) deviantMetrics.push('平均段长')
               if (isDeviant('dialogue_ratio', snapshot.dialogue_ratio)) deviantMetrics.push('对话占比')
               if (isDeviant('avg_sentence_length', snapshot.avg_sentence_length)) deviantMetrics.push('平均句长')
+              if (isDeviant('ai_marker_density', aiMarker)) deviantMetrics.push('AI 味密度')
+              if (isDeviant('sentence_variety', sentenceVar)) deviantMetrics.push('句长变异性')
               const hasDeviation = deviantMetrics.length > 0
 
               return (
@@ -499,6 +507,12 @@ function StyleTrackView({ data, loading }: { data: StyleSnapshot[]; loading: boo
                   </td>
                   <td className={cn('text-right py-1.5 px-2', isDeviant('avg_sentence_length', snapshot.avg_sentence_length) && 'bg-red-50')}>
                     {snapshot.avg_sentence_length.toFixed(1)}
+                  </td>
+                  <td className={cn('text-right py-1.5 px-2', isDeviant('ai_marker_density', aiMarker) && 'bg-red-50')}>
+                    {(aiMarker * 100).toFixed(2)}%
+                  </td>
+                  <td className={cn('text-right py-1.5 px-2', isDeviant('sentence_variety', sentenceVar) && 'bg-red-50')}>
+                    {sentenceVar.toFixed(1)}
                   </td>
                   <td className="text-center py-1.5 px-2">
                     {hasDeviation ? (
