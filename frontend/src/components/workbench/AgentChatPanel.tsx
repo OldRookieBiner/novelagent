@@ -416,7 +416,15 @@ export function AgentChatPanel() {
   const [showConversationHistory, setShowConversationHistory] = useState(false)
 
   // 面板宽度状态
-  const [panelWidth, setPanelWidth] = useState(400)
+  const [panelWidth, setPanelWidth] = useState(() => {
+    const saved = localStorage.getItem('agentPanelWidth')
+    if (saved) {
+      const parsed = parseInt(saved, 10)
+      const maxW = Math.floor(window.innerWidth / 2)
+      return Math.min(parsed, maxW)
+    }
+    return 400
+  })
   const [isDragging, setIsDragging] = useState(false)
   const dragStartX = useRef(0)
   const dragStartWidth = useRef(0)
@@ -454,7 +462,7 @@ export function AgentChatPanel() {
 
   // 计算最小/最大宽度
   const minWidth = 400
-  const maxWidth = Math.floor(window.innerWidth / 3)
+  const maxWidth = Math.floor(window.innerWidth / 2)
 
   // 找到最后一条 assistant 消息的 id
   const lastAssistantId = aiMessages.reduce<string | null>((acc, m) =>
@@ -478,8 +486,9 @@ export function AgentChatPanel() {
   }, [isDragging, maxWidth])
 
   const handleMouseUp = useCallback(() => {
+    localStorage.setItem('agentPanelWidth', String(panelWidth))
     setIsDragging(false)
-  }, [])
+  }, [panelWidth])
 
   // 拖拽事件监听
   useEffect(() => {
