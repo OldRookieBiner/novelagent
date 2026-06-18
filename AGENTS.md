@@ -1,6 +1,6 @@
 # AGENTS.md
 
-NovelAgent — AI 驱动的长篇小说创作系统。后端 FastAPI + LangGraph，前端 React + shadcn/ui。Docker Compose 部署（前端 3001、后端 8000、PG 5432）。
+NovelAgent v0.8.11 — AI 驱动的长篇小说创作系统。后端 FastAPI + LangGraph，前端 React + shadcn/ui。Docker Compose 部署（前端 3001、后端 8000、PG 5432）。
 
 **必须使用中文进行所有对话和回答。**
 

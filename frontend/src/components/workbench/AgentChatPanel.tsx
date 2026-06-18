@@ -68,6 +68,24 @@ const TOOL_LABELS: Record<string, string> = {
   report_progress: '报告进度',
 }
 
+/** 根据 create_* 工具的返回值判断显示"创建"还是"更新"
+ *  当 result 包含 updated_fields 或 changes 时，显示"更新"否则"创建"
+ */
+function getToolLabel(toolName: string, result?: Record<string, unknown>): string {
+  const baseLabels: Record<string, string> = {
+    create_character: '角色',
+    create_foreshadowing: '伏笔',
+    create_plot_block: '情节块',
+    create_subplot: '支线',
+    create_plot_question: '情节问题',
+  }
+  if (baseLabels[toolName] && result) {
+    const isUpdate = 'updated_fields' in result || 'changes' in result
+    return isUpdate ? `更新${baseLabels[toolName]}` : `创建${baseLabels[toolName]}`
+  }
+  return TOOL_LABELS[toolName] || toolName
+}
+
 /** 判断 segments 中是否包含 agent_text 段（用于区分新/旧格式） */
 function hasTextSegments(segments: AiMessageSegment[]): boolean
 {
@@ -297,7 +315,9 @@ function AssistantMessageContentInner({
         {
           const group = seg as any as ToolGroup
           const isExpanded = expandedGroups.has(i)
-          const label = TOOL_LABELS[group.toolName] || group.toolName
+          // 获取第一个有结果的项目来判断是创建还是更新
+          const firstWithResult = group.items.find(item => item.result)
+          const label = getToolLabel(group.toolName, firstWithResult?.result)
           
           return (
             <div key={`tg-${i}`} className="mt-1.5">
