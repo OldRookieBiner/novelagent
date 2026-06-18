@@ -284,6 +284,50 @@ class ProjectContextAssembler:
                 ctx["style_constraints"] = data
                 budget.add(tokens)
 
+        # 风格偏差摘要（最近 5 章趋势 + 异常标记）
+        snapshots = raw.get("style_snapshots", []) or []
+        if len(snapshots) >= 3:
+            recent = snapshots[:5]
+            # 对话比连续上升/下降趋势
+            dialogue_trend = "stable"
+            if len(recent) >= 3:
+                d_vals = [s.get("dialogue_ratio", 0) or 0 for s in recent]
+                if all(d_vals[i] > d_vals[i + 1] for i in range(len(d_vals) - 1)):
+                    dialogue_trend = "declining"
+                elif all(d_vals[i] < d_vals[i + 1] for i in range(len(d_vals) - 1)):
+                    dialogue_trend = "rising"
+
+            # 异常章节检测：偏离均值 > 1.5 σ
+            anomalies = []
+            for metric in ("dialogue_ratio", "avg_sentence_length", "avg_paragraph_length"):
+                vals = [s.get(metric, 0) or 0 for s in snapshots]
+                if len(vals) < 3:
+                    continue
+                mean = sum(vals) / len(vals)
+                std = (sum((v - mean) ** 2 for v in vals) / len(vals)) ** 0.5
+                if std == 0:
+                    continue
+                for s in recent:
+                    v = s.get(metric, 0) or 0
+                    if abs(v - mean) > 1.5 * std:
+                        anomalies.append({
+                            "chapter": s.get("chapter_number"),
+                            "metric": metric,
+                            "value": round(v, 2),
+                            "baseline": round(mean, 2),
+                            "direction": "偏高" if v > mean else "偏低",
+                        })
+
+            style_deviation = {
+                "snapshots_available": len(snapshots),
+                "dialogue_trend": dialogue_trend,
+                "anomalies": anomalies[:5],
+            }
+            tokens = estimate_tokens(json.dumps(style_deviation, ensure_ascii=False))
+            if budget.can_add(tokens):
+                ctx["style_deviation"] = style_deviation
+                budget.add(tokens)
+
         # 当前章节大纲
         if chapter_number:
             outlines = raw.get("chapter_outlines", [])
@@ -308,8 +352,54 @@ class ProjectContextAssembler:
                 start = b.get("chapter_start", 0)
                 end = b.get("chapter_end") or 999999
                 if start <= chapter_number <= end:
-                    ctx["current_plot_block"] = {"title": b.get("title"), "expected_mood": b.get("expected_mood"), "must_happen": b.get("must_happen") or []}
+                    ctx["current_plot_block"] = {
+                        "title": b.get("title"),
+                        "expected_mood": b.get("expected_mood"),
+                        "must_happen": b.get("must_happen") or [],
+                        "questions_to_answer": (b.get("questions_to_answer") or [])[:3],
+                        "questions_to_raise": (b.get("questions_to_raise") or [])[:3],
+                    }
                     break
+
+        # 当前章节相关支线事件（首次提出 / 交汇 / 预期解决 / 逾期）
+        if chapter_number:
+            subplots = raw.get("subplots", []) or []
+            subplot_events = []
+            for sp in subplots:
+                intersect_ch = sp.get("planned_intersection_chapter")
+                raised_ch = sp.get("raised_in_chapter")
+                resolve_ch = sp.get("expected_resolution_chapter")
+                status = sp.get("current_status")
+                if raised_ch == chapter_number:
+                    subplot_events.append({
+                        "id": sp.get("id"), "name": sp.get("name"),
+                        "event": "首次提出", "current_status": status,
+                    })
+                if intersect_ch == chapter_number:
+                    subplot_events.append({
+                        "id": sp.get("id"), "name": sp.get("name"),
+                        "event": "交汇", "current_status": status,
+                    })
+                if resolve_ch == chapter_number:
+                    subplot_events.append({
+                        "id": sp.get("id"), "name": sp.get("name"),
+                        "event": "预期解决", "current_status": status,
+                    })
+                # 逾期检测：已过预期交汇章但仍处早期状态
+                if (
+                    intersect_ch is not None
+                    and chapter_number > intersect_ch
+                    and status in ("hint", "developing")
+                ):
+                    subplot_events.append({
+                        "id": sp.get("id"), "name": sp.get("name"),
+                        "event": f"逾期（预期第{intersect_ch}章交汇，当前状态仍为{status}）",
+                    })
+            if subplot_events:
+                tokens = estimate_tokens(json.dumps(subplot_events, ensure_ascii=False))
+                if budget.can_add(tokens):
+                    ctx["active_subplot_events"] = subplot_events
+                    budget.add(tokens)
 
         # 最近的变更决策
         changes = raw.get("changes", [])

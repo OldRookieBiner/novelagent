@@ -155,3 +155,117 @@ class TestProjectContextAssembler:
         assert isinstance(result, dict)
         assert "_budget_used" in result
         assert "_budget_max" in result
+
+
+class TestWritingDataExtensions:
+    """P0/P1 新增的 writing 阶段上下文字段测试"""
+
+    @patch("app.agents.agent_context.KnowledgeBaseService")
+    def test_writing_phase_includes_style_deviation_when_snapshots_sufficient(self, MockKB):
+        """≥3 条快照 + 异常偏离时，注入 style_deviation 含 anomalies"""
+        mock_kb = _mock_kb()
+        # 6 条快照，最近一条对话比异常偏高
+        mock_kb.batch_read_for_context.return_value["style_snapshots"] = [
+            {"id": 6, "chapter_number": 6, "dialogue_ratio": 0.95, "avg_sentence_length": 22, "avg_paragraph_length": 80},
+            {"id": 5, "chapter_number": 5, "dialogue_ratio": 0.30, "avg_sentence_length": 20, "avg_paragraph_length": 70},
+            {"id": 4, "chapter_number": 4, "dialogue_ratio": 0.32, "avg_sentence_length": 21, "avg_paragraph_length": 75},
+            {"id": 3, "chapter_number": 3, "dialogue_ratio": 0.28, "avg_sentence_length": 19, "avg_paragraph_length": 72},
+            {"id": 2, "chapter_number": 2, "dialogue_ratio": 0.31, "avg_sentence_length": 22, "avg_paragraph_length": 78},
+            {"id": 1, "chapter_number": 1, "dialogue_ratio": 0.30, "avg_sentence_length": 20, "avg_paragraph_length": 74},
+        ]
+        MockKB.return_value = mock_kb
+        assembler = ProjectContextAssembler(project_id=1)
+        result = assembler.build(
+            context_window=128000,
+            phase=Phase.WRITING.value,
+            current_chapter_number=2,
+        )
+        project_data = result["project_data"]
+        assert "style_deviation" in project_data
+        sd = project_data["style_deviation"]
+        assert sd["snapshots_available"] == 6
+        # 第 6 章的对话比 0.95 应被识别为异常
+        chapters = {a["chapter"] for a in sd["anomalies"]}
+        assert 6 in chapters
+
+    @patch("app.agents.agent_context.KnowledgeBaseService")
+    def test_writing_phase_skips_style_deviation_when_snapshots_few(self, MockKB):
+        """快照 < 3 时不注入 style_deviation"""
+        mock_kb = _mock_kb()
+        mock_kb.batch_read_for_context.return_value["style_snapshots"] = [
+            {"id": 1, "chapter_number": 1, "dialogue_ratio": 0.3, "avg_sentence_length": 20, "avg_paragraph_length": 70},
+            {"id": 2, "chapter_number": 2, "dialogue_ratio": 0.32, "avg_sentence_length": 21, "avg_paragraph_length": 72},
+        ]
+        MockKB.return_value = mock_kb
+        assembler = ProjectContextAssembler(project_id=1)
+        result = assembler.build(
+            context_window=128000,
+            phase=Phase.WRITING.value,
+            current_chapter_number=2,
+        )
+        assert "style_deviation" not in result["project_data"]
+
+    @patch("app.agents.agent_context.KnowledgeBaseService")
+    def test_writing_phase_current_plot_block_includes_questions(self, MockKB):
+        """current_plot_block 含 questions_to_answer / questions_to_raise（截前 3）"""
+        mock_kb = _mock_kb()
+        mock_kb.batch_read_for_context.return_value["plot_blocks"] = [
+            {
+                "id": 1,
+                "title": "第一幕",
+                "chapter_start": 1,
+                "chapter_end": 5,
+                "expected_mood": "紧张",
+                "must_happen": ["主角登场"],
+                "questions_to_answer": ["Q1", "Q2", "Q3", "Q4"],
+                "questions_to_raise": ["R1", "R2"],
+            }
+        ]
+        MockKB.return_value = mock_kb
+        assembler = ProjectContextAssembler(project_id=1)
+        result = assembler.build(
+            context_window=128000,
+            phase=Phase.WRITING.value,
+            current_chapter_number=2,
+        )
+        cpb = result["project_data"].get("current_plot_block")
+        assert cpb is not None
+        assert cpb["questions_to_answer"] == ["Q1", "Q2", "Q3"]
+        assert cpb["questions_to_raise"] == ["R1", "R2"]
+
+    @patch("app.agents.agent_context.KnowledgeBaseService")
+    def test_writing_phase_active_subplot_events_for_intersection_chapter(self, MockKB):
+        """支线事件命中当前章为交汇/首次提出/解决/逾期时注入"""
+        mock_kb = _mock_kb()
+        mock_kb.batch_read_for_context.return_value["subplots"] = [
+            {
+                "id": 10,
+                "name": "暗线一",
+                "raised_in_chapter": 1,
+                "planned_intersection_chapter": 2,
+                "expected_resolution_chapter": 8,
+                "current_status": "developing",
+            },
+            {
+                "id": 11,
+                "name": "逾期暗线",
+                "planned_intersection_chapter": 1,
+                "current_status": "hint",
+            },
+        ]
+        MockKB.return_value = mock_kb
+        assembler = ProjectContextAssembler(project_id=1)
+        result = assembler.build(
+            context_window=128000,
+            phase=Phase.WRITING.value,
+            current_chapter_number=2,
+        )
+        events = result["project_data"].get("active_subplot_events")
+        assert events is not None
+        # 命中：id=10 (交汇) + id=11 (逾期)
+        ids = {e["id"] for e in events}
+        assert 10 in ids and 11 in ids
+        # id=10 应有 event=交汇
+        assert any(e["id"] == 10 and e["event"] == "交汇" for e in events)
+        # id=11 应有逾期描述
+        assert any(e["id"] == 11 and "逾期" in e["event"] for e in events)

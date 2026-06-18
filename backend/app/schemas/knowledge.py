@@ -121,6 +121,8 @@ class StyleSnapshotResponse(BaseModel):
     avg_paragraph_length: float = 0.0
     dialogue_ratio: float = 0.0
     avg_sentence_length: float = 0.0
+    ai_marker_density: float = 0.0
+    sentence_variety: float = 0.0
 
     class Config:
         from_attributes = True

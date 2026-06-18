@@ -44,6 +44,21 @@ class ForeshadowingStore(_BaseStore):
             ).all()
             return self._to_dict_list(objs)
 
+    def list_due_or_overdue(self, current_chapter: int) -> list[dict]:
+        """active/pending_reclaim 且 expected_resolve_chapter <= current
+
+        与 list_overdue（严格小于）不同，此方法覆盖"刚到期"的伏笔，
+        用于在 record_chapter_meta 末尾提醒作者本章未标记回收的到期伏笔。
+        """
+        with self.session(readonly=True) as db:
+            objs = db.query(Foreshadowing).filter(
+                Foreshadowing.project_id == self.project_id,
+                Foreshadowing.status.in_(["active", "pending_reclaim"]),
+                Foreshadowing.expected_resolve_chapter.isnot(None),
+                Foreshadowing.expected_resolve_chapter <= current_chapter,
+            ).all()
+            return self._to_dict_list(objs)
+
     def create(self, data: dict) -> dict:
         with self.session() as db:
             obj = Foreshadowing(project_id=self.project_id, **data)

@@ -53,14 +53,62 @@ async def _hook_style_quick_check(project_id: int, tool_result: dict) -> dict:
     return {"checked": True, "drift": "normal"}
 
 
+async def _hook_rhythm_quick_check(project_id: int, tool_result: dict) -> dict:
+    """章节追踪记录完成后快速节奏对比 hook。
+
+    仅挂在 record_chapter_meta 之后：因为 timeline.tension_score 由该工具写入。
+    比较情节块的预期张力与本章实际张力，偏差 > 1 给出警告与方向建议。
+    """
+    from app.agents.services.knowledge_base import KnowledgeBaseService
+    from app.agents.tools.utils import _mood_to_tension
+
+    ch_num = tool_result.get("chapter_number")
+    if not ch_num:
+        return {"checked": False, "reason": "无法确定章节号"}
+
+    kb = KnowledgeBaseService(project_id)
+    block = kb.plots.get_current_plot_block(ch_num)
+    if not block or not block.get("expected_mood"):
+        return {"checked": False, "reason": "当前章节无情节块或预期情绪"}
+
+    timeline = kb.timelines.get_by_chapter_number(ch_num)
+    if not timeline:
+        return {"checked": False, "reason": "当前章节无时间线数据"}
+
+    expected_tension = _mood_to_tension(block["expected_mood"])
+    actual_tension = timeline.get("tension_score") or 3
+    deviation = abs(actual_tension - expected_tension)
+
+    if deviation > 1:
+        direction = "偏低" if actual_tension < expected_tension else "偏高"
+        suggestion = (
+            "建议在后续章节增加紧迫感事件或冲突密度"
+            if actual_tension < expected_tension
+            else "建议在后续章节适当放缓节奏，增加呼吸感场景"
+        )
+        return {
+            "checked": True,
+            "warning": (
+                f"节奏偏差：情节块「{block['title']}」预期情绪「{block['expected_mood']}」"
+                f"（张力 {expected_tension}），实际张力 {actual_tension}，{direction}"
+            ),
+            "suggestion": suggestion,
+            "deviation": deviation,
+        }
+
+    return {"checked": True, "deviation": deviation, "status": "normal"}
+
+
 # Hook 注册表
 TOOL_HOOKS: dict[str, list[str]] = {
     "generate_chapter_content": ["foreshadowing_check", "style_quick_check"],
+    "record_chapter_meta": ["rhythm_quick_check"],
 }
 
 _HOOK_FUNCTIONS: dict[str, Callable] = {
     "foreshadowing_check": _hook_foreshadowing_check,
     "style_quick_check": _hook_style_quick_check,
+    "rhythm_quick_check": _hook_rhythm_quick_check,
 }
 
 

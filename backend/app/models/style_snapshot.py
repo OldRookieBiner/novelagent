@@ -30,6 +30,10 @@ class StyleSnapshot(Base):
     dialogue_ratio = Column(Float, default=0.0)
     # 平均句长（字符）
     avg_sentence_length = Column(Float, default=0.0)
+    # AI 味浓度（FORBIDDEN_WORDS 字符出现率，0.0 - 1.0）
+    ai_marker_density = Column(Float, default=0.0)
+    # 句长变异性（句长标准差，越大越有变化）
+    sentence_variety = Column(Float, default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships

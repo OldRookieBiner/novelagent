@@ -106,6 +106,23 @@ async def record_chapter_meta(
     if reclaim_errors:
         warnings.append({"step": "reclaim_foreshadowings", "errors": reclaim_errors})
 
+    # 4. 检测已到期但未标记回收的伏笔（本次提交未覆盖到的）
+    try:
+        reclaimed_ids_set = set(reclaimed_ids)
+        due_or_overdue_fs = kb.foreshadowings.list_due_or_overdue(chapter_number)
+        remaining_unreclaimed = [f for f in due_or_overdue_fs if f["id"] not in reclaimed_ids_set]
+        if remaining_unreclaimed:
+            warnings.append({
+                "step": "unreclaimed_foreshadowings",
+                "message": f"有 {len(remaining_unreclaimed)} 个伏笔已到预期回收章节但未标记回收",
+                "unreclaimed_preview": [
+                    {"id": f["id"], "content": (f.get("content") or "")[:60]}
+                    for f in remaining_unreclaimed[:3]
+                ],
+            })
+    except Exception as e:  # 检测失败不阻塞主流程
+        warnings.append({"step": "unreclaimed_foreshadowings_check", "error": str(e)})
+
     result = {
         "chapter_number": chapter_number,
         "timeline_action": timeline_action,
