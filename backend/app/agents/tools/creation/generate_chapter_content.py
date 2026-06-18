@@ -10,8 +10,17 @@ logger = logging.getLogger(__name__)
 
 
 def _compute_style_snapshot(content: str) -> dict:
-    """从章节文本计算风格统计指标"""
+    """从章节文本计算风格统计指标
+
+    指标：
+        - paragraph_count / avg_paragraph_length / dialogue_ratio / avg_sentence_length（基础）
+        - ai_marker_density: FORBIDDEN_WORDS 字符出现率（命中字符数 / 总字符数）
+        - sentence_variety: 句长标准差（≥2 句时有效）
+    """
     import re as _re
+    from statistics import stdev
+
+    from app.agents.constants import FORBIDDEN_WORDS
 
     if not content or not content.strip():
         return {
@@ -19,6 +28,8 @@ def _compute_style_snapshot(content: str) -> dict:
             "avg_paragraph_length": 0.0,
             "dialogue_ratio": 0.0,
             "avg_sentence_length": 0.0,
+            "ai_marker_density": 0.0,
+            "sentence_variety": 0.0,
         }
 
     total_chars = len(content)
@@ -48,11 +59,24 @@ def _compute_style_snapshot(content: str) -> dict:
     sentences = [s for s in sentence_ends if s.strip()]
     avg_sentence_length = sum(len(s) for s in sentences) / len(sentences) if sentences else 0.0
 
+    # AI 味浓度：禁用词字符出现率（命中字符总数 / 总字符数）
+    safe_total = max(total_chars, 1)
+    marker_chars = sum(content.count(w) * len(w) for w in FORBIDDEN_WORDS)
+    ai_marker_density = marker_chars / safe_total
+
+    # 句式变异性：句长标准差（≥2 句时计算，否则 0）
+    if len(sentences) >= 2:
+        sentence_variety = stdev(len(s) for s in sentences)
+    else:
+        sentence_variety = 0.0
+
     return {
         "paragraph_count": paragraph_count,
         "avg_paragraph_length": round(avg_paragraph_length, 1),
         "dialogue_ratio": round(dialogue_ratio, 3),
         "avg_sentence_length": round(avg_sentence_length, 1),
+        "ai_marker_density": round(ai_marker_density, 4),
+        "sentence_variety": round(sentence_variety, 2),
     }
 
 

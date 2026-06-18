@@ -96,6 +96,8 @@ export interface StyleSnapshot {
   avg_paragraph_length: number
   dialogue_ratio: number
   avg_sentence_length: number
+  ai_marker_density?: number
+  sentence_variety?: number
 }
 
 export interface WorldSetting {
