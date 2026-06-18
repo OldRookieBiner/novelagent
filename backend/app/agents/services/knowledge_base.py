@@ -27,6 +27,7 @@ from app.agents.services.stores import (
     VolumeStore,
     ChapterStore,
     ChangeStore,
+    WorkflowStore,
 )
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,7 @@ class KnowledgeBaseService:
         self.volumes = VolumeStore(project_id)
         self.chapters = ChapterStore(project_id)
         self.changes = ChangeStore(project_id)
+        self.workflows = WorkflowStore(project_id)
 
     # ========== Session 管理 ==========
 

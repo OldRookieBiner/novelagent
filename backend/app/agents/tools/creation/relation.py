@@ -21,8 +21,8 @@ async def create_relation(
     Args:
             character_a_id: 第一个角色的 ID
             character_b_id: 第二个角色的 ID
-            relation_type: Type of relationship - one of: 信任, 敌对, 感情, 合作, 利用, 陌生
-            direction: Direction of the relationship - one of: 双向, 单向A→B, 单向B→A
+            relation_type: 关系类型 - 可选值: 信任, 敌对, 感情, 合作, 利用, 陌生
+            direction: 关系方向 - 可选值: 双向, 单向A→B, 单向B→A
             current_status: 当前关系状态描述（可选）
             trust_level: 信任等级 0-100，默认 50
     """

@@ -61,16 +61,29 @@ const TOOL_LABELS: Record<string, string> = {
   review_chapter: '审阅章节',
   rewrite_chapter: '重写章节',
   record_chapter_meta: '记录章节追踪',
-  update_character: '更新角色',
-  update_plot_block: '更新情节块',
-  update_plot_question: '更新情节问题',
-  update_subplot: '更新支线',
-  update_foreshadowing: '更新伏笔',
   delete_plot_block: '删除情节块',
   apply_change: '应用变更',
   reject_change: '拒绝变更',
   list_proposed_changes: '列出变更提案',
   report_progress: '报告进度',
+}
+
+/** 根据 create_* 工具的返回值判断显示"创建"还是"更新"
+ *  当 result 包含 updated_fields 或 changes 时，显示"更新"否则"创建"
+ */
+function getToolLabel(toolName: string, result?: Record<string, unknown>): string {
+  const baseLabels: Record<string, string> = {
+    create_character: '角色',
+    create_foreshadowing: '伏笔',
+    create_plot_block: '情节块',
+    create_subplot: '支线',
+    create_plot_question: '情节问题',
+  }
+  if (baseLabels[toolName] && result) {
+    const isUpdate = 'updated_fields' in result || 'changes' in result
+    return isUpdate ? `更新${baseLabels[toolName]}` : `创建${baseLabels[toolName]}`
+  }
+  return TOOL_LABELS[toolName] || toolName
 }
 
 /** 判断 segments 中是否包含 agent_text 段（用于区分新/旧格式） */
@@ -302,7 +315,9 @@ function AssistantMessageContentInner({
         {
           const group = seg as any as ToolGroup
           const isExpanded = expandedGroups.has(i)
-          const label = TOOL_LABELS[group.toolName] || group.toolName
+          // 获取第一个有结果的项目来判断是创建还是更新
+          const firstWithResult = group.items.find(item => item.result)
+          const label = getToolLabel(group.toolName, firstWithResult?.result)
           
           return (
             <div key={`tg-${i}`} className="mt-1.5">

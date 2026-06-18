@@ -16,6 +16,16 @@ async def review_chapter(chapter_number: int) -> dict:
 
     Args:
             chapter_number: 要审核的章节号（如 1, 2, 3）
+
+    Returns:
+        dict:
+            - chapter_number (int): 章节号
+            - passed (bool): 审核是否通过
+            - scores (dict): 六维度评分（plot_consistency, character_consistency, writing_quality, emotional_tension, ai_flavor, outline_deviation）
+            - issues (list): 发现的问题列表
+            - suggestions (str): 整体改进建议
+            - message (str): 审核结果描述
+            - error (str, optional): 出错时的错误信息
     """
     project_id = get_project_id()
     if project_id is None:

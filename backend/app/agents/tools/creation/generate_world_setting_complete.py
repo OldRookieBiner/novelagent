@@ -19,6 +19,11 @@ async def generate_world_setting_complete(
     """生成并保存完整的世界观设定，含分级规则。
 
     当用户需要一次性创建完整世界观时使用。包括红色（不可违反）、黄色（重要参考）、绿色（可灵活调整）三级规则。
+    相比 create_world_setting，本工具支持传入历史背景、社会结构和魔法体系等额外信息。
+
+    与 create_world_setting 的区别：
+    - create_world_setting：参数少，适合逐字段更新（每次只更新指定字段）
+    - generate_world_setting_complete（本工具）：参数更完整（含 history/social_structure/magic_system），适合一次性创建
 
     Args:
         core_concept: 世界观核心概念

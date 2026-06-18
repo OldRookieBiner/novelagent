@@ -32,6 +32,15 @@ async def knowledge_search(query: str, target: str = "all") -> dict:
         target: 搜索范围 - "world_setting"(世界观), "characters"(角色),
                 "foreshadowing"(伏笔), "timeline"(时间线), "plot"(情节),
                 "style"(风格), 或 "all"(全部)
+
+    Returns:
+        dict:
+            - found (bool): 是否找到相关内容
+            - method (str, optional): 检索方式 - "semantic"(语义) 或 "fallback"(关键词降级)
+            - results (dict, optional): 检索结果数据，包含 world_setting/characters/foreshadowings 等字段
+            - truncated (bool, optional): 数据量过大是否已截断
+            - message (str, optional): 未找到时的提示信息
+            - error (str, optional): 出错时的错误信息
     """
     project_id = get_project_id()
     if project_id is None:

@@ -17,7 +17,20 @@ async def foreshadowing_check(current_chapter: int | None = None) -> dict:
 
     Args:
             current_chapter: 当前章节号（用于超期计算）
-                             If not provided, no overdue check is performed.
+                             不提供时不执行超期检查。
+
+    Returns:
+        dict:
+            - active_count (int): 活跃伏笔数
+            - pending_reclaim_count (int): 待回收伏笔数
+            - overdue_count (int): 超期伏笔数
+            - health_score (int): 健康度评分（0-100）
+            - health_label (str): 健康度标签（🟢健康/🟡需关注/🔴需紧急处理）
+            - active (list): 活跃伏笔列表
+            - pending_reclaim (list): 待回收伏笔列表
+            - overdue (list): 超期伏笔列表（含回收建议）
+            - recovery_suggestions (list, optional): 超期伏笔回收建议
+            - warning (str, optional): 超期警告信息
     """
     kb = _kb()
 

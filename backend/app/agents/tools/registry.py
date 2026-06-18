@@ -43,11 +43,6 @@ from app.agents.tools.creation import (
     review_chapter,
     rewrite_chapter,
     advance_phase,
-    update_character,
-    update_plot_block,
-    update_subplot,
-    update_plot_question,
-    update_foreshadowing,
     delete_plot_block,
     record_chapter_meta,
 )
@@ -80,9 +75,6 @@ _STRUCTURE_EXTRA = [
     create_plot_block,
     create_plot_question,
     create_subplot,
-    update_character,
-    update_plot_block,
-    update_plot_question,
     delete_plot_block,
     apply_change,
     reject_change,
@@ -98,8 +90,6 @@ _WRITING_EXTRA = [
     propose_setting_change,
     propose_chapter_rewrite,
     record_chapter_meta,
-    update_subplot,
-    update_foreshadowing,
 ]
 
 STRUCTURE_TOOLS = INCUBATION_TOOLS + _STRUCTURE_EXTRA
@@ -107,6 +97,19 @@ WRITING_TOOLS = STRUCTURE_TOOLS + _WRITING_EXTRA
 REVISION_TOOLS = WRITING_TOOLS
 
 AGENT_TOOLS = WRITING_TOOLS
+
+# 感知工具名集合 — 用于缓存/hooks/成本控制的统一判定
+PERCEPTION_TOOL_NAMES = frozenset({
+    "knowledge_search", "foreshadowing_check",
+    "consistency_scan", "style_analysis",
+    "rhythm_analysis", "progress_report",
+})
+
+# 写入工具名集合 — 执行后使感知缓存失效
+WRITING_TOOL_NAMES = frozenset({
+    name for name in (t.name for t in WRITING_TOOLS)
+    if name not in PERCEPTION_TOOL_NAMES
+})
 
 
 # 工具元数据分类 — 仅程序化使用，不注入 system prompt

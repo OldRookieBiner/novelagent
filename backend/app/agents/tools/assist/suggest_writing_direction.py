@@ -24,7 +24,7 @@ async def suggest_writing_direction(
     - focus="block"：克服写作瓶颈，提供 2-3 个写作方向
     - focus="foreshadowing"：基于情节和伏笔状态，建议伏笔放置位置
     - focus="twist"：基于节奏曲线和角色弧线，建议情节反转方向
-    - focus="auto"：返回所有三类建议的合并摘要（默认）
+    - focus="auto"：返回所有三类建议的合并摘要（默认）—— 注意：auto 模式会同时执行三种分析，成本较高（3 次知识库读取 + 逻辑计算）。如果只有单一方向需求，建议指定具体 focus 以节省资源。
 
     Args:
         current_chapter: 当前章节号

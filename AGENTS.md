@@ -12,14 +12,14 @@ NovelAgent v0.8.11 — AI 驱动的长篇小说创作系统。后端 FastAPI + L
 
 **Phase enum**（`constants.py`）：`INCUBATION → STRUCTURE → WRITING → REVISION`
 
-**工具集递进**：`INCUBATION_TOOLS ⊆ STRUCTURE_TOOLS ⊆ WRITING_TOOLS`（注册在 `tools/registry.py`）
+**工具集递进**：`INCUBATION_TOOLS ⊆ STRUCTURE_TOOLS ⊆ WRITING_TOOLS ⊆ REVISION_TOOLS`（注册在 `tools/registry.py`）。`REVISION_TOOLS = WRITING_TOOLS`，当前无增量工具。另有 `registry_v2.py` 提供动态注册：根据项目规模（章节数）增减工具，大型项目（≥20 章）启用 `consistency_scan`，小型项目（≤10 章）排除 `rhythm_analysis`。
 
 | 类别 | 目录 | 工具 |
 |------|------|------|
-| 感知 | `tools/perception/` | knowledge_search, consistency_check, style_analysis, rhythm_analysis, foreshadowing_check, progress_report |
-| 创作 | `tools/creation/` | generate_outline, generate_chapter_content, generate_chapter_outline, generate_story_seed, generate_world_setting_complete, create_character, create_foreshadowing, advance_phase, review_chapter, rewrite_chapter, style_constraints, subplot, timeline_entry, relation, evolution_plan, plot_question, plot_block, world_setting, character |
-| 修改 | `tools/modification/` | propose_outline_adjustment, propose_setting_change, propose_chapter_rewrite |
-| 辅助 | `tools/assist/` | writer_block_assist, suggest_foreshadowing, suggest_plot_twist, expand_world_setting |
+| 感知 | `tools/perception/` | knowledge_search, consistency_scan, style_analysis, rhythm_analysis, foreshadowing_check, progress_report |
+| 创作 | `tools/creation/` | generate_outline, generate_chapter_content, generate_chapter_outline, generate_story_seed, generate_world_setting_complete, create_character, create_foreshadowing, create_plot_block, create_plot_question, create_subplot, create_relation, create_evolution_plan, create_style_constraints, create_world_setting, advance_phase, review_chapter, rewrite_chapter, update_character, update_foreshadowing, update_plot_block, update_plot_question, update_subplot, delete_plot_block, record_chapter_meta |
+| 修改 | `tools/modification/` | propose_outline_adjustment, propose_setting_change, propose_chapter_rewrite, apply_change, reject_change, list_proposed_changes |
+| 辅助 | `tools/assist/` | expand_world_setting, suggest_writing_direction |
 
 **项目初始化**（`initialization.py`）：非 LangGraph，直接 async 流程：`概念 → 故事种子 → [世界观+大纲] 并行 → [角色+风格] 并行`
 
@@ -29,19 +29,29 @@ NovelAgent v0.8.11 — AI 驱动的长篇小说创作系统。后端 FastAPI + L
 
 **数据层关联**：改 API 响应需同步改 `schemas/`，加新表需同步改 `models/` + `alembic/`
 
+**新增 Agent 工具 checklist**：
+1. 在 `tools/<category>/` 下创建工具文件，函数加 `@tool` 装饰器
+2. 在 `tools/registry.py` 顶部 import 新工具函数
+3. 将工具加入对应阶段的列表（INCUBATION / _STRUCTURE_EXTRA / _WRITING_EXTRA）
+4. 如需动态调整，同步更新 `registry_v2.py` 中的 `_LARGE_PROJECT_TOOL_NAMES` 或 `_SMALL_PROJECT_EXCLUDE_NAMES`
+5. 在 `backend/tests/` 下添加对应测试，mock LLM 调用
+6. `docker compose restart backend` 使修改生效
+
 ---
 
 ## 关键文件
 
 | 文件 | 说明 |
 |------|------|
-| `backend/app/main.py` | FastAPI 入口，路由注册（L130-160） |
+| `backend/app/main.py` | FastAPI 入口，路由注册（L147-162） |
 | `backend/app/agents/agent_graph.py` | Agent 图定义 + 阶段温度 |
 | `backend/app/agents/constants.py` | Phase enum, FORBIDDEN_WORDS, NODE_TEMPERATURES, AGENT_TEMPERATURES, STYLE_EXEMPLARS |
 | `backend/app/agents/initialization.py` | 项目初始化流程（yield SSE 事件） |
 | `backend/app/agents/context_strategy.py` | Full/Summary/Hybrid 上下文策略 |
 | `backend/app/agents/agent_context.py` | Agent 阶段感知上下文组装 + BudgetTracker |
-| `backend/app/agents/tools/registry.py` | 工具注册表（阶段→工具集） |
+| `backend/app/agents/tools/registry.py` | 工具注册表（阶段→工具集，递进定义） |
+| `backend/app/agents/tools/registry_v2.py` | 动态工具注册（根据项目规模调整工具列表） |
+| `backend/app/config.py` | 应用配置（pydantic_settings，环境变量绑定） |
 | `backend/app/agents/sse_events.py` | SSE 事件格式化（唯一入口） |
 | `backend/app/agents/token_budget.py` | estimate_tokens（中文 2 token/字） |
 | `backend/app/agents/services/knowledge_base.py` | 知识库读写（所有节点共享） |
@@ -57,8 +67,8 @@ NovelAgent v0.8.11 — AI 驱动的长篇小说创作系统。后端 FastAPI + L
 | `frontend/src/stores/projectStore.ts` | 项目列表状态 |
 
 路由文件入口：`backend/app/api/`（agent, chapters, characters, outline, knowledge, knowledge_status, projects, auth, settings, model_configs, inspiration, volumes）
-数据层入口：`backend/app/schemas/`（10 个）、`backend/app/models/`（21 表）、`backend/alembic/versions/`
-测试入口：`backend/tests/`（pytest + SQLite 内存库）、`frontend/src/pages/__tests__/`（vitest）
+数据层入口：`backend/app/schemas/`（9 个）、`backend/app/models/`（29 个模型类）、`backend/alembic/versions/`
+测试入口：`backend/tests/`（pytest + SQLite 内存库）、`frontend/src/`（vitest，分布在 pages/\_\_tests\_\_/、lib/、stores/、components/ 下）
 
 ---
 
@@ -70,11 +80,34 @@ NovelAgent v0.8.11 — AI 驱动的长篇小说创作系统。后端 FastAPI + L
 |----------|------|
 | backend Python 代码 | `docker compose restart backend` |
 | backend 新增依赖（requirements.txt） | `docker compose build --no-cache backend && docker compose up -d backend` |
-| frontend 代码 | `docker compose restart frontend` |
-| frontend 新增依赖（package.json） | `docker compose build --no-cache frontend && docker compose up -d frontend` |
+| frontend 代码 | `docker compose build --no-cache frontend && docker compose up -d frontend`（前端无 volume 挂载，代码在构建时打包） |
+| frontend 新增依赖（package.json） | 同上（前端代码和依赖均在构建时打包，任何前端改动都需重建） |
 | 数据库模型变更 | `docker exec novelagent-backend-1 alembic upgrade head`，然后 restart backend |
 
-判断依据：仅改 Python/TS 源码 → restart；改了依赖文件 → build；改了 models/ → alembic + restart
+判断依据：改 Python 源码 → restart（后端有 volume 挂载但 uvicorn 无 --reload，仍需手动重启）；改 TS/前端源码 → build（前端无 volume 挂载，代码构建时打包）；改了依赖文件 → build；改了 models/ → alembic + restart
+
+---
+
+## 环境变量
+
+通过 `app/config.py`（pydantic_settings）管理，支持 `.env` 文件覆盖：
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `DATABASE_URL` | `postgresql://novelagent:novelagent@localhost:5432/novelagent` | 数据库连接 |
+| `SECRET_KEY` | 随机生成（每次重启失效） | 会话加密密钥，生产环境必须设置 |
+| `DEFAULT_USERNAME` | `admin` | 首次启动默认用户名 |
+| `DEFAULT_PASSWORD` | 随机生成（保存至 `/tmp/novelagent_admin_password.txt`） | 首次启动默认密码，生产环境必须设置 |
+| `DEFAULT_MODEL_PROVIDER` | `deepseek` | 默认 LLM provider |
+| `DEFAULT_MODEL` | `deepseek-v3-241227` | 默认模型 |
+| `DEFAULT_API_KEY` | 空 | 默认 API 密钥 |
+| `DEBUG` | `false` | 调试模式 |
+| `LOG_LEVEL` | `INFO` | 日志级别 |
+| `COOKIE_SECURE` | `false` | HTTPS only cookie（生产环境设为 True） |
+| `CORS_ORIGINS` | `["http://localhost:3000","http://localhost:5173","http://localhost:3001"]` | CORS 允许源 |
+| `SESSION_EXPIRE_SECONDS` | `604800`（7 天） | 会话过期时间 |
+| `AUTH_RATE_LIMIT_REQUESTS` | `5` | 认证接口限流请求数 |
+| `AUTH_RATE_LIMIT_SECONDS` | `60` | 认证接口限流时间窗口（秒） |
 
 ---
 
@@ -114,11 +147,19 @@ editor.commands.setContent(html)
 
 `Project.is_busy` / `busy_since` / `busy_by` 防并发。Agent API `_acquire_busy_lock` 获取，超时 300s 自动释放。
 
+### 排查路径
+
+SSE 流中断：`docker compose logs backend -f` 查后端异常 → 检查 `Project.is_busy` 是否被锁住（超时 300s 自动释放）→ 检查 DB session 是否在 SSE 生成器中用了依赖注入而非 `SessionLocal()`
+
+LLM 无响应/截断：查 `finish_reason` 是否为 `length` → 根据章节 `target_words` 调整 `max_tokens` → 检查 API key 配额
+
+前端数据不更新：检查 Zustand store 是否正确 dispatch → 检查 SSE 事件是否被 `done` 事件后循环吞掉 → 确认 `AbortController` 已正确取消流
+
 ---
 
 ## 已知问题
 
-- `api/volumes.py` 存在但未在 `main.py` 注册路由，卷/弧 API 调用会 404
+- `frontend/src/components/workbench/tracking/TrackingTab.tsx` 中有内联 `<svg>` 用于数据可视化图表，与“禁止内联 SVG 图标”规则冲突。该图表为动态 viewBox 数据可视化，lucide-react 无法替代，需评估是否豁免或改用图表库
 
 ---
 
@@ -139,18 +180,19 @@ editor.commands.setContent(html)
 ### 后端测试
 
 - 框架：pytest + FastAPI TestClient + SQLite 内存数据库（`conftest.py` 自动切换）
-- Fixtures：`db`（独立 session）、`client`（带 DB 覆盖的 TestClient）、`test_user` + `test_user_token`
+- Fixtures：`db`（独立 session）、`client`（带 DB 覆盖的 TestClient）、`test_user` + `test_user_token`、`auth_headers`（带认证头的 dict）
 - LLM mock：所有测试不应调用真实 LLM。mock `app.services.llm` 或对应工具函数
-- 命名：`test_<功能>_<场景>_<预期>.py`，如 `test_context_strategy.py`、`test_llm_choices_guard.py`
+- 命名：`test_<功能>.py` 或 `test_<功能>_<细节>.py`，如 `test_context_strategy.py`、`test_llm_choices_guard.py`、`test_llm_service_params.py`
 - 运行：`docker exec novelagent-backend-1 pytest -v`
 - 必跑场景：改了 agent 工具 → 跑 `test_agent_tools.py`；改了上下文策略 → 跑 `test_context_strategy.py`；改了常量 → 跑 `test_constants.py` + `test_node_temperatures.py`
 
 ### 前端测试
 
 - 框架：vitest + React Testing Library
-- 位置：`frontend/src/pages/__tests__/`、`frontend/src/lib/*.test.ts`
+- 位置：分散在 `frontend/src/pages/__tests__/`（页面）、`frontend/src/lib/*.test.ts`（工具函数）、`frontend/src/stores/*.test.ts`（状态）、`frontend/src/components/**/*.test.tsx`（组件）
 - 运行：`cd frontend && npm run test:run`
 - Lint：`cd frontend && npm run lint`
+- 现状：覆盖较薄，主要覆盖页面渲染和 lib 工具函数，组件交互测试不足
 
 ---
 
