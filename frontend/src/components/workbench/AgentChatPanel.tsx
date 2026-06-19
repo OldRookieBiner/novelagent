@@ -1416,7 +1416,8 @@ export function AgentChatPanel() {
               onClick={() => isAgentSending ? abortRef.current?.abort() : handleSend()}
               disabled={!input.trim() && !isAgentSending}
               className={cn(
-                'border-none px-2.5 py-1.5 rounded-md text-[11px] self-end transition-colors',
+                'border-none px-2.5 py-1.5 rounded-md text-[11px] transition-colors',
+                inputRows === 1 ? 'self-center' : 'self-end',
                 isAgentSending ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-primary text-primary-foreground disabled:opacity-50'
               )}
               title={isAgentSending ? '停止生成 (Esc x2)' : '发送'}
