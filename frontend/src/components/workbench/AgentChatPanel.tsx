@@ -1,7 +1,7 @@
 // AgentChatPanel.tsx — Right panel: AI creation agent chat
 
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { PanelRightClose, PanelRightOpen, Send, AlertTriangle, ShieldCheck, ChevronDown, ChevronRight, Loader2, CheckCircle2, GripVertical, Square, History, Plus } from 'lucide-react'
+import { PanelRightClose, PanelRightOpen, Send, AlertTriangle, ShieldCheck, ChevronDown, ChevronRight, Loader2, CheckCircle2, GripVertical, Square, History, Plus, Copy, Check } from 'lucide-react'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
 import { sendAgentMessage, fetchConversation, createConversation } from '@/lib/agentApi'
 import { modelConfigsApi, settingsApi } from '@/lib/api'
@@ -400,6 +400,72 @@ function ThinkingIndicator()
   )
 }
 
+/** 通用复制按钮：成功显示 Check 1.5s 后还原。带 clipboard.writeText 失败 fallback */
+function CopyButton({
+  content,
+  className,
+  ariaLabel,
+}: {
+  content: string
+  className?: string
+  ariaLabel?: string
+})
+{
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    const showSuccess = () =>
+    {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    }
+
+    try
+    {
+      if (navigator.clipboard && navigator.clipboard.writeText)
+      {
+        await navigator.clipboard.writeText(content)
+        showSuccess()
+        return
+      }
+      throw new Error('clipboard unavailable')
+    }
+    catch
+    {
+      // fallback：execCommand
+      try
+      {
+        const ta = document.createElement('textarea')
+        ta.value = content
+        ta.style.position = 'fixed'
+        ta.style.left = '-9999px'
+        ta.style.opacity = '0'
+        document.body.appendChild(ta)
+        ta.select()
+        const ok = document.execCommand('copy')
+        document.body.removeChild(ta)
+        if (ok) showSuccess()
+      }
+      catch
+      {
+        // 静默失败
+      }
+    }
+  }
+
+  return (
+    <button
+      onClick={handleCopy}
+      className={cn('text-muted-foreground hover:text-foreground transition-colors', className)}
+      aria-label={ariaLabel || '复制'}
+      title="复制"
+      type="button"
+    >
+      {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+    </button>
+  )
+}
+
 export function AgentChatPanel() {
   const {
     currentProjectId,
@@ -462,6 +528,8 @@ export function AgentChatPanel() {
   const skipAutoScrollRef = useRef(false)
   const isLoadingMoreRef = useRef(false)
   const prevScrollHeightRef = useRef(0)
+  // 用户消息 DOM 引用 Map：Task 2 用于复制按钮 ref 回调，Task 6 复用做锚点跳转 + 当前位置判定
+  const userMessageRefs = useRef<Map<string, HTMLDivElement>>(new Map())
 
   // Task 14: SSE 文本缓冲 — 合并高频 chunk 后统一更新
   const textBufferRef = useRef<{
@@ -1153,8 +1221,21 @@ export function AgentChatPanel() {
               )}
             >
               {msg.role === 'user' ? (
-                <div className="rounded-lg px-3 py-2 text-[11px] leading-relaxed max-w-[80%] bg-primary text-primary-foreground">
-                  {msg.content}
+                <div
+                  ref={(el) => {
+                    if (el) userMessageRefs.current.set(msg.id, el)
+                    else userMessageRefs.current.delete(msg.id)
+                  }}
+                  className="group flex flex-col items-end"
+                >
+                  <div className="rounded-lg px-3 py-2 text-[11px] leading-relaxed max-w-[80%] bg-secondary text-secondary-foreground selection:bg-primary/25 selection:text-foreground">
+                    {msg.content}
+                  </div>
+                  <CopyButton
+                    content={msg.content}
+                    className="opacity-0 group-hover:opacity-100 mt-0.5"
+                    ariaLabel="复制用户消息"
+                  />
                 </div>
               ) : (
                 <div className="text-[11px] leading-relaxed text-foreground">
