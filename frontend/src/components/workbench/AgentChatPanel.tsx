@@ -1345,7 +1345,7 @@ export function AgentChatPanel() {
         )}
 
         {/* Messages */}
-        <div ref={scrollRef} onScroll={handleMessagesScroll} className="flex-1 overflow-y-auto pl-3 pr-6 py-2 space-y-2 relative">
+        <div ref={scrollRef} onScroll={handleMessagesScroll} className="flex-1 overflow-y-auto pl-3 pr-6 py-2 space-y-2">
           {aiMessages.length === 0 && (
             <div className="text-center text-muted-foreground text-xs py-8">
               {PHASE_EMPTY_HINTS[phase] || '和智能体讨论你的创作想法'}
@@ -1364,14 +1364,12 @@ export function AgentChatPanel() {
                     if (el) userMessageRefs.current.set(msg.id, el)
                     else userMessageRefs.current.delete(msg.id)
                   }}
-                  className="group flex flex-col items-end"
+                  className="group rounded-lg px-3 py-2 text-[11px] leading-relaxed max-w-[80%] bg-secondary text-secondary-foreground selection:bg-primary/25 selection:text-foreground relative"
                 >
-                  <div className="rounded-lg px-3 py-2 text-[11px] leading-relaxed max-w-[80%] bg-secondary text-secondary-foreground selection:bg-primary/25 selection:text-foreground">
-                    {msg.content}
-                  </div>
+                  {msg.content}
                   <CopyButton
                     content={msg.content}
-                    className="opacity-0 group-hover:opacity-100 mt-0.5"
+                    className="opacity-0 group-hover:opacity-100 absolute -bottom-3 right-0"
                     ariaLabel="复制用户消息"
                   />
                 </div>
@@ -1386,6 +1384,10 @@ export function AgentChatPanel() {
               )}
             </div>
           ))}
+        </div>
+
+        {/* MessageAnchorRail - 固定在右侧 */}
+        <div className="fixed right-3 top-1/2 -translate-y-1/2 z-40">
           <MessageAnchorRail
             userMessages={aiMessages.filter(m => m.role === 'user')}
             activeId={activeAnchorId}
@@ -1393,10 +1395,8 @@ export function AgentChatPanel() {
               const el = userMessageRefs.current.get(id)
               if (el && scrollRef.current)
               {
-                // 用 offsetTop 计算，绕过 Safari scrollIntoView 兼容性
                 const containerScrollTop = el.offsetTop - scrollRef.current.offsetTop - 12
                 scrollRef.current.scrollTop = Math.max(0, containerScrollTop)
-                // 高亮提示 1s
                 el.classList.add('ring-2', 'ring-primary/40', 'rounded-lg')
                 setTimeout(() => {
                   el.classList.remove('ring-2', 'ring-primary/40', 'rounded-lg')
