@@ -736,6 +736,7 @@ export function AgentChatPanel() {
           data: s.data,
         })),
         timestamp: m.timestamp,
+        durationMs: m.durationMs,
       }))
       setAiMessages(loaded)
       resetInputHistory()
@@ -769,6 +770,7 @@ export function AgentChatPanel() {
           data: s.data,
         })),
         timestamp: m.timestamp,
+        durationMs: m.durationMs,
       }))
 
       const existingIds = new Set(aiMessages.map((m) => m.id))
@@ -1364,14 +1366,12 @@ export function AgentChatPanel() {
                     if (el) userMessageRefs.current.set(msg.id, el)
                     else userMessageRefs.current.delete(msg.id)
                   }}
-                  className="group"
+                  className="rounded-lg px-3 py-2 text-[11px] leading-relaxed max-w-[80%] bg-secondary text-secondary-foreground selection:bg-primary/25 selection:text-foreground relative group"
                 >
-                  <div className="rounded-lg px-3 py-2 text-[11px] leading-relaxed max-w-[80%] bg-secondary text-secondary-foreground selection:bg-primary/25 selection:text-foreground">
-                    {msg.content}
-                  </div>
+                  {msg.content}
                   <CopyButton
                     content={msg.content}
-                    className="opacity-0 group-hover:opacity-100 mt-1"
+                    className="opacity-0 group-hover:opacity-100 absolute -top-3 -right-2"
                     ariaLabel="复制用户消息"
                   />
                 </div>

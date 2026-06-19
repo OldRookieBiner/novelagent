@@ -31,7 +31,7 @@ async def knowledge_search(query: str, target: str = "all") -> dict:
         query: 自然语言搜索查询（如"主角的魔法限制"、"世界观核心规则"）
         target: 搜索范围 - "world_setting"(世界观), "characters"(角色),
                 "foreshadowing"(伏笔), "timeline"(时间线), "plot"(情节),
-                "style"(风格), 或 "all"(全部)
+                "style"(风格), "outline"(大纲), 或 "all"(全部)
 
     Returns:
         dict:
@@ -61,6 +61,7 @@ async def knowledge_search(query: str, target: str = "all") -> dict:
 
     # 定义查询步骤
     query_steps = [
+        ("outline", lambda: kb.outlines.get()),
         ("world_setting", lambda: kb.world_setting.get()),
         ("characters", lambda: kb.characters.list_characters()),
         ("foreshadowing", lambda: kb.foreshadowings.list_foreshadowings()),
@@ -117,7 +118,9 @@ async def knowledge_search(query: str, target: str = "all") -> dict:
             current_tokens += step_tokens
 
             # 存储结果
-            if step_name == "world_setting":
+            if step_name == "outline":
+                results["outline"] = data
+            elif step_name == "world_setting":
                 results["world_setting"] = data
             elif step_name == "characters":
                 chars_data = data

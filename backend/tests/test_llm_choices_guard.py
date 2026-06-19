@@ -49,7 +49,8 @@ async def test_chat_stream_empty_choices_no_crash():
             chunks.append(chunk)
 
         # 应只产出有效内容的 chunk，空 choices 不抛异常
-        assert chunks == ["Hello", " world"]
+        # 注意：修复后 chat_stream 累积后一次性 yield，所以内容会合并
+        assert chunks == ["Hello world"]
 
 
 @pytest.mark.asyncio
@@ -79,6 +80,7 @@ async def test_chat_stream_all_empty_choices_no_crash():
         async for chunk in service.chat_stream([{"role": "user", "content": "test"}]):
             chunks.append(chunk)
 
+        # 修复后累积到字符串再 yield，空 chunk 不产出任何内容
         assert chunks == []
 
 

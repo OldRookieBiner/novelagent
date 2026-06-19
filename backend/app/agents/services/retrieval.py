@@ -7,7 +7,7 @@
   → 混合排序 → 时间衰减 → 去重 + 截断 → 返回 top-k
 
 索引来源（从 DB 读取）：
-  - 世界观 + 角色 + 关系 + 风格约束 + 情节块 + 伏笔 + 时间线 + 场景清单
+  - 大纲 + 世界观 + 角色 + 关系 + 风格约束 + 情节块 + 伏笔 + 时间线 + 场景清单
   - 时间线条目仅索引最近 50 条
 
 索引更新策略：
@@ -130,6 +130,24 @@ def _collect_documents_from_db(project_id: int) -> tuple[list[str], list[dict]]:
         for i, chunk in enumerate(chunks):
             docs.append(chunk)
             meta.append({"source": source, "chunk": i})
+
+    # 0. 大纲
+    outline = data.get("outline")
+    if outline:
+        parts = []
+        if outline.get("title"):
+            parts.append(f"标题：{outline['title']}")
+        if outline.get("summary"):
+            parts.append(f"摘要：{outline['summary']}")
+        if outline.get("plot_points"):
+            for pi, pp in enumerate(outline["plot_points"][:10], 1):
+                event = pp.get("event", "") if isinstance(pp, dict) else str(pp)
+                parts.append(f"情节{pi}：{event}")
+        if outline.get("emotional_curve"):
+            parts.append(f"情感曲线：{outline['emotional_curve']}")
+        if outline.get("chapter_count_suggested"):
+            parts.append(f"章节数：{outline['chapter_count_suggested']}")
+        _add("\n".join(parts), "outline")
 
     # 1. 世界观
     ws = data["world_setting"]
@@ -487,6 +505,24 @@ def _collect_global_documents_from_db(project_id: int) -> tuple[list[str], list[
             docs.append(chunk)
             meta.append({"source": source, "chunk": i})
 
+    # 0. 大纲
+    outline = data.get("outline")
+    if outline:
+        parts = []
+        if outline.get("title"):
+            parts.append(f"标题：{outline['title']}")
+        if outline.get("summary"):
+            parts.append(f"摘要：{outline['summary']}")
+        if outline.get("plot_points"):
+            for pi, pp in enumerate(outline["plot_points"][:10], 1):
+                event = pp.get("event", "") if isinstance(pp, dict) else str(pp)
+                parts.append(f"情节{pi}：{event}")
+        if outline.get("emotional_curve"):
+            parts.append(f"情感曲线：{outline['emotional_curve']}")
+        if outline.get("chapter_count_suggested"):
+            parts.append(f"章节数：{outline['chapter_count_suggested']}")
+        _add("\n".join(parts), "outline")
+
     # 1. 世界观
     ws = data["world_setting"]
     if ws:
@@ -768,6 +804,20 @@ def _keyword_fallback(project_id: int, query: str, top_k: int) -> list[dict]:
 
     results = []
     query_lower = query.lower()
+
+    # 搜索大纲
+    outline = kb.outlines.get()
+    if outline:
+        outline_text = f"{outline.get('title', '')} {outline.get('summary', '')} {outline.get('emotional_curve', '')}"
+        if any(kw in outline_text for kw in query_lower.split()):
+            parts = [f"大纲：{outline.get('title', '未命名')}"]
+            if outline.get("summary"):
+                parts.append(f"摘要：{outline['summary'][:200]}")
+            results.append({
+                "score": 0.5,
+                "source": "outline",
+                "text": " | ".join(parts),
+            })
 
     # 搜索角色
     characters = kb.characters.list_characters()

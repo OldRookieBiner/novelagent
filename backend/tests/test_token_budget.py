@@ -91,3 +91,9 @@ def test_calculate_context_budget_no_negative():
         system_prompt_tokens=5000,
     )
     assert result >= 0
+
+
+def test_default_agent_max_output_tokens_exists():
+    """DEFAULT_AGENT_MAX_OUTPUT_TOKENS 常量存在且为 128K"""
+    from app.agents.token_budget import DEFAULT_AGENT_MAX_OUTPUT_TOKENS
+    assert DEFAULT_AGENT_MAX_OUTPUT_TOKENS == 131072

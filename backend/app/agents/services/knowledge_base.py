@@ -144,6 +144,7 @@ class KnowledgeBaseService:
             plots_data = self.plots._read_all_with_session(db)
             timelines_data = self.timelines._read_all_with_session(db)
             return {
+                "outline": self.outlines._read_with_session(db),
                 "world_setting": self.world_setting._read_with_session(db),
                 "characters": self.characters._read_all_characters_with_session(db),
                 "relations": self.characters._read_all_relations_with_session(db),
@@ -402,6 +403,7 @@ class KnowledgeBaseService:
             style_snapshots = self.styles._read_snapshots_with_session(db, last_n=10)
 
             return {
+                "outline": self.outlines._read_with_session(db),
                 "world_setting": self.world_setting._read_with_session(db),
                 "characters": self.characters._read_all_characters_with_session(db),
                 "relations": self.characters._read_all_relations_with_session(db),

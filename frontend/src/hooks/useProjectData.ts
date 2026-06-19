@@ -105,23 +105,42 @@ export function useProjectData(projectId: number | null): UseProjectDataResult
       if (!projectId) return
 
       setLoading(true)
+      // 独立加载各数据，任一失败不影响其他
+      let projectData: ProjectDetail | null = null
+
+      // 加载项目数据（核心，失败则不设 project）
       try
       {
-        const [projectData, outlineData] = await Promise.all([
-          projectsApi.get(projectId),
-          outlineApi.get(projectId),
-        ])
+        projectData = await projectsApi.get(projectId)
         setProject(projectData)
         setCurrentProject(projectData)
-        setOutline(outlineData)
-        setProjectOutline(outlineData)
 
         // 同步工作流阶段
         if (projectData.workflow_state?.stage)
         {
           useWorkbenchStore.getState().setPhase(projectData.workflow_state.stage as any)
         }
+      }
+      catch (err)
+      {
+        console.error('Failed to fetch project:', err)
+      }
 
+      // 加载大纲数据（非核心，失败不影响页面渲染）
+      try
+      {
+        const outlineData = await outlineApi.get(projectId)
+        setOutline(outlineData)
+        setProjectOutline(outlineData)
+      }
+      catch (err)
+      {
+        console.error('Failed to fetch outline:', err)
+      }
+
+      // 加载章节大纲数据（非核心，失败不影响页面渲染）
+      try
+      {
         const chaptersData = await chapterOutlinesApi.list(projectId)
         setChapterOutlines(chaptersData)
         setProjectChapterOutlines(chaptersData)
@@ -132,12 +151,10 @@ export function useProjectData(projectId: number | null): UseProjectDataResult
       }
       catch (err)
       {
-        console.error('Failed to fetch project:', err)
+        console.error('Failed to fetch chapter outlines:', err)
       }
-      finally
-      {
-        setLoading(false)
-      }
+
+      setLoading(false)
     }
 
     fetchData()

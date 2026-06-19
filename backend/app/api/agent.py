@@ -23,7 +23,7 @@ from app.agents.prompts import AGENT_SYSTEM_PROMPT
 from app.models.workflow_state import WorkflowState
 from app.agents.constants import Phase
 from app.agents.agent_context import ProjectContextAssembler, BudgetTracker
-from app.agents.token_budget import get_context_window, estimate_tokens
+from app.agents.token_budget import get_context_window, estimate_tokens, DEFAULT_AGENT_MAX_OUTPUT_TOKENS
 from app.agents.tool_context import set_tool_context, reset_tool_context, set_loaded_keys, set_budget_tracker
 from app.agents.services.knowledge_base import KnowledgeBaseService
 from app.agents.sse_events import (
@@ -69,6 +69,7 @@ class AgentChatRequest(BaseModel):
     active_menu_item: Optional[str] = None
     current_chapter_number: Optional[int] = None
     history: Optional[list[dict]] = None
+    started_at: Optional[int] = None  # 客户端发送请求的时间戳（毫秒）
 
 
 class ImpactDecisionRequest(BaseModel):
@@ -170,17 +171,22 @@ def _save_user_message(project_id: int, message: str):
             pass
 
 
-def _save_assistant_message(project_id: int, content: str, segments: list, actions: list):
+def _save_assistant_message(project_id: int, content: str, segments: list, actions: list, started_at: int | None = None):
     db = SessionLocal()
     committed = False
     try:
         conv = _get_active_conversation(db, project_id)
+        # 计算耗时（毫秒）
+        duration_ms: int | None = None
+        if started_at:
+            duration_ms = int((datetime.utcnow() - datetime.fromtimestamp(started_at / 1000)).total_seconds() * 1000)
         msg = AgentMessage(
             conversation_id=conv.id,
             role="assistant",
             content=content or "",
             segments=segments or [],
             actions=actions or [],
+            duration_ms=duration_ms,
         )
         db.add(msg)
         conv.message_count = (conv.message_count or 0) + 1
@@ -529,6 +535,7 @@ async def get_conversation(
             "content": m.content,
             "segments": m.segments or [],
             "actions": m.actions or [],
+            "durationMs": m.duration_ms,
             "timestamp": int(m.created_at.timestamp() * 1000) if m.created_at else 0,
         }
         for m in messages_raw
@@ -669,8 +676,8 @@ async def agent_chat(
     messages.extend(truncated_history)
     messages.append({"role": "user", "content": req.message})
 
-    # 计算输出 token 上限：context_window × 80%，留 20% 给输入+估算误差
-    max_output_tokens = int(context_window * 0.8)
+    # Agent 输出上限：独立于上下文总长度，直接使用固定常量
+    max_output_tokens = DEFAULT_AGENT_MAX_OUTPUT_TOKENS
 
     # Create agent graph with phase-aware tools
     try:
@@ -717,6 +724,7 @@ async def agent_chat(
                         content=acc.get("full", ""),
                         segments=acc.get("segments", []),
                         actions=acc.get("actions", []),
+                        started_at=req.started_at,
                     )
                 except Exception as e:
                     logger.error(f"Failed to save assistant message: {e}")

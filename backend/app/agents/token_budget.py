@@ -6,6 +6,10 @@ from typing import Optional
 # 上下文窗口默认值：用户未在设置中配置时的兜底值
 DEFAULT_CONTEXT_WINDOW = 262144  # 256K
 
+# Agent 聊天输出 token 上限（ReAct 模式：推理文本 + 工具调用）
+# 输出上限是模型 API 的独立约束，不应从上下文总长度推算
+DEFAULT_AGENT_MAX_OUTPUT_TOKENS = 131072  # 128K
+
 # 预编译 CJK 字符正则，避免每次调用 re.findall 重新编译
 _CJK_RE = re.compile(r'[一-龥]')
 
