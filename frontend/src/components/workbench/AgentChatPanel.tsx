@@ -11,6 +11,16 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { ConversationHistoryDialog } from './ConversationHistoryDialog'
 
+/** 截取前 max 个 grapheme cluster（安全处理 emoji/组合字符）作为消息标题 */
+export function truncateTitle(content: string, max = 15): string
+{
+  const cleaned = content.replace(/\s+/g, ' ').trim()
+  if (!cleaned) return '(空消息)'
+  const chars = Array.from(cleaned)
+  if (chars.length <= max) return cleaned
+  return chars.slice(0, max).join('') + '…'
+}
+
 const PHASE_LABELS: Record<string, string> = {
   incubation: '创意孵化',
   structure: '结构设计',

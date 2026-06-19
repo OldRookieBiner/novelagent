@@ -22,6 +22,9 @@ export interface AiMessage {
   content: string
   segments: AiMessageSegment[]
   timestamp: number
+  // 仅前端内存态，不持久化到后端
+  startedAt?: number
+  durationMs?: number
 }
 
 /** Impact assessment report from a propose_* tool */
