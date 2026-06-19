@@ -391,10 +391,10 @@ const CompletedAssistantMessage = React.memo(function CompletedAssistantMessage(
   return (
     <>
       <AssistantMessageContentInner msg={msg} isStreaming={false} />
-      {msg.content && msg.durationMs !== undefined && (
+      {msg.content && (
         <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-1.5">
           <CopyButton content={msg.content} ariaLabel="复制回复内容" />
-          <span>用时 {formatDuration(msg.durationMs)}</span>
+          {msg.durationMs !== undefined && <span>用时 {formatDuration(msg.durationMs)}</span>}
         </div>
       )}
     </>
@@ -1369,7 +1369,7 @@ export function AgentChatPanel() {
                   {msg.content}
                   <CopyButton
                     content={msg.content}
-                    className="opacity-0 group-hover:opacity-100 absolute -bottom-3 right-0"
+                    className="opacity-0 group-hover:opacity-100 absolute top-1 right-1"
                     ariaLabel="复制用户消息"
                   />
                 </div>
