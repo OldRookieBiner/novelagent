@@ -255,7 +255,9 @@ export default function CreateProjectDialog({ open, onOpenChange }: CreateProjec
         abortController.signal
       )
 
-      if (result.project_id)
+      // 只有当初始化成功完成时才跳转到工作台
+      // status 为 complete 时项目已完整创建；timeout/partial/cancelled 时项目已被删除或未完成
+      if (result.status === 'complete' && result.project_id)
       {
         setConcept('')
         setTargetWords(100000)
@@ -269,6 +271,11 @@ export default function CreateProjectDialog({ open, onOpenChange }: CreateProjec
       else if (result.cancelled)
       {
         // 用户主动取消，不跳转
+      }
+      else
+      {
+        // 超时或部分失败，项目已被后端删除，停留在当前页面并显示错误
+        setError('项目创建失败，请重试')
       }
     } catch (err)
     {

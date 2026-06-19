@@ -50,6 +50,7 @@ export async function sendAgentMessage(
         active_menu_item: options?.activeMenuItem,
         current_chapter_number: options?.currentChapterNumber,
         history: options?.history,
+        started_at: Date.now(),
       },
       signal: options?.signal,
     },
@@ -125,6 +126,7 @@ export interface ConversationResponse {
       args?: Record<string, unknown>
       result?: Record<string, unknown>
     }>
+    durationMs?: number
     timestamp: number
   }>
 }

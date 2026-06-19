@@ -1,7 +1,7 @@
 // AgentChatPanel.tsx — Right panel: AI creation agent chat
 
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { PanelRightClose, PanelRightOpen, Send, AlertTriangle, ShieldCheck, ChevronDown, ChevronRight, Loader2, CheckCircle2, GripVertical, Square, History, Plus } from 'lucide-react'
+import { PanelRightClose, PanelRightOpen, Send, AlertTriangle, ShieldCheck, ChevronDown, ChevronRight, Loader2, CheckCircle2, GripVertical, Square, History, Plus, Copy, Check } from 'lucide-react'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
 import { sendAgentMessage, fetchConversation, createConversation } from '@/lib/agentApi'
 import { modelConfigsApi, settingsApi } from '@/lib/api'
@@ -10,6 +10,24 @@ import type { ModelConfig, ModelItem } from '@/types'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { ConversationHistoryDialog } from './ConversationHistoryDialog'
+import { MessageAnchorRail } from './MessageAnchorRail'
+
+/** 截取前 max 个 grapheme cluster（安全处理 emoji/组合字符）作为消息标题 */
+export function truncateTitle(content: string, max = 15): string
+{
+  const cleaned = content.replace(/\s+/g, ' ').trim()
+  if (!cleaned) return '(空消息)'
+  const chars = Array.from(cleaned)
+  if (chars.length <= max) return cleaned
+  return chars.slice(0, max).join('') + '…'
+}
+
+/** 毫秒数格式化：< 1s 显示 ms，>= 1s 显示 1 位小数 s */
+function formatDuration(ms: number): string
+{
+  if (ms < 1000) return `${ms}ms`
+  return `${(ms / 1000).toFixed(1)}s`
+}
 
 const PHASE_LABELS: Record<string, string> = {
   incubation: '创意孵化',
@@ -370,7 +388,17 @@ const CompletedAssistantMessage = React.memo(function CompletedAssistantMessage(
   msg: AiMessage
 })
 {
-  return <AssistantMessageContentInner msg={msg} isStreaming={false} />
+  return (
+    <>
+      <AssistantMessageContentInner msg={msg} isStreaming={false} />
+      {msg.content && (
+        <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-1.5">
+          <CopyButton content={msg.content} ariaLabel="复制回复内容" />
+          {msg.durationMs !== undefined && <span>用时 {formatDuration(msg.durationMs)}</span>}
+        </div>
+      )}
+    </>
+  )
 })
 
 /** 流式中消息 — 不 memo */
@@ -387,6 +415,72 @@ function ThinkingIndicator()
       <Loader2 className="h-3 w-3 animate-spin text-blue-400" />
       <span>思考中...</span>
     </div>
+  )
+}
+
+/** 通用复制按钮：成功显示 Check 1.5s 后还原。带 clipboard.writeText 失败 fallback */
+function CopyButton({
+  content,
+  className,
+  ariaLabel,
+}: {
+  content: string
+  className?: string
+  ariaLabel?: string
+})
+{
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    const showSuccess = () =>
+    {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    }
+
+    try
+    {
+      if (navigator.clipboard && navigator.clipboard.writeText)
+      {
+        await navigator.clipboard.writeText(content)
+        showSuccess()
+        return
+      }
+      throw new Error('clipboard unavailable')
+    }
+    catch
+    {
+      // fallback：execCommand
+      try
+      {
+        const ta = document.createElement('textarea')
+        ta.value = content
+        ta.style.position = 'fixed'
+        ta.style.left = '-9999px'
+        ta.style.opacity = '0'
+        document.body.appendChild(ta)
+        ta.select()
+        const ok = document.execCommand('copy')
+        document.body.removeChild(ta)
+        if (ok) showSuccess()
+      }
+      catch
+      {
+        // 静默失败
+      }
+    }
+  }
+
+  return (
+    <button
+      onClick={handleCopy}
+      className={cn('text-muted-foreground hover:text-foreground transition-colors', className)}
+      aria-label={ariaLabel || '复制'}
+      title="复制"
+      type="button"
+    >
+      {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+    </button>
   )
 }
 
@@ -452,6 +546,19 @@ export function AgentChatPanel() {
   const skipAutoScrollRef = useRef(false)
   const isLoadingMoreRef = useRef(false)
   const prevScrollHeightRef = useRef(0)
+  // 用户消息 DOM 引用 Map：Task 2 用于复制按钮 ref 回调，Task 6 复用做锚点跳转 + 当前位置判定
+  const userMessageRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  const [activeAnchorId, setActiveAnchorId] = useState<string | null>(null)
+  const scrollRAFRef = useRef<number | null>(null)
+  const historyIndexRef = useRef<number>(-1)
+  const draftRef = useRef<string>('')
+
+  /** 重置历史导航到草稿态（发送、切换会话、新建会话、加载历史 effect 共用） */
+  const resetInputHistory = useCallback(() =>
+  {
+    historyIndexRef.current = -1
+    draftRef.current = ''
+  }, [])
 
   // Task 14: SSE 文本缓冲 — 合并高频 chunk 后统一更新
   const textBufferRef = useRef<{
@@ -629,8 +736,10 @@ export function AgentChatPanel() {
           data: s.data,
         })),
         timestamp: m.timestamp,
+        durationMs: m.durationMs,
       }))
       setAiMessages(loaded)
+      resetInputHistory()
     }).catch(() => {
       // 会话可能尚未创建，保持空数组
     })
@@ -661,6 +770,7 @@ export function AgentChatPanel() {
           data: s.data,
         })),
         timestamp: m.timestamp,
+        durationMs: m.durationMs,
       }))
 
       const existingIds = new Set(aiMessages.map((m) => m.id))
@@ -682,13 +792,42 @@ export function AgentChatPanel() {
   }, [currentProjectId, aiMessages, setAiMessages])
 
   // Task 2: 检测滚动到顶部
-  const handleMessagesScroll = useCallback(() => {
+  const updateActiveAnchor = useCallback(() => {
     if (!scrollRef.current) return
-    if (scrollRef.current.scrollTop < 50)
+    const container = scrollRef.current
+    const containerRect = container.getBoundingClientRect()
+    const threshold = containerRect.top + 80
+
+    let bestId: string | null = null
+    let bestDist = Infinity
+
+    for (const [id, el] of userMessageRefs.current.entries())
     {
-      loadMoreMessages()
+      const elRect = el.getBoundingClientRect()
+      // 仅考虑视口内的（与容器交叠）
+      if (elRect.bottom < containerRect.top || elRect.top > containerRect.bottom) continue
+      // 距 threshold 最近的视为"当前"
+      const dist = Math.abs(elRect.top - threshold)
+      if (dist < bestDist)
+      {
+        bestDist = dist
+        bestId = id
+      }
     }
-  }, [loadMoreMessages])
+    setActiveAnchorId(bestId)
+  }, [])
+
+  const handleMessagesScroll = useCallback(() => {
+    if (scrollRAFRef.current) cancelAnimationFrame(scrollRAFRef.current)
+    scrollRAFRef.current = requestAnimationFrame(() => {
+      if (!scrollRef.current) return
+      if (scrollRef.current.scrollTop < 50)
+      {
+        loadMoreMessages()
+      }
+      updateActiveAnchor()
+    })
+  }, [loadMoreMessages, updateActiveAnchor])
 
   // Task 14: flush 文本缓冲
   const flushTextBuffer = useCallback(() => {
@@ -714,6 +853,7 @@ export function AgentChatPanel() {
   const handleSwitchConversation = useCallback(async (conv: { id: number }) => {
     if (!currentProjectId) return
     setActiveConversationId(conv.id)
+    resetInputHistory()
     try
     {
       const res = await fetchConversation(currentProjectId, conv.id)
@@ -744,12 +884,13 @@ export function AgentChatPanel() {
       const conv = await createConversation(currentProjectId)
       setActiveConversationId(conv.id)
       setAiMessages([])
+      resetInputHistory()
     }
     catch
     {
       // 可能 busy lock 冲突或其他错误
     }
-  }, [currentProjectId, isAgentSending, setActiveConversationId, setAiMessages])
+  }, [currentProjectId, isAgentSending, setActiveConversationId, setAiMessages, resetInputHistory])
 
   // 模型选择器 click-outside 关闭
   useEffect(() => {
@@ -824,6 +965,9 @@ export function AgentChatPanel() {
   const handleSend = useCallback(async () => {
     if (!input.trim() || !currentProjectId || isAgentSending) return
 
+    // 重置历史导航状态
+    resetInputHistory()
+
     // 确保上一条消息的文本缓冲已刷新
     flushTextBuffer()
 
@@ -840,12 +984,14 @@ export function AgentChatPanel() {
     setInputRows(1)
     setIsAgentSending(true)
 
+    const sendStartedAt = Date.now()
     const assistantMsg: AiMessage = {
       id: crypto.randomUUID(),
       role: 'assistant',
       content: '',
       segments: [],
-      timestamp: Date.now(),
+      timestamp: sendStartedAt,
+      startedAt: sendStartedAt,
     }
     addAiMessage(assistantMsg)
 
@@ -913,10 +1059,16 @@ export function AgentChatPanel() {
           },
           onAgentDone: () => {
             flushTextBuffer()
+            const durationMs = Date.now() - sendStartedAt
+            updateAiMessage(assistantMsg.id, (m) => ({
+              ...m,
+              durationMs,
+            }))
             incrementKnowledgeVersion()
           },
           onError: (error) => {
             flushTextBuffer()
+            const durationMs = Date.now() - sendStartedAt
             updateAiMessage(assistantMsg.id, (m) => ({
               ...m,
               content: m.content || `错误：${error}`,
@@ -925,6 +1077,7 @@ export function AgentChatPanel() {
                 content: `错误：${error}`,
                 data: undefined,
               }],
+              durationMs,
             }))
           },
         },
@@ -936,6 +1089,7 @@ export function AgentChatPanel() {
       )
     } catch (err: any) {
       if (err.name !== 'AbortError') {
+        const durationMs = Date.now() - sendStartedAt
         updateAiMessage(assistantMsg.id, (m) => ({
           ...m,
           content: m.content || `连接错误：${err.message}`,
@@ -944,6 +1098,15 @@ export function AgentChatPanel() {
             content: `连接错误：${err.message}`,
             data: undefined,
           }],
+          durationMs,
+        }))
+      } else {
+        // AbortError: 用户主动停止，记录耗时
+        flushTextBuffer()
+        const durationMs = Date.now() - sendStartedAt
+        updateAiMessage(assistantMsg.id, (m) => ({
+          ...m,
+          durationMs,
         }))
       }
     } finally {
@@ -972,7 +1135,62 @@ export function AgentChatPanel() {
 
   // 输入框键盘事件处理
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    // 中文输入法 composition 期间不响应任何快捷键
+    if (e.nativeEvent.isComposing) return
+
+    // ↑/↓ 历史导航（仅当光标在首行/末行）
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown')
+    {
+      const textarea = e.currentTarget
+      const cursorPos = textarea.selectionStart
+      const beforeCursor = textarea.value.slice(0, cursorPos)
+      const afterCursor = textarea.value.slice(cursorPos)
+
+      if (e.key === 'ArrowUp' && beforeCursor.includes('\n')) return
+      if (e.key === 'ArrowDown' && afterCursor.includes('\n')) return
+
+      const userMessages = aiMessages.filter(m => m.role === 'user')
+      if (userMessages.length === 0) return
+
+      e.preventDefault()
+      const msgs = userMessages.map(m => m.content)
+
+      if (e.key === 'ArrowUp')
+      {
+        if (historyIndexRef.current === -1)
+        {
+          // 进入历史：保存当前草稿
+          draftRef.current = input
+          historyIndexRef.current = 0
+        }
+        else
+        {
+          historyIndexRef.current = Math.min(msgs.length - 1, historyIndexRef.current + 1)
+        }
+        setInput(msgs[msgs.length - 1 - historyIndexRef.current])
+      }
+      else
+      {
+        // ArrowDown
+        if (historyIndexRef.current === -1) return // 已经是草稿态
+        historyIndexRef.current -= 1
+        if (historyIndexRef.current < 0)
+        {
+          // 先恢复草稿到输入框，再清空 ref —— setInput 在调用瞬间快照 draftRef.current，之后清空不影响
+          setInput(draftRef.current)
+          resetInputHistory()
+        }
+        else
+        {
+          setInput(msgs[msgs.length - 1 - historyIndexRef.current])
+        }
+      }
+      return
+    }
+
+    // Enter 发送（保留原行为）
+    if (e.key === 'Enter' && !e.shiftKey)
+    {
       e.preventDefault()
       handleSend()
     }
@@ -1129,7 +1347,7 @@ export function AgentChatPanel() {
         )}
 
         {/* Messages */}
-        <div ref={scrollRef} onScroll={handleMessagesScroll} className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
+        <div ref={scrollRef} onScroll={handleMessagesScroll} className="flex-1 overflow-y-auto pl-3 pr-6 py-2 space-y-6">
           {aiMessages.length === 0 && (
             <div className="text-center text-muted-foreground text-xs py-8">
               {PHASE_EMPTY_HINTS[phase] || '和智能体讨论你的创作想法'}
@@ -1143,8 +1361,19 @@ export function AgentChatPanel() {
               )}
             >
               {msg.role === 'user' ? (
-                <div className="rounded-lg px-3 py-2 text-[11px] leading-relaxed max-w-[80%] bg-primary text-primary-foreground">
+                <div
+                  ref={(el) => {
+                    if (el) userMessageRefs.current.set(msg.id, el)
+                    else userMessageRefs.current.delete(msg.id)
+                  }}
+                  className="rounded-lg px-3 py-2 text-[11px] leading-relaxed max-w-[80%] bg-secondary text-secondary-foreground selection:bg-primary/25 selection:text-foreground relative group"
+                >
                   {msg.content}
+                  <CopyButton
+                    content={msg.content}
+                    className="opacity-0 group-hover:opacity-100 absolute -top-3 -right-2"
+                    ariaLabel="复制用户消息"
+                  />
                 </div>
               ) : (
                 <div className="text-[11px] leading-relaxed text-foreground">
@@ -1157,6 +1386,26 @@ export function AgentChatPanel() {
               )}
             </div>
           ))}
+        </div>
+
+        {/* MessageAnchorRail - 固定在右侧 */}
+        <div className="fixed right-3 top-1/2 -translate-y-1/2 z-40">
+          <MessageAnchorRail
+            userMessages={aiMessages.filter(m => m.role === 'user')}
+            activeId={activeAnchorId}
+            onJump={(id) => {
+              const el = userMessageRefs.current.get(id)
+              if (el && scrollRef.current)
+              {
+                const containerScrollTop = el.offsetTop - scrollRef.current.offsetTop - 12
+                scrollRef.current.scrollTop = Math.max(0, containerScrollTop)
+                el.classList.add('ring-2', 'ring-primary/40', 'rounded-lg')
+                setTimeout(() => {
+                  el.classList.remove('ring-2', 'ring-primary/40', 'rounded-lg')
+                }, 1000)
+              }
+            }}
+          />
         </div>
 
         {/* Impact Assessment Cards */}
@@ -1219,7 +1468,8 @@ export function AgentChatPanel() {
               onClick={() => isAgentSending ? abortRef.current?.abort() : handleSend()}
               disabled={!input.trim() && !isAgentSending}
               className={cn(
-                'border-none px-2.5 py-1.5 rounded-md text-[11px] self-end transition-colors',
+                'border-none px-2.5 py-1.5 rounded-md text-[11px] transition-colors',
+                inputRows === 1 ? 'self-center' : 'self-end',
                 isAgentSending ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-primary text-primary-foreground disabled:opacity-50'
               )}
               title={isAgentSending ? '停止生成 (Esc x2)' : '发送'}

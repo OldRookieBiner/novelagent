@@ -58,6 +58,7 @@ class AgentMessage(Base):
     content = Column(Text, nullable=False, default='')
     segments = Column(JSON, default=list)
     actions = Column(JSON, default=list)
+    duration_ms = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     conversation = relationship('AgentConversation', back_populates='messages')

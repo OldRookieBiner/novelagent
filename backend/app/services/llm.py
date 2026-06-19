@@ -159,7 +159,7 @@ class LLMService:
                     if not response.choices:
                         raise ValueError("LLM response has empty choices, no content available")
                     return response.choices[0].message.content
-                except APIError as e:
+                except (APIError, httpx.TransportError) as e:
                     last_error = e
                     # 模型不存在 → 切换下一个模型
                     if _is_model_not_found_error(e) and self.fallback_models:
@@ -212,7 +212,10 @@ class LLMService:
 
                     # 逐 chunk 读取 + 空闲超时检测
                     # 如果 60s 内没有收到任何数据，判定连接异常
+                    # 注意：为防止重试导致内容重复（部分响应 + 完整响应合并），
+                    # 我们先累积到缓冲，只有流完全成功后才一次性 yield 给调用方
                     stream_iter = stream.__aiter__()
+                    accumulated_content = ""
                     while True:
                         try:
                             chunk = await asyncio.wait_for(
@@ -229,7 +232,7 @@ class LLMService:
 
                         delta = chunk.choices[0].delta if chunk.choices else None
                         if delta and delta.content:
-                            yield delta.content
+                            accumulated_content += delta.content
 
                         # 检测截断：finish_reason="length" 表示 max_tokens 不够
                         if chunk.choices and chunk.choices[0].finish_reason == "length":
@@ -238,8 +241,13 @@ class LLMService:
                                 f"max_tokens={max_tokens} may be too low. "
                                 f"Consider increasing max_tokens."
                             )
+
+                    # 流成功完成，将累积的内容一次性 yield 出去
+                    # 这样重试时之前已 yield 的内容不会被重复追加
+                    if accumulated_content:
+                        yield accumulated_content
                     return  # 成功，退出
-                except APIError as e:
+                except (APIError, httpx.TransportError) as e:
                     last_error = e
                     # 模型不存在 → 切换下一个模型
                     if _is_model_not_found_error(e) and self.fallback_models:
