@@ -10,6 +10,7 @@ import type { ModelConfig, ModelItem } from '@/types'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { ConversationHistoryDialog } from './ConversationHistoryDialog'
+import { MessageAnchorRail } from './MessageAnchorRail'
 
 /** 截取前 max 个 grapheme cluster（安全处理 emoji/组合字符）作为消息标题 */
 export function truncateTitle(content: string, max = 15): string
@@ -547,6 +548,8 @@ export function AgentChatPanel() {
   const prevScrollHeightRef = useRef(0)
   // 用户消息 DOM 引用 Map：Task 2 用于复制按钮 ref 回调，Task 6 复用做锚点跳转 + 当前位置判定
   const userMessageRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  const [activeAnchorId, setActiveAnchorId] = useState<string | null>(null)
+  const scrollRAFRef = useRef<number | null>(null)
   const historyIndexRef = useRef<number>(-1)
   const draftRef = useRef<string>('')
 
@@ -787,13 +790,42 @@ export function AgentChatPanel() {
   }, [currentProjectId, aiMessages, setAiMessages])
 
   // Task 2: 检测滚动到顶部
-  const handleMessagesScroll = useCallback(() => {
+  const updateActiveAnchor = useCallback(() => {
     if (!scrollRef.current) return
-    if (scrollRef.current.scrollTop < 50)
+    const container = scrollRef.current
+    const containerRect = container.getBoundingClientRect()
+    const threshold = containerRect.top + 80
+
+    let bestId: string | null = null
+    let bestDist = Infinity
+
+    for (const [id, el] of userMessageRefs.current.entries())
     {
-      loadMoreMessages()
+      const elRect = el.getBoundingClientRect()
+      // 仅考虑视口内的（与容器交叠）
+      if (elRect.bottom < containerRect.top || elRect.top > containerRect.bottom) continue
+      // 距 threshold 最近的视为"当前"
+      const dist = Math.abs(elRect.top - threshold)
+      if (dist < bestDist)
+      {
+        bestDist = dist
+        bestId = id
+      }
     }
-  }, [loadMoreMessages])
+    setActiveAnchorId(bestId)
+  }, [])
+
+  const handleMessagesScroll = useCallback(() => {
+    if (scrollRAFRef.current) cancelAnimationFrame(scrollRAFRef.current)
+    scrollRAFRef.current = requestAnimationFrame(() => {
+      if (!scrollRef.current) return
+      if (scrollRef.current.scrollTop < 50)
+      {
+        loadMoreMessages()
+      }
+      updateActiveAnchor()
+    })
+  }, [loadMoreMessages, updateActiveAnchor])
 
   // Task 14: flush 文本缓冲
   const flushTextBuffer = useCallback(() => {
@@ -1313,7 +1345,7 @@ export function AgentChatPanel() {
         )}
 
         {/* Messages */}
-        <div ref={scrollRef} onScroll={handleMessagesScroll} className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
+        <div ref={scrollRef} onScroll={handleMessagesScroll} className="flex-1 overflow-y-auto pl-3 pr-6 py-2 space-y-2 relative">
           {aiMessages.length === 0 && (
             <div className="text-center text-muted-foreground text-xs py-8">
               {PHASE_EMPTY_HINTS[phase] || '和智能体讨论你的创作想法'}
@@ -1354,6 +1386,24 @@ export function AgentChatPanel() {
               )}
             </div>
           ))}
+          <MessageAnchorRail
+            userMessages={aiMessages.filter(m => m.role === 'user')}
+            activeId={activeAnchorId}
+            onJump={(id) => {
+              const el = userMessageRefs.current.get(id)
+              if (el && scrollRef.current)
+              {
+                // 用 offsetTop 计算，绕过 Safari scrollIntoView 兼容性
+                const containerScrollTop = el.offsetTop - scrollRef.current.offsetTop - 12
+                scrollRef.current.scrollTop = Math.max(0, containerScrollTop)
+                // 高亮提示 1s
+                el.classList.add('ring-2', 'ring-primary/40', 'rounded-lg')
+                setTimeout(() => {
+                  el.classList.remove('ring-2', 'ring-primary/40', 'rounded-lg')
+                }, 1000)
+              }
+            }}
+          />
         </div>
 
         {/* Impact Assessment Cards */}
