@@ -21,6 +21,13 @@ export function truncateTitle(content: string, max = 15): string
   return chars.slice(0, max).join('') + '…'
 }
 
+/** 毫秒数格式化：< 1s 显示 ms，>= 1s 显示 1 位小数 s */
+function formatDuration(ms: number): string
+{
+  if (ms < 1000) return `${ms}ms`
+  return `${(ms / 1000).toFixed(1)}s`
+}
+
 const PHASE_LABELS: Record<string, string> = {
   incubation: '创意孵化',
   structure: '结构设计',
@@ -380,7 +387,17 @@ const CompletedAssistantMessage = React.memo(function CompletedAssistantMessage(
   msg: AiMessage
 })
 {
-  return <AssistantMessageContentInner msg={msg} isStreaming={false} />
+  return (
+    <>
+      <AssistantMessageContentInner msg={msg} isStreaming={false} />
+      {msg.content && msg.durationMs !== undefined && (
+        <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-1.5">
+          <CopyButton content={msg.content} ariaLabel="复制回复内容" />
+          <span>用时 {formatDuration(msg.durationMs)}</span>
+        </div>
+      )}
+    </>
+  )
 })
 
 /** 流式中消息 — 不 memo */
@@ -933,12 +950,14 @@ export function AgentChatPanel() {
     setInputRows(1)
     setIsAgentSending(true)
 
+    const sendStartedAt = Date.now()
     const assistantMsg: AiMessage = {
       id: crypto.randomUUID(),
       role: 'assistant',
       content: '',
       segments: [],
-      timestamp: Date.now(),
+      timestamp: sendStartedAt,
+      startedAt: sendStartedAt,
     }
     addAiMessage(assistantMsg)
 
@@ -1006,10 +1025,16 @@ export function AgentChatPanel() {
           },
           onAgentDone: () => {
             flushTextBuffer()
+            const durationMs = Date.now() - sendStartedAt
+            updateAiMessage(assistantMsg.id, (m) => ({
+              ...m,
+              durationMs,
+            }))
             incrementKnowledgeVersion()
           },
           onError: (error) => {
             flushTextBuffer()
+            const durationMs = Date.now() - sendStartedAt
             updateAiMessage(assistantMsg.id, (m) => ({
               ...m,
               content: m.content || `错误：${error}`,
@@ -1018,6 +1043,7 @@ export function AgentChatPanel() {
                 content: `错误：${error}`,
                 data: undefined,
               }],
+              durationMs,
             }))
           },
         },
@@ -1029,6 +1055,7 @@ export function AgentChatPanel() {
       )
     } catch (err: any) {
       if (err.name !== 'AbortError') {
+        const durationMs = Date.now() - sendStartedAt
         updateAiMessage(assistantMsg.id, (m) => ({
           ...m,
           content: m.content || `连接错误：${err.message}`,
@@ -1037,6 +1064,15 @@ export function AgentChatPanel() {
             content: `连接错误：${err.message}`,
             data: undefined,
           }],
+          durationMs,
+        }))
+      } else {
+        // AbortError: 用户主动停止，记录耗时
+        flushTextBuffer()
+        const durationMs = Date.now() - sendStartedAt
+        updateAiMessage(assistantMsg.id, (m) => ({
+          ...m,
+          durationMs,
         }))
       }
     } finally {
