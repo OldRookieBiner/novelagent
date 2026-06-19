@@ -530,6 +530,15 @@ export function AgentChatPanel() {
   const prevScrollHeightRef = useRef(0)
   // 用户消息 DOM 引用 Map：Task 2 用于复制按钮 ref 回调，Task 6 复用做锚点跳转 + 当前位置判定
   const userMessageRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  const historyIndexRef = useRef<number>(-1)
+  const draftRef = useRef<string>('')
+
+  /** 重置历史导航到草稿态（发送、切换会话、新建会话、加载历史 effect 共用） */
+  const resetInputHistory = useCallback(() =>
+  {
+    historyIndexRef.current = -1
+    draftRef.current = ''
+  }, [])
 
   // Task 14: SSE 文本缓冲 — 合并高频 chunk 后统一更新
   const textBufferRef = useRef<{
@@ -709,6 +718,7 @@ export function AgentChatPanel() {
         timestamp: m.timestamp,
       }))
       setAiMessages(loaded)
+      resetInputHistory()
     }).catch(() => {
       // 会话可能尚未创建，保持空数组
     })
@@ -792,6 +802,7 @@ export function AgentChatPanel() {
   const handleSwitchConversation = useCallback(async (conv: { id: number }) => {
     if (!currentProjectId) return
     setActiveConversationId(conv.id)
+    resetInputHistory()
     try
     {
       const res = await fetchConversation(currentProjectId, conv.id)
@@ -822,12 +833,13 @@ export function AgentChatPanel() {
       const conv = await createConversation(currentProjectId)
       setActiveConversationId(conv.id)
       setAiMessages([])
+      resetInputHistory()
     }
     catch
     {
       // 可能 busy lock 冲突或其他错误
     }
-  }, [currentProjectId, isAgentSending, setActiveConversationId, setAiMessages])
+  }, [currentProjectId, isAgentSending, setActiveConversationId, setAiMessages, resetInputHistory])
 
   // 模型选择器 click-outside 关闭
   useEffect(() => {
@@ -901,6 +913,9 @@ export function AgentChatPanel() {
   // SSE chat handler — 使用 agentApi
   const handleSend = useCallback(async () => {
     if (!input.trim() || !currentProjectId || isAgentSending) return
+
+    // 重置历史导航状态
+    resetInputHistory()
 
     // 确保上一条消息的文本缓冲已刷新
     flushTextBuffer()
@@ -1050,7 +1065,62 @@ export function AgentChatPanel() {
 
   // 输入框键盘事件处理
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    // 中文输入法 composition 期间不响应任何快捷键
+    if (e.nativeEvent.isComposing) return
+
+    // ↑/↓ 历史导航（仅当光标在首行/末行）
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown')
+    {
+      const textarea = e.currentTarget
+      const cursorPos = textarea.selectionStart
+      const beforeCursor = textarea.value.slice(0, cursorPos)
+      const afterCursor = textarea.value.slice(cursorPos)
+
+      if (e.key === 'ArrowUp' && beforeCursor.includes('\n')) return
+      if (e.key === 'ArrowDown' && afterCursor.includes('\n')) return
+
+      const userMessages = aiMessages.filter(m => m.role === 'user')
+      if (userMessages.length === 0) return
+
+      e.preventDefault()
+      const msgs = userMessages.map(m => m.content)
+
+      if (e.key === 'ArrowUp')
+      {
+        if (historyIndexRef.current === -1)
+        {
+          // 进入历史：保存当前草稿
+          draftRef.current = input
+          historyIndexRef.current = 0
+        }
+        else
+        {
+          historyIndexRef.current = Math.min(msgs.length - 1, historyIndexRef.current + 1)
+        }
+        setInput(msgs[msgs.length - 1 - historyIndexRef.current])
+      }
+      else
+      {
+        // ArrowDown
+        if (historyIndexRef.current === -1) return // 已经是草稿态
+        historyIndexRef.current -= 1
+        if (historyIndexRef.current < 0)
+        {
+          // 先恢复草稿到输入框，再清空 ref —— setInput 在调用瞬间快照 draftRef.current，之后清空不影响
+          setInput(draftRef.current)
+          resetInputHistory()
+        }
+        else
+        {
+          setInput(msgs[msgs.length - 1 - historyIndexRef.current])
+        }
+      }
+      return
+    }
+
+    // Enter 发送（保留原行为）
+    if (e.key === 'Enter' && !e.shiftKey)
+    {
       e.preventDefault()
       handleSend()
     }
