@@ -1345,7 +1345,7 @@ export function AgentChatPanel() {
         )}
 
         {/* Messages */}
-        <div ref={scrollRef} onScroll={handleMessagesScroll} className="flex-1 overflow-y-auto pl-3 pr-6 py-2 space-y-4">
+        <div ref={scrollRef} onScroll={handleMessagesScroll} className="flex-1 overflow-y-auto pl-3 pr-6 py-2 space-y-6">
           {aiMessages.length === 0 && (
             <div className="text-center text-muted-foreground text-xs py-8">
               {PHASE_EMPTY_HINTS[phase] || '和智能体讨论你的创作想法'}
@@ -1364,14 +1364,14 @@ export function AgentChatPanel() {
                     if (el) userMessageRefs.current.set(msg.id, el)
                     else userMessageRefs.current.delete(msg.id)
                   }}
-                  className="group flex flex-col items-end"
+                  className="group"
                 >
                   <div className="rounded-lg px-3 py-2 text-[11px] leading-relaxed max-w-[80%] bg-secondary text-secondary-foreground selection:bg-primary/25 selection:text-foreground">
                     {msg.content}
                   </div>
                   <CopyButton
                     content={msg.content}
-                    className="opacity-0 group-hover:opacity-100 -mt-1"
+                    className="opacity-0 group-hover:opacity-100 mt-1"
                     ariaLabel="复制用户消息"
                   />
                 </div>
