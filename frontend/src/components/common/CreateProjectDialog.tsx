@@ -241,10 +241,6 @@ export default function CreateProjectDialog({ open, onOpenChange }: CreateProjec
             }
             else if (type === 'init:done')
             {
-              if (data.status === 'partial')
-              {
-                setError('部分步骤失败，项目已创建但可能不完整')
-              }
               setProgress(100)
             }
           },
@@ -275,7 +271,7 @@ export default function CreateProjectDialog({ open, onOpenChange }: CreateProjec
       else
       {
         // 超时或部分失败，项目已被后端删除，停留在当前页面并显示错误
-        setError('项目创建失败，请重试')
+        setError('关键设定生成失败，项目创建已取消，请重试')
       }
     } catch (err)
     {
