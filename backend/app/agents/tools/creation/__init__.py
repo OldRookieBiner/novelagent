@@ -9,6 +9,7 @@ from .style_constraints import create_style_constraints
 from .foreshadowing import create_foreshadowing
 from .plot_block import create_plot_block
 from .generate_outline import generate_outline
+from .update_outline import update_outline
 from .generate_chapter_outline import generate_chapter_outline
 from .generate_chapter_content import generate_chapter_content
 from .generate_story_seed import generate_story_seed

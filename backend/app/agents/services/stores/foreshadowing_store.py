@@ -60,6 +60,7 @@ class ForeshadowingStore(_BaseStore):
             return self._to_dict_list(objs)
 
     def create(self, data: dict) -> dict:
+        data = self._filter_writable(Foreshadowing, data)
         with self.session() as db:
             obj = Foreshadowing(project_id=self.project_id, **data)
             db.add(obj)

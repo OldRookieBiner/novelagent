@@ -64,6 +64,9 @@ class CharacterBase(BaseModel):
     appearance: Optional[str] = Field(None, description="外貌描写")
     backstory: Optional[str] = Field(None, description="背景故事")
     signature_item: Optional[str] = Field(None, description="标志性物品/装备")
+    knowledge_boundary: Optional[str] = Field(None, description="知识边界：不知道什么/误以为什么，防 OOC 核心约束")
+    speech_style: Optional[str] = Field(None, description="语言风格特征")
+    speech_samples: Optional[str] = Field(None, description="代表性对话样本")
 
 
 class CharacterCreate(CharacterBase):
@@ -86,6 +89,9 @@ class CharacterUpdate(BaseModel):
     appearance: Optional[str] = Field(None, description="外貌描写")
     backstory: Optional[str] = Field(None, description="背景故事")
     signature_item: Optional[str] = Field(None, description="标志性物品/装备")
+    knowledge_boundary: Optional[str] = Field(None, description="知识边界：不知道什么/误以为什么，防 OOC 核心约束")
+    speech_style: Optional[str] = Field(None, description="语言风格特征")
+    speech_samples: Optional[str] = Field(None, description="代表性对话样本")
 
 
 class CharacterResponse(CharacterBase):

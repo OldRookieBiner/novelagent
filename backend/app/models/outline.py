@@ -35,6 +35,7 @@ class Outline(Base):
     characters = Column(JSON, default=list)  # 人物设定列表
     world_setting = Column(JSON, default=dict)  # 世界观设定
     emotional_curve = Column(Text, nullable=True)  # 情感曲线描述
+    theme = Column(Text, nullable=True)  # 主题内核（init 生成：核心命题/表达方式/读者触发点）
     collected_info = Column(JSON, default=dict)  # Collected information from user
     inspiration_template = Column(
         Text, nullable=True

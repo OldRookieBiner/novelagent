@@ -30,6 +30,7 @@ class CharacterStore(_BaseStore):
             return self._to_dict(obj)
 
     def create_character(self, data: dict) -> dict:
+        data = self._filter_writable(Character, data)
         with self.session() as db:
             obj = Character(project_id=self.project_id, **data)
             db.add(obj)

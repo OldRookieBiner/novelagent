@@ -256,6 +256,19 @@ async def create_model_config(
     current_user: User = Depends(get_current_user),
 ):
     """创建新的模型配置"""
+    # 该用户若尚无默认配置，则将本次创建的首个配置自动设为默认。
+    # 否则后端无显式 config_id 时会查不到 is_default 而静默降级到旧版
+    # user_settings 路径（可能拿不到可用 api_key），健壮性依赖前端兜底。
+    has_default = (
+        db.query(ModelConfig)
+        .filter(
+            ModelConfig.user_id == current_user.id,
+            ModelConfig.is_default,
+        )
+        .first()
+        is not None
+    )
+
     config = ModelConfig(
         user_id=current_user.id,
         name=request.name,
@@ -265,7 +278,7 @@ async def create_model_config(
         model_name=request.model_name,
         models=[m.model_dump() for m in request.models] if request.models else None,
         is_enabled=True,
-        is_default=False,
+        is_default=not has_default,
         health_status="unknown",
     )
 

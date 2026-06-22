@@ -822,8 +822,14 @@ def _apply_change(kb: KnowledgeBaseService, change):
     elif target_type == "foreshadowing":
         kb.foreshadowings.update(target_id, new_value)
     elif target_type == "outline_adjustment":
-        # Outline adjustments are structural; mark as applied but don't auto-modify
-        pass
+        # new_value 含 description（仅审计），过滤后仅写入可应用的结构化总纲字段
+        _outline_fields = {
+            "title", "summary", "plot_points", "characters",
+            "world_setting", "emotional_curve",
+        }
+        outline_updates = {k: v for k, v in new_value.items() if k in _outline_fields}
+        if outline_updates:
+            kb.outlines.update(outline_updates)
     elif target_type == "chapter_rewrite":
         # Chapter rewrites are handled by the main writing loop
         pass

@@ -408,7 +408,6 @@ class KnowledgeBaseService:
                 "characters": self.characters._read_all_characters_with_session(db),
                 "relations": self.characters._read_all_relations_with_session(db),
                 "style_constraints": self.styles._read_constraints_with_session(db),
-                "outline": self.outlines._read_with_session(db),
                 "chapter_outlines": chapter_outlines,
                 "plot_blocks": plots_data.get("plot_blocks", []),
                 "plot_questions": plots_data.get("plot_questions", []),

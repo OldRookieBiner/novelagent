@@ -45,14 +45,11 @@ async def update_outline(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Update outline (title, summary, plot_points, collected_info, inspiration_template)."""
-    _, outline = get_project_and_outline(project_id, current_user.id, db)
+    """Update outline (title, summary, plot_points, collected_info, inspiration_template).
 
-    if outline.confirmed:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot update a confirmed outline"
-        )
+    confirmed 仅作为「作者定稿」展示标记，不再阻止编辑：已确认大纲依旧可随时修改。
+    """
+    _, outline = get_project_and_outline(project_id, current_user.id, db)
 
     if request.title is not None:
         outline.title = request.title
@@ -77,7 +74,11 @@ async def confirm_outline(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Confirm outline and move to structure phase."""
+    """Confirm outline and move to structure phase.
+
+    confirmed 是「作者定稿」书签，不再锁死编辑。本接口幂等：
+    可重复调用，已确认的大纲再次确认会直接刷新阶段而不报错。
+    """
     project, outline = get_project_and_outline(project_id, current_user.id, db)
 
     if not outline.title or not outline.summary:
@@ -86,12 +87,7 @@ async def confirm_outline(
             detail="Outline must have title and summary before confirming"
         )
 
-    if outline.confirmed:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Outline is already confirmed"
-        )
-
+    # confirmed 为定稿书签 + 进入结构阶段的便捷入口；幂等：重复确认直接刷新阶段，不报错
     if outline.chapter_count_suggested <= 0:
         outline.chapter_count_suggested = DEFAULT_CHAPTER_COUNT
     outline.chapter_count_confirmed = True
@@ -113,14 +109,11 @@ async def set_chapter_count(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Set chapter count for the outline."""
-    project, outline = get_project_and_outline(project_id, current_user.id, db)
+    """Set chapter count for the outline.
 
-    if not outline.confirmed:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Outline must be confirmed before setting chapter count"
-        )
+    章节数可独立设置，不再要求大纲先确认。
+    """
+    project, outline = get_project_and_outline(project_id, current_user.id, db)
 
     if request.chapter_count < 1:
         raise HTTPException(
@@ -147,14 +140,11 @@ async def update_collected_info(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Update collected info directly (skip chat if desired)."""
-    project, outline = get_project_and_outline(project_id, current_user.id, db)
+    """Update collected info directly (skip chat if desired).
 
-    if outline.confirmed:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot update collected info after outline is confirmed"
-        )
+    confirmed 不再阻止编辑，已确认大纲依旧可调整 collected_info。
+    """
+    project, outline = get_project_and_outline(project_id, current_user.id, db)
 
     current_info = dict(outline.collected_info or {})
     if request.genre is not None:

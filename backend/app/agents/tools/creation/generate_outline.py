@@ -47,11 +47,12 @@ async def generate_outline(
             "title": title,
             "summary": final_summary,
             "chapter_count_suggested": chapter_count,
-            "chapter_count_confirmed": chapter_count,
+            # 草稿态：章节数与总纲均待作者确认（confirmed 字段为布尔，勿赋整数）
+            "chapter_count_confirmed": False,
             "plot_points": points,
             "emotional_curve": curve,
             "characters": char_list,
-            "confirmed": True,
+            "confirmed": False,
         })
         return {
             "action": "created",

@@ -2,24 +2,59 @@
 
 from langchain_core.tools import tool
 
-from app.agents.tools.utils import _kb
+from app.agents.tools.utils import _kb, parse_json_param
 from app.utils.text import tokenize_chinese
+
+
+# 提议中允许写入总纲的字段白名单
+_ALLOWED_OUTLINE_FIELDS = {
+    "title", "summary", "plot_points", "characters",
+    "world_setting", "emotional_curve",
+}
+
+# 需按 JSON 解析的字段
+_JSON_OUTLINE_FIELDS = {"plot_points", "characters", "world_setting", "emotional_curve"}
 
 
 @tool
 async def propose_outline_adjustment(
     description: str,
     affected_plot_blocks: list[int] | None = None,
+    proposed_outline: str | None = None,
 ) -> dict:
     """提议调整故事结构。
 
     当用户需要修改大纲、增删章节或调整情节走向时使用。自动评估变更对已有内容的影响，返回影响评估结果。
+    若已确定具体的总纲新值，请通过 proposed_outline 传入结构化内容，作者确认后 apply_change 才能真正落库；
+    仅传 description 时只生成影响评估，不含可应用的实际改动。
 
     Args:
         description: 调整内容的自然语言描述
         affected_plot_blocks: 受影响的情节块 ID 列表
+        proposed_outline: JSON 字符串对象，拟应用的总纲新值，支持字段：
+            title / summary / plot_points / characters / world_setting / emotional_curve
     """
     kb = _kb()
+
+    # 解析结构化新值（可选），仅保留白名单字段
+    outline_new_value: dict = {}
+    parse_warnings: list[str] = []
+    if proposed_outline:
+        parsed, warn = parse_json_param(proposed_outline, {}, "proposed_outline")
+        if warn:
+            parse_warnings.append(warn)
+        if isinstance(parsed, dict):
+            for k, v in parsed.items():
+                if k not in _ALLOWED_OUTLINE_FIELDS or v is None:
+                    continue
+                if k in _JSON_OUTLINE_FIELDS and isinstance(v, str):
+                    sub_default = {} if k == "world_setting" else []
+                    sub_parsed, sub_warn = parse_json_param(v, sub_default, k)
+                    if sub_warn:
+                        parse_warnings.append(sub_warn)
+                    outline_new_value[k] = sub_parsed
+                else:
+                    outline_new_value[k] = v
 
     blocks = kb.plots.list_plot_blocks()
     foreshadowings = kb.foreshadowings.list_foreshadowings(status="active")
@@ -79,7 +114,7 @@ async def propose_outline_adjustment(
         "target_type": "outline_adjustment",
         "target_id": 0,
         "old_value": {},
-        "new_value": {"description": description},
+        "new_value": {**outline_new_value, "description": description},
         "description": description,
         "status": "proposed",
         "impact_report": {
@@ -92,7 +127,7 @@ async def propose_outline_adjustment(
 
     level_labels = {"minor": "🟡 轻微影响", "moderate": "🟠 中度影响", "severe": "🔴 严重影响"}
 
-    return {
+    result = {
         "change_id": change["id"],
         "status": "proposed",
         "impact_level": impact_level,
@@ -100,5 +135,10 @@ async def propose_outline_adjustment(
         "affected_blocks": len(affected_blocks),
         "affected_foreshadowings": len(affected_foreshadowings),
         "affected_questions": len(affected_questions),
+        "has_concrete_changes": bool(outline_new_value),
+        "proposed_fields": list(outline_new_value.keys()),
         "next_steps": "作者需决策：proceed / adjust / abandon",
     }
+    if parse_warnings:
+        result["warnings"] = parse_warnings
+    return result

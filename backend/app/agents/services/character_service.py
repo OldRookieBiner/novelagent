@@ -56,6 +56,9 @@ async def create_character(db: Session, project_id: int, data: dict) -> dict:
         appearance=data.get("appearance"),
         backstory=data.get("backstory"),
         signature_item=data.get("signature_item"),
+        knowledge_boundary=data.get("knowledge_boundary"),
+        speech_style=data.get("speech_style"),
+        speech_samples=data.get("speech_samples"),
     )
 
     try:
@@ -103,6 +106,9 @@ async def update_character(db: Session, project_id: int, character_id: int, upda
         "appearance": "外貌",
         "backstory": "背景故事",
         "signature_item": "标志性物品",
+        "knowledge_boundary": "知识边界",
+        "speech_style": "语言风格",
+        "speech_samples": "对话样本",
     }
 
     for key, value in updates.items():

@@ -249,7 +249,7 @@ class ProjectContextAssembler:
         chars = raw.get("characters", [])
         char_list = []
         for c in chars:
-            info = {"id": c["id"], "name": c["name"], "role": c.get("role", ""), "core_motivation": c.get("core_motivation") or "", "personality": (c.get("personality") or "")[:100]}
+            info = {"id": c["id"], "name": c["name"], "role": c.get("role", ""), "core_motivation": c.get("core_motivation") or "", "personality": (c.get("personality") or "")[:100], "knowledge_boundary": (c.get("knowledge_boundary") or "")[:200], "speech_style": (c.get("speech_style") or "")[:80]}
             tokens = estimate_tokens(json.dumps(info, ensure_ascii=False))
             if budget.can_add(tokens):
                 char_list.append(info)

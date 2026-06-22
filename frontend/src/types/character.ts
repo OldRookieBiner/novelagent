@@ -34,6 +34,9 @@ export interface Character
     appearance?: string
     backstory?: string
     signature_item?: string
+    knowledge_boundary?: string
+    speech_style?: string
+    speech_samples?: string
     created_at: string
     updated_at: string
 }
@@ -54,6 +57,9 @@ export interface CharacterCreate
     appearance?: string
     backstory?: string
     signature_item?: string
+    knowledge_boundary?: string
+    speech_style?: string
+    speech_samples?: string
 }
 
 /**
@@ -72,6 +78,9 @@ export interface CharacterUpdate
     appearance?: string
     backstory?: string
     signature_item?: string
+    knowledge_boundary?: string
+    speech_style?: string
+    speech_samples?: string
 }
 
 /**

@@ -50,6 +50,7 @@ function CharacterFormDialogInner({
             backstory: character.backstory || '',
             appearance: character.appearance || '',
             core_motivation: character.core_motivation || '',
+            knowledge_boundary: character.knowledge_boundary || '',
         } : {
             name: '',
             role: '配角',
@@ -101,6 +102,16 @@ function CharacterFormDialogInner({
                             placeholder="描述人物的性格特点"
                             className="mt-1"
                             rows={3}
+                        />
+                    </div>
+                    <div>
+                        <Label>知识边界（防 OOC）</Label>
+                        <Textarea
+                            value={form.knowledge_boundary || ''}
+                            onChange={(e) => setForm({ ...form, knowledge_boundary: e.target.value })}
+                            placeholder="不知道：……；误以为：……"
+                            className="mt-1"
+                            rows={2}
                         />
                     </div>
                     <div className="flex gap-2 pt-2">

@@ -143,6 +143,35 @@ export default function CharacterDetail({
                                 className="mt-1"
                             />
                         </div>
+                        <div>
+                            <Label className="text-sm text-muted-foreground">知识边界（防 OOC）</Label>
+                            <Textarea
+                                value={editForm.knowledge_boundary || ''}
+                                onChange={(e) => onEditFormChange({ ...editForm, knowledge_boundary: e.target.value })}
+                                className="mt-1"
+                                rows={3}
+                                placeholder="不知道：……；误以为：……"
+                            />
+                        </div>
+                        <div>
+                            <Label className="text-sm text-muted-foreground">语言风格</Label>
+                            <Textarea
+                                value={editForm.speech_style || ''}
+                                onChange={(e) => onEditFormChange({ ...editForm, speech_style: e.target.value })}
+                                className="mt-1"
+                                rows={2}
+                            />
+                        </div>
+                        <div>
+                            <Label className="text-sm text-muted-foreground">对话样本</Label>
+                            <Textarea
+                                value={editForm.speech_samples || ''}
+                                onChange={(e) => onEditFormChange({ ...editForm, speech_samples: e.target.value })}
+                                className="mt-1"
+                                rows={3}
+                                placeholder="样本一｜样本二"
+                            />
+                        </div>
                         <div className="flex gap-2 pt-4">
                             <Button variant="outline" onClick={onCancelEdit} className="flex-1">
                                 取消
@@ -223,6 +252,24 @@ export default function CharacterDetail({
                                 <div>
                                     <Label className="text-sm text-muted-foreground">标志性物品</Label>
                                     <p className="text-sm mt-1">{character.signature_item}</p>
+                                </div>
+                            )}
+                            {character.knowledge_boundary && (
+                                <div>
+                                    <Label className="text-sm text-muted-foreground">知识边界（防 OOC）</Label>
+                                    <p className="text-sm mt-1 whitespace-pre-wrap">{character.knowledge_boundary}</p>
+                                </div>
+                            )}
+                            {character.speech_style && (
+                                <div>
+                                    <Label className="text-sm text-muted-foreground">语言风格</Label>
+                                    <p className="text-sm mt-1">{character.speech_style}</p>
+                                </div>
+                            )}
+                            {character.speech_samples && (
+                                <div>
+                                    <Label className="text-sm text-muted-foreground">对话样本</Label>
+                                    <p className="text-sm mt-1 whitespace-pre-wrap">{character.speech_samples}</p>
                                 </div>
                             )}
                         </div>

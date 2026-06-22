@@ -314,3 +314,101 @@ class TestAdvancePhaseBackward:
         from app.agents.tools.creation.advance_phase import advance_phase
         param_names = list(advance_phase.args_schema.model_json_schema().get("properties", {}).keys())
         assert "direction" in param_names, "advance_phase 应有 direction 参数"
+
+
+class TestApplyOutlineAdjustment:
+    """outline_adjustment 应用逻辑测试（修复空操作 bug 后）"""
+
+    def _make_mock_kb(self, change_data):
+        kb = MagicMock()
+        kb.changes = MagicMock()
+        kb.changes.get.return_value = change_data
+        kb.changes.update.return_value = {"id": 1, "status": "applied"}
+        kb.outlines = MagicMock()
+        return kb
+
+    def test_apply_outline_adjustment_writes_structured_fields(self):
+        """含结构化字段 → 真正调用 outlines.update，且过滤掉 description"""
+        kb = self._make_mock_kb({
+            "id": 1, "status": "proposed", "target_type": "outline_adjustment",
+            "target_id": 0,
+            "new_value": {
+                "title": "新书名",
+                "summary": "新的故事摘要",
+                "description": "把主线改成复仇",
+            },
+            "description": "把主线改成复仇",
+        })
+        with patch("app.agents.tools.modification.apply_change._kb", return_value=kb):
+            from app.agents.tools.modification.apply_change import apply_change
+            result = _run_async(apply_change.ainvoke({"change_id": 1}))
+            assert result.get("action") == "applied"
+            kb.outlines.update.assert_called_once()
+            written = kb.outlines.update.call_args[0][0]
+            assert written == {"title": "新书名", "summary": "新的故事摘要"}
+            assert "description" not in written
+
+    def test_apply_outline_adjustment_without_concrete_change_errors(self):
+        """仅含 description（无结构化字段）→ 不落库并返回错误提示"""
+        kb = self._make_mock_kb({
+            "id": 1, "status": "proposed", "target_type": "outline_adjustment",
+            "target_id": 0,
+            "new_value": {"description": "想改一下大纲"},
+            "description": "想改一下大纲",
+        })
+        with patch("app.agents.tools.modification.apply_change._kb", return_value=kb):
+            from app.agents.tools.modification.apply_change import apply_change
+            result = _run_async(apply_change.ainvoke({"change_id": 1}))
+            assert "error" in result
+            kb.outlines.update.assert_not_called()
+
+
+class TestUpdateOutlineTool:
+    """update_outline 直接编辑总纲工具测试"""
+
+    def _make_mock_kb(self, outline=None):
+        kb = MagicMock()
+        kb.outlines = MagicMock()
+        kb.outlines.get.return_value = outline
+        kb.outlines.update.return_value = outline or {}
+        return kb
+
+    def test_update_outline_no_outline_returns_error(self):
+        kb = self._make_mock_kb(outline=None)
+        with patch("app.agents.tools.creation.update_outline._kb", return_value=kb):
+            from app.agents.tools.creation.update_outline import update_outline
+            result = _run_async(update_outline.ainvoke({"title": "x"}))
+            assert "error" in result
+            kb.outlines.update.assert_not_called()
+
+    def test_update_outline_no_fields_returns_error(self):
+        kb = self._make_mock_kb(outline={"id": 1, "title": "旧"})
+        with patch("app.agents.tools.creation.update_outline._kb", return_value=kb):
+            from app.agents.tools.creation.update_outline import update_outline
+            result = _run_async(update_outline.ainvoke({}))
+            assert "error" in result
+            kb.outlines.update.assert_not_called()
+
+    def test_update_outline_plain_fields(self):
+        """已确认大纲也能直接改 title/summary"""
+        kb = self._make_mock_kb(outline={"id": 1, "title": "旧", "confirmed": True})
+        with patch("app.agents.tools.creation.update_outline._kb", return_value=kb):
+            from app.agents.tools.creation.update_outline import update_outline
+            result = _run_async(update_outline.ainvoke({"title": "新书名", "summary": "新摘要"}))
+            assert result.get("action") == "updated"
+            written = kb.outlines.update.call_args[0][0]
+            assert written == {"title": "新书名", "summary": "新摘要"}
+
+    def test_update_outline_parses_json_fields(self):
+        """plot_points 等 JSON 字符串字段被解析为结构化数据"""
+        kb = self._make_mock_kb(outline={"id": 1, "title": "旧"})
+        with patch("app.agents.tools.creation.update_outline._kb", return_value=kb):
+            from app.agents.tools.creation.update_outline import update_outline
+            result = _run_async(update_outline.ainvoke({
+                "plot_points": '["开端", "高潮", "结局"]',
+                "world_setting": '{"era": "近未来"}',
+            }))
+            assert result.get("action") == "updated"
+            written = kb.outlines.update.call_args[0][0]
+            assert written["plot_points"] == ["开端", "高潮", "结局"]
+            assert written["world_setting"] == {"era": "近未来"}

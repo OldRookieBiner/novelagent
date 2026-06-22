@@ -23,6 +23,7 @@ class StyleStore(_BaseStore):
             return self._to_dict(obj)
 
     def create_constraints(self, data: dict) -> dict:
+        data = self._filter_writable(StyleConstraints, data)
         with self.session() as db:
             obj = StyleConstraints(project_id=self.project_id, **data)
             db.add(obj)

@@ -83,6 +83,25 @@ class _BaseStore:
 
     # ========== 序列化 ==========
 
+    # 入库时自动排除的列（主键/外键/时间戳由系统维护）
+    _NON_WRITABLE_COLUMNS = {"id", "project_id", "created_at", "updated_at"}
+
+    @classmethod
+    def _filter_writable(cls, model, data: dict) -> dict:
+        """按 model 表列过滤入库 dict，丢弃未知键与系统维护列。
+
+        基于 model.__table__.columns 动态导出可写列集合，
+        将来加列无需同步维护白名单；防止 Model(**data) 因 LLM
+        多产出字段而抛 TypeError。
+        """
+        if not data:
+            return {}
+        columns = getattr(getattr(model, "__table__", None), "columns", None)
+        if columns is None:
+            return dict(data)
+        allowed = {c.name for c in columns} - cls._NON_WRITABLE_COLUMNS
+        return {k: v for k, v in data.items() if k in allowed}
+
     @staticmethod
     def _to_dict(obj) -> Optional[dict]:
         """ORM 对象 → dict，排除 created_at/updated_at

@@ -41,6 +41,9 @@ class Character(Base):
     appearance = Column(Text, nullable=True)  # 外貌描写
     backstory = Column(Text, nullable=True)  # 背景故事
     signature_item = Column(Text, nullable=True)  # 标志性物品
+    knowledge_boundary = Column(Text, nullable=True)  # 知识边界（防 OOC 核心约束）
+    speech_style = Column(Text, nullable=True)  # 语言风格特征
+    speech_samples = Column(Text, nullable=True)  # 代表性对话样本（分隔符分隔）
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

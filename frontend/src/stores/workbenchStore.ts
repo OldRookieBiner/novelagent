@@ -8,9 +8,29 @@ export type WorkbenchTab = 'writing' | 'knowledge' | 'structure' | 'tracking'
 /** Creation phase */
 export type Phase = 'incubation' | 'structure' | 'writing' | 'revision'
 
-/** AI message content segment */
+/** 工具调用状态：running 运行中、done 完成、error 失败、aborted 用户取消 */
+export type ToolCallStatus = 'running' | 'done' | 'error' | 'aborted'
+
+/** tool_call segment 的 data 形状（运行时唯一使用的工具调用表达） */
+export interface ToolCallSegmentData {
+  tool: string
+  status: ToolCallStatus
+  args?: Record<string, unknown>
+  result?: Record<string, unknown>
+  /** 运行时附加属性允许扩展（与 Record<string, unknown> 兼容） */
+  [key: string]: unknown
+}
+
+/**
+ * AI message content segment
+ *
+ * 说明：
+ * - 运行时新生成的工具调用段统一为 `tool_call`（含 status 状态机）。
+ * - `tool_start` / `tool_result` 仅保留用于解析历史 DB 行；进入前端内存前会被
+ *   `normalizeLegacySegments` 归一化为 `tool_call`，渲染层不再消费这两种类型。
+ */
 export interface AiMessageSegment {
-  type: 'agent_text' | 'chunk' | 'review' | 'chapter_preview' | 'warning' | 'tool_start' | 'tool_result' | 'progress'
+  type: 'agent_text' | 'chunk' | 'review' | 'chapter_preview' | 'warning' | 'tool_start' | 'tool_result' | 'tool_call' | 'progress'
   content: string
   data?: Record<string, unknown>
 }

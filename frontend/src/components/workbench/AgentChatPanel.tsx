@@ -1,11 +1,12 @@
 // AgentChatPanel.tsx — Right panel: AI creation agent chat
 
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { PanelRightClose, PanelRightOpen, Send, AlertTriangle, ShieldCheck, ChevronDown, ChevronRight, Loader2, CheckCircle2, GripVertical, Square, History, Plus, Copy, Check } from 'lucide-react'
+import { PanelRightClose, PanelRightOpen, Send, AlertTriangle, ShieldCheck, ChevronDown, ChevronRight, Loader2, CheckCircle2, GripVertical, Square, History, Plus, Copy, Check, XCircle, CircleSlash } from 'lucide-react'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
 import { sendAgentMessage, fetchConversation, createConversation } from '@/lib/agentApi'
 import { modelConfigsApi, settingsApi } from '@/lib/api'
-import type { AiMessage, AiMessageSegment, ImpactReport, AgentWarning } from '@/stores/workbenchStore'
+import type { AiMessage, AiMessageSegment, ImpactReport, AgentWarning, ToolCallSegmentData } from '@/stores/workbenchStore'
+import { normalizeLegacySegments, finalizeRunningToolCalls } from '@/lib/agentSegments'
 import type { ModelConfig, ModelItem } from '@/types'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -116,15 +117,20 @@ interface ToolGroup {
   toolName: string
   count: number
   items: Array<{
-    status: 'running' | 'done'
+    status: 'running' | 'done' | 'error' | 'aborted'
     args?: Record<string, unknown>
     result?: Record<string, unknown>
   }>
 }
 
 /**
- * 合并连续相同工具调用为 tool_group
- * 将连续的 tool_start + tool_result 对（相同工具名）合并为一个分组
+ * 折叠连续相同工具名的 tool_call segment：
+ * - 连续 ≥ 2 个同 tool 的 tool_call → 1 个 ToolGroup，items 保留各自 status/args/result。
+ * - 单个 tool_call 原样保留，由渲染层走单条 tool_call 分支。
+ *
+ * 注意：本函数只识别 `tool_call`。旧 `tool_start` / `tool_result` 已在
+ * hydrate 阶段（normalizeLegacySegments）和流式入站阶段统一归一化为 `tool_call`，
+ * 此处不再处理。
  */
 function mergeToolGroups(
   parts: Array<{ type: 'text'; content: string } | AiMessageSegment>
@@ -132,77 +138,76 @@ function mergeToolGroups(
 {
   const result: Array<{ type: 'text'; content: string } | AiMessageSegment | ToolGroup> = []
   let i = 0
-  
+
   while (i < parts.length)
   {
     const part = parts[i]
-    
-    // 如果是 tool_start，检查后续是否有对应的 tool_result
-    if (part.type === 'tool_start')
+
+    if (part.type === 'tool_call')
     {
-      const toolName = (part.data?.tool as string) || part.content.replace('...', '')
-      const collected: Array<{ start: typeof part; result?: typeof part }> = []
-      
-      // 收集连续的相同工具调用（tool_start + tool_result 对）
-      while (i < parts.length)
+      const firstData = part.data as ToolCallSegmentData | undefined
+      const toolName = firstData?.tool || ''
+      const collected: AiMessageSegment[] = [part]
+      let j = i + 1
+      while (j < parts.length)
       {
-        const curr = parts[i]
-        
-        if (curr.type === 'tool_start')
-        {
-          const currToolName = (curr.data?.tool as string) || curr.content.replace('...', '')
-          if (currToolName === toolName)
-          {
-            collected.push({ start: curr })
-            i++
-          }
-          else
-          {
-            break
-          }
-        }
-        else if (curr.type === 'tool_result' && collected.length > 0 && !collected[collected.length - 1].result)
-        {
-          collected[collected.length - 1].result = curr
-          i++
-        }
-        else
-        {
-          break
-        }
+        const next = parts[j]
+        if (next.type !== 'tool_call') break
+        const nextData = next.data as ToolCallSegmentData | undefined
+        if ((nextData?.tool || '') !== toolName) break
+        collected.push(next)
+        j++
       }
-      
-      // 只有多个调用才折叠
+
       if (collected.length > 1)
       {
         result.push({
           type: 'tool_group',
           toolName,
           count: collected.length,
-          items: collected.map(c => ({
-            status: c.result ? 'done' as const : 'running' as const,
-            args: c.start.data?.args as Record<string, unknown> | undefined,
-            result: c.result?.data?.result as Record<string, unknown> | undefined,
-          })),
+          items: collected.map((seg) =>
+          {
+            const d = seg.data as ToolCallSegmentData | undefined
+            return {
+              status: (d?.status ?? 'done') as ToolGroup['items'][number]['status'],
+              args: d?.args,
+              result: d?.result,
+            }
+          }),
         })
       }
-      else if (collected.length === 1)
+      else
       {
-        // 只有一个，保持原样
-        result.push(collected[0].start)
-        if (collected[0].result)
-        {
-          result.push(collected[0].result)
-        }
+        result.push(collected[0])
       }
+      i = j
       continue
     }
-    
+
     result.push(part)
     i++
   }
-  
+
   return result
+}
+
+/** 单条工具调用的视觉表达：图标 + 颜色 + 状态后缀文案 */
+function renderToolStatusIcon(status: ToolCallSegmentData['status'], size: 'sm' | 'xs' = 'sm')
+{
+  const cls = size === 'sm' ? 'h-3 w-3 shrink-0' : 'h-2.5 w-2.5 shrink-0'
+  if (status === 'running') return <Loader2 className={`${cls} animate-spin text-blue-400`} />
+  if (status === 'done') return <CheckCircle2 className={`${cls} text-green-500`} />
+  if (status === 'error') return <XCircle className={`${cls} text-red-500`} />
+  return <CircleSlash className={`${cls} text-muted-foreground`} />
+}
+
+/** 工具调用状态文案后缀（运行中为 ...，其它给出明确状态词） */
+function toolStatusSuffix(status: ToolCallSegmentData['status']): string
+{
+  if (status === 'running') return '...'
+  if (status === 'error') return ' 失败'
+  if (status === 'aborted') return ' 已取消'
+  return ''
 }
 
 /**
@@ -211,7 +216,7 @@ function mergeToolGroups(
  * 旧格式：segments 中只有 tool 段，content 字段包含全部文本
  */
 /** 内部实现：共享渲染逻辑 */
-function AssistantMessageContentInner({
+export function AssistantMessageContentInner({
   msg,
   isStreaming,
 }: {
@@ -223,6 +228,7 @@ function AssistantMessageContentInner({
   const useNewFormat = hasTextSegments(msg.segments)
 
   // 旧格式兼容：没有 agent_text segment 时，先渲染 content 再渲染 tool 段
+  // 注：归一化后旧 tool_start/tool_result 已变成 tool_call，这里统一按 tool_call 渲染
   if (!useNewFormat)
   {
     return (
@@ -230,12 +236,17 @@ function AssistantMessageContentInner({
         {msg.content
           ? <div className="agent-markdown"><ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown></div>
           : showThinking ? null : null}
-        {msg.segments.filter(s => s.type === 'tool_result').map((s, i) => (
-          <div key={`tool-${i}`} className="mt-1.5 text-[10px] text-muted-foreground flex items-center gap-1 border-t border-gray-100 pt-1">
-            <CheckCircle2 className="h-3 w-3 shrink-0 text-green-500" />
-            <span>{s.content}</span>
-          </div>
-        ))}
+        {msg.segments.filter(s => s.type === 'tool_call').map((s, i) => {
+          const d = s.data as ToolCallSegmentData | undefined
+          const status = d?.status ?? 'done'
+          const label = getToolLabel(d?.tool || '', d?.result)
+          return (
+            <div key={`tool-${i}`} className="mt-1.5 text-[10px] text-muted-foreground flex items-center gap-1 border-t border-gray-100 pt-1">
+              {renderToolStatusIcon(status)}
+              <span>{label}{toolStatusSuffix(status)}</span>
+            </div>
+          )
+        })}
         {showThinking && <ThinkingIndicator />}
       </>
     )
@@ -298,24 +309,6 @@ function AssistantMessageContentInner({
         }
         // AiMessageSegment
         const seg = part as AiMessageSegment
-        if (seg.type === 'tool_start')
-        {
-          return (
-            <div key={`ts-${i}`} className="mt-1.5 text-[10px] text-muted-foreground flex items-center gap-1">
-              <Loader2 className="h-3 w-3 shrink-0 animate-spin text-blue-400" />
-              <span>{seg.content}</span>
-            </div>
-          )
-        }
-        if (seg.type === 'tool_result')
-        {
-          return (
-            <div key={`tr-${i}`} className="mt-1 text-[10px] text-muted-foreground flex items-center gap-1">
-              <CheckCircle2 className="h-3 w-3 shrink-0 text-green-500" />
-              <span>{seg.content}</span>
-            </div>
-          )
-        }
         if (seg.type === 'progress')
         {
           const percent = (seg.data?.percent as number) || 0
@@ -328,45 +321,87 @@ function AssistantMessageContentInner({
             </div>
           )
         }
-        // tool_group: 折叠的连续相同工具调用
-        if ((seg as any).type === 'tool_group')
+        // tool_call: 单条工具调用（含状态机：running/done/error/aborted），点击展开 args+result
+        if (seg.type === 'tool_call')
         {
-          const group = seg as any as ToolGroup
+          const data = seg.data as ToolCallSegmentData | undefined
+          const status: ToolCallSegmentData['status'] = data?.status ?? 'done'
           const isExpanded = expandedGroups.has(i)
-          // 获取第一个有结果的项目来判断是创建还是更新
+          const label = getToolLabel(data?.tool || '', data?.result)
+          const canExpand = !!data && (data.args !== undefined || data.result !== undefined)
+          const StatusIcon = renderToolStatusIcon(status)
+          return (
+            <div key={`tc-${i}`} className="mt-1.5" data-testid={`tool-call-${i}`} data-tool-status={status}>
+              <button
+                type="button"
+                onClick={() => canExpand && toggleGroup(i)}
+                className={`flex items-center gap-1.5 text-[10px] text-muted-foreground transition-colors ${canExpand ? 'hover:text-foreground cursor-pointer' : 'cursor-default'}`}
+                aria-expanded={canExpand ? isExpanded : undefined}
+              >
+                {canExpand && (
+                  isExpanded
+                    ? <ChevronDown className="h-3 w-3 shrink-0" />
+                    : <ChevronRight className="h-3 w-3 shrink-0" />
+                )}
+                {StatusIcon}
+                <span>{label}{toolStatusSuffix(status)}</span>
+              </button>
+              {isExpanded && canExpand && (
+                <div className="ml-4 mt-1 space-y-1">
+                  {data?.args !== undefined && (
+                    <div className="text-[9px] text-muted-foreground">
+                      <div className="font-medium">参数</div>
+                      <pre className="bg-muted/40 rounded px-1.5 py-1 overflow-x-auto whitespace-pre-wrap break-all">{JSON.stringify(data.args, null, 2)}</pre>
+                    </div>
+                  )}
+                  {data?.result !== undefined && (
+                    <div className="text-[9px] text-muted-foreground">
+                      <div className="font-medium">结果</div>
+                      <pre className="bg-muted/40 rounded px-1.5 py-1 overflow-x-auto whitespace-pre-wrap break-all">{JSON.stringify(data.result, null, 2)}</pre>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        }
+        // tool_group: 折叠的连续相同工具调用
+        if ((seg as unknown as ToolGroup).type === 'tool_group')
+        {
+          const group = seg as unknown as ToolGroup
+          const isExpanded = expandedGroups.has(i)
+          // 取第一个有结果的项判断是创建还是更新（用于 create_* 类工具的文案）
           const firstWithResult = group.items.find(item => item.result)
           const label = getToolLabel(group.toolName, firstWithResult?.result)
-          
+          // group 头部状态：有任意 running → running；否则若有 error → error；其次 aborted；其余 done
+          const headStatus: ToolCallSegmentData['status'] =
+            group.items.some(it => it.status === 'running') ? 'running'
+            : group.items.some(it => it.status === 'error') ? 'error'
+            : group.items.some(it => it.status === 'aborted') ? 'aborted'
+            : 'done'
           return (
-            <div key={`tg-${i}`} className="mt-1.5">
+            <div key={`tg-${i}`} className="mt-1.5" data-testid={`tool-group-${i}`}>
               <button
+                type="button"
                 onClick={() => toggleGroup(i)}
                 className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                aria-expanded={isExpanded}
               >
                 {isExpanded ? (
                   <ChevronDown className="h-3 w-3 shrink-0" />
                 ) : (
                   <ChevronRight className="h-3 w-3 shrink-0" />
                 )}
-                <CheckCircle2 className="h-3 w-3 shrink-0 text-green-500" />
-                <span>{label}</span>
+                {renderToolStatusIcon(headStatus)}
+                <span>{label}{toolStatusSuffix(headStatus)}</span>
                 <span className="text-primary font-medium">×{group.count}</span>
               </button>
               {isExpanded && (
                 <div className="ml-4 mt-1 space-y-0.5">
                   {group.items.map((item, j) => (
                     <div key={j} className="text-[9px] text-muted-foreground flex items-center gap-1">
-                      {item.status === 'running' ? (
-                        <>
-                          <Loader2 className="h-2.5 w-2.5 shrink-0 animate-spin text-blue-400" />
-                          <span>调用 {j + 1}</span>
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle2 className="h-2.5 w-2.5 shrink-0 text-green-500" />
-                          <span>调用 {j + 1} 完成</span>
-                        </>
-                      )}
+                      {renderToolStatusIcon(item.status, 'xs')}
+                      <span>调用 {j + 1}{toolStatusSuffix(item.status)}</span>
                     </div>
                   ))}
                 </div>
@@ -730,11 +765,8 @@ export function AgentChatPanel() {
         id: m.id,
         role: m.role,
         content: m.content,
-        segments: (m.segments || []).map((s) => ({
-          type: (s.type as any) || "agent_text",
-          content: s.content || "",
-          data: s.data,
-        })),
+        // 历史 DB 行：旧 tool_start/tool_result 归一化为 tool_call；actions 校正状态
+        segments: normalizeLegacySegments(m.segments, m.actions),
         timestamp: m.timestamp,
         durationMs: m.durationMs,
       }))
@@ -764,11 +796,7 @@ export function AgentChatPanel() {
         id: m.id,
         role: m.role,
         content: m.content,
-        segments: (m.segments || []).map((s) => ({
-          type: (s.type as any) || "agent_text",
-          content: s.content || "",
-          data: s.data,
-        })),
+        segments: normalizeLegacySegments(m.segments, m.actions),
         timestamp: m.timestamp,
         durationMs: m.durationMs,
       }))
@@ -861,11 +889,7 @@ export function AgentChatPanel() {
         id: m.id,
         role: m.role,
         content: m.content,
-        segments: (m.segments || []).map((s) => ({
-          type: (s.type as any) || "agent_text",
-          content: s.content || "",
-          data: s.data,
-        })),
+        segments: normalizeLegacySegments(m.segments, m.actions),
         timestamp: m.timestamp,
       }))
       setAiMessages(loaded)
@@ -995,6 +1019,18 @@ export function AgentChatPanel() {
     }
     addAiMessage(assistantMsg)
 
+    // 流终止收尾：把指定消息所有 running 的 tool_call 一次性收敛为 finalStatus。
+    // 仅用于 error / aborted 两条路径；onAgentDone 不调用此函数，
+    // 因为 SSE 自然结束时不应有 running 残留，残留会保留以暴露上游 bug。
+    const finalizePendingToolCalls = (messageId: string, finalStatus: 'error' | 'aborted') =>
+    {
+      updateAiMessage(messageId, (m) =>
+      {
+        const segments = finalizeRunningToolCalls(m.segments, finalStatus)
+        return segments === m.segments ? m : { ...m, segments }
+      })
+    }
+
     const controller = new AbortController()
     abortRef.current = controller
 
@@ -1013,25 +1049,43 @@ export function AgentChatPanel() {
           },
           onToolStart: (tool, args) => {
             flushTextBuffer()
+            // 流式入站：直接生成 tool_call segment（running 态）；不再写入 tool_start。
+            const data: ToolCallSegmentData = { tool, status: 'running', args }
             updateAiMessage(assistantMsg.id, (m) => ({
               ...m,
               segments: [...m.segments, {
-                type: 'tool_start' as const,
-                content: `${TOOL_LABELS[tool] || tool}...`,
-                data: { tool, args },
+                type: 'tool_call' as const,
+                content: TOOL_LABELS[tool] || tool,
+                data: data as unknown as Record<string, unknown>,
               }],
             }))
           },
           onToolResult: (tool, result) => {
             flushTextBuffer()
-            updateAiMessage(assistantMsg.id, (m) => ({
-              ...m,
-              segments: [...m.segments, {
-                type: 'tool_result' as const,
-                content: `${TOOL_LABELS[tool] || tool} 完成`,
-                data: { tool, result },
-              }],
-            }))
+            // 流式入站：原地把最近一个同 tool 的 running tool_call 改为 done。
+            // 找不到匹配（不应发生）则附一条 done tool_call，保持事件可见。
+            updateAiMessage(assistantMsg.id, (m) => {
+              const next = [...m.segments]
+              for (let i = next.length - 1; i >= 0; i--)
+              {
+                const seg = next[i]
+                if (seg.type !== 'tool_call') continue
+                const data = seg.data as ToolCallSegmentData | undefined
+                if (data?.tool === tool && data.status === 'running')
+                {
+                  const merged: ToolCallSegmentData = { ...data, status: 'done', result }
+                  next[i] = { ...seg, data: merged as unknown as Record<string, unknown> }
+                  return { ...m, segments: next }
+                }
+              }
+              const fallback: ToolCallSegmentData = { tool, status: 'done', result }
+              next.push({
+                type: 'tool_call',
+                content: TOOL_LABELS[tool] || tool,
+                data: fallback as unknown as Record<string, unknown>,
+              })
+              return { ...m, segments: next }
+            })
             // advance_phase 工具推进阶段后同步前端状态
             if (tool === 'advance_phase' && result?.advanced && result?.suggested_phase) {
               useWorkbenchStore.getState().setPhase(result.suggested_phase as any)
@@ -1068,6 +1122,8 @@ export function AgentChatPanel() {
           },
           onError: (error) => {
             flushTextBuffer()
+            // 后端报错：先收尾未完成的工具调用，再写入错误文案/时长
+            finalizePendingToolCalls(assistantMsg.id, 'error')
             const durationMs = Date.now() - sendStartedAt
             updateAiMessage(assistantMsg.id, (m) => ({
               ...m,
@@ -1089,6 +1145,8 @@ export function AgentChatPanel() {
       )
     } catch (err: any) {
       if (err.name !== 'AbortError') {
+        // 连接异常：等同后端 error，收尾未完成的工具调用
+        finalizePendingToolCalls(assistantMsg.id, 'error')
         const durationMs = Date.now() - sendStartedAt
         updateAiMessage(assistantMsg.id, (m) => ({
           ...m,
@@ -1101,8 +1159,9 @@ export function AgentChatPanel() {
           durationMs,
         }))
       } else {
-        // AbortError: 用户主动停止，记录耗时
+        // AbortError: 用户主动停止，收尾为 aborted（≠ 失败），记录耗时
         flushTextBuffer()
+        finalizePendingToolCalls(assistantMsg.id, 'aborted')
         const durationMs = Date.now() - sendStartedAt
         updateAiMessage(assistantMsg.id, (m) => ({
           ...m,

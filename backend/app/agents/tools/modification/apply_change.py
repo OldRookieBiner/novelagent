@@ -55,14 +55,22 @@ async def apply_change(change_id: int) -> dict:
 
     # 4. 特殊处理 outline_adjustment - 调用大纲更新，忽略 target_id（固定为 0）
     if target_type == "outline_adjustment":
-        # outline_adjustment 的 new_value 包含变更描述，需要更新大纲
+        # new_value 含 description（仅用于审计），过滤后仅保留可写入总纲的结构化字段
+        allowed = _ALLOWED_KEYS.get("outline_adjustment", set())
+        outline_updates = {k: v for k, v in new_value.items() if k in allowed}
+        if not outline_updates:
+            return {
+                "error": "该大纲调整提议不含可应用的结构化改动",
+                "hint": "请用 propose_outline_adjustment 的 proposed_outline 参数提交具体新值，或改用 update_outline 直接修改",
+            }
         try:
-            kb.outlines.update(new_value)
+            kb.outlines.update(outline_updates)
             kb.changes.update(change_id, {"status": "applied", "author_decision": "proceed"})
             return {
                 "action": "applied",
                 "change_id": change_id,
-                "message": f"大纲调整已应用（变更描述：{change.get('description', '')[:50]}...）",
+                "updated_fields": list(outline_updates.keys()),
+                "message": f"大纲调整已应用（字段：{', '.join(outline_updates.keys())}）",
             }
         except Exception as e:
             return {"error": f"大纲调整应用失败: {str(e)}"}
