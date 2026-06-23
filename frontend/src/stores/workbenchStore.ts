@@ -182,6 +182,9 @@ export const useWorkbenchStore = create<WorkbenchState>((set) => ({
   currentProjectId: null,
   setCurrentProjectId: (id) => set({
     currentProjectId: id,
+    // 跨项目切换时必须重置章节信号源，避免把上一个项目的章节号
+    // 传给当前项目，导致 Agent 误判章节不存在或加载错误的本章上下文
+    selectedChapterNumber: null,
     aiMessages: [],
     pendingImpacts: [],
     agentWarnings: [],

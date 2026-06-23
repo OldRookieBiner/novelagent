@@ -539,6 +539,7 @@ export function AgentChatPanel() {
   } = useWorkbenchStore()
 
   const phase = useWorkbenchStore((s) => s.phase)
+  const selectedChapterNumber = useWorkbenchStore((s) => s.selectedChapterNumber)
   const { setActiveConversationId } = useWorkbenchStore()
 
   // Task 3: 会话历史对话框状态
@@ -1140,6 +1141,11 @@ export function AgentChatPanel() {
         {
           modelConfigId: selectedConfigId ?? undefined,
           modelName: selectedModelName ?? undefined,
+          // 仅写作阶段且用户已选中章节时传递，避免在孵化/结构阶段误用残留章节号
+          currentChapterNumber:
+            phase === 'writing' && selectedChapterNumber != null
+              ? selectedChapterNumber
+              : undefined,
           signal: controller.signal,
         }
       )
@@ -1172,7 +1178,7 @@ export function AgentChatPanel() {
       setIsAgentSending(false)
       abortRef.current = null
     }
-  }, [input, currentProjectId, isAgentSending, selectedConfigId, selectedModelName, addAiMessage, updateAiMessage, addPendingImpact, addAgentWarning, setIsAgentSending])
+  }, [input, currentProjectId, isAgentSending, selectedConfigId, selectedModelName, phase, selectedChapterNumber, addAiMessage, updateAiMessage, addPendingImpact, addAgentWarning, setIsAgentSending])
 
   const handleImpactDecision = async (changeId: number, decision: string) => {
     if (!currentProjectId) return

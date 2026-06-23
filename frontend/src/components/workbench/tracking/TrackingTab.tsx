@@ -5,7 +5,6 @@ import { BarChart3, Map, GitBranch, Activity } from 'lucide-react'
 import { knowledgeApi } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
-import { useProjectStore } from '@/stores/projectStore'
 import { toast } from 'sonner'
 import type { Foreshadowing, TimelineEntry, StyleSnapshot, PlotBlock } from '@/types/knowledge'
 
@@ -134,7 +133,8 @@ function ForeshadowingTrackView({ data, loading, projectId, onUpdate }: { data: 
   const [editRelated, setEditRelated] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
 
-  const currentChapterNum = useProjectStore((s) => s.currentChapterNum)
+  // 当前章节号统一从 workbenchStore.selectedChapterNumber 取（用户在章节列表点击时设置）
+  const selectedChapterNumber = useWorkbenchStore((s) => s.selectedChapterNumber)
 
   const resetForm = () => {
     setEditContent(''); setEditLevel('hint'); setEditPlanted(''); setEditExpected(''); setEditRelated([])
@@ -184,7 +184,11 @@ function ForeshadowingTrackView({ data, loading, projectId, onUpdate }: { data: 
     try {
       const payload: Record<string, unknown> = { status: newStatus }
       if (newStatus === 'reclaimed') {
-        payload.resolved_chapter = currentChapterNum
+        if (selectedChapterNumber == null) {
+          toast.error('请先在左侧章节列表中选中当前所在章节')
+          return
+        }
+        payload.resolved_chapter = selectedChapterNumber
       }
       await knowledgeApi.updateForeshadowing(projectId, f.id, payload)
       toast.success(newStatus === 'pending_reclaim' ? '已标记待回收' : '已确认回收')
@@ -211,7 +215,7 @@ function ForeshadowingTrackView({ data, loading, projectId, onUpdate }: { data: 
           <span className="text-[10px] text-muted-foreground">{items.length} 条</span>
         </div>
         {items.map((item) => {
-          const isOverdue = item.status === 'pending_reclaim' && item.expected_resolve_chapter && item.expected_resolve_chapter < currentChapterNum
+          const isOverdue = item.status === 'pending_reclaim' && item.expected_resolve_chapter != null && selectedChapterNumber != null && item.expected_resolve_chapter < selectedChapterNumber
           const isReclaimed = item.status === 'reclaimed'
           return (
             <div key={item.id} className={cn('border rounded-lg p-3 space-y-1', isReclaimed && 'opacity-60')}>

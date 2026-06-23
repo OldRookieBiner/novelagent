@@ -269,3 +269,67 @@ class TestWritingDataExtensions:
         assert any(e["id"] == 10 and e["event"] == "交汇" for e in events)
         # id=11 应有逾期描述
         assert any(e["id"] == 11 and "逾期" in e["event"] for e in events)
+
+
+class TestWritingPhaseChapterContext:
+    """回归测试：写作阶段必须依赖 current_chapter_number 加载本章相关上下文"""
+
+    @patch("app.agents.agent_context.KnowledgeBaseService")
+    def test_writing_with_chapter_loads_chapter_scoped_data(self, MockKB):
+        """传入 chapter_number 时，本章大纲 / 当前情节块 / 前文上下文 / 上一章结尾应全部就位"""
+        mock_kb = _mock_kb()
+        # 至少要有第 1 章正文，第 2 章才能拿到前文
+        MockKB.return_value = mock_kb
+        assembler = ProjectContextAssembler(project_id=1)
+        result = assembler.build(
+            context_window=128000,
+            phase=Phase.WRITING.value,
+            current_chapter_number=2,
+        )
+        pd = result["project_data"]
+        # current_chapter_outline 必须存在（fixture 里第 1 章有大纲，这里要求第 2 章——重新构造）
+        # 重新 mock：在 chapter_outlines 里加入第 2 章
+        # 这里用更直接的断言：current_plot_block 必须命中（第 2 章在 [1,5] 内）
+        assert pd.get("current_plot_block") is not None
+        assert pd["current_plot_block"]["title"] == "第一幕"
+        # 前文上下文非空
+        assert result["previous_text"] != ""
+        # prerequisites 不应阻断章节号缺失
+        blocked_types = {b["type"] for b in pd.get("prerequisites", {}).get("blocked", [])}
+        assert "chapter_number_missing" not in blocked_types
+
+    @patch("app.agents.agent_context.KnowledgeBaseService")
+    def test_writing_without_chapter_blocks_with_explicit_message(self, MockKB):
+        """未传 chapter_number 时，prerequisites.blocked 应含 chapter_number_missing，
+        且不再静默跳过本章相关字段"""
+        MockKB.return_value = _mock_kb()
+        assembler = ProjectContextAssembler(project_id=1)
+        result = assembler.build(
+            context_window=128000,
+            phase=Phase.WRITING.value,
+            current_chapter_number=None,
+        )
+        pd = result["project_data"]
+        blocked = pd.get("prerequisites", {}).get("blocked", [])
+        blocked_types = {b["type"] for b in blocked}
+        assert "chapter_number_missing" in blocked_types
+        # 本章相关字段应缺失（确认旧的静默跳过行为依然存在，但 prerequisites 已显式提示）
+        assert "current_chapter_outline" not in pd
+        assert "current_plot_block" not in pd
+        # previous_text 也应为空
+        assert result["previous_text"] == ""
+
+    @patch("app.agents.agent_context.KnowledgeBaseService")
+    def test_non_writing_phase_no_chapter_missing_block(self, MockKB):
+        """非写作阶段不应触发 chapter_number_missing 阻断（_validate_prerequisites_from_raw 仅 writing 调用）"""
+        MockKB.return_value = _mock_kb()
+        assembler = ProjectContextAssembler(project_id=1)
+        for phase in (Phase.INCUBATION.value, Phase.STRUCTURE.value, Phase.REVISION.value):
+            result = assembler.build(
+                context_window=128000,
+                phase=phase,
+                current_chapter_number=None,
+            )
+            pd = result["project_data"]
+            blocked_types = {b["type"] for b in pd.get("prerequisites", {}).get("blocked", [])}
+            assert "chapter_number_missing" not in blocked_types, f"phase={phase} 不应阻断"
