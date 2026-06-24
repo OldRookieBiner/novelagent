@@ -274,6 +274,11 @@ class TestWritingDataExtensions:
 class TestWritingPhaseChapterContext:
     """回归测试：写作阶段必须依赖 current_chapter_number 加载本章相关上下文"""
 
+    def setup_method(self):
+        # ContextCache 是模块级单例，跨测试残留会让 mock 的 batch_read 被覆盖
+        from app.agents.context_cache import context_cache
+        context_cache.invalidate_all(project_id=1)
+
     @patch("app.agents.agent_context.KnowledgeBaseService")
     def test_writing_with_chapter_loads_chapter_scoped_data(self, MockKB):
         """传入 chapter_number 时，本章大纲 / 当前情节块 / 前文上下文 / 上一章结尾应全部就位"""
@@ -287,9 +292,9 @@ class TestWritingPhaseChapterContext:
             current_chapter_number=2,
         )
         pd = result["project_data"]
-        # current_chapter_outline 必须存在（fixture 里第 1 章有大纲，这里要求第 2 章——重新构造）
-        # 重新 mock：在 chapter_outlines 里加入第 2 章
-        # 这里用更直接的断言：current_plot_block 必须命中（第 2 章在 [1,5] 内）
+        # fixture 只构造了第 1 章大纲，所以这里不断言 current_chapter_outline，
+        # 改用 current_plot_block 验证章节作用域加载——第 2 章落在 [1,5] 区间，
+        # 必须命中 fixture 里的"第一幕"。
         assert pd.get("current_plot_block") is not None
         assert pd["current_plot_block"]["title"] == "第一幕"
         # 前文上下文非空
@@ -333,3 +338,35 @@ class TestWritingPhaseChapterContext:
             pd = result["project_data"]
             blocked_types = {b["type"] for b in pd.get("prerequisites", {}).get("blocked", [])}
             assert "chapter_number_missing" not in blocked_types, f"phase={phase} 不应阻断"
+
+class TestPrerequisitesPhaseContract:
+    """直接验证 _validate_prerequisites_from_raw 的 phase 参数契约"""
+
+    @patch("app.agents.agent_context.KnowledgeBaseService")
+    def test_non_writing_phase_skips_chapter_number_check(self, MockKB):
+        """非 writing 阶段即使 chapter_number=None 也不应阻断 chapter_number_missing"""
+        MockKB.return_value = _mock_kb()
+        assembler = ProjectContextAssembler(project_id=1)
+        for phase in (Phase.INCUBATION.value, Phase.STRUCTURE.value, Phase.REVISION.value):
+            prereq = assembler._validate_prerequisites_from_raw(
+                raw=_mock_kb().batch_read_for_context.return_value,
+                chapter_number=None,
+                phase=phase,
+            )
+            types = {b["type"] for b in prereq["blocked"]}
+            assert "chapter_number_missing" not in types, f"phase={phase} 不应触发"
+
+    @patch("app.agents.agent_context.KnowledgeBaseService")
+    def test_writing_phase_with_invalid_chapter_number_blocks(self, MockKB):
+        """writing 阶段传入 0/负数也算缺失（章节号必须 >= 1）"""
+        MockKB.return_value = _mock_kb()
+        assembler = ProjectContextAssembler(project_id=1)
+        for invalid in (0, -1):
+            prereq = assembler._validate_prerequisites_from_raw(
+                raw=_mock_kb().batch_read_for_context.return_value,
+                chapter_number=invalid,
+                phase=Phase.WRITING.value,
+            )
+            types = {b["type"] for b in prereq["blocked"]}
+            assert "chapter_number_missing" in types, f"chapter_number={invalid} 应阻断"
+

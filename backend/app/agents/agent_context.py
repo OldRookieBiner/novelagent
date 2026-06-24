@@ -467,20 +467,31 @@ class ProjectContextAssembler:
                     budget.add(cues_tokens)
 
         # 前置条件校验（从批量数据中校验，避免额外 DB 查询）
-        prereq = self._validate_prerequisites_from_raw(raw, chapter_number)
+        prereq = self._validate_prerequisites_from_raw(
+            raw, chapter_number, phase=Phase.WRITING.value,
+        )
         ctx["prerequisites"] = prereq
 
-    def _validate_prerequisites_from_raw(self, raw: dict, chapter_number: int | None) -> dict:
+    def _validate_prerequisites_from_raw(
+        self,
+        raw: dict,
+        chapter_number: int | None,
+        *,
+        phase: str,
+    ) -> dict:
         """从批量读取结果校验前置条件，避免额外 DB 查询
 
-        注意：本方法仅在 writing 阶段调用（见 _load_writing_data），
-        因此 chapter_number 缺失即视为写作阶段未指定目标章节，需阻断。
+        chapter_number_missing 仅在 writing 阶段触发：通过 phase 关键字参数
+        显式声明调用上下文，避免未来在 structure/revision 接入校验时误报。
         """
         blocked = []
         warnings = []
 
-        # 0. 章节号缺失（writing 阶段必填）
-        if not chapter_number:
+        # 0. 章节号缺失或非法（仅 writing 阶段强制要求）
+        # 使用 `is None or < 1` 覆盖两种异常：未传 None，或传了 0/负数等
+        # 非法章节号——这两种情况下游 chapter_outline_missing 都会因为
+        # `if chapter_number:` 短路跳过，所以必须在本层显式阻断。
+        if phase == Phase.WRITING.value and (chapter_number is None or chapter_number < 1):
             blocked.append({
                 "type": "chapter_number_missing",
                 "message": "未指定当前写作章节号。请在左侧章节列表中选中要写的章节，或在对话中明确告知章节号。",
