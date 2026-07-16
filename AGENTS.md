@@ -1,8 +1,25 @@
 # AGENTS.md
 
-NovelAgent v0.8.11 — AI 驱动的长篇小说创作系统。后端 FastAPI + LangGraph，前端 React + shadcn/ui。Docker Compose 部署（前端 3001、后端 8000、PG 5432）。
+NovelAgent — AI 驱动的长篇小说创作系统。后端 FastAPI + LangGraph，前端 React + shadcn/ui。Docker Compose 部署（前端 3001、后端 8000、PG 5432）。版本号以 `backend/app/main.py` 和 `frontend/package.json` 为准，本文件不维护版本号以避免漂移。
 
 **必须使用中文进行所有对话和回答。**
+
+---
+
+## 沟通规范（Vibe Coding）
+
+面向非全职工程师的"vibe coding"协作，回复必须易理解。遵守以下规则：
+
+1. **先结论后细节**：开头一句说清楚做了什么 / 结论是什么，再展开原因和过程。不要让用户读完全文才知道结果。
+2. **解释「为什么」而不只是「是什么」**：列出改动时，每条都要带上原因或影响（例如"改 X 是为了避免 Y"），不要只罗列文件名和函数名。
+3. **术语先翻译再使用**：第一次出现 LangGraph / SSE / detached session / TipTap 这类术语时，用一句话说明它在本项目里指什么，再继续展开。
+4. **不确定就明说**：拿不准的地方写"不确定"或"需要你确认"，并给出 2-3 个具体选项供选择，禁止用模糊措辞蒙混。
+5. **多选项必须标推荐**：给用户列方案时，明确标出"推荐 X，因为 …"，不要把决策成本全甩给用户。若几个方案各有取舍无法推荐，说明理由（例如"取决于你更在乎 A 还是 B"）。
+6. **改动要给影响范围**：涉及多文件改动时，最后给一句"本次改动影响：…"，让用户知道要重点回归测什么。
+7. **代码引用优先于代码粘贴**：能用文件路径 + 行号说清的，不要大段粘贴代码；必须粘贴时，前面要有一句话解释"这段在做什么"。
+8. **失败要诚实**：命令没跑成功、测试没过、不会做的任务，直接说"没成功 / 不会"，附上错误信息，禁止假装完成。
+
+判断标准：用户读完你的回复，应该能立刻知道"发生了什么、为什么、接下来该做什么"，不需要再追问。
 
 ---
 
@@ -12,14 +29,16 @@ NovelAgent v0.8.11 — AI 驱动的长篇小说创作系统。后端 FastAPI + L
 
 **Phase enum**（`constants.py`）：`INCUBATION → STRUCTURE → WRITING → REVISION`
 
-**工具集递进**：`INCUBATION_TOOLS ⊆ STRUCTURE_TOOLS ⊆ WRITING_TOOLS ⊆ REVISION_TOOLS`（注册在 `tools/registry.py`）。`REVISION_TOOLS = WRITING_TOOLS`，当前无增量工具。另有 `registry_v2.py` 提供动态注册：根据项目规模（章节数）增减工具，大型项目（≥20 章）启用 `consistency_scan`，小型项目（≤10 章）排除 `rhythm_analysis`。
+**工具集递进**：`INCUBATION_TOOLS ⊆ STRUCTURE_TOOLS ⊆ WRITING_TOOLS ⊆ REVISION_TOOLS`（静态定义在 `tools/registry.py`，`REVISION_TOOLS = WRITING_TOOLS`，当前无增量工具）。**运行时入口是 `registry_v2.ToolRegistry.get_tools()`**，agent_graph 实际从这里取工具列表：以 `_PHASE_BASE_TOOLS[phase]` 为基线（指向 registry.py 的静态常量），再按项目规模动态调整——大型项目（≥20 章）追加 `consistency_scan`，小型项目（≤10 章）排除 `rhythm_analysis`。改 registry.py 后若发现某些项目未生效，先看 registry_v2 的过滤规则。
 
 | 类别 | 目录 | 工具 |
 |------|------|------|
 | 感知 | `tools/perception/` | knowledge_search, consistency_scan, style_analysis, rhythm_analysis, foreshadowing_check, progress_report |
-| 创作 | `tools/creation/` | generate_outline, generate_chapter_content, generate_chapter_outline, generate_story_seed, generate_world_setting_complete, create_character, create_foreshadowing, create_plot_block, create_plot_question, create_subplot, create_relation, create_evolution_plan, create_style_constraints, create_world_setting, advance_phase, review_chapter, rewrite_chapter, update_character, update_foreshadowing, update_plot_block, update_plot_question, update_subplot, delete_plot_block, record_chapter_meta |
+| 创作 | `tools/creation/` | generate_outline, update_outline, generate_chapter_content, generate_chapter_outline, generate_story_seed, generate_world_setting_complete, create_character, create_foreshadowing, create_plot_block, create_plot_question, create_subplot, create_relation, create_evolution_plan, create_style_constraints, create_world_setting, advance_phase, review_chapter, rewrite_chapter, delete_plot_block, record_chapter_meta |
 | 修改 | `tools/modification/` | propose_outline_adjustment, propose_setting_change, propose_chapter_rewrite, apply_change, reject_change, list_proposed_changes |
 | 辅助 | `tools/assist/` | expand_world_setting, suggest_writing_direction |
+
+> 注：`create_character / create_foreshadowing / create_plot_block / create_plot_question / create_subplot` 已合并 update 语义（传 id 即更新，不传 id 即新建），无独立 `update_*` 工具；`update_outline` 是独立工具。完整列表以 `tools/registry.py` 为唯一真相，新增/删除工具时必须同步本文件。
 
 **项目初始化**（`initialization.py`）：非 LangGraph，直接 async 流程：`概念 → 故事种子 → [世界观+大纲] 并行 → [角色+风格] 并行`
 
@@ -45,12 +64,19 @@ NovelAgent v0.8.11 — AI 驱动的长篇小说创作系统。后端 FastAPI + L
 |------|------|
 | `backend/app/main.py` | FastAPI 入口，路由注册（L147-162） |
 | `backend/app/agents/agent_graph.py` | Agent 图定义 + 阶段温度 |
+| `backend/app/agents/prompts.py` | Agent system prompt 定义（1100+ 行，改 agent 行为绕不开） |
 | `backend/app/agents/constants.py` | Phase enum, FORBIDDEN_WORDS, NODE_TEMPERATURES, AGENT_TEMPERATURES, STYLE_EXEMPLARS |
 | `backend/app/agents/initialization.py` | 项目初始化流程（yield SSE 事件） |
 | `backend/app/agents/context_strategy.py` | Full/Summary/Hybrid 上下文策略 |
 | `backend/app/agents/agent_context.py` | Agent 阶段感知上下文组装 + BudgetTracker |
 | `backend/app/agents/tools/registry.py` | 工具注册表（阶段→工具集，递进定义） |
-| `backend/app/agents/tools/registry_v2.py` | 动态工具注册（根据项目规模调整工具列表） |
+| `backend/app/agents/tools/registry_v2.py` | 动态工具注册（**agent_graph 的实际工具来源**，根据项目规模调整工具列表） |
+| `backend/app/agents/budget_allocator.py` | 按 `PHASE_BUDGET_RATIOS` 切分 context 预算 |
+| `backend/app/agents/context_cache.py` | 上下文缓存层（配合 perception 工具复用结果） |
+| `backend/app/agents/context_renderer.py` | 上下文渲染（dict → prompt 文本） |
+| `backend/app/agents/tool_context.py` | 工具调用时注入的上下文（project_id、phase 等） |
+| `backend/app/agents/nodes_utils.py` | initialization.py 使用的 safe_format / parse_world_setting_response |
+| `backend/app/agents/agent_tools.py` | **已弃用** — 向后兼容空壳层，新代码请用 `app.agents.tools` |
 | `backend/app/config.py` | 应用配置（pydantic_settings，环境变量绑定） |
 | `backend/app/agents/sse_events.py` | SSE 事件格式化（唯一入口） |
 | `backend/app/agents/token_budget.py` | estimate_tokens（中文 2 token/字） |
@@ -97,7 +123,7 @@ NovelAgent v0.8.11 — AI 驱动的长篇小说创作系统。后端 FastAPI + L
 | `DATABASE_URL` | `postgresql://novelagent:novelagent@localhost:5432/novelagent` | 数据库连接 |
 | `SECRET_KEY` | 随机生成（每次重启失效） | 会话加密密钥，生产环境必须设置 |
 | `DEFAULT_USERNAME` | `admin` | 首次启动默认用户名 |
-| `DEFAULT_PASSWORD` | 随机生成（保存至 `/tmp/novelagent_admin_password.txt`） | 首次启动默认密码，生产环境必须设置 |
+| `DEFAULT_PASSWORD` | config.py 默认随机生成（保存至 `/tmp/novelagent_admin_password.txt`），**但 `docker-compose.yml` 默认覆盖为 `admin123`** | 首次启动默认密码，生产环境必须显式设置该环境变量 |
 | `DEFAULT_MODEL_PROVIDER` | `deepseek` | 默认 LLM provider |
 | `DEFAULT_MODEL` | `deepseek-v3-241227` | 默认模型 |
 | `DEFAULT_API_KEY` | 空 | 默认 API 密钥 |

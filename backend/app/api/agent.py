@@ -23,6 +23,7 @@ from app.agents.prompts import AGENT_SYSTEM_PROMPT
 from app.models.workflow_state import WorkflowState
 from app.agents.constants import Phase
 from app.agents.agent_context import ProjectContextAssembler, BudgetTracker
+from app.agents.context_renderer import render_context_block, render_context_block_compact
 from app.agents.token_budget import get_context_window, estimate_tokens, DEFAULT_AGENT_MAX_OUTPUT_TOKENS
 from app.agents.tool_context import set_tool_context, reset_tool_context, set_loaded_keys, set_budget_tracker
 from app.agents.services.knowledge_base import KnowledgeBaseService
@@ -610,7 +611,7 @@ async def agent_chat(
     )
 
     # 分离 project_data 和 previous_text
-    project_data_block = json.dumps(context_result["project_data"], ensure_ascii=False, default=str)
+    project_data_block = render_context_block(context_result["project_data"])
     previous_text = context_result.get("previous_text", "")
 
     # Build prerequisites warning text
@@ -656,7 +657,7 @@ async def agent_chat(
             if k in ("outline", "style_constraints", "current_plot_block",
                       "pending_foreshadowings", "overdue_foreshadowings")
         }
-        slim_block = json.dumps(slim_data, ensure_ascii=False, default=str)
+        slim_block = render_context_block_compact(slim_data)
         system_content = AGENT_SYSTEM_PROMPT.format(
             phase_label=phase_label,
             project_name=project.name,
